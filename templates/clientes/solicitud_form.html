@@ -3,42 +3,39 @@
 {% block title %}{{ 'Nueva Solicitud' if nuevo else 'Editar Solicitud' }} | Doméstica del Cibao A&D{% endblock %}
 
 {% block content %}
-<section class="py-4 py-md-5 solicitud-form-page">
-  <div class="container" style="max-width: 1040px;">
-    <style>
-      .soft-wizard-shell { border: 1px solid #d6e0ec; border-radius: 14px; background: linear-gradient(180deg, #fcfeff 0%, #f7fbff 100%); padding: 12px; }
-      .soft-wizard-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-      .soft-wizard-step { border: 1px solid #cdd9e7; border-radius: 999px; background: #fff; color: #2b3f56; font-size: .84rem; font-weight: 600; padding: 6px 12px; line-height: 1.2; }
-      .soft-wizard-step.is-active { border-color: #206f8d; background: #e8f4fb; color: #114962; box-shadow: inset 0 0 0 1px rgba(25, 94, 122, .18); }
-      .soft-wizard-step.is-complete { border-color: #8db5ca; background: #f1f8fc; color: #1d4e66; }
-      .soft-wizard-progress { height: 8px; border-radius: 999px; overflow: hidden; background: #e9eff6; }
-      .soft-wizard-progress .progress-bar { background: linear-gradient(90deg, #0f6a7f 0%, #2f829e 100%); }
-    </style>
+<section class="py-4 py-md-5 solicitud-form-page" data-client-live-view="solicitud_form">
+  <div class="container solicitud-form-container">
+    <div class="card border-0 shadow-sm mb-3 solicitud-form-hero-card">
+      <div class="card-body d-flex flex-column flex-lg-row align-items-start justify-content-between gap-3">
+        <div>
+          <h1 class="h3 mb-1 fw-bold">{{ 'Nueva Solicitud' if nuevo else 'Editar Solicitud' }}</h1>
+          <div class="text-muted small d-flex flex-wrap gap-2 align-items-center">
+            <span>Completa los campos y guarda.</span>
+            <span class="badge rounded-pill text-bg-light border">
+              <i class="bi bi-shield-check me-1"></i> Datos cifrados
+            </span>
+            <span class="badge rounded-pill text-bg-light border">
+              <i class="bi bi-clock-history me-1"></i> Guardado por pasos
+            </span>
+          </div>
+        </div>
 
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-      <div>
-        <h1 class="h3 mb-1 fw-bold">{{ 'Nueva Solicitud' if nuevo else 'Editar Solicitud' }}</h1>
-        <div class="text-muted small">
-          Completa los campos y guarda.
-          <span class="badge rounded-pill text-bg-light border ms-1">
-            <i class="bi bi-shield-check me-1"></i> Datos cifrados
-          </span>
+        <div class="d-flex flex-wrap gap-2 solicitud-form-hero-actions">
+          <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left-short me-1"></i> Volver a solicitudes
+          </a>
         </div>
       </div>
-
-      <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-secondary">
-        <i class="bi bi-arrow-left-short me-1"></i> Volver
-      </a>
     </div>
 
-    <div class="card border-0 shadow-sm rounded-4">
+    <div class="card border-0 shadow-sm rounded-4 solicitud-form-main-card">
       <div class="card-body p-3 p-md-4 p-lg-5">
         <form id="solicitud-form" method="post" novalidate data-has-errors="{{ '1' if form.errors else '0' }}" data-autosave-key="solicitud_form_cliente" data-soft-wizard="1">
           {{ form.hidden_tag() }}
           <input type="hidden" id="wizard_step" name="wizard_step" value="{{ initial_wizard_step if initial_wizard_step is defined else 1 }}">
 
           {% if draft_meta and nuevo %}
-            <div class="alert alert-warning border-0 rounded-3 mb-4" role="status">
+            <div class="alert alert-warning border-0 rounded-3 mb-4 solicitud-form-draft-alert" role="status">
               <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
                 <div>
                   <strong><i class="bi bi-save2 me-1"></i>Hay un borrador guardado</strong>
@@ -57,7 +54,7 @@
           {% endif %}
 
           {% if form.errors %}
-            <div class="alert alert-danger border-0 rounded-3 mb-4">
+            <div class="alert alert-danger border-0 rounded-3 mb-4 solicitud-form-error-alert">
               <div class="d-flex">
                 <i class="bi bi-exclamation-triangle-fill me-2"></i>
                 <div>
@@ -90,26 +87,31 @@
 
           {% include 'clientes/_solicitud_form_fields.html' %}
 
-          <div class="d-flex flex-wrap gap-2 justify-content-between pt-3 mt-4 border-top">
-            <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
-              <i class="bi bi-arrow-left me-1"></i> Volver
-            </a>
-            <div class="d-flex gap-2 flex-wrap">
+          <div class="d-flex flex-column gap-3 pt-3 mt-4 border-top solicitud-form-actions-wrap">
+            <div class="d-flex flex-wrap gap-2 solicitud-form-actions-nav">
               <button type="button" class="btn btn-outline-secondary" id="wizard-prev-btn">
                 <i class="bi bi-chevron-left me-1"></i> Paso anterior
               </button>
               <button type="button" class="btn btn-outline-secondary" id="wizard-next-btn">
                 Siguiente paso <i class="bi bi-chevron-right ms-1"></i>
               </button>
-              {% if nuevo %}
-              <button type="submit" name="save_draft" value="1" class="btn btn-outline-primary">
-                <i class="bi bi-save me-1"></i> Guardar borrador
-              </button>
-              {% endif %}
-              <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-secondary">
-                Cancelar
+            </div>
+
+            <div class="d-flex flex-wrap gap-2 justify-content-between solicitud-form-actions-main">
+              <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left me-1"></i> Volver
               </a>
-              <button type="submit" id="btn-submit" class="btn btn-primary px-4">Guardar solicitud</button>
+              <div class="d-flex gap-2 flex-wrap solicitud-form-actions-commit">
+                {% if nuevo %}
+                <button type="submit" name="save_draft" value="1" class="btn btn-outline-primary">
+                  <i class="bi bi-save me-1"></i> Guardar borrador
+                </button>
+                {% endif %}
+                <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-secondary">
+                  Cancelar
+                </a>
+                <button type="submit" id="btn-submit" class="btn btn-primary px-4">Guardar solicitud</button>
+              </div>
             </div>
           </div>
         </form>

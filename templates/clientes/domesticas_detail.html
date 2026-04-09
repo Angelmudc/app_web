@@ -2,15 +2,21 @@
 
 {% block title %}Detalle de candidata - Doméstica del Cibao A&D{% endblock %}
 
+{% block head %}
+<link href="{{ url_for('static', filename='css/client_domesticas.css') }}" rel="stylesheet">
+{% endblock %}
+
 {% block content %}
-<section class="section">
+<section class="section client-domesticas-page client-domesticas-detail-page" data-client-live-view="domesticas_detail">
   <div class="container detalle-candidata">
 
-    <a href="{{ url_for('clientes.banco_domesticas') }}" class="btn btn-secondary">
-      <i class="fa-solid fa-arrow-left me-1"></i> Volver al banco de domésticas
-    </a>
+    <div class="client-dom-detail-topbar">
+      <a href="{{ url_for('clientes.banco_domesticas') }}" class="btn btn-secondary">
+        <i class="fa-solid fa-arrow-left me-1"></i> Volver al banco de domésticas
+      </a>
+    </div>
 
-    <div class="detalle-card">
+    <div class="detalle-card client-dom-detail-card">
 
       {# FOTO (izquierda) #}
       {% if cand.foto_perfil %}
@@ -27,9 +33,10 @@
       {# INFO (derecha) #}
       <div class="detalle-info">
 
-        <h1 class="detalle-nombre">
-          {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}
-        </h1>
+        <div class="client-dom-detail-header">
+          <h1 class="detalle-nombre">
+            {{ (ficha and ficha.nombre_publico) or cand.nombre_completo }}
+          </h1>
 
         {% if ficha and ficha.edad_publica %}
           <p class="detalle-edad text-muted">{{ ficha.edad_publica }}</p>
@@ -56,10 +63,11 @@
             {% if not inmediato_msg %}
               {% set inmediato_msg = 'No disponible para entrar de inmediato' %}
             {% endif %}
-            <span class="badge" style="background:#fef3f2; color:#b42318; border:1px solid #fecdca;">
+            <span class="badge client-dom-badge-unavailable">
               {{ inmediato_msg }}
             </span>
           {% endif %}
+        </div>
         </div>
 
         <div class="detalle-ubicacion">
@@ -115,7 +123,7 @@
         {% if ficha and ficha.experiencia_detallada %}
         <div class="detalle-experiencia-detallada">
           <h2>Detalle de experiencia</h2>
-          <p style="white-space: pre-line;">{{ ficha.experiencia_detallada }}</p>
+          <p class="client-dom-preline">{{ ficha.experiencia_detallada }}</p>
         </div>
         {% endif %}
 
@@ -135,7 +143,7 @@
               {% endfor %}
             </div>
           {% else %}
-            <p class="text-muted" style="margin:8px 0 0;">No especificado.</p>
+            <p class="text-muted client-dom-empty-tags">No especificado.</p>
           {% endif %}
         </div>
 

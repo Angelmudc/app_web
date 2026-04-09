@@ -3,9 +3,9 @@
 
 {% block content %}
 <div class="container py-4 clientes-solicitudes-page" data-client-live-view="solicitudes_list">
-  <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-3">
+  <div class="d-flex flex-wrap gap-3 justify-content-between align-items-center mb-4 clientes-solicitudes-head">
     <div>
-      <h2 class="mb-1 fw-bold">Mis Solicitudes</h2>
+      <h1 class="h3 mb-1 fw-bold">Mis Solicitudes</h1>
       <div class="text-muted small">Filtra por estado, ciudad, modalidad, fecha o texto para encontrar rápido.</div>
     </div>
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-success">
@@ -14,7 +14,7 @@
   </div>
 
   {% if solicitud_draft %}
-  <div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
+  <div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 clientes-solicitudes-draft-alert">
     <div>
       <strong>Tienes un borrador en progreso.</strong>
       {% if solicitud_draft.saved_at %}
@@ -28,14 +28,21 @@
   </div>
   {% endif %}
 
-  <div class="card shadow-sm border-0 mb-3">
+  <div class="card shadow-sm border-0 mb-3 solicitudes-filter-card">
     <div class="card-body">
-      <form method="get" class="row g-3 align-items-end">
-        <div class="col-12 col-md-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="small text-muted fw-semibold text-uppercase">Filtros</div>
+        <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">
+          Limpiar filtros
+        </a>
+      </div>
+
+      <form method="get" class="row g-3 align-items-end solicitudes-filter-form">
+        <div class="col-12 col-lg-4">
           <label class="form-label fw-semibold">Buscar</label>
           <input type="text" class="form-control" name="q" value="{{ q or '' }}" placeholder="Código, ciudad, modalidad o experiencia">
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-4 col-lg-2">
           <label class="form-label fw-semibold">Estado</label>
           <select class="form-select" name="estado">
             <option value="">Todos</option>
@@ -44,7 +51,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-4 col-lg-2">
           <label class="form-label fw-semibold">Ciudad/Sector</label>
           <select class="form-select" name="ciudad">
             <option value="">Todas</option>
@@ -53,7 +60,7 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-4 col-lg-2">
           <label class="form-label fw-semibold">Modalidad</label>
           <select class="form-select" name="modalidad">
             <option value="">Todas</option>
@@ -62,15 +69,15 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-3 col-lg-2">
           <label class="form-label fw-semibold">Desde</label>
           <input type="date" class="form-control" name="fecha_desde" value="{{ fecha_desde or '' }}">
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-3 col-lg-2">
           <label class="form-label fw-semibold">Hasta</label>
           <input type="date" class="form-control" name="fecha_hasta" value="{{ fecha_hasta or '' }}">
         </div>
-        <div class="col-6 col-md-2">
+        <div class="col-6 col-md-3 col-lg-2">
           <label class="form-label fw-semibold">Mostrar</label>
           <select class="form-select" name="per_page">
             {% for n in [10, 20, 30, 50] %}
@@ -78,19 +85,25 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-12 d-flex flex-wrap gap-2">
+        <div class="col-12 col-md-9 col-lg-4 d-flex flex-wrap gap-2 solicitudes-filter-actions">
           <button type="submit" class="btn btn-primary">
             <i class="bi bi-funnel me-1"></i> Aplicar filtros
           </button>
-          <a href="{{ url_for('clientes.listar_solicitudes') }}" class="btn btn-outline-secondary">
-            Limpiar
-          </a>
         </div>
       </form>
     </div>
   </div>
 
-  <div class="card shadow-sm border-0">
+  <div class="card shadow-sm border-0 solicitudes-list-card">
+    {% if total and total > 0 %}
+    <div class="card-header bg-white border-0 pb-0">
+      <div class="small text-muted solicitudes-list-summary">
+        Mostrando <strong>{{ solicitudes|length }}</strong> resultado{{ '' if solicitudes|length == 1 else 's' }} en esta página
+        de <strong>{{ total }}</strong> solicitud{{ '' if total == 1 else 'es' }}.
+      </div>
+    </div>
+    {% endif %}
+
     <div class="list-group list-group-flush">
       {% if solicitudes and solicitudes|length > 0 %}
         {% for s in solicitudes %}
@@ -110,9 +123,9 @@
               (s.tipo_plan or 'Sin plan')
           %}
           <div class="list-group-item solicitud-item-v2">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 solicitud-item-v2__row">
               <div class="flex-grow-1">
-                <div class="d-flex flex-wrap align-items-center gap-2">
+                <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                   <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="fw-bold text-decoration-none">
                     {{ s.codigo_solicitud }}
                   </a>
@@ -122,14 +135,14 @@
                     <span class="badge bg-danger">Publicado hoy</span>
                   {% endif %}
                 </div>
-                <div class="small text-muted mt-1 d-flex flex-wrap gap-2">
-                  <span><i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now())|rd_datetime('%d/%m/%Y') }}</span>
-                  {% if s.ciudad_sector %}<span><i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}</span>{% endif %}
-                  {% if s.modalidad_trabajo %}<span><i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}</span>{% endif %}
+                <div class="small text-muted d-flex flex-wrap gap-2 solicitud-item-v2__meta">
+                  <span class="solicitud-meta-chip"><i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now())|rd_datetime('%d/%m/%Y') }}</span>
+                  {% if s.ciudad_sector %}<span class="solicitud-meta-chip"><i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}</span>{% endif %}
+                  {% if s.modalidad_trabajo %}<span class="solicitud-meta-chip"><i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}</span>{% endif %}
                 </div>
               </div>
 
-              <div class="d-flex flex-wrap gap-2">
+              <div class="d-flex flex-wrap gap-2 solicitud-item-v2__actions">
                 <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary">
                   <i class="bi bi-eye me-1"></i> Ver detalle
                 </a>
@@ -158,7 +171,7 @@
     </div>
 
     {% if total and total > 0 %}
-      <div class="card-footer d-flex flex-column flex-md-row justify-content-between align-items-center gap-2">
+      <div class="card-footer d-flex flex-column flex-md-row justify-content-between align-items-center gap-2 solicitudes-list-pagination">
         <div class="small text-muted">
           Mostrando {{ solicitudes|length }} de {{ total }} solicitudes
         </div>

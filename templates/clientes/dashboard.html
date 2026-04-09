@@ -2,19 +2,19 @@
 {% block title %}Panel del Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4" data-client-live-view="dashboard">
+<div class="container py-4 clientes-dashboard-page" data-client-live-view="dashboard">
 
-  <div class="card shadow-sm border-0 mb-4 dashboard-exec-shell">
+  <div class="card shadow-sm border-0 mb-4 dashboard-exec-shell dashboard-hero-card">
     <div class="card-body">
-      <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3 mb-3">
+      <div class="d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3 mb-4">
         <div>
-          <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
-            <h2 class="mb-0 fw-bold">Panel del Cliente</h2>
+          <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+            <h1 class="h3 mb-0 fw-bold">Panel del Cliente</h1>
           </div>
           <div class="text-muted small">Resumen de tus solicitudes y del siguiente paso recomendado.</div>
         </div>
 
-      <div class="d-flex flex-wrap gap-2 dashboard-quick-actions">
+      <div class="d-flex flex-wrap gap-2 dashboard-quick-actions" role="group" aria-label="Acciones rápidas">
           {% if solicitud_draft %}
           <a href="{{ solicitud_draft.continue_url }}" class="btn btn-warning btn-sm">
             <i class="bi bi-play-circle me-1"></i> Continuar solicitud
@@ -41,7 +41,7 @@
       </div>
 
       {% if solicitud_draft %}
-      <div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-3" role="status">
+      <div class="alert alert-warning d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2 mb-4" role="status">
         <div>
           <div class="fw-semibold">
             <i class="bi bi-save2 me-1"></i>Tienes una solicitud en progreso
@@ -60,7 +60,7 @@
       </div>
       {% endif %}
 
-      <div class="dashboard-priority-wrap mb-3">
+      <div class="dashboard-priority-wrap mb-4">
       {% if resumen_ejecutivo and resumen_ejecutivo.prioridad %}
       <div
         class="alert alert-{{ resumen_ejecutivo.prioridad.variant|default('info') }} d-flex flex-column flex-lg-row align-items-start align-items-lg-center justify-content-between gap-3 mb-0"
@@ -98,34 +98,41 @@
           <div class="dashboard-kpi-card">
             <div class="dashboard-kpi-label">Solicitudes activas</div>
             <div class="dashboard-kpi-value">{{ resumen_ejecutivo.cards.activas if resumen_ejecutivo else 0 }}</div>
+            <div class="dashboard-kpi-foot">En seguimiento</div>
           </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
           <div class="dashboard-kpi-card">
             <div class="dashboard-kpi-label">Pendientes de atención</div>
             <div class="dashboard-kpi-value">{{ resumen_ejecutivo.cards.pendientes_atencion if resumen_ejecutivo else 0 }}</div>
+            <div class="dashboard-kpi-foot">Requieren acción</div>
           </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
           <div class="dashboard-kpi-card">
             <div class="dashboard-kpi-label">En espera de pago</div>
             <div class="dashboard-kpi-value">{{ resumen_ejecutivo.cards.espera_pago if resumen_ejecutivo else 0 }}</div>
+            <div class="dashboard-kpi-foot">Paso financiero</div>
           </div>
         </div>
         <div class="col-12 col-md-6 col-xl-3">
           <div class="dashboard-kpi-card">
             <div class="dashboard-kpi-label">Cerradas</div>
             <div class="dashboard-kpi-value">{{ resumen_ejecutivo.cards.cerradas if resumen_ejecutivo else 0 }}</div>
+            <div class="dashboard-kpi-foot">Histórico</div>
           </div>
         </div>
       </div>
     </div>
   </div>
 
-  <div class="card shadow-sm border-0">
+  <div class="card shadow-sm border-0 dashboard-recents-card">
     <div class="card-header bg-white">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-        <h5 class="mb-0">Últimas solicitudes</h5>
+        <div>
+          <h2 class="h5 mb-1">Últimas solicitudes</h2>
+          <div class="small text-muted">Accede rápido a tus casos más recientes.</div>
+        </div>
         <a href="{{ url_for('clientes.listar_solicitudes') }}" class="small text-decoration-none">
           Ver todas →
         </a>
@@ -144,8 +151,8 @@
               'bg-info'
           %}
 
-          <div class="list-group-item">
-            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3">
+          <div class="list-group-item dashboard-recent-item">
+            <div class="d-flex flex-column flex-lg-row align-items-lg-center justify-content-between gap-3 dashboard-recent-item__row">
 
               <div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
@@ -160,20 +167,18 @@
                   {% endif %}
                 </div>
 
-                <div class="small text-muted mt-1">
-                  <i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now())|rd_datetime('%d/%m/%Y') }}
+                <div class="small text-muted mt-2 d-flex flex-wrap gap-2 dashboard-recent-meta">
+                  <span class="dashboard-meta-chip"><i class="bi bi-calendar3 me-1"></i>{{ (s.fecha_solicitud or now())|rd_datetime('%d/%m/%Y') }}</span>
                   {% if s.ciudad_sector %}
-                    <span class="mx-2">•</span>
-                    <i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}
+                    <span class="dashboard-meta-chip"><i class="bi bi-geo-alt me-1"></i>{{ s.ciudad_sector }}</span>
                   {% endif %}
                   {% if s.modalidad_trabajo %}
-                    <span class="mx-2">•</span>
-                    <i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}
+                    <span class="dashboard-meta-chip"><i class="bi bi-briefcase me-1"></i>{{ s.modalidad_trabajo }}</span>
                   {% endif %}
                 </div>
               </div>
 
-              <div class="d-flex flex-wrap gap-2">
+              <div class="d-flex flex-wrap gap-2 dashboard-recent-actions">
                 <a href="{{ url_for('clientes.detalle_solicitud', id=s.id) }}" class="btn btn-sm btn-outline-primary">
                   <i class="bi bi-eye me-1"></i> Ver detalle
                 </a>

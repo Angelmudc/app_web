@@ -3,6 +3,7 @@
 
 {% block head %}
 <link href="{{ url_for('static', filename='css/chat_client.css') }}" rel="stylesheet">
+<script>document.documentElement.classList.add('clientes-chat-view');</script>
 {% endblock %}
 
 {% block content %}
@@ -46,14 +47,16 @@
             href="{{ url_for('clientes.chat_cliente', conversation_id=conv.id) }}"
             data-conversation-id="{{ conv.id }}"
           >
-            <div class="d-flex justify-content-between gap-2 align-items-start">
+            <div class="client-chat-conv-row">
               <div class="fw-semibold text-truncate">{{ conv.subject or 'Soporte' }}</div>
-              <span class="badge {% if conv.status == 'closed' %}text-bg-secondary{% elif conv.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}">
-                {% if (conv.status or 'open') == 'closed' %}CERRADO{% elif (conv.status or 'open') == 'pending' %}EN ESPERA{% else %}ABIERTO{% endif %}
-              </span>
-              {% if conv.cliente_unread_count %}
-              <span class="badge rounded-pill text-bg-danger client-chat-unread-badge">{{ conv.cliente_unread_count }}</span>
-              {% endif %}
+              <div class="client-chat-conv-badges">
+                <span class="badge {% if conv.status == 'closed' %}text-bg-secondary{% elif conv.status == 'pending' %}text-bg-warning{% else %}text-bg-success{% endif %}">
+                  {% if (conv.status or 'open') == 'closed' %}CERRADO{% elif (conv.status or 'open') == 'pending' %}EN ESPERA{% else %}ABIERTO{% endif %}
+                </span>
+                {% if conv.cliente_unread_count %}
+                <span class="badge rounded-pill text-bg-danger client-chat-unread-badge">{{ conv.cliente_unread_count }}</span>
+                {% endif %}
+              </div>
             </div>
             {% if conv.solicitud_id %}
             <div class="small text-muted">Solicitud #{{ conv.solicitud.codigo_solicitud if conv.solicitud else conv.solicitud_id }}</div>

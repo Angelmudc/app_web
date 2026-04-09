@@ -33,130 +33,6 @@
   <link href="{{ url_for('static', filename='clientes/css/clientes_pages.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/client_notifications.css') }}" rel="stylesheet">
 
-  <!-- Hotfix UI: evita que el CSS del portal pise estilos de Bootstrap en la navbar/dropdown -->
-  <style>
-    :root{ --clientes-font: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-
-    body.clientes{ font-family: var(--clientes-font); }
-
-    /* Si algún CSS global cambió UL/LI, esto asegura que la navbar no salga con viñetas */
-    body.clientes nav.navbar ul,
-    body.clientes nav.navbar li{
-      list-style: none !important;
-      margin: 0;
-      padding: 0;
-    }
-
-    /* Mantener el layout de la navbar como Bootstrap espera */
-    body.clientes .navbar .navbar-nav{
-      display: flex;
-      flex-direction: row;
-      align-items: center;
-      gap: 1rem;
-    }
-
-    /* En mobile, el collapse vuelve a columna */
-    @media (max-width: 991.98px){
-      body.clientes .navbar .navbar-nav{ flex-direction: column; align-items: flex-start; gap: .15rem; }
-      body.clientes .navbar .navbar-nav .nav-link{ width: 100%; }
-    }
-
-    body.clientes .navbar .nav-link{
-      padding: .6rem 1rem;
-      border-radius: .8rem;
-      font-weight: 500;
-    }
-
-    body.clientes .navbar .nav-link.active{
-      background: rgba(255,255,255,.12);
-    }
-
-    /* Logo grande y consistente (evita que otros CSS lo reduzcan) */
-    body.clientes nav.navbar{
-      padding-top: .6rem;
-      padding-bottom: .6rem;
-      min-height: 120px;
-    }
-
-    body.clientes nav.navbar .navbar-brand{
-      padding: 0;
-      margin-right: .75rem;
-      display: flex;
-      align-items: center;
-    }
-
-    body.clientes nav.navbar img.clientes-navbar-logo{
-      height: 100px !important;      /* sube/baja aquí si lo quieres aún más grande */
-      width: auto !important;
-      max-height: none !important;
-      object-fit: contain;
-      display: block;
-    }
-
-    @media (max-width: 991.98px){
-      body.clientes nav.navbar{ min-height: 84px; }
-      body.clientes nav.navbar img.clientes-navbar-logo{ height: 64px !important; }
-    }
-
-    /* Dropdown usuario: fondo claro + texto legible (evita negro con negro)
-       Nota: usamos !important porque `clientes.css` puede estar pisando el dropdown. */
-    body.clientes nav.navbar .dropdown-menu{
-      min-width: 260px !important;
-      max-width: 320px !important;
-      width: auto !important;
-      background: #ffffff !important;
-      color: #101828 !important;
-      border: 1px solid rgba(16, 24, 40, 0.12) !important;
-      border-radius: 14px !important;
-      padding: .35rem !important;
-      overflow: hidden !important;
-      box-shadow: 0 18px 50px rgba(0,0,0,.18) !important;
-    }
-
-    body.clientes nav.navbar .dropdown-menu .dropdown-item,
-    body.clientes nav.navbar .dropdown-menu .dropdown-item-text,
-    body.clientes nav.navbar .dropdown-menu .dropdown-header{
-      color: #101828 !important;
-      max-width: 100% !important;
-    }
-
-    body.clientes nav.navbar .dropdown-menu .dropdown-header{
-      color: #667085 !important;
-      font-weight: 600 !important;
-      padding: .6rem .75rem !important;
-      max-width: 100% !important;
-      overflow: hidden !important;
-    }
-
-    body.clientes nav.navbar .dropdown-menu .dropdown-item{
-      border-radius: 10px !important;
-      padding: .55rem .75rem !important;
-      background: transparent !important;
-    }
-
-    body.clientes nav.navbar .dropdown-menu .dropdown-item:hover,
-    body.clientes nav.navbar .dropdown-menu .dropdown-item:focus{
-      background: rgba(16, 24, 40, 0.06) !important;
-    }
-
-    body.clientes nav.navbar .dropdown-menu i{ width: 1.1rem; text-align: center; }
-
-    /* Email: 1 línea con ... (no estira el dropdown)*/
-    body.clientes nav.navbar .dropdown-email{
-      display: block !important;
-      max-width: 100% !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
-      white-space: nowrap !important;
-      word-break: normal !important;
-      line-height: 1.2 !important;
-      color: #101828 !important; /* Fuerza texto negro */
-    }
-
-    /* Espaciado general del contenido */
-    main.container, main.container-fluid{ padding-top: 24px; padding-bottom: 24px; }
-  </style>
-
   {% block head %}{% endblock %}
 </head>
 <body class="clientes d-flex flex-column min-vh-100"
@@ -175,7 +51,7 @@
 
   {% if show_shell %}
   <!-- NAVBAR -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark sticky-top shadow-sm clientes-shell-nav">
     <div class="container">
       <a class="navbar-brand d-flex align-items-center fw-semibold" href="{{ url_for('clientes.dashboard') }}">
         <img class="clientes-navbar-logo"
@@ -303,11 +179,11 @@
   </nav>
 
   <!-- SEPARADOR Navbar -->
-  <div style="height: 16px;"></div>
+  <div class="clientes-shell-spacer" aria-hidden="true"></div>
   {% endif %}
 
   <!-- TOASTS de flash -->
-  <div class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1080;">
+  <div class="toast-container position-fixed top-0 end-0 p-3 clientes-shell-toast">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         {% for category, text in messages %}
@@ -333,13 +209,13 @@
     {% endwith %}
   </div>
 
-  <main class="{% if show_shell %}container{% else %}container-fluid{% endif %} flex-grow-1 px-3">
+  <main class="{% if show_shell %}container clientes-shell-main{% else %}container-fluid{% endif %} flex-grow-1 px-3">
     {% block content %}{% endblock %}
   </main>
 
   {% if show_shell %}
   <!-- FOOTER -->
-  <footer class="py-4 mt-auto bg-dark text-white">
+  <footer class="py-4 mt-auto bg-dark text-white clientes-shell-footer">
     <div class="container">
       <div class="row gy-3 align-items-center">
         <div class="col-md">

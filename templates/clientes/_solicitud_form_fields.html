@@ -87,6 +87,11 @@
       {% endif %}
 
       {% if hint %}<div class="public-field-hint">{{ hint }}</div>{% endif %}
+      {% if field.name == 'experiencia' %}
+        <div class="public-field-counter"><span id="exp-count">0</span> caracteres</div>
+      {% elif field.name == 'nota_cliente' %}
+        <div class="public-field-counter"><span id="nota-count">0</span> caracteres</div>
+      {% endif %}
       {{ render_errors(field) }}
     </div>
   {% endif %}
@@ -328,8 +333,9 @@
 </style>
 
 <div class="public-form-sections">
-  <section class="public-form-card">
+  <section class="public-form-card public-form-card--service">
     <header class="public-form-card-header">
+      <span class="public-form-card-step">Paso 1</span>
       <h3 class="public-form-card-title">{{ _service_title }}</h3>
       <p class="public-form-card-desc">{{ _service_desc }}</p>
     </header>
@@ -382,8 +388,9 @@
     </div>
   </section>
 
-  <section class="public-form-card">
+  <section class="public-form-card public-form-card--profile">
     <header class="public-form-card-header">
+      <span class="public-form-card-step">Paso 2</span>
       <h3 class="public-form-card-title">Requisitos y perfil</h3>
       <p class="public-form-card-desc">Orden recomendado para definir el perfil correcto.</p>
     </header>
@@ -396,8 +403,9 @@
     </div>
   </section>
 
-  <section class="public-form-card">
+  <section class="public-form-card public-form-card--home">
     <header class="public-form-card-header">
+      <span class="public-form-card-step">Paso 3</span>
       <h3 class="public-form-card-title">Estructura del hogar o lugar</h3>
       <p class="public-form-card-desc">Primero estructura fisica del lugar y despues composicion familiar.</p>
     </header>
@@ -436,8 +444,9 @@
     </div>
   </section>
 
-  <section class="public-form-card">
+  <section class="public-form-card public-form-card--final">
     <header class="public-form-card-header">
+      <span class="public-form-card-step">Paso 4</span>
       <h3 class="public-form-card-title">Confirmacion final</h3>
       <p class="public-form-card-desc">Define compensacion, pasaje y nota adicional antes de enviar la solicitud.</p>
     </header>

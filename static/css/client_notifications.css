@@ -45,12 +45,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
 }
 
 .client-notif-modal {
   width: min(680px, 96vw);
-  max-height: 86vh;
+  max-height: calc(100vh - max(24px, env(safe-area-inset-top)) - max(24px, env(safe-area-inset-bottom)));
   background: #fff;
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 16px;
@@ -106,8 +106,8 @@
 
 .fab-client-chat {
   position: fixed;
-  right: 18px;
-  bottom: 18px;
+  right: var(--cli-shell-fab-right, max(14px, calc(env(safe-area-inset-right) + 12px)));
+  bottom: var(--cli-shell-fab-offset, max(18px, calc(env(safe-area-inset-bottom) + 10px)));
   min-height: 56px;
   min-width: 118px;
   border-radius: 999px;
@@ -125,7 +125,7 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.3);
   text-decoration: none;
   border: 1px solid rgba(148, 163, 184, 0.4);
-  z-index: 1095;
+  z-index: 1091;
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
   isolation: isolate;
 }
@@ -204,9 +204,9 @@
 
 .client-chat-reply-toast-wrap {
   position: fixed;
-  right: 14px;
-  bottom: 84px;
-  width: min(360px, calc(100vw - 28px));
+  right: max(10px, calc(env(safe-area-inset-right) + 8px));
+  bottom: calc(var(--cli-shell-fab-offset, max(18px, calc(env(safe-area-inset-bottom) + 10px))) + 66px);
+  width: min(360px, calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right)));
   z-index: 1096;
 }
 
@@ -300,9 +300,23 @@
 }
 
 @media (max-width: 576px) {
+  .client-notif-modal {
+    width: calc(100vw - 20px - env(safe-area-inset-left) - env(safe-area-inset-right));
+    max-height: calc(100dvh - max(12px, env(safe-area-inset-top)) - max(12px, env(safe-area-inset-bottom)));
+    border-radius: 14px;
+  }
+
+  .client-notif-actions {
+    flex-wrap: wrap;
+  }
+
+  .client-notif-actions .btn {
+    width: 100%;
+  }
+
   .fab-client-chat {
-    right: 12px;
-    bottom: 12px;
+    right: max(10px, calc(env(safe-area-inset-right) + 8px));
+    bottom: max(12px, calc(env(safe-area-inset-bottom) + 8px));
     min-height: 52px;
     min-width: 108px;
     padding: 0 14px 0 12px;
@@ -311,10 +325,10 @@
     font-size: 0.8rem;
   }
   .client-chat-reply-toast-wrap {
-    right: 10px;
-    left: 10px;
+    right: max(10px, calc(env(safe-area-inset-right) + 8px));
+    left: max(10px, calc(env(safe-area-inset-left) + 8px));
     width: auto;
-    bottom: 72px;
+    bottom: calc(max(12px, calc(env(safe-area-inset-bottom) + 8px)) + 62px);
   }
   .client-chat-reply-toast .toast-body {
     padding: 12px 12px 13px;

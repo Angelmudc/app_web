@@ -1418,6 +1418,234 @@ body.dc-modal-open {
   box-shadow: 0 14px 26px rgba(79, 140, 255, 0.34) !important;
 }
 
+/* =====================================================================
+   FASE 1 - BASE COMPARTIDA CLIENTES (shell + contrato visual)
+   Alcance: navbar, contenedor principal, spacing global, componentes
+            base (card/botones/badges/titulos), responsive y fijos.
+   ===================================================================== */
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) {
+  --cli-shell-max: 1180px;
+  --cli-shell-space-x: clamp(12px, 2.2vw, 24px);
+  --cli-shell-space-y: clamp(16px, 2.8vw, 28px);
+  --cli-shell-navbar-logo-desktop: 84px;
+  --cli-shell-navbar-logo-mobile: 60px;
+  --cli-shell-fab-offset: max(18px, calc(env(safe-area-inset-bottom) + 10px));
+  --cli-shell-fab-right: max(14px, calc(env(safe-area-inset-right) + 12px));
+}
+
+body.clientes {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-spacer {
+  height: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav {
+  min-height: 100px;
+  padding-top: 0.55rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav ul,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav ol,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav li {
+  list-style: none !important;
+  margin: 0;
+  padding: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-brand {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.75rem;
+  padding: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav img.clientes-navbar-logo {
+  height: var(--cli-shell-navbar-logo-desktop) !important;
+  width: auto !important;
+  max-height: none !important;
+  object-fit: contain;
+  display: block;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-nav .nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0.55rem 0.9rem;
+  border-radius: 0.8rem;
+  font-weight: 600;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-nav .nav-link.active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-menu {
+  min-width: 260px !important;
+  max-width: 320px !important;
+  width: auto !important;
+  background: #ffffff !important;
+  color: #101828 !important;
+  border: 1px solid rgba(16, 24, 40, 0.12) !important;
+  border-radius: 14px !important;
+  padding: 0.35rem !important;
+  overflow: hidden !important;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-item,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-item-text,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-header,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-menu a,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-menu span,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-menu small {
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-header {
+  color: #667085 !important;
+  font-weight: 600 !important;
+  padding: 0.6rem 0.75rem !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-item {
+  border-radius: 10px !important;
+  padding: 0.55rem 0.75rem !important;
+  background: transparent !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-item:hover,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-item:focus {
+  background: rgba(16, 24, 40, 0.06) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-email {
+  display: block !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  line-height: 1.2 !important;
+  color: #101828 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main {
+  width: min(100%, calc(var(--cli-shell-max) + (var(--cli-shell-space-x) * 2)));
+  padding-top: var(--cli-shell-space-y);
+  padding-bottom: calc(var(--cli-shell-space-y) + 8px);
+  padding-left: var(--cli-shell-space-x);
+  padding-right: var(--cli-shell-space-x);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main > :first-child {
+  margin-top: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main > :last-child {
+  margin-bottom: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(h1, h2, h3) {
+  letter-spacing: -0.02em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.card, .c-card, .card-cli) {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.22);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.card-body, .c-card__body, .card-cli-body) {
+  padding: clamp(14px, 2vw, 20px);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.btn, .c-btn, .btn-cli) {
+  min-height: 42px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.badge, .c-badge, .badge-cli) {
+  min-height: 28px;
+  padding: 0.35rem 0.62rem;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.form-control, .form-select, .form-check-input) {
+  border-radius: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.alert, .c-alert, .c-error, .c-success) {
+  border-radius: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-toast {
+  top: max(8px, env(safe-area-inset-top));
+  right: max(8px, env(safe-area-inset-right));
+  z-index: 1085;
+}
+
+@media (max-width: 991.98px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav {
+    min-height: 84px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav img.clientes-navbar-logo {
+    height: var(--cli-shell-navbar-logo-mobile) !important;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-collapse {
+    margin-top: 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    padding: 0.55rem;
+    background: rgba(11, 18, 32, 0.92);
+    backdrop-filter: blur(8px);
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .navbar-nav .nav-link {
+    width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main {
+    padding-top: clamp(14px, 4.8vw, 20px);
+    padding-bottom: clamp(18px, 5vw, 24px);
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-spacer {
+    height: 8px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-toast {
+    left: max(8px, env(safe-area-inset-left));
+    right: max(8px, env(safe-area-inset-right));
+  }
+}
+
 :where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-secondary,
 :where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn-secondary,
 :where(body.clientes, .clientes, [data-portal="clientes"]) form .card .btn.btn-light,
@@ -2149,5 +2377,1063 @@ html[data-bs-theme="dark"] :where(body.clientes, .clientes, [data-portal="client
 @media (max-width: 768px) {
   :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .form-check {
     padding: 8px 10px;
+  }
+}
+
+/* =====================================================================
+   FASE 1 - SHARED SHELL LOCK (orden final para evitar cascada frágil)
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.card, .c-card, .card-cli) {
+  border-radius: 16px !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.btn, .c-btn, .btn-cli) {
+  min-height: 42px !important;
+  border-radius: 12px !important;
+  font-weight: 700 !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main :where(.badge, .c-badge, .badge-cli) {
+  min-height: 28px !important;
+  padding: 0.35rem 0.62rem !important;
+  border-radius: 999px !important;
+}
+
+/* =====================================================================
+   FASE 2.1 - Dashboard + Solicitudes list (scope estricto por vista)
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] {
+  --cli-page-gap: clamp(16px, 2.2vw, 24px);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-hero-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-list-card {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.08) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions {
+  justify-content: flex-end;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions .btn {
+  min-height: 40px;
+  padding-inline: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-card {
+  background: linear-gradient(180deg, #ffffff, #f8fafc);
+  border: 1px solid rgba(16, 24, 40, 0.08);
+  border-radius: 14px;
+  padding: 14px 14px 12px;
+  min-height: 116px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-label {
+  color: #475467;
+  letter-spacing: .02em;
+  font-size: 11px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-value {
+  color: #101828;
+  margin-top: 6px;
+  font-size: clamp(1.65rem, 2.3vw, 2.05rem);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-kpi-foot {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recents-card .card-header {
+  border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+  padding-top: 1rem;
+  padding-bottom: 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-item {
+  padding-block: .95rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-item + .dashboard-recent-item {
+  border-top: 1px solid rgba(16, 24, 40, 0.06);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-item:hover {
+  background: rgba(47, 108, 255, 0.03);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-meta-chip,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  border-radius: 999px;
+  padding: 0.22rem 0.6rem;
+  color: #344054;
+  background: #fff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-list-summary {
+  border: 1px solid rgba(16, 24, 40, 0.08);
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 0.62rem 0.75rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-card .card-body {
+  padding-top: .95rem;
+  padding-bottom: .95rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-form .form-control,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-form .form-select {
+  min-height: 42px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-item-v2 {
+  padding-block: 1rem;
+  border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-item-v2:hover {
+  background: rgba(47, 108, 255, 0.03);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-list-pagination {
+  border-top: 1px solid rgba(16, 24, 40, 0.08);
+  background: #fff;
+}
+
+@media (max-width: 991px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions .btn {
+    flex: 1 1 220px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-actions,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-item-v2__actions {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-item-v2__actions .btn {
+    flex: 1 1 180px;
+  }
+}
+
+@media (max-width: 767px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-hero-card .card-body,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-card .card-body {
+    padding: .95rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-quick-actions .btn {
+    flex: 1 1 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-recent-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitud-item-v2__actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-filter-actions .btn {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-list-pagination {
+    align-items: stretch !important;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .solicitudes-list-pagination .pagination {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
+/* =====================================================================
+   FASE 2.2 - Solicitud detail (scope estricto)
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-hero {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+  box-shadow: 0 18px 45px rgba(16, 24, 40, 0.1) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: #344054;
+  padding: 0.22rem 0.65rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions {
+  width: min(100%, 650px);
+  display: grid;
+  gap: 0.55rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-primary .btn {
+  min-height: 42px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary button {
+  min-height: 38px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-stage-card {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-block {
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+  overflow: hidden;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-block .kard-h {
+  border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+  padding: 0.85rem 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-block .kard-b {
+  padding: 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-summary-block .meta dt {
+  color: #667085;
+  font-weight: 700;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-summary-block .meta dd {
+  color: #101828;
+  font-weight: 500;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-info-block .meta dt {
+  color: #667085;
+  font-size: 0.9rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-info-block .meta dd {
+  color: #111827;
+  font-weight: 500;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-info-block .meta dt,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-info-block .meta dd {
+  margin-bottom: 0.6rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table th {
+  background: #f8fafc;
+  color: #475467;
+  border-bottom-color: rgba(16, 24, 40, 0.1);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table td {
+  vertical-align: top;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table tbody tr:hover {
+  background: rgba(47, 108, 255, 0.03);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-timeline-block .timeline-v2-item {
+  margin-bottom: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-timeline-block .timeline-v2-content {
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  background: #fff;
+  border-radius: 12px;
+  padding: 0.8rem 0.9rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-help-footer .kard-b {
+  padding: 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-bottom-actions {
+  margin-top: 0.25rem;
+}
+
+@media (max-width: 1199px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions {
+    width: 100%;
+  }
+}
+
+@media (max-width: 991px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-primary .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary button {
+    flex: 1 1 220px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-help-footer .kard-b {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 0.75rem;
+  }
+}
+
+@media (max-width: 767px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-hero .card-body,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-stage-card .card-body,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-block .kard-b {
+    padding: 0.9rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-block .kard-h {
+    padding: 0.8rem 0.9rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-primary .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-detail-actions-secondary button,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-help-footer .btn {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table thead {
+    display: none;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table tbody,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table tr,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table td {
+    display: block;
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table tr {
+    border: 1px solid rgba(16, 24, 40, 0.1);
+    border-radius: 12px;
+    padding: 0.7rem;
+    margin-bottom: 0.7rem;
+    background: #fff;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table td {
+    padding: 0.3rem 0;
+    border: 0;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table td::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.74rem;
+    font-weight: 700;
+    color: #667085;
+    margin-bottom: 0.14rem;
+    text-transform: uppercase;
+    letter-spacing: .01em;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-candidatas-table td[data-label="Acción"] .btn {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitud_detail"] .solicitud-bottom-actions .btn {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+}
+
+/* =====================================================================
+   FASE 2.3 - Solicitud form (scope estricto)
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page {
+  --sol-form-max: 1040px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-container {
+  max-width: var(--sol-form-max);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-hero-card {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-hero-actions .btn {
+  min-height: 40px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-main-card {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+  box-shadow: 0 16px 44px rgba(16, 24, 40, 0.08) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-draft-alert,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-error-alert {
+  border: 1px solid rgba(16, 24, 40, 0.1) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-shell {
+  border: 1px solid #d6e0ec;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fcfeff 0%, #f7fbff 100%);
+  padding: 12px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-step {
+  border: 1px solid #cdd9e7;
+  border-radius: 999px;
+  background: #fff;
+  color: #2b3f56;
+  font-size: .84rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  line-height: 1.2;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-step.is-active {
+  border-color: #206f8d;
+  background: #e8f4fb;
+  color: #114962;
+  box-shadow: inset 0 0 0 1px rgba(25, 94, 122, .18);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-step.is-complete {
+  border-color: #8db5ca;
+  background: #f1f8fc;
+  color: #1d4e66;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-progress {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e9eff6;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-progress .progress-bar {
+  background: linear-gradient(90deg, #0f6a7f 0%, #2f829e 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-sections {
+  gap: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card {
+  border-color: rgba(16, 24, 40, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card-header {
+  margin-bottom: 14px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card-step {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(16, 24, 40, 0.12);
+  border-radius: 999px;
+  background: #f2f4f7;
+  color: #344054;
+  font-size: .76rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  margin-bottom: .45rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card-title {
+  font-size: 1.03rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card-desc {
+  font-size: .9rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-field-hint {
+  line-height: 1.38;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-field-counter {
+  margin-top: 5px;
+  color: #667085;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-choice-item {
+  min-height: 36px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-wrap {
+  border-color: rgba(16, 24, 40, 0.1) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-nav .btn,
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-main .btn {
+  min-height: 42px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-commit #btn-submit {
+  min-width: 190px;
+}
+
+@media (max-width: 991px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-hero-actions {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-hero-actions .btn {
+    flex: 1 1 220px;
+  }
+}
+
+@media (max-width: 767px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-main-card .card-body {
+    padding: .95rem !important;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-shell {
+    padding: 10px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .soft-wizard-step {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .public-form-card {
+    padding: 11px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-nav .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-main > .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-commit .btn {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .solicitud-form-page .solicitud-form-actions-commit {
+    width: 100%;
+  }
+}
+
+/* =====================================================================
+   FASE 2.6 - Informacion + Planes + Ayuda + Proceso
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"],
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] {
+  --cli-info-border: rgba(16, 24, 40, 0.1);
+  --cli-info-muted: #667085;
+  --cli-info-text: #101828;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .card {
+  border: 1px solid var(--cli-info-border) !important;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.08) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] :is(h1, h2, h3, h4, h5, h6),
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] :is(h1, h2, h3, h4, h5, h6),
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--cli-info-text);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] :is(p, li, .text-secondary, .text-muted),
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] :is(p, li, .text-secondary, .text-muted),
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] :is(p, li, .text-secondary, .text-muted) {
+  color: var(--cli-info-muted) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-hero,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-hero,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-hero-card {
+  border: 1px solid rgba(16, 24, 40, 0.12) !important;
+  box-shadow: 0 16px 40px rgba(16, 24, 40, 0.1) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-bank-aside {
+  min-width: 280px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-step-dot {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-hero {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .cpl-plan-card {
+  background: #fff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .cpl-plan-card--basic {
+  background: linear-gradient(180deg, #f3f8ff 0%, #ffffff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .cpl-plan-card--premium {
+  background: linear-gradient(180deg, #fff8e8 0%, #ffffff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .cpl-plan-card--vip {
+  background: linear-gradient(180deg, #f5f7fb 0%, #ffffff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-compare-card .card-header,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-help-row .card-header {
+  border-bottom: 1px solid rgba(16, 24, 40, 0.08);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .cpl-compare th {
+  color: #475467;
+  background: #f8fafc;
+  border-bottom-color: rgba(16, 24, 40, 0.1);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-tip-card {
+  border-color: rgba(16, 24, 40, 0.1) !important;
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%) !important;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-topics-card .accordion-item {
+  border: 1px solid rgba(16, 24, 40, 0.1);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-topics-card .accordion-item + .accordion-item {
+  margin-top: 0.62rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-topics-card .accordion-button {
+  font-weight: 700;
+  color: #101828;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-topics-card .accordion-button:not(.collapsed) {
+  background: #f8fbff;
+  color: #0b5ed7;
+}
+
+/* Proceso (migrado desde template para consistencia y mantenimiento) */
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-page {
+  --cp-bg: radial-gradient(1200px 500px at 5% -5%, rgba(11, 94, 215, 0.15), transparent 55%),
+    radial-gradient(900px 500px at 100% -10%, rgba(13, 110, 253, 0.08), transparent 58%),
+    linear-gradient(180deg, #f6f9ff 0%, #f3f6fb 100%);
+  --cp-text: #0f172a;
+  --cp-muted: #5b6578;
+  --cp-card: #ffffff;
+  --cp-border: #d9e2f1;
+  --cp-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  --cp-shadow-soft: 0 10px 24px rgba(15, 23, 42, 0.05);
+  --cp-primary: #0b5ed7;
+  --cp-primary-strong: #0a4fb7;
+  background: var(--cp-bg);
+  border-radius: 26px;
+  padding: 1.15rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-shell {
+  background: var(--cp-card);
+  border: 1px solid var(--cp-border);
+  border-radius: 24px;
+  box-shadow: var(--cp-shadow);
+  overflow: hidden;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-hero {
+  background: linear-gradient(130deg, #0d2d66 0%, #0b5ed7 45%, #1f6fe5 100%);
+  color: #f8fbff;
+  padding: 2rem 2rem 1.4rem;
+  position: relative;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -30% -48% auto;
+  width: 460px;
+  height: 460px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 0.38rem 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-title {
+  margin: 0.95rem 0 0.4rem;
+  font-size: clamp(1.56rem, 2.6vw, 2.15rem);
+  line-height: 1.18;
+  font-weight: 800;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-subtitle {
+  margin: 0;
+  color: rgba(248, 251, 255, 0.9);
+  max-width: 72ch;
+  font-size: 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary-card {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  padding: 0.72rem 0.84rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary-label {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.71rem;
+  font-weight: 700;
+  color: rgba(248, 251, 255, 0.8);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary-value {
+  margin: 0.22rem 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-main {
+  padding: 1.4rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 1.15rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-panel {
+  background: #f8fbff;
+  border: 1px solid #deebff;
+  border-radius: 18px;
+  box-shadow: var(--cp-shadow-soft);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-panel-head {
+  border-bottom: 1px solid #e2ebf8;
+  padding: 0.9rem 1rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-panel-title {
+  margin: 0;
+  color: var(--cp-text);
+  font-size: 1.03rem;
+  font-weight: 800;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-panel-subtitle {
+  margin: 0.24rem 0 0;
+  color: var(--cp-muted);
+  font-size: 0.9rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step {
+  position: relative;
+  background: #ffffff;
+  border: 1px solid #dde8f6;
+  border-radius: 14px;
+  padding: 0.9rem 0.95rem 0.9rem 3rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step::before {
+  content: "";
+  position: absolute;
+  left: 1.1rem;
+  top: 2.2rem;
+  bottom: -1.1rem;
+  width: 2px;
+  background: linear-gradient(180deg, #7bb4ff 0%, #dbe9ff 100%);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step:last-child::before {
+  display: none;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step-dot {
+  position: absolute;
+  left: 0.8rem;
+  top: 0.92rem;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-size: 0.74rem;
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--cp-primary) 0%, var(--cp-primary-strong) 100%);
+  box-shadow: 0 8px 18px rgba(11, 94, 215, 0.28);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  margin-bottom: 0.34rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+  color: var(--cp-text);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-badge {
+  border-radius: 999px;
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.27rem 0.58rem;
+  border: 1px solid transparent;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-badge.phase {
+  background: #e9f2ff;
+  border-color: #bfdaff;
+  color: #12438f;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-badge.payment {
+  background: #fff4df;
+  border-color: #ffd59c;
+  color: #8e4a00;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-badge.alert {
+  background: #ffebe9;
+  border-color: #f6c2be;
+  color: #8f241b;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step-text {
+  margin: 0;
+  color: var(--cp-muted);
+  line-height: 1.48;
+  font-size: 0.95rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-sidebar {
+  display: grid;
+  gap: 0.95rem;
+  align-content: start;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-note {
+  border-radius: 14px;
+  border: 1px solid #e3eaf6;
+  background: #ffffff;
+  padding: 0.85rem 0.9rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-note-title {
+  margin: 0;
+  color: var(--cp-text);
+  font-size: 0.9rem;
+  font-weight: 800;
+  display: flex;
+  gap: 0.42rem;
+  align-items: center;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-note-text {
+  margin: 0.35rem 0 0;
+  color: var(--cp-muted);
+  font-size: 0.89rem;
+  line-height: 1.45;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-callout {
+  background: linear-gradient(180deg, #fff8ef 0%, #fff2df 100%);
+  border: 1px solid #ffd39d;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-actions {
+  padding: 1rem;
+  border-top: 1px solid #e2ebf8;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-btn {
+  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 991px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-hero-actions,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-hero-actions,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-hero-actions {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-hero-actions .btn {
+    flex: 1 1 220px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-main {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 767px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-bank-aside {
+    min-width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-final-cta .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-final-cta .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-actions .btn {
+    width: 100%;
+    margin-inline: 0 !important;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-page {
+    border-radius: 18px;
+    padding: 0.45rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-shell {
+    border-radius: 16px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-hero {
+    padding: 1.3rem 1rem 1rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-main {
+    padding: 0.82rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-summary {
+    grid-template-columns: 1fr;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step {
+    padding: 0.82rem 0.8rem 0.85rem 2.65rem;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step-dot {
+    left: 0.62rem;
+    top: 0.8rem;
+    width: 22px;
+    height: 22px;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="proceso"] .clientes-proceso-step::before {
+    left: 0.92rem;
+    top: 2rem;
+  }
+}
+
+/* =====================================================================
+   FASE FINAL - Consistency pass (ajustes pequenos y seguros)
+   ===================================================================== */
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main > * {
+  min-width: 0;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main .card .card-header {
+  border-bottom-color: rgba(16, 24, 40, 0.08);
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main .badge {
+  letter-spacing: 0.01em;
+}
+
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="chat"] .client-chat-shell,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="domesticas_list"] .client-dom-filter-card,
+:where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="domesticas_detail"] .client-dom-detail-card {
+  border-radius: 18px;
+}
+
+@media (max-width: 767px) {
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-main .btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="dashboard"] .dashboard-exec-shell .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="solicitudes_list"] .clientes-solicitudes-head .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="informacion"] .info-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="planes"] .planes-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="ayuda"] .ayuda-hero-actions .btn,
+  :where(body.clientes, .clientes, [data-portal="clientes"]) [data-client-live-view="domesticas_detail"] .client-dom-detail-topbar .btn {
+    width: 100%;
+  }
+
+  :where(body.clientes, .clientes, [data-portal="clientes"]) .clientes-shell-nav .dropdown-menu {
+    min-width: 0 !important;
+    width: min(320px, calc(100vw - 24px)) !important;
   }
 }

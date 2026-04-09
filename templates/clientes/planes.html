@@ -6,15 +6,23 @@
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container py-4 clientes-planes-page" data-client-live-view="planes">
 
   <!-- HERO -->
-  <section class="cpl-hero p-4 p-md-5 mb-4 text-center">
+  <section class="cpl-hero p-4 p-md-5 mb-4 text-center planes-hero">
     <h1 class="h3 mb-2">Elige el plan ideal para tu hogar</h1>
-    <p class="text-secondary mb-0">
+    <p class="text-secondary mb-3 mb-md-0">
       Todos nuestros planes incluyen validación de referencias y acompañamiento.
       Cambia de plan cuando quieras.
     </p>
+    <div class="d-flex flex-wrap justify-content-center gap-2 planes-hero-actions mt-3">
+      <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary">
+        <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud
+      </a>
+      <a href="{{ url_for('clientes.ayuda') }}" class="btn btn-outline-secondary">
+        <i class="bi bi-life-preserver me-1"></i> Necesito ayuda
+      </a>
+    </div>
   </section>
 
   <!-- CARDS DE PLANES -->
@@ -22,7 +30,7 @@
 
     <!-- Básico -->
     <div class="col-md-4">
-      <div class="cpl-card cpl-plan-card h-100 d-flex flex-column" style="background:#f0f8ff;">
+      <div class="cpl-card cpl-plan-card cpl-plan-card--basic h-100 d-flex flex-column">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-0"><i class="bi bi-shield-check text-primary me-1"></i> Básico</h3>
         </div>
@@ -47,7 +55,7 @@
 
     <!-- Premium (destacado) -->
     <div class="col-md-4">
-      <div class="cpl-card cpl-plan-card border border-warning-subtle h-100 d-flex flex-column" style="background:#fff8e1;">
+      <div class="cpl-card cpl-plan-card cpl-plan-card--premium border border-warning-subtle h-100 d-flex flex-column">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-1">
             <i class="bi bi-stars text-warning me-1"></i> Premium
@@ -76,7 +84,7 @@
 
     <!-- VIP -->
     <div class="col-md-4">
-      <div class="cpl-card cpl-plan-card h-100 d-flex flex-column" style="background:#f5f5f5;">
+      <div class="cpl-card cpl-plan-card cpl-plan-card--vip h-100 d-flex flex-column">
         <div class="p-3 border-bottom text-center">
           <h3 class="h5 mb-0"><i class="bi bi-gem text-dark me-1"></i> VIP</h3>
         </div>
@@ -103,7 +111,7 @@
   </div>
 
   <!-- COMPARATIVA -->
-  <div class="card mt-5 cpl-card">
+  <div class="card mt-5 cpl-card planes-compare-card">
     <div class="card-header bg-light">
       <h5 class="mb-0"><i class="bi bi-table me-2 text-primary"></i>Comparar características</h5>
     </div>
@@ -174,7 +182,7 @@
   </div>
 
   <!-- PREGUNTAS -->
-  <div class="row g-4 mt-4">
+  <div class="row g-4 mt-4 planes-help-row">
     <div class="col-lg-6">
       <div class="card cpl-card h-100">
         <div class="card-header bg-light"><strong><i class="bi bi-patch-question me-2 text-primary"></i>Preguntas frecuentes</strong></div>
@@ -217,7 +225,7 @@
   </div>
 
   <!-- CTA FINAL -->
-  <div class="text-center mt-5">
+  <div class="text-center mt-5 planes-final-cta">
     <p class="text-secondary mb-2">¿Listo para comenzar?</p>
     <a href="{{ url_for('clientes.nueva_solicitud') }}" class="btn btn-primary me-2">
       <i class="bi bi-clipboard2-plus me-1"></i> Crear solicitud ahora

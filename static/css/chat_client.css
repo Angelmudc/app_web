@@ -17,11 +17,16 @@
   --client-chat-shadow: 0 30px 80px rgba(10, 31, 67, 0.2);
   --client-chat-shadow-soft: 0 12px 34px rgba(14, 43, 92, 0.11);
   --client-chat-shell-height: clamp(560px, calc(100dvh - 205px), 860px);
+  --client-chat-safe-bottom: max(10px, env(safe-area-inset-bottom));
 }
 
 .client-chat-page {
   isolation: isolate;
   position: relative;
+}
+
+.clientes-chat-view .fab-client-chat {
+  display: none !important;
 }
 
 .client-chat-page::before {
@@ -95,6 +100,20 @@
   position: relative;
   box-shadow: 0 4px 12px rgba(10, 31, 67, 0.06);
   transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+.client-chat-conv-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.client-chat-conv-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .client-chat-conv:hover {
@@ -222,7 +241,7 @@
 
 .client-chat-msg {
   margin-bottom: 14px;
-  max-width: 78%;
+  max-width: 74%;
 }
 
 .client-chat-msg.mine {
@@ -313,7 +332,7 @@
 
 .client-chat-compose {
   flex: 0 0 auto;
-  padding: 12px;
+  padding: 12px 12px calc(12px + var(--client-chat-safe-bottom));
   background:
     linear-gradient(155deg, rgba(255, 255, 255, 0.96) 0%, rgba(235, 245, 255, 0.86) 100%),
     var(--client-chat-panel);
@@ -333,6 +352,7 @@
 }
 
 .client-chat-compose .input-group {
+  align-items: flex-end;
   gap: 8px;
 }
 
@@ -346,6 +366,7 @@
   min-height: 46px;
   max-height: 150px;
   resize: vertical;
+  line-height: 1.42;
 }
 
 #clientChatBody:focus {
@@ -362,6 +383,8 @@
   background: linear-gradient(145deg, #1f59cf 0%, #2769f1 60%, #3280ff 100%) !important;
   box-shadow: 0 9px 20px rgba(34, 89, 194, 0.28);
   min-width: 48px;
+  min-height: 46px;
+  padding-inline: 14px;
 }
 
 .client-chat-send-btn:hover,
@@ -465,6 +488,10 @@
   box-shadow: 0 8px 22px rgba(17, 45, 91, 0.08);
 }
 
+.client-chat-history-btn {
+  flex-shrink: 0;
+}
+
 #clientChatConversationList::-webkit-scrollbar,
 .client-chat-messages::-webkit-scrollbar {
   width: 11px;
@@ -496,13 +523,24 @@
 
   .client-chat-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: 230px 1fr;
+    grid-template-rows: minmax(170px, 34dvh) 1fr;
   }
 
   .client-chat-inbox {
     min-height: 0;
     border-right: 0 !important;
     border-bottom: 1px solid var(--client-chat-border);
+  }
+
+  .client-chat-inbox-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+
+  #clientChatBody {
+    resize: none;
+    max-height: 132px;
   }
 
   #clientChatConversationList {
@@ -528,26 +566,91 @@
     padding-inline: 14px;
   }
 
+  .client-chat-header-main h1 {
+    font-size: 1.08rem;
+  }
+
+  .client-chat-new-btn {
+    width: 100%;
+  }
+
   .client-chat-thread-header {
     padding-inline: 12px !important;
+    padding-block: 10px !important;
   }
 
   .client-chat-messages {
-    padding-inline: 10px;
+    padding: 10px 10px 12px;
   }
 
   .client-chat-compose {
-    padding: 10px;
+    padding: 10px 10px calc(10px + var(--client-chat-safe-bottom));
   }
 
   .client-chat-compose .input-group {
     gap: 6px;
   }
 
+  .client-chat-send-btn {
+    min-width: 46px;
+    min-height: 46px;
+    padding-inline: 0;
+  }
+
+  .client-chat-conv-row {
+    gap: 8px;
+  }
+
+  .client-chat-conv-badges {
+    gap: 5px;
+  }
+
+  .client-chat-markread-btn {
+    width: 100%;
+  }
+
+  #clientChatHistoryControls {
+    gap: 8px;
+    flex-wrap: wrap;
+    border-radius: 10px;
+    margin-bottom: 10px;
+  }
+
   .client-chat-compose-meta {
     flex-direction: column;
     align-items: flex-start;
     gap: 4px;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .client-chat-grid {
+    grid-template-rows: minmax(128px, 30dvh) 1fr;
+  }
+
+  #clientChatConversationList {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    gap: 10px;
+    padding: 10px 10px 12px;
+    scroll-snap-type: x proximity;
+  }
+
+  .client-chat-conv {
+    min-width: min(280px, 84vw);
+    margin-bottom: 0;
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .client-chat-conv.active::before {
+    left: 10px;
+    right: 10px;
+    top: -1px;
+    bottom: auto;
+    width: auto;
+    height: 3px;
   }
 }
 
