@@ -15,8 +15,8 @@
   const EVENT_DEDUPE_MAX = 1200;
   const REFRESH_THROTTLE_MS = 1800;
   const SSE_RETRY_MS = Math.max(300, Number(window.__CLIENT_LIVE_SSE_RETRY_MS || 12000) || 12000);
-  const POLL_MS_CONNECTED = Math.max(800, Number(window.__CLIENT_LIVE_POLL_CONNECTED_MS || 25000) || 25000);
-  const POLL_MS_FALLBACK = Math.max(500, Number(window.__CLIENT_LIVE_POLL_FALLBACK_MS || 7000) || 7000);
+  const POLL_MS_CONNECTED = Math.max(500, Number(window.__CLIENT_LIVE_POLL_CONNECTED_MS || 1500) || 1500);
+  const POLL_MS_FALLBACK = Math.max(500, Number(window.__CLIENT_LIVE_POLL_FALLBACK_MS || 1200) || 1200);
 
   const seen = new Map();
   const refreshTimers = new Map();

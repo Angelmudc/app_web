@@ -87,6 +87,7 @@ from utils.timezone import (
     utc_now_naive,
     utc_timestamp,
 )
+from utils.outbox_relay import _redis_client as relay_redis_client, _redis_stream_key as relay_redis_stream_key
 from utils.chat_e2e_guard import (
     E2EChatGuardError,
     chat_e2e_enabled,
@@ -1578,6 +1579,53 @@ def _emit_cliente_outbox_event(
         return
 
 
+def _publish_cliente_fast_path_stream_event(
+    *,
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: Union[int, str],
+    payload: Optional[dict] = None,
+    aggregate_version: Optional[int] = None,
+) -> bool:
+    ev = str(event_type or "").strip().upper()
+    if not ev:
+        return False
+    try:
+        redis_client = relay_redis_client()
+        stream_key = relay_redis_stream_key()
+    except Exception:
+        return False
+    if not redis_client or not stream_key:
+        return False
+    actor_id = f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
+    now = utc_now_naive()
+    envelope = {
+        "schema_version": 1,
+        "event_id": secrets.token_hex(16),
+        "event_type": ev[:80],
+        "occurred_at": iso_utc_z(now),
+        "recorded_at": iso_utc_z(now),
+        "actor_id": actor_id,
+        "correlation_id": (request.headers.get("X-Correlation-ID") or request.headers.get("X-Request-ID") or "")[:64] or None,
+        "idempotency_key": (request.headers.get("Idempotency-Key") or "")[:128] or None,
+        "region": "clientes",
+        "aggregate": {
+            "type": str(aggregate_type or "")[:80],
+            "id": str(aggregate_id or "")[:64],
+            "version": aggregate_version,
+        },
+        "payload": dict(payload or {}),
+    }
+    try:
+        redis_client.xadd(
+            stream_key,
+            {"event": json.dumps(envelope, ensure_ascii=True, separators=(",", ":"))},
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _cliente_live_resolve_target(row) -> tuple[int, int]:
     payload = dict(getattr(row, "payload", None) or {})
     aggregate_type = str(getattr(row, "aggregate_type", "") or "").strip().lower()
@@ -1904,7 +1952,7 @@ def clientes_live_invalidation_stream():
             if (not emitted) and (now_ts - last_heartbeat_at >= heartbeat_every_sec):
                 yield _sse("heartbeat", {"ts": iso_utc_z(), "after_id": int(cursor)})
                 last_heartbeat_at = now_ts
-            time.sleep(1.2 if not emitted else 0.1)
+            time.sleep(0.2 if not emitted else 0.05)
 
     headers = {
         "Content-Type": "text/event-stream; charset=utf-8",
@@ -4310,6 +4358,25 @@ def chat_cliente_typing(conversation_id):
             str(exc),
         )
         return jsonify({"ok": False, "error": "server_error"}), 500
+    _publish_cliente_fast_path_stream_event(
+        event_type="CHAT_CONVERSATION_TYPING",
+        aggregate_type="ChatConversation",
+        aggregate_id=int(conv.id),
+        aggregate_version=None,
+        payload={
+            "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+            "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+            "conversation_id": int(conv.id),
+            "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+            "status": _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN),
+            "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+            "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            "actor_type": "cliente",
+            "is_typing": bool(state.get("is_typing")),
+            "typing_expires_in": int(state.get("expires_in") or 0),
+            "typing_expires_at": state.get("expires_at"),
+        },
+    )
     return jsonify(
         {
             "ok": True,

@@ -303,7 +303,7 @@ def relay_pending_once(
 def run_relay_loop(
     *,
     batch_size: int = 50,
-    poll_seconds: float = 1.5,
+    poll_seconds: float = 0.3,
     max_backoff_seconds: int = 300,
     max_attempts: int | None = None,
     once: bool = False,
@@ -324,7 +324,7 @@ def run_relay_loop(
         summary["quarantined"] += int(stats.get("quarantined", 0) or 0)
         if once:
             return summary
-        time.sleep(max(0.2, float(poll_seconds)))
+        time.sleep(max(0.1, float(poll_seconds)))
 
 
 def list_quarantined_events(
@@ -385,7 +385,7 @@ def outbox_relay_cli():
 @outbox_relay_cli.command("run")
 @click.option("--once", is_flag=True, default=False, help="Ejecuta un solo ciclo de relay.")
 @click.option("--batch-size", default=50, show_default=True, type=int, help="Cantidad máxima por ciclo.")
-@click.option("--poll-seconds", default=1.5, show_default=True, type=float, help="Pausa entre ciclos.")
+@click.option("--poll-seconds", default=0.3, show_default=True, type=float, help="Pausa entre ciclos.")
 @click.option(
     "--max-backoff-seconds",
     default=300,
@@ -417,7 +417,7 @@ def outbox_relay_run_command(
 ):
     stats = run_relay_loop(
         batch_size=max(1, int(batch_size)),
-        poll_seconds=max(0.2, float(poll_seconds)),
+        poll_seconds=max(0.1, float(poll_seconds)),
         max_backoff_seconds=max(5, int(max_backoff_seconds)),
         max_attempts=max(1, int(max_attempts)),
         once=bool(once),

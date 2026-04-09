@@ -479,7 +479,7 @@
     }
     typingIndicatorNode.classList.remove("d-none");
     typingIndicatorNode.setAttribute("aria-hidden", "false");
-    const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
+    const ttlMs = Math.max(300, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
     remoteTypingHideTimer = window.setTimeout(function () {
       if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
@@ -815,7 +815,7 @@
       return String((m && m.sender_type) || "").trim().toLowerCase() === "cliente";
     });
     if (shouldHideTyping) {
-      muteRemoteTyping(1200);
+      muteRemoteTyping(300);
       setRemoteClientTyping(false, "", 0, { force: true });
     }
     rows.forEach(function (m) {
@@ -839,7 +839,7 @@
       return String((m && m.sender_type) || "").trim().toLowerCase() === "cliente";
     });
     if (shouldHideTyping) {
-      muteRemoteTyping(1200);
+      muteRemoteTyping(300);
       setRemoteClientTyping(false, "", 0, { force: true });
     }
     const stickBottom = isNearBottom();
@@ -1200,7 +1200,7 @@
         && (senderType === "cliente" || (senderType === "staff" && !sendingMessage));
       if (shouldSyncMessage) {
         if (senderType === "cliente") {
-          muteRemoteTyping(1200);
+          muteRemoteTyping(300);
           setRemoteClientTyping(false, "", 0, { force: true });
         }
         scheduleMessageSync(cid, 100);
@@ -1235,7 +1235,7 @@
     if (pollTimer) return;
     pollTimer = window.setInterval(function () {
       pollOnce().catch(function () {});
-    }, 7000);
+    }, 1200);
     pollOnce().catch(function () {});
   }
 

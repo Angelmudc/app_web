@@ -550,6 +550,55 @@ def _emit_domain_outbox_event(
     db.session.add(row)
 
 
+def _publish_fast_path_stream_event(
+    *,
+    event_type: str,
+    aggregate_type: str,
+    aggregate_id: int | str,
+    payload: dict | None = None,
+    aggregate_version: int | None = None,
+    actor_id: str | None = None,
+    region: str = "admin",
+) -> bool:
+    ev = str(event_type or "").strip().upper()
+    if not ev:
+        return False
+    try:
+        redis_client = relay_redis_client()
+        stream_key = relay_redis_stream_key()
+    except Exception:
+        return False
+    if not redis_client or not stream_key:
+        return False
+
+    now = utc_now_naive()
+    envelope = {
+        "schema_version": 1,
+        "event_id": secrets.token_hex(16),
+        "event_type": ev[:80],
+        "occurred_at": iso_utc_z(now),
+        "recorded_at": iso_utc_z(now),
+        "actor_id": str(actor_id or _request_actor_id() or "") or None,
+        "correlation_id": _incoming_correlation_id() or None,
+        "idempotency_key": _incoming_idempotency_key() or None,
+        "region": str(region or "admin")[:30],
+        "aggregate": {
+            "type": str(aggregate_type or "")[:80],
+            "id": str(aggregate_id or "")[:64],
+            "version": aggregate_version,
+        },
+        "payload": dict(payload or {}),
+    }
+    try:
+        redis_client.xadd(
+            stream_key,
+            {"event": json.dumps(envelope, ensure_ascii=True, separators=(",", ":"))},
+        )
+        return True
+    except Exception:
+        return False
+
+
 def _emit_cliente_live_solicitud_events(
     *,
     event_type: str,
@@ -1410,7 +1459,7 @@ def live_invalidation_stream():
                     emitted = True
 
                 if not emitted:
-                    time.sleep(0.5)
+                    time.sleep(0.2)
         except (GeneratorExit, ConnectionError, OSError):
             return
         finally:
@@ -20272,6 +20321,28 @@ def chat_staff_typing(conversation_id):
             str(exc),
         )
         return jsonify({"ok": False, "error": "server_error"}), 500
+    _publish_fast_path_stream_event(
+        event_type="CHAT_CONVERSATION_TYPING",
+        aggregate_type="ChatConversation",
+        aggregate_id=int(conv.id),
+        aggregate_version=None,
+        payload={
+            "cliente_id": int(getattr(conv, "cliente_id", 0) or 0),
+            "solicitud_id": int(getattr(conv, "solicitud_id", 0) or 0) or None,
+            "conversation_id": int(conv.id),
+            "conversation_type": str(getattr(conv, "conversation_type", "") or "general"),
+            "status": _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN),
+            "cliente_unread_count": int(getattr(conv, "cliente_unread_count", 0) or 0),
+            "staff_unread_count": int(getattr(conv, "staff_unread_count", 0) or 0),
+            "actor_type": "staff",
+            "is_typing": bool(state.get("is_typing")),
+            "typing_expires_in": int(state.get("expires_in") or 0),
+            "typing_expires_at": state.get("expires_at"),
+            "assigned_staff_username": str(getattr(current_user, "username", "") or ""),
+        },
+        actor_id=f"staff:{int(getattr(current_user, 'id', 0) or 0)}",
+        region="admin",
+    )
     return jsonify(
         {
             "ok": True,

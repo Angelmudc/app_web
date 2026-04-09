@@ -174,7 +174,7 @@
     }
     typingIndicatorNode.classList.remove("d-none");
     typingIndicatorNode.setAttribute("aria-hidden", "false");
-    const ttlMs = Math.max(1200, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
+    const ttlMs = Math.max(300, (Math.max(1, Number(expiresInSeconds || 0) || 0) * 1000) + 300);
     remoteTypingHideTimer = window.setTimeout(function () {
       if (typingIndicatorLabelNode) typingIndicatorLabelNode.textContent = "";
       typingIndicatorNode.classList.add("d-none");
@@ -628,7 +628,7 @@
       return String((m && m.sender_type) || "").trim().toLowerCase() === "staff";
     });
     if (shouldHideTyping) {
-      muteRemoteTyping(1200);
+      muteRemoteTyping(300);
       setRemoteStaffTyping(false, "", 0, { force: true });
     }
 
@@ -656,7 +656,7 @@
       return String((m && m.sender_type) || "").trim().toLowerCase() === "staff";
     });
     if (shouldHideTyping) {
-      muteRemoteTyping(1200);
+      muteRemoteTyping(300);
       setRemoteStaffTyping(false, "", 0, { force: true });
     }
     const shouldStickBottom = isNearBottom();
@@ -949,7 +949,7 @@
       if (eventType === "cliente.chat.message_created") {
         const senderType = String(payload.sender_type || "").trim().toLowerCase();
         if (senderType !== "cliente") {
-          muteRemoteTyping(1200);
+          muteRemoteTyping(300);
           setRemoteStaffTyping(false, "", 0, { force: true });
           const liveMessage = (payload.message && typeof payload.message === "object") ? payload.message : null;
           let insertedLiveMessage = false;

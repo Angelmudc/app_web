@@ -332,8 +332,15 @@ def test_admin_chat_typing_persists_outbox_event():
         for _ in range(2):
             target = target.__wrapped__
 
+        published = []
+        class _RedisStub:
+            def xadd(self, stream, fields):
+                published.append((stream, dict(fields or {})))
+
         with pytest.MonkeyPatch.context() as m:
             m.setattr(admin_routes, "current_user", _staff_user(int(staff.id)))
+            m.setattr(admin_routes, "relay_redis_client", lambda: _RedisStub())
+            m.setattr(admin_routes, "relay_redis_stream_key", lambda: "sys:domain_events:v1")
             with flask_app.test_request_context(
                 f"/admin/chat/conversations/{int(conv.id)}/typing",
                 method="POST",
@@ -358,6 +365,10 @@ def test_admin_chat_typing_persists_outbox_event():
         evt_payload = dict(getattr(outbox_row, "payload", None) or {})
         assert str(evt_payload.get("actor_type") or "") == "staff"
         assert bool(evt_payload.get("is_typing")) is True
+        assert len(published) == 1
+        stream_name, stream_fields = published[0]
+        assert str(stream_name) == "sys:domain_events:v1"
+        assert "event" in stream_fields
 
 
 def test_client_chat_typing_persists_outbox_event():
@@ -373,8 +384,15 @@ def test_client_chat_typing_persists_outbox_event():
         for _ in range(2):
             target = target.__wrapped__
 
+        published = []
+        class _RedisStub:
+            def xadd(self, stream, fields):
+                published.append((stream, dict(fields or {})))
+
         with pytest.MonkeyPatch.context() as m:
             m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            m.setattr(clientes_routes, "relay_redis_client", lambda: _RedisStub())
+            m.setattr(clientes_routes, "relay_redis_stream_key", lambda: "sys:domain_events:v1")
             with flask_app.test_request_context(
                 f"/clientes/chat/conversations/{int(conv.id)}/typing",
                 method="POST",
@@ -399,6 +417,10 @@ def test_client_chat_typing_persists_outbox_event():
         evt_payload = dict(getattr(outbox_row, "payload", None) or {})
         assert str(evt_payload.get("actor_type") or "") == "cliente"
         assert bool(evt_payload.get("is_typing")) is True
+        assert len(published) == 1
+        stream_name, stream_fields = published[0]
+        assert str(stream_name) == "sys:domain_events:v1"
+        assert "event" in stream_fields
 
 
 def test_client_chat_messages_json_includes_staff_presence_in_this_chat():
