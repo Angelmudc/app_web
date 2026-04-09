@@ -56,6 +56,9 @@
   const canReassign = String(root.getAttribute("data-can-reassign") || "0").trim() === "1";
 
   const PAGE_SIZE = 50;
+  const POLL_INTERVAL_MS = 800;
+  const COMPOSE_MIN_HEIGHT_PX = 44;
+  const COMPOSE_MAX_HEIGHT_PX = 168;
 
   let selectedConversationId = Number(root.getAttribute("data-selected-conversation-id") || 0) || 0;
   let loadingLatest = false;
@@ -357,10 +360,33 @@
     const cid = Number(conversationId || 0) || 0;
     if (!cid) return;
     if (messageSyncTimer) window.clearTimeout(messageSyncTimer);
-    messageSyncTimer = window.setTimeout(function () {
+    const attemptSync = function (retriesLeft) {
+      if (loadingLatest) {
+        if ((Number(retriesLeft || 0) || 0) > 0) {
+          messageSyncTimer = window.setTimeout(function () {
+            attemptSync(Number(retriesLeft || 0) - 1);
+          }, 90);
+        } else {
+          messageSyncTimer = null;
+        }
+        return;
+      }
       messageSyncTimer = null;
       refreshMessages(cid, { silent: true, mode: "sync", postSync: false }).catch(function () {});
-    }, Math.max(80, Number(delayMs || 0) || 0));
+    };
+    messageSyncTimer = window.setTimeout(function () {
+      attemptSync(2);
+    }, Math.max(50, Number(delayMs || 0) || 0));
+  }
+
+  function resizeComposeInput() {
+    if (!bodyInput) return;
+    bodyInput.style.height = "auto";
+    const minH = Math.max(36, Number(COMPOSE_MIN_HEIGHT_PX || 0) || 44);
+    const maxH = Math.max(minH, Number(COMPOSE_MAX_HEIGHT_PX || 0) || 168);
+    const next = Math.max(minH, Math.min(maxH, Number(bodyInput.scrollHeight || minH)));
+    bodyInput.style.height = String(next) + "px";
+    bodyInput.style.overflowY = Number(bodyInput.scrollHeight || 0) > maxH ? "auto" : "hidden";
   }
 
   function scheduleMarkRead(conversationId, delayMs, retriesLeft) {
@@ -1096,10 +1122,18 @@
   if (bodyInput) {
     bodyInput.addEventListener("input", function () {
       scheduleLocalTypingSignal();
+      resizeComposeInput();
     });
     bodyInput.addEventListener("blur", function () {
       stopLocalTypingSignal();
     });
+    bodyInput.addEventListener("keydown", function (ev) {
+      if (ev.isComposing) return;
+      if (ev.key !== "Enter" || ev.shiftKey) return;
+      ev.preventDefault();
+      if (sendBtn && !sendBtn.disabled) sendBtn.click();
+    });
+    resizeComposeInput();
   }
 
   if (form && bodyInput && sendBtn) {
@@ -1131,6 +1165,7 @@
           body: body.toString(),
         });
         bodyInput.value = "";
+        resizeComposeInput();
         postTypingState(cid, false).catch(function () {});
         const sentMessage = sendPayload && sendPayload.message;
         const sentConversation = sendPayload && sendPayload.conversation;
@@ -1196,14 +1231,41 @@
 
     if (cid > 0 && cid === Number(selectedConversationId || 0)) {
       const senderType = String(payload.sender_type || "").trim().toLowerCase();
-      const shouldSyncMessage = eventType === "chat_message_created"
-        && (senderType === "cliente" || (senderType === "staff" && !sendingMessage));
-      if (shouldSyncMessage) {
+      const isChatMessageCreated = eventType === "chat_message_created";
+      let insertedLiveMessage = false;
+      if (isChatMessageCreated && (senderType === "cliente" || (senderType === "staff" && !sendingMessage))) {
         if (senderType === "cliente") {
           muteRemoteTyping(300);
           setRemoteClientTyping(false, "", 0, { force: true });
         }
-        scheduleMessageSync(cid, 100);
+        const liveMessage = (payload.message && typeof payload.message === "object") ? payload.message : null;
+        if (liveMessage) {
+          const liveMessageId = Number(liveMessage.id || 0) || 0;
+          if (liveMessageId > 0) {
+            const stickBottom = isNearBottom();
+            const normalizedLiveMessage = Object.assign({}, liveMessage);
+            if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "is_mine")) {
+              normalizedLiveMessage.is_mine = false;
+            }
+            if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "sender_name")) {
+              normalizedLiveMessage.sender_name = senderType === "cliente" ? "Cliente" : "Soporte";
+            }
+            if (!Object.prototype.hasOwnProperty.call(normalizedLiveMessage, "conversation_id")) {
+              normalizedLiveMessage.conversation_id = cid;
+            }
+            insertedLiveMessage = appendMessages([normalizedLiveMessage]) > 0;
+            if (insertedLiveMessage && stickBottom && messagesNode) {
+              messagesNode.scrollTop = messagesNode.scrollHeight;
+            }
+          }
+        }
+      }
+      if (isChatMessageCreated && !insertedLiveMessage && (senderType === "cliente" || (senderType === "staff" && !sendingMessage))) {
+        if (senderType === "cliente") {
+          muteRemoteTyping(300);
+          setRemoteClientTyping(false, "", 0, { force: true });
+        }
+        scheduleMessageSync(cid, 70);
       }
       if (eventType === "chat_conversation_status_changed" && String(payload.status || "").trim()) {
         const st = String(payload.status || "").trim().toLowerCase();
@@ -1235,7 +1297,7 @@
     if (pollTimer) return;
     pollTimer = window.setInterval(function () {
       pollOnce().catch(function () {});
-    }, 1200);
+    }, POLL_INTERVAL_MS);
     pollOnce().catch(function () {});
   }
 
