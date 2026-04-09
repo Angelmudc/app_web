@@ -2866,6 +2866,27 @@ def _pasaje_copy_phrase_from_solicitud(s: Solicitud) -> str:
     return "no incluye ayuda de pasaje"
 
 
+def _pasaje_operativo_phrase_from_solicitud(s: Solicitud) -> str:
+    """
+    Frase de pasaje para copiado operativo interno/publicar.
+    Regla unificada:
+    - aparte  -> "Más ayuda del pasaje"
+    - incluido -> "Pasaje incluido"
+    - otro + texto -> texto libre exacto
+    """
+    mode, other_text = read_pasaje_mode_text(
+        pasaje_aporte=getattr(s, "pasaje_aporte", False),
+        detalles_servicio=getattr(s, "detalles_servicio", None),
+        nota_cliente=getattr(s, "nota_cliente", ""),
+    )
+    custom = str(other_text or "").strip()
+    if mode == "otro" and custom:
+        return custom
+    if mode == "aparte":
+        return "Más ayuda del pasaje"
+    return "Pasaje incluido"
+
+
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
     Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
@@ -12351,7 +12372,12 @@ def detalle_solicitud(cliente_id, id):
 
         # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
         resumen_cliente = build_resumen_cliente_solicitud(s)
-        pasaje_copy_text = _pasaje_copy_phrase_from_solicitud(s)
+        pasaje_copy_text = _pasaje_operativo_phrase_from_solicitud(s)
+        pasaje_copy_mode, pasaje_copy_other_text = read_pasaje_mode_text(
+            pasaje_aporte=getattr(s, "pasaje_aporte", False),
+            detalles_servicio=getattr(s, "detalles_servicio", None),
+            nota_cliente=getattr(s, "nota_cliente", ""),
+        )
         role = (
             str(getattr(current_user, "role", "") or "").strip().lower()
             or str(session.get("role", "") or "").strip().lower()
@@ -12444,6 +12470,8 @@ def detalle_solicitud(cliente_id, id):
             reemplazo_activo=reemplazo_activo,
             resumen_cliente=resumen_cliente,
             pasaje_copy_text=pasaje_copy_text,
+            pasaje_copy_mode=pasaje_copy_mode,
+            pasaje_copy_other_text=pasaje_copy_other_text,
             is_admin_role=is_admin_role,
             latest_contract=latest_contract,
             contract_history=contract_history,
@@ -16161,7 +16189,7 @@ def copiar_solicitudes():
 
         # Sueldo
         sueldo_final  = _format_money_usd(getattr(s, 'sueldo', None))
-        pasaje_texto = _pasaje_copy_phrase_from_solicitud(s)
+        pasaje_texto = _pasaje_operativo_phrase_from_solicitud(s)
 
         # Nota del cliente (al final, sin prefijo)
         nota_cli = _s(getattr(s, 'nota_cliente', None))

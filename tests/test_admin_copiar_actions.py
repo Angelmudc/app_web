@@ -267,6 +267,32 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("no incluye ayuda de pasaje", resumen_false)
         self.assertIn("incluye ayuda de pasaje", resumen_true)
 
+    def test_pasaje_operativo_phrase_unifica_formato_con_copiado_interno(self):
+        solicitud_incluido = _SolicitudStub(estado="activa")
+        solicitud_incluido.pasaje_aporte = False
+        solicitud_incluido.detalles_servicio = {}
+
+        solicitud_aparte = _SolicitudStub(estado="activa")
+        solicitud_aparte.pasaje_aporte = True
+        solicitud_aparte.detalles_servicio = {}
+
+        solicitud_otro = _SolicitudStub(estado="activa")
+        solicitud_otro.pasaje_aporte = False
+        solicitud_otro.detalles_servicio = {"pasaje": {"mode": "otro", "text": "Cliente cubre taxi nocturno"}}
+
+        self.assertEqual(
+            admin_routes._pasaje_operativo_phrase_from_solicitud(solicitud_incluido),
+            "Pasaje incluido",
+        )
+        self.assertEqual(
+            admin_routes._pasaje_operativo_phrase_from_solicitud(solicitud_aparte),
+            "Más ayuda del pasaje",
+        )
+        self.assertEqual(
+            admin_routes._pasaje_operativo_phrase_from_solicitud(solicitud_otro),
+            "Cliente cubre taxi nocturno",
+        )
+
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
         solicitud = _SolicitudStub(estado="activa")

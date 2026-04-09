@@ -235,27 +235,91 @@
       {% if _area_otro and _area_otro not in _areas_list %}
         {% set _ = _areas_list.append(_area_otro) %}
       {% endif %}
-      {% set _areas = _areas_list | join(', ') %}
+      {% set _areas_human = [] %}
+      {% for _a in _areas_list %}
+        {% set _a_low = (_a|string)|trim|lower %}
+        {% if _a_low == 'sala' %}
+          {% set _ = _areas_human.append('Sala') %}
+        {% elif _a_low == 'comedor' %}
+          {% set _ = _areas_human.append('Comedor') %}
+        {% elif _a_low == 'cocina' %}
+          {% set _ = _areas_human.append('Cocina') %}
+        {% elif _a_low == 'salon_juegos' %}
+          {% set _ = _areas_human.append('Salón de juegos') %}
+        {% elif _a_low == 'terraza' %}
+          {% set _ = _areas_human.append('Terraza') %}
+        {% elif _a_low == 'jardin' %}
+          {% set _ = _areas_human.append('Jardín') %}
+        {% elif _a_low == 'estudio' %}
+          {% set _ = _areas_human.append('Estudio') %}
+        {% elif _a_low == 'patio' %}
+          {% set _ = _areas_human.append('Patio') %}
+        {% elif _a_low == 'piscina' %}
+          {% set _ = _areas_human.append('Piscina') %}
+        {% elif _a_low == 'marquesina' %}
+          {% set _ = _areas_human.append('Marquesina') %}
+        {% elif _a_low == 'todas_anteriores' %}
+          {% set _ = _areas_human.append('Áreas comunes generales') %}
+        {% else %}
+          {% set _ = _areas_human.append(_a|string) %}
+        {% endif %}
+      {% endfor %}
+      {% set _areas = _areas_human | join(', ') %}
 
       {# Construcción de la línea de casa/apto #}
-      {% set _casa_line = '' %}
-      {% if _tipo %}
-        {% set _casa_line = _tipo %}
+      {% set _tipo_low = (_tipo|string)|trim|lower %}
+      {% if _tipo_low in ['casa'] %}
+        {% set _tipo_natural = 'Casa' %}
+      {% elif _tipo_low in ['apto', 'apartamento'] %}
+        {% set _tipo_natural = 'Apartamento' %}
+      {% elif _tipo_low in ['oficina'] %}
+        {% set _tipo_natural = 'Oficina' %}
+      {% elif _tipo_low %}
+        {% set _tipo_natural = (_tipo|string)|trim %}
       {% else %}
-        {% set _casa_line = 'Casa' %}
+        {% set _tipo_natural = 'Hogar' %}
+      {% endif %}
+      {% set _hab_txt = (_hab|string)|trim if (_hab is not none and (_hab|string)|trim != '') else '' %}
+      {% set _ban_txt = ((_ban|string)|trim)|replace('.0', '') if (_ban is not none and (_ban|string)|trim != '') else '' %}
+      {% set _niveles = '' %}
+      {% if solicitud.dos_pisos is defined and solicitud.dos_pisos %}
+        {% set _niveles = 'dos niveles' %}
+      {% endif %}
+      {% if not _niveles and solicitud.nota_cliente %}
+        {% set _nota_low = (solicitud.nota_cliente|string)|lower %}
+        {% if 'pisos reportados: 3+' in _nota_low %}
+          {% set _niveles = 'tres o más niveles' %}
+        {% endif %}
       {% endif %}
       {% set _det = [] %}
-      {% if _hab is not none and (_hab|string) != '' %}
-        {% set _ = _det.append(_hab|string ~ ' habitaciones') %}
+      {% if _hab_txt %}
+        {% set _ = _det.append(_hab_txt ~ ' habitaciones') %}
       {% endif %}
-      {% if _ban is not none and (_ban|string) != '' %}
-        {% set _ = _det.append(_ban|string ~ ' baños') %}
+      {% if _ban_txt %}
+        {% set _ = _det.append(_ban_txt ~ ' baños') %}
+      {% endif %}
+      {% if _niveles %}
+        {% set _ = _det.append(_niveles) %}
+      {% endif %}
+      {% set _det_txt = '' %}
+      {% if _det|length == 1 %}
+        {% set _det_txt = _det[0] %}
+      {% elif _det|length == 2 %}
+        {% set _det_txt = _det[0] ~ ' y ' ~ _det[1] %}
+      {% elif _det|length > 2 %}
+        {% set _det_txt = (_det[:-1]|join(', ')) ~ ' y ' ~ _det[-1] %}
+      {% endif %}
+      {% set _casa_line = _tipo_natural %}
+      {% if _det_txt %}
+        {% set _joiner = 'de' if _tipo_natural == 'Casa' else 'con' %}
+        {% set _casa_line = _tipo_natural ~ ' ' ~ _joiner ~ ' ' ~ _det_txt %}
       {% endif %}
       {% if _areas %}
-        {% set _ = _det.append(_areas) %}
-      {% endif %}
-      {% if _det|length > 0 %}
-        {% set _casa_line = _casa_line ~ ' - ' ~ (_det|join(', ')) %}
+        {% if _det_txt %}
+          {% set _casa_line = _casa_line ~ ', áreas comunes: ' ~ _areas %}
+        {% else %}
+          {% set _casa_line = _casa_line ~ ' con áreas comunes: ' ~ _areas %}
+        {% endif %}
       {% endif %}
 
       {# Ocupantes #}
@@ -269,7 +333,15 @@
       {# Sueldo + pasaje #}
       {% set _sueldo = (solicitud.sueldo or '') %}
       {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
-      {% set _pasaje_texto = (pasaje_copy_text if pasaje_copy_text is defined and pasaje_copy_text else ('incluye ayuda de pasaje' if _pasaje else 'no incluye ayuda de pasaje')) %}
+      {% set _pasaje_mode = (pasaje_copy_mode if pasaje_copy_mode is defined else ('aparte' if _pasaje else 'incluido')) %}
+      {% set _pasaje_otro_txt = (pasaje_copy_other_text if pasaje_copy_other_text is defined else '')|trim %}
+      {% if _pasaje_mode == 'otro' and _pasaje_otro_txt %}
+        {% set _pasaje_texto = _pasaje_otro_txt %}
+      {% elif _pasaje_mode == 'aparte' %}
+        {% set _pasaje_texto = 'Más ayuda del pasaje' %}
+      {% else %}
+        {% set _pasaje_texto = 'Pasaje incluido' %}
+      {% endif %}
       {% set _nota = (solicitud.nota_cliente if solicitud.nota_cliente is defined else '') %}
       {% if (not _nota) and solicitud.notas is defined and solicitud.notas %}
         {% set _nota = solicitud.notas %}
