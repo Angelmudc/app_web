@@ -1630,6 +1630,14 @@ def _verify_solicitud_saved(
     return True
 
 
+def _cliente_detail_solicitudes_redirect_url(*, cliente_id: int, solicitud_id: int | None = None) -> str:
+    base = url_for("admin.detalle_cliente", cliente_id=int(cliente_id))
+    sid = int(solicitud_id or 0)
+    if sid > 0:
+        return f"{base}#sol-{sid}"
+    return f"{base}#clienteSolicitudesAsyncScope"
+
+
 def _execute_form_save(
     *,
     persist_fn,
@@ -9574,8 +9582,13 @@ def nueva_solicitud_admin(cliente_id):
                     summary=f"Solicitud creada: {nuevo_codigo}",
                     metadata={"cliente_id": c.id, "tipo_servicio": state.get("tipo_servicio")},
                 )
-                flash(f'Solicitud {nuevo_codigo} creada.', 'success')
-                return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+                flash(f'Solicitud {nuevo_codigo} creada correctamente.', 'success')
+                return redirect(
+                    _cliente_detail_solicitudes_redirect_url(
+                        cliente_id=cliente_id,
+                        solicitud_id=int(state.get("solicitud_id") or 0),
+                    )
+                )
 
             log_error_event(
                 error_type="SAVE_ERROR",
@@ -9634,6 +9647,7 @@ def editar_solicitud_admin(cliente_id, id):
     next_url = request.args.get("next") or request.form.get("next") or request.referrer or ""
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
+    success_redirect_url = _cliente_detail_solicitudes_redirect_url(cliente_id=cliente_id, solicitud_id=int(id))
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -9784,6 +9798,7 @@ def editar_solicitud_admin(cliente_id, id):
         ok: bool,
         message: str,
         category: str,
+        redirect_url: str | None = None,
         http_status: int = 200,
         error_code: str | None = None,
         include_region: bool = False,
@@ -9793,7 +9808,7 @@ def editar_solicitud_admin(cliente_id, id):
             success=bool(ok),
             message=message,
             category=category,
-            redirect_url=safe_next,
+            redirect_url=redirect_url if redirect_url is not None else safe_next,
             replace_html=_render_edit_region(async_feedback=async_feedback) if include_region else None,
             update_target="#editarSolicitudAsyncRegion",
             errors=_flatten_form_errors(),
@@ -9918,15 +9933,16 @@ def editar_solicitud_admin(cliente_id, id):
                     summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
                     metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
                 )
+                flash(f'Solicitud {s.codigo_solicitud} actualizada correctamente.', 'success')
                 if wants_async:
                     return _async_edit_response(
                         ok=True,
-                        message=f'Solicitud {s.codigo_solicitud} actualizada.',
+                        message=f'Solicitud {s.codigo_solicitud} actualizada correctamente.',
                         category='success',
+                        redirect_url=success_redirect_url,
                         http_status=200,
                     )
-                flash(f'Solicitud {s.codigo_solicitud} actualizada.', 'success')
-                return redirect(safe_next)
+                return redirect(success_redirect_url)
 
             log_error_event(
                 error_type="SAVE_ERROR",
@@ -9938,6 +9954,7 @@ def editar_solicitud_admin(cliente_id, id):
                 status_code=500,
             )
             if wants_async:
+                flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
                 return _async_edit_response(
                     ok=False,
                     message='No se pudo guardar correctamente. Intente nuevamente.',
@@ -9958,6 +9975,7 @@ def editar_solicitud_admin(cliente_id, id):
                 status_code=500,
             )
             if wants_async:
+                flash('No se pudo guardar correctamente. Intente nuevamente.', 'danger')
                 return _async_edit_response(
                     ok=False,
                     message='No se pudo guardar correctamente. Intente nuevamente.',

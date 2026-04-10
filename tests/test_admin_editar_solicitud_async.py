@@ -139,7 +139,7 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(data["update_target"], "#editarSolicitudAsyncRegion")
-        self.assertEqual(data["redirect_url"], "/admin/clientes/7")
+        self.assertEqual(data["redirect_url"], "/admin/clientes/7#sol-10")
 
     def test_editar_solicitud_async_error_validacion_inline(self):
         solicitud = _solicitud_stub()
@@ -176,7 +176,9 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertFalse(data["success"])
         html = data.get("replace_html", "")
-        self.assertIn('name="modalidad_grupo" value="con_salida_diaria" checked', html)
+        self.assertIn('name="modalidad_grupo" value="con_salida_diaria"', html)
+        self.assertIn('name="modalidad_grupo" value="con_salida_diaria" required', html)
+        self.assertIn('value="con_salida_diaria" required aria-required="true" checked', html)
         self.assertIn('<option value="Salida diaria otro" selected>Salida diaria otro</option>', html)
         self.assertIn('id="modalidad_otro_text"', html)
         self.assertIn('value="lunes a viernes"', html)

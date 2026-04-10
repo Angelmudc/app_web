@@ -7,7 +7,7 @@
 
     <form id="solicitud-form"
           method="post"
-          action="{{ url_for('admin.editar_solicitud_admin', cliente_id=(solicitud.cliente_id if solicitud is defined else cliente_id), id=(solicitud.id if solicitud is defined else 0), next=next_url) if solicitud is defined else '' }}"
+          action="{{ url_for('admin.editar_solicitud_admin', cliente_id=(solicitud.cliente_id if solicitud is defined else cliente_id), id=(solicitud.id if solicitud is defined else 0), next=next_url) if solicitud is defined else url_for('admin.nueva_solicitud_admin', cliente_id=cliente_id) }}"
           novalidate
           {% if not nuevo %}
           data-admin-async-form
