@@ -151,3 +151,64 @@ def test_admin_editar_solicitud_emite_eventos_live_cliente():
     event_types = [str(c.kwargs.get("event_type") or "") for c in emit_mock.call_args_list]
     assert "CLIENTE_SOLICITUD_UPDATED" in event_types
     assert "CLIENTE_DASHBOARD_UPDATED" in event_types
+
+
+def test_admin_nueva_solicitud_limpia_estructura_hogar_si_no_hay_limpieza():
+    flask_app.config["TESTING"] = True
+    cliente = SimpleNamespace(id=7, total_solicitudes=0, fecha_ultima_solicitud=None, fecha_ultima_actividad=None)
+    created_rows = []
+
+    class _CreateFormNoLimpiezaStub(_CreateFormStub):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.funciones = _Field(["cocinar"], choices=[("limpieza", "Limpieza"), ("cocinar", "Cocinar"), ("otro", "Otro")])
+            self.tipo_lugar = _Field("casa")
+            self.habitaciones = _Field(5)
+            self.banos = _Field(3)
+            self.dos_pisos = _Field(True)
+            self.areas_comunes = _Field(["sala", "cocina"], choices=[("sala", "Sala"), ("cocina", "Cocina"), ("otro", "Otro")])
+            self.area_otro = _Field("terraza")
+
+    def _solicitud_factory(**kwargs):
+        data = {
+            "id": 902,
+            "row_version": 1,
+            "estado": "proceso",
+            "codigo_solicitud": kwargs.get("codigo_solicitud", "SOL-902"),
+            "tipo_servicio": kwargs.get("tipo_servicio", "DOMESTICA_LIMPIEZA"),
+            "nota_cliente": "",
+            "pasaje_aporte": False,
+            "tipo_lugar": "casa",
+            "habitaciones": 9,
+            "banos": 4,
+            "dos_pisos": True,
+            "areas_comunes": ["sala", "comedor"],
+            "area_otro": "balcon",
+        }
+        data.update(kwargs)
+        row = SimpleNamespace(**data)
+        created_rows.append(row)
+        return row
+
+    with flask_app.app_context():
+        with patch.object(admin_routes.Cliente, "query", SimpleNamespace(get_or_404=lambda _cid: cliente)), \
+             patch("admin.routes.AdminSolicitudForm", _CreateFormNoLimpiezaStub), \
+             patch("admin.routes.Solicitud", _solicitud_factory), \
+             patch("admin.routes._execute_form_save", side_effect=_ok_execute_form_save), \
+             patch("admin.routes._next_codigo_solicitud", return_value="SOL-902"), \
+             patch("admin.routes.db.session.add"), \
+             patch("admin.routes.db.session.flush"), \
+             patch("admin.routes._resolve_modalidad_ui_context_from_request", return_value=("", "", "")), \
+             patch("admin.routes.normalize_pasaje_mode_text", return_value=("incluido", "")):
+            with flask_app.test_request_context("/admin/clientes/7/solicitudes/nueva", method="POST", data={"csrf_token": "ok"}):
+                resp = _unwrap(admin_routes.nueva_solicitud_admin)(7)
+
+    assert resp.status_code in (302, 303)
+    assert created_rows
+    row = created_rows[0]
+    assert row.tipo_lugar is None
+    assert row.habitaciones is None
+    assert row.banos is None
+    assert row.dos_pisos is False
+    assert row.areas_comunes == []
+    assert row.area_otro is None

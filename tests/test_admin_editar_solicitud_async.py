@@ -138,7 +138,7 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["success"])
-        self.assertEqual(data["update_target"], "#editarSolicitudAsyncRegion")
+        self.assertIsNone(data["update_target"])
         self.assertEqual(data["redirect_url"], "/admin/clientes/7#sol-10")
 
     def test_editar_solicitud_async_error_validacion_inline(self):
@@ -252,6 +252,49 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         self.assertEqual(solicitud.area_otro, "balcon trasero")
         self.assertIn("30 a 40", solicitud.edad_requerida or [])
         self.assertEqual(solicitud.tipo_lugar, "villa")
+
+    def test_editar_solicitud_limpia_estructura_hogar_si_no_hay_limpieza(self):
+        solicitud = _solicitud_stub()
+        solicitud.tipo_lugar = "casa"
+        solicitud.habitaciones = 4
+        solicitud.banos = 2
+        solicitud.dos_pisos = True
+        solicitud.areas_comunes = ["sala", "comedor"]
+        solicitud.area_otro = "balcon"
+
+        def _run_save(*, persist_fn, **_kwargs):
+            persist_fn(1)
+            return SimpleNamespace(ok=True, error_message="")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch("admin.routes._execute_form_save", side_effect=_run_save), \
+                 patch("admin.routes._audit_log"):
+                resp = self._invoke(
+                    data={
+                        "_async_target": "#editarSolicitudAsyncRegion",
+                        "tipo_servicio": "DOMESTICA_LIMPIEZA",
+                        "ciudad_sector": "Santiago / Centro",
+                        "modalidad_trabajo": "Con dormida",
+                        "experiencia": "Experiencia comprobada",
+                        "horario": "L-V",
+                        "adultos": "2",
+                        "sueldo": "18000",
+                        "pasaje_aporte": "0",
+                        "funciones": ["cocinar"],
+                    },
+                    headers=self._async_headers(),
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(solicitud.tipo_lugar, None)
+        self.assertEqual(solicitud.habitaciones, None)
+        self.assertEqual(solicitud.banos, None)
+        self.assertEqual(solicitud.dos_pisos, False)
+        self.assertEqual(solicitud.areas_comunes, [])
+        self.assertEqual(solicitud.area_otro, None)
 
     def test_rehidratacion_api_en_partial_compartido(self):
         path = os.path.join(os.getcwd(), "templates", "clientes", "_solicitud_form_fields.html")

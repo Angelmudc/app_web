@@ -11,6 +11,7 @@ Incluye:
 """
 
 from flask_wtf import FlaskForm
+from flask import request
 from wtforms import (
     StringField,
     PasswordField,
@@ -635,6 +636,15 @@ class AdminSolicitudForm(FlaskForm):
 
     submit = SubmitField('Guardar solicitud')
 
+    @staticmethod
+    def _has_limpieza_selected() -> bool:
+        try:
+            raw = request.form.getlist('funciones')
+        except Exception:
+            raw = []
+        vals = [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
+        return 'limpieza' in vals
+
     def validate_modalidad_trabajo(self, field):
         field.data = canonicalize_modalidad_trabajo(field.data)
 
@@ -645,9 +655,10 @@ class AdminSolicitudForm(FlaskForm):
         """Validación condicional según tipo de servicio."""
         rv = super().validate(extra_validators)
         tipo = (self.tipo_servicio.data or '').strip()
+        requiere_limpieza = self._has_limpieza_selected()
 
         # Para DOMÉSTICA y ENFERMERA: hogar obligatorio
-        if tipo in ('DOMESTICA_LIMPIEZA', 'ENFERMERA', ''):
+        if tipo in ('DOMESTICA_LIMPIEZA', 'ENFERMERA', '') and requiere_limpieza:
             if not self.tipo_lugar.data:
                 self.tipo_lugar.errors.append("Selecciona el tipo de lugar.")
                 rv = False

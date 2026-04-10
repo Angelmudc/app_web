@@ -1417,6 +1417,37 @@
     }
   }
 
+  function initSolicitudShortlistSelection() {
+    const root = (arguments[0] && arguments[0].querySelector) ? arguments[0] : d;
+    const form = root.querySelector('[data-shortlist-selection-form]');
+    if (!form) return;
+    if (form.getAttribute('data-shortlist-bound') === '1') return;
+    form.setAttribute('data-shortlist-bound', '1');
+
+    const counter = form.querySelector('[data-shortlist-count]');
+    const submitBtn = form.querySelector('[data-shortlist-submit]');
+    const checkboxes = Array.from(form.querySelectorAll('input[type="checkbox"][name="candidata_ids"]'));
+
+    const sync = () => {
+      const selected = checkboxes.filter((el) => !!el.checked).length;
+      if (counter) {
+        counter.textContent = `${selected} seleccionada${selected === 1 ? '' : 's'}`;
+      }
+      if (submitBtn) {
+        submitBtn.disabled = selected <= 0;
+      }
+    };
+
+    form.addEventListener('change', (evt) => {
+      const target = evt && evt.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.name !== 'candidata_ids') return;
+      sync();
+    }, { passive: true });
+
+    sync();
+  }
+
   function getViewportRoot() {
     return d.querySelector('#clientMainViewport') || d;
   }
@@ -1427,6 +1458,7 @@
     setAriaCurrent();
     initForms(mountRoot);
     initSolicitudForm(mountRoot);
+    initSolicitudShortlistSelection(mountRoot);
 
     setTimeout(() => {
       initAutosave(mountRoot);

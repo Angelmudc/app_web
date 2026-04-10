@@ -1139,6 +1139,22 @@
       var hideTimer = null;
       var requiredNodes = wrap.querySelectorAll('input, select, textarea');
 
+      function clearHomeStructureValues() {
+        var nodes = wrap.querySelectorAll('input, select, textarea');
+        for (var i = 0; i < nodes.length; i++) {
+          var el = nodes[i];
+          if (el.tagName === 'SELECT') {
+            el.value = '';
+            continue;
+          }
+          if (el.type === 'checkbox' || el.type === 'radio') {
+            el.checked = false;
+            continue;
+          }
+          el.value = '';
+        }
+      }
+
       function setRequiredActive(active) {
         for (var i = 0; i < requiredNodes.length; i++) {
           var el = requiredNodes[i];
@@ -1182,6 +1198,9 @@
         }
 
         setRequiredActive(false);
+        clearHomeStructureValues();
+        syncOtherFields(false);
+        syncChoiceSelectedState();
         if (!animate) {
           wrap.classList.add('is-hidden');
           wrap.classList.add('d-none');

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Optional, Dict
 
 from flask_login import UserMixin
-from sqlalchemy import Enum as SAEnum, LargeBinary, event, inspect as sa_inspect, text
+from sqlalchemy import CheckConstraint, Enum as SAEnum, LargeBinary, event, inspect as sa_inspect, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -1135,6 +1135,18 @@ class Solicitud(db.Model):
                                 back_populates='solicitud',
                                 cascade='all, delete-orphan'
                              )
+    recommendation_runs    = db.relationship(
+                                "SolicitudRecommendationRun",
+                                back_populates="solicitud",
+                                cascade="all, delete-orphan",
+                                lazy="dynamic",
+                             )
+    recommendation_selections = db.relationship(
+                                "SolicitudRecommendationSelection",
+                                back_populates="solicitud",
+                                cascade="all, delete-orphan",
+                                lazy="dynamic",
+                             )
 
     # Fechas de publicación y modificación
     last_copiado_at        = db.Column(db.DateTime, nullable=True)
@@ -2005,6 +2017,125 @@ class SolicitudCandidata(db.Model):
             f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
             f"candidata_id={self.candidata_id} status={self.status}>"
         )
+
+
+class SolicitudRecommendationRun(db.Model):
+    __tablename__ = "solicitud_recommendation_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending','running','completed','error','stale')",
+            name="ck_sol_rec_run_status",
+        ),
+        db.Index("ix_sol_rec_runs_sol_status_req", "solicitud_id", "status", "requested_at"),
+        db.Index("ix_sol_rec_runs_sol_active_req", "solicitud_id", "is_active", "requested_at"),
+        db.Index("ix_sol_rec_runs_fingerprint_hash", "fingerprint_hash"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=False, index=True)
+    trigger_source = db.Column(db.String(40), nullable=False, default="manual", server_default=text("'manual'"))
+    status = db.Column(db.String(20), nullable=False, default="pending", server_default=text("'pending'"), index=True)
+    fingerprint_hash = db.Column(db.String(64), nullable=False)
+    model_version = db.Column(db.String(40), nullable=False, default="rec-v1", server_default=text("'rec-v1'"))
+    policy_version = db.Column(db.String(40), nullable=False, default="policy-v1", server_default=text("'policy-v1'"))
+    requested_by = db.Column(db.String(120), nullable=True)
+    requested_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    failed_at = db.Column(db.DateTime, nullable=True)
+    error_code = db.Column(db.String(80), nullable=True)
+    error_message = db.Column(db.String(500), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    pool_size = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    eligible_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    hard_fail_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    soft_fail_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    items_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    meta = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+
+    solicitud = db.relationship("Solicitud", back_populates="recommendation_runs", lazy="joined")
+    items = db.relationship(
+        "SolicitudRecommendationItem",
+        back_populates="run",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )
+
+
+class SolicitudRecommendationItem(db.Model):
+    __tablename__ = "solicitud_recommendation_items"
+    __table_args__ = (
+        db.UniqueConstraint("run_id", "candidata_id", name="uq_sol_rec_item_run_candidata"),
+        CheckConstraint(
+            "confidence_band IN ('alta','media','baja') OR confidence_band IS NULL",
+            name="ck_sol_rec_item_confidence_band",
+        ),
+        db.Index("ix_sol_rec_items_sol_run_rank", "solicitud_id", "run_id", "rank_position"),
+        db.Index("ix_sol_rec_items_sol_eligible_score", "solicitud_id", "is_eligible", "score_final"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("solicitud_recommendation_runs.id"), nullable=False, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=False, index=True)
+    candidata_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila"), nullable=False, index=True)
+    rank_position = db.Column(db.Integer, nullable=True, index=True)
+    is_eligible = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    hard_fail = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    hard_fail_codes = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    hard_fail_reasons = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    soft_fail_codes = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    soft_fail_reasons = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    score_final = db.Column(db.Integer, nullable=True)
+    score_operational = db.Column(db.Integer, nullable=True)
+    confidence_band = db.Column(db.String(20), nullable=True)
+    policy_snapshot = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    breakdown_snapshot = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    run = db.relationship("SolicitudRecommendationRun", back_populates="items", lazy="joined")
+    solicitud = db.relationship("Solicitud", lazy="joined")
+    candidata = db.relationship("Candidata", lazy="joined")
+
+
+class SolicitudRecommendationSelection(db.Model):
+    __tablename__ = "solicitud_recommendation_selections"
+    __table_args__ = (
+        db.UniqueConstraint("solicitud_id", "run_id", "candidata_id", name="uq_sol_rec_sel_sol_run_cand"),
+        CheckConstraint(
+            "status IN ('pending_validation','valid','invalidated','confirmed')",
+            name="ck_sol_rec_sel_status",
+        ),
+        db.Index("ix_sol_rec_sel_sol_created", "solicitud_id", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=False, index=True)
+    run_id = db.Column(db.Integer, db.ForeignKey("solicitud_recommendation_runs.id"), nullable=False, index=True)
+    recommendation_item_id = db.Column(
+        db.Integer,
+        db.ForeignKey("solicitud_recommendation_items.id"),
+        nullable=True,
+        index=True,
+    )
+    candidata_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila"), nullable=False, index=True)
+    status = db.Column(
+        db.String(30),
+        nullable=False,
+        default="pending_validation",
+        server_default=text("'pending_validation'"),
+        index=True,
+    )
+    validation_code = db.Column(db.String(80), nullable=True)
+    validation_message = db.Column(db.String(300), nullable=True)
+    validated_at = db.Column(db.DateTime, nullable=True)
+    selected_by = db.Column(db.String(120), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    meta = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+
+    solicitud = db.relationship("Solicitud", back_populates="recommendation_selections", lazy="joined")
+    run = db.relationship("SolicitudRecommendationRun", lazy="joined")
+    item = db.relationship("SolicitudRecommendationItem", lazy="joined")
+    candidata = db.relationship("Candidata", lazy="joined")
 
 
 class ChatConversation(db.Model):

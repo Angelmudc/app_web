@@ -71,6 +71,7 @@ from services.candidata_invariants import (
     transition_solicitud_candidata_status as invariant_transition_solicitud_candidata_status,
 )
 from services.solicitud_estado import set_solicitud_estado
+from services.solicitud_recommendation_service import SolicitudRecommendationService
 from utils.pasaje_mode import (
     apply_pasaje_to_solicitud,
     normalize_pasaje_mode_text,
@@ -159,6 +160,25 @@ BUSINESS_MAX_PUBLIC_IP_DIA = int((os.getenv("BUSINESS_MAX_PUBLIC_IP_DIA") or "20
 _CLIENTE_LOGIN_MAX_INTENTOS = int((os.getenv("CLIENTE_LOGIN_MAX_INTENTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_LOCK_MINUTOS = int((os.getenv("CLIENTE_LOGIN_LOCK_MINUTOS") or "10").strip() or 10)
 _CLIENTE_LOGIN_KEY_PREFIX   = "cliente_login"
+
+
+def _trigger_recommendation_generation_safe(*, solicitud_id: int, trigger_source: str, requested_by: str) -> None:
+    try:
+        service = SolicitudRecommendationService()
+        service.request_generation(
+            int(solicitud_id),
+            trigger_source=trigger_source,
+            requested_by=requested_by,
+            synchronous=True,
+            best_effort=True,
+            commit=True,
+        )
+    except Exception:
+        current_app.logger.exception(
+            "solicitud_recommendation.trigger_failed solicitud_id=%s source=%s",
+            int(solicitud_id),
+            str(trigger_source or ""),
+        )
 
 
 def _flag_true(value) -> bool:
@@ -3354,6 +3374,11 @@ def nueva_solicitud():
                 },
             )
             db.session.commit()
+            _trigger_recommendation_generation_safe(
+                solicitud_id=int(getattr(s, "id", 0) or 0),
+                trigger_source="cliente_portal_create",
+                requested_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
+            )
             _clear_cliente_solicitud_draft(cliente_id=cliente_id)
             flash(f'Solicitud {codigo} creada correctamente.', 'success')
             return redirect(url_for('clientes.listar_solicitudes'))
@@ -4167,6 +4192,26 @@ def detalle_solicitud(id):
     )
     trust_signals = _build_solicitud_trust_signals(s, candidatas_enviadas)
     estado_legible = _estado_cliente_label(getattr(s, "estado", None))
+    shortlist_payload = {}
+    shortlist_vm = _build_shortlist_view_model({})
+    try:
+        shortlist_payload = SolicitudRecommendationService().get_active_shortlist(
+            int(s.id),
+            include_ineligible=False,
+        )
+        shortlist_vm = _build_shortlist_view_model(shortlist_payload)
+    except Exception:
+        current_app.logger.exception(
+            "shortlist_ui_load_failed solicitud_id=%s cliente_id=%s",
+            int(getattr(s, "id", 0) or 0),
+            int(getattr(current_user, "id", 0) or 0),
+        )
+        shortlist_vm = _build_shortlist_view_model(
+            {
+                "state": {"code": "error", "message": _SHORTLIST_STATE_MESSAGES.get("error", "")},
+                "items": [],
+            }
+        )
 
     return render_template(
         'clientes/solicitud_detail.html',
@@ -4184,6 +4229,8 @@ def detalle_solicitud(id):
         ayuda_contextual=ayuda_contextual,
         trust_signals=trust_signals,
         estado_legible=estado_legible,
+        shortlist_payload=shortlist_payload,
+        shortlist_vm=shortlist_vm,
     )
 
 
@@ -5221,6 +5268,16 @@ _MATCH_STATUS_LABELS = {
 }
 
 
+_SHORTLIST_STATE_MESSAGES = {
+    "pending": "Estamos preparando recomendaciones para tu solicitud.",
+    "ready": "Estas recomendaciones están listas para que selecciones una o varias candidatas.",
+    "empty": "No encontramos candidatas recomendadas por el momento.",
+    "error": "No pudimos cargar recomendaciones en este momento.",
+    "stale": "Las recomendaciones están desactualizadas; estamos refrescando la shortlist.",
+    "pending_refresh": "Estamos actualizando la shortlist para mostrar opciones más recientes.",
+}
+
+
 def _safe_location_summary(breakdown: dict) -> str:
     if not isinstance(breakdown, dict):
         return ''
@@ -5250,6 +5307,64 @@ def _safe_location_summary(breakdown: dict) -> str:
     if sector_tokens:
         return f"Sectores cercanos: {', '.join(sector_tokens)}"
     return ''
+
+
+def _clean_short_text(value, *, max_len: int = 180) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max(0, max_len - 1)].rstrip() + "…"
+
+
+def _build_shortlist_view_model(payload: dict) -> dict:
+    data = payload if isinstance(payload, dict) else {}
+    state = data.get("state") if isinstance(data.get("state"), dict) else {}
+    raw_state = str(state.get("code") or "pending").strip().lower()
+    state_code = raw_state if raw_state in _SHORTLIST_STATE_MESSAGES else "pending"
+    items = data.get("items") if isinstance(data.get("items"), list) else []
+
+    if state_code == "ready" and len(items) <= 0:
+        state_code = "empty"
+
+    cards = []
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        cand = row.get("candidata") if isinstance(row.get("candidata"), dict) else {}
+        candidate_id = int(cand.get("id") or 0)
+        if candidate_id <= 0:
+            continue
+        reasons = [re.sub(r"\s+", " ", str(x or "")).strip() for x in (row.get("reasons") or [])]
+        reasons = [x for x in reasons if x][:3]
+        badge = row.get("compatibility_badge") if isinstance(row.get("compatibility_badge"), dict) else {}
+        score_final = int(row.get("score_final") or 0)
+        cards.append(
+            {
+                "candidate_id": candidate_id,
+                "item_id": int(row.get("item_id") or 0),
+                "name": _clean_short_text(cand.get("nombre") or "Sin nombre", max_len=70),
+                "edad": _clean_short_text(cand.get("edad") or "—", max_len=24) or "—",
+                "location": _clean_short_text(row.get("ubicacion_resumen") or "Ubicación no disponible", max_len=90),
+                "modalidad": _clean_short_text(cand.get("modalidad") or "Modalidad no indicada", max_len=80),
+                "experience": _clean_short_text(
+                    row.get("experiencia_resumen") or "Experiencia validada por el equipo de matching.",
+                    max_len=140,
+                ),
+                "reasons": reasons[:3],
+                "compatibility_label": _clean_short_text(badge.get("label") or f"Compatibilidad {score_final}%", max_len=40),
+                "compatibility_tone": str(badge.get("tone") or "secondary"),
+                "score_final": score_final,
+            }
+        )
+
+    return {
+        "state_code": state_code,
+        "state_message": _clean_short_text(state.get("message") or _SHORTLIST_STATE_MESSAGES.get(state_code) or "", max_len=180),
+        "cards": cards,
+        "visible_cards": cards[:3],
+        "extra_cards": cards[3:],
+        "selected_count": 0,
+    }
 
 
 def _candidate_public_payload(sc: SolicitudCandidata) -> dict:
@@ -5284,6 +5399,107 @@ def _get_cliente_sc_or_404(solicitud_id: int, sc_id: int) -> tuple[Solicitud, So
         .first_or_404()
     )
     return solicitud, sc
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist', methods=['GET'])
+@login_required
+@cliente_required
+def solicitud_shortlist(solicitud_id):
+    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    service = SolicitudRecommendationService()
+    payload = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
+    status_code = 200
+    state_code = str((payload.get("state") or {}).get("code") or "").strip().lower()
+    if state_code == "error":
+        status_code = 500
+    return jsonify(payload), status_code
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/validate-selection', methods=['POST'])
+@login_required
+@cliente_required
+def solicitud_shortlist_validate_selection(solicitud_id):
+    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+
+    candidata_raw = None
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        candidata_raw = body.get("candidata_id")
+    if candidata_raw in (None, ""):
+        candidata_raw = request.form.get("candidata_id")
+
+    try:
+        candidata_id = int(candidata_raw or 0)
+    except Exception:
+        candidata_id = 0
+    if candidata_id <= 0:
+        return jsonify({"ok": False, "code": "invalid_candidata_id", "message": "candidata_id inválido."}), 400
+
+    service = SolicitudRecommendationService()
+    result = service.validate_client_selection(
+        solicitud_id=int(solicitud.id),
+        candidata_id=int(candidata_id),
+        selected_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
+    )
+    http_status = 200 if bool(result.get("ok")) else 409
+    return jsonify(result), http_status
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/select', methods=['POST'])
+@login_required
+@cliente_required
+def solicitud_shortlist_submit_selection(solicitud_id):
+    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    redirect_url = url_for("clientes.detalle_solicitud", id=solicitud.id) + "#shortlist-recomendaciones"
+
+    raw_ids = request.form.getlist("candidata_ids")
+    dedup_ids = []
+    seen = set()
+    for raw in raw_ids:
+        try:
+            cid = int(raw or 0)
+        except Exception:
+            cid = 0
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        dedup_ids.append(cid)
+
+    if not dedup_ids:
+        flash("Selecciona al menos una candidata para registrar tu intención.", "warning")
+        return redirect(redirect_url)
+
+    service = SolicitudRecommendationService()
+    shortlist = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
+    shortlist_state = str(((shortlist.get("state") or {}).get("code") or "pending")).strip().lower()
+    if shortlist_state in {"pending", "error", "stale", "pending_refresh"}:
+        flash("La shortlist aún no está lista para selección. Intenta de nuevo en unos minutos.", "warning")
+        return redirect(redirect_url)
+
+    valid_count = 0
+    invalid_count = 0
+    for cid in dedup_ids:
+        result = service.validate_client_selection(
+            solicitud_id=int(solicitud.id),
+            candidata_id=int(cid),
+            selected_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
+        )
+        if bool(result.get("ok")):
+            valid_count += 1
+        else:
+            invalid_count += 1
+
+    if valid_count > 0:
+        flash(
+            f"Registramos tu selección de {valid_count} candidata{'s' if valid_count != 1 else ''}.",
+            "success",
+        )
+    if invalid_count > 0:
+        flash(
+            f"{invalid_count} selección{'es' if invalid_count != 1 else ''} no pudieron validarse con el snapshot actual.",
+            "warning",
+        )
+    return redirect(redirect_url)
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas')
@@ -6234,6 +6450,11 @@ def solicitud_publica_nueva_token(token):
             )
 
             if result.ok:
+                _trigger_recommendation_generation_safe(
+                    solicitud_id=int(state.get("solicitud_id") or 0),
+                    trigger_source="public_link_new_cliente_create",
+                    requested_by=f"public_new_cliente:{int(state.get('cliente_id') or 0)}",
+                )
                 session["public_new_solicitud_success"] = {
                     "token_hash": token_hash_storage,
                     "cliente_nombre": str(state.get("cliente_nombre") or ""),
@@ -6745,6 +6966,11 @@ def solicitud_publica(token):
         )
 
         if result.ok:
+            _trigger_recommendation_generation_safe(
+                solicitud_id=int(solicitud_id_holder.get("value") or 0),
+                trigger_source="public_link_existing_cliente_create",
+                requested_by=f"public_cliente:{int(getattr(c, 'id', 0) or 0)}",
+            )
             _log_public_link_event(
                 "PUBLIC_LINK_VIEW_OK",
                 token,

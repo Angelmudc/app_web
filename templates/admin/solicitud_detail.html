@@ -266,7 +266,7 @@
       {% endfor %}
       {% set _areas = _areas_human | join(', ') %}
 
-      {# Construcción de la línea de casa/apto #}
+      {# Construcción de la línea de casa/apto para copiado interno #}
       {% set _tipo_low = (_tipo|string)|trim|lower %}
       {% if _tipo_low in ['casa'] %}
         {% set _tipo_natural = 'Casa' %}
@@ -277,7 +277,7 @@
       {% elif _tipo_low %}
         {% set _tipo_natural = (_tipo|string)|trim %}
       {% else %}
-        {% set _tipo_natural = 'Hogar' %}
+        {% set _tipo_natural = '' %}
       {% endif %}
       {% set _hab_txt = (_hab|string)|trim if (_hab is not none and (_hab|string)|trim != '') else '' %}
       {% set _ban_txt = ((_ban|string)|trim)|replace('.0', '') if (_ban is not none and (_ban|string)|trim != '') else '' %}
@@ -301,24 +301,24 @@
       {% if _niveles %}
         {% set _ = _det.append(_niveles) %}
       {% endif %}
-      {% set _det_txt = '' %}
-      {% if _det|length == 1 %}
-        {% set _det_txt = _det[0] %}
-      {% elif _det|length == 2 %}
-        {% set _det_txt = _det[0] ~ ' y ' ~ _det[1] %}
-      {% elif _det|length > 2 %}
-        {% set _det_txt = (_det[:-1]|join(', ')) ~ ' y ' ~ _det[-1] %}
-      {% endif %}
-      {% set _casa_line = _tipo_natural %}
-      {% if _det_txt %}
-        {% set _joiner = 'de' if _tipo_natural == 'Casa' else 'con' %}
-        {% set _casa_line = _tipo_natural ~ ' ' ~ _joiner ~ ' ' ~ _det_txt %}
+      {% set _det_txt = _det | join(', ') %}
+      {% set _casa_line = '' %}
+      {% if _tipo_natural and _det_txt %}
+        {% set _casa_line = _tipo_natural ~ ' - ' ~ _det_txt %}
+      {% elif _tipo_natural %}
+        {% set _casa_line = _tipo_natural %}
+      {% elif _det_txt %}
+        {% set _casa_line = _det_txt %}
       {% endif %}
       {% if _areas %}
         {% if _det_txt %}
-          {% set _casa_line = _casa_line ~ ', áreas comunes: ' ~ _areas %}
+          {% set _casa_line = _casa_line ~ ', ' ~ _areas %}
         {% else %}
-          {% set _casa_line = _casa_line ~ ' con áreas comunes: ' ~ _areas %}
+          {% if _tipo_natural %}
+            {% set _casa_line = _casa_line ~ ' - ' ~ _areas %}
+          {% else %}
+            {% set _casa_line = _areas %}
+          {% endif %}
         {% endif %}
       {% endif %}
 

@@ -269,6 +269,126 @@
   </div>
   {% endif %}
 
+  <div class="kard mb-4 no-print solicitud-block solicitud-shortlist-block" id="shortlist-recomendaciones">
+    <div class="kard-h bg-primary bg-opacity-10 d-flex align-items-center justify-content-between">
+      <div class="fw-semibold"><i class="bi bi-stars me-2"></i>Shortlist recomendada para ti</div>
+      <span class="badge text-bg-light border">{{ (shortlist_vm.cards|length) if shortlist_vm and shortlist_vm.cards else 0 }} opciones</span>
+    </div>
+    <div class="kard-b">
+      {% set shortlist_state = (shortlist_vm.state_code if shortlist_vm else 'pending') %}
+
+      {% if shortlist_state == 'pending' %}
+        <div class="d-flex align-items-center gap-2 text-muted">
+          <div class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></div>
+          <span>{{ shortlist_vm.state_message or 'Estamos preparando recomendaciones para tu solicitud.' }}</span>
+        </div>
+      {% elif shortlist_state in ['stale', 'pending_refresh'] %}
+        <div class="alert alert-warning mb-0" role="alert">
+          <div class="fw-semibold mb-1">Shortlist en actualización</div>
+          <div class="small">{{ shortlist_vm.state_message or 'Estamos refrescando las recomendaciones para mostrarte opciones más recientes.' }}</div>
+        </div>
+      {% elif shortlist_state == 'error' %}
+        <div class="alert alert-danger mb-0" role="alert">
+          <div class="fw-semibold mb-1">No pudimos cargar recomendaciones</div>
+          <div class="small">{{ shortlist_vm.state_message or 'Intenta de nuevo en unos minutos.' }}</div>
+        </div>
+      {% elif shortlist_state == 'empty' %}
+        <div class="alert alert-light border mb-0" role="status">
+          <div class="fw-semibold mb-1">Sin recomendaciones por ahora</div>
+          <div class="small text-muted">{{ shortlist_vm.state_message or 'Todavía no hay candidatas sugeridas para esta solicitud.' }}</div>
+        </div>
+      {% elif shortlist_state == 'ready' %}
+        <form
+          method="post"
+          action="{{ url_for('clientes.solicitud_shortlist_submit_selection', solicitud_id=s.id) }}"
+          data-shortlist-selection-form="1"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <p class="mb-0 text-muted small">{{ shortlist_vm.state_message or 'Selecciona una o varias candidatas para registrar tu intención.' }}</p>
+            <span class="badge text-bg-primary" data-shortlist-count>0 seleccionadas</span>
+          </div>
+
+          <div class="row g-3">
+            {% for card in shortlist_vm.visible_cards %}
+              <div class="col-12">
+                <label class="shortlist-card card h-100 border-0 shadow-sm p-3">
+                  <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div>
+                      <div class="fw-semibold">{{ card.name }}</div>
+                      <div class="small text-muted">{{ card.edad }} años · {{ card.location }}</div>
+                    </div>
+                    <span class="badge text-bg-{{ card.compatibility_tone }}">{{ card.compatibility_label }}</span>
+                  </div>
+
+                  <div class="small mt-2"><strong>Modalidad:</strong> {{ card.modalidad }}</div>
+                  <div class="small text-muted mt-1">{{ card.experience }}</div>
+
+                  {% if card.reasons %}
+                  <ul class="small shortlist-card-reasons mt-2 mb-2">
+                    {% for reason in card.reasons[:3] %}
+                      <li>{{ reason }}</li>
+                    {% endfor %}
+                  </ul>
+                  {% endif %}
+
+                  <div class="form-check mt-auto pt-1">
+                    <input class="form-check-input" type="checkbox" name="candidata_ids" value="{{ card.candidate_id }}" id="shortlist-cand-{{ card.candidate_id }}">
+                    <label class="form-check-label" for="shortlist-cand-{{ card.candidate_id }}">
+                      Seleccionar candidata
+                    </label>
+                  </div>
+                </label>
+              </div>
+            {% endfor %}
+          </div>
+
+          {% if shortlist_vm.extra_cards %}
+          <details class="mt-3 shortlist-more">
+            <summary class="small fw-semibold">Ver {{ shortlist_vm.extra_cards|length }} recomendación{% if shortlist_vm.extra_cards|length != 1 %}es{% endif %} más</summary>
+            <div class="row g-3 mt-1">
+              {% for card in shortlist_vm.extra_cards %}
+                <div class="col-12">
+                  <label class="shortlist-card card h-100 border-0 shadow-sm p-3">
+                    <div class="d-flex justify-content-between align-items-start gap-2">
+                      <div>
+                        <div class="fw-semibold">{{ card.name }}</div>
+                        <div class="small text-muted">{{ card.edad }} años · {{ card.location }}</div>
+                      </div>
+                      <span class="badge text-bg-{{ card.compatibility_tone }}">{{ card.compatibility_label }}</span>
+                    </div>
+                    <div class="small mt-2"><strong>Modalidad:</strong> {{ card.modalidad }}</div>
+                    <div class="small text-muted mt-1">{{ card.experience }}</div>
+                    {% if card.reasons %}
+                    <ul class="small shortlist-card-reasons mt-2 mb-2">
+                      {% for reason in card.reasons[:3] %}
+                        <li>{{ reason }}</li>
+                      {% endfor %}
+                    </ul>
+                    {% endif %}
+                    <div class="form-check mt-auto pt-1">
+                      <input class="form-check-input" type="checkbox" name="candidata_ids" value="{{ card.candidate_id }}" id="shortlist-cand-extra-{{ card.candidate_id }}">
+                      <label class="form-check-label" for="shortlist-cand-extra-{{ card.candidate_id }}">
+                        Seleccionar candidata
+                      </label>
+                    </div>
+                  </label>
+                </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+
+          <div class="d-flex justify-content-end mt-3">
+            <button type="submit" class="btn btn-primary" data-shortlist-submit disabled>
+              Registrar selección
+            </button>
+          </div>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="kard mb-4 print-zone solicitud-block solicitud-candidatas-block">
     <div class="kard-h bg-info bg-opacity-10 d-flex align-items-center justify-content-between">
       <div class="fw-semibold"><i class="bi bi-people me-2"></i>Candidatas compatibles enviadas por la agencia</div>

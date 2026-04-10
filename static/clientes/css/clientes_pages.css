@@ -78,6 +78,27 @@
   background: #f2f8ff;
 }
 
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card {
+  border: 1px solid #d7e3f1 !important;
+  border-radius: 14px;
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card:hover {
+  border-color: #9bc6ea !important;
+  box-shadow: 0 10px 22px rgba(27, 92, 145, 0.1) !important;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-reasons {
+  padding-left: 1rem;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-more summary {
+  cursor: pointer;
+}
+
 :where(body.clientes, [data-portal="clientes"]) .solicitud-quick-actions .btn {
   white-space: normal;
   min-height: 52px;
