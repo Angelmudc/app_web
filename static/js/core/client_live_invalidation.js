@@ -35,6 +35,7 @@
   let pollIntervalMs = 0;
   let fallbackMode = false;
   let liveDisabled = false;
+  let ssePermanentlyDisabled = false;
   let pausedForHidden = Boolean(document.hidden);
   const initialAfterId = Math.max(0, Number(body.getAttribute("data-client-live-after-id") || 0) || 0);
   let afterId = initialAfterId;
@@ -619,6 +620,13 @@
       return;
     }
     const payload = await resp.json();
+    const mode = String((payload && payload.mode) || "").trim().toLowerCase();
+    if (mode === "poll_only") {
+      ssePermanentlyDisabled = true;
+      clearReconnectTimer();
+      stopSse();
+      setFallbackMode(true);
+    }
     const items = Array.isArray(payload.items) ? payload.items : [];
     items.forEach(applyEvent);
     afterId = Math.max(afterId, Number(payload.next_after_id || 0));
@@ -635,6 +643,7 @@
 
   function scheduleReconnect() {
     if (liveDisabled) return;
+    if (ssePermanentlyDisabled) return;
     if (pausedForHidden) return;
     clearReconnectTimer();
     markTransport("sse_reconnecting", "timer_scheduled");
@@ -699,6 +708,11 @@
 
   function startSse() {
     if (liveDisabled) return;
+    if (ssePermanentlyDisabled) {
+      setFallbackMode(true);
+      startPollingLoop();
+      return;
+    }
     if (pausedForHidden) {
       markTransport("paused_hidden", "sse_suspended");
       return;
@@ -731,7 +745,22 @@
       setFallbackMode(false);
       markTransport("sse_connected", "heartbeat");
     });
+    eventSource.addEventListener("poll_only", function (_ev) {
+      ssePermanentlyDisabled = true;
+      setFallbackMode(true);
+      markTransport("polling_fallback", "server_poll_only");
+      clearReconnectTimer();
+      stopSse();
+      startPollingLoop();
+    });
     eventSource.onerror = function () {
+      if (ssePermanentlyDisabled) {
+        setFallbackMode(true);
+        stopSse();
+        clearReconnectTimer();
+        startPollingLoop();
+        return;
+      }
       runtime.sseErrors += 1;
       setFallbackMode(true);
       markTransport("polling_fallback", "sse_error");

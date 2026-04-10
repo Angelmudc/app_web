@@ -188,6 +188,65 @@ def test_live_invalidation_stream_once_headers_and_heartbeat():
     assert "event: heartbeat" in body
 
 
+def test_live_invalidation_poll_reports_poll_only_when_sse_disabled():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    prev = flask_app.config.get("ADMIN_LIVE_SSE_ENABLED", True)
+    flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = False
+    try:
+        client = flask_app.test_client()
+        assert _login(client).status_code in (302, 303)
+        resp = client.get("/admin/live/invalidation/poll?after_id=0&limit=5", follow_redirects=False)
+    finally:
+        flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = prev
+
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("mode") == "poll_only"
+    assert (resp.headers.get("X-Live-Invalidation-Mode") or "").strip() == "poll_only"
+
+
+def test_live_invalidation_stream_returns_poll_only_event_when_sse_disabled():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    prev = flask_app.config.get("ADMIN_LIVE_SSE_ENABLED", True)
+    flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = False
+    try:
+        client = flask_app.test_client()
+        assert _login(client).status_code in (302, 303)
+        resp = client.get("/admin/live/invalidation/stream", follow_redirects=False)
+        body = (resp.get_data(as_text=True) or "")
+    finally:
+        flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = prev
+
+    assert resp.status_code == 200
+    assert "text/event-stream" in (resp.headers.get("Content-Type") or "")
+    assert (resp.headers.get("X-Live-Invalidation-Mode") or "").strip() == "poll_only"
+    assert "event: poll_only" in body
+
+
+def test_live_invalidation_stream_probe_returns_poll_only_json_when_sse_disabled():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    prev = flask_app.config.get("ADMIN_LIVE_SSE_ENABLED", True)
+    flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = False
+    try:
+        client = flask_app.test_client()
+        assert _login(client).status_code in (302, 303)
+        resp = client.get(
+            "/admin/live/invalidation/stream?probe=1",
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            follow_redirects=False,
+        )
+    finally:
+        flask_app.config["ADMIN_LIVE_SSE_ENABLED"] = prev
+
+    assert resp.status_code == 503
+    payload = resp.get_json() or {}
+    assert payload.get("mode") == "poll_only"
+    assert (resp.headers.get("X-Live-Invalidation-Mode") or "").strip() == "poll_only"
+
+
 def test_solicitudes_list_template_declares_live_invalidation_summary_scope():
     tpl_path = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
     with open(tpl_path, "r", encoding="utf-8") as f:
@@ -275,6 +334,8 @@ def test_live_invalidation_js_supports_solicitudes_prioridad_summary_mode():
     assert "setRegion(\"#prioridadResponsablesAsyncRegion\", \"data-live-region-responsables-url\")" in txt
     assert "if (view === \"solicitudes_prioridad_summary\") {" in txt
     assert "return [\"#prioridadSummaryAsyncRegion\", \"#prioridadResponsablesAsyncRegion\"];" in txt
+    assert "eventSource.addEventListener(\"poll_only\"" in txt
+    assert "if (headerMode === \"poll_only\") {" in txt
 
 
 def test_solicitud_detail_template_declares_live_fragment_urls():

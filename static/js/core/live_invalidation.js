@@ -459,8 +459,12 @@
             markPollOnlyMode();
             return true;
           }
-          if (resp.status !== 503) return false;
           const headerMode = String(resp.headers.get("X-Live-Invalidation-Mode") || "").trim().toLowerCase();
+          if (headerMode === "poll_only") {
+            markPollOnlyMode();
+            return true;
+          }
+          if (resp.status !== 503) return false;
           let bodyMode = "";
           try {
             const payload = await resp.json();
@@ -542,6 +546,13 @@
               startPolling();
             }
           } catch (_) {}
+        });
+
+        eventSource.addEventListener("poll_only", function (_ev) {
+          markPollOnlyMode();
+          closeSSE();
+          stopSseRetry();
+          startPolling();
         });
 
         eventSource.onopen = function () {

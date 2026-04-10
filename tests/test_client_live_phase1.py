@@ -189,6 +189,51 @@ def test_client_live_stream_once_has_sse_headers_and_heartbeat():
     assert "event: heartbeat" in body
 
 
+def test_client_live_poll_reports_poll_only_mode_when_sse_disabled():
+    flask_app.config["TESTING"] = True
+    prev_enabled = flask_app.config.get("CLIENTES_LIVE_SSE_ENABLED", True)
+    flask_app.config["CLIENTES_LIVE_SSE_ENABLED"] = False
+    try:
+        target = clientes_routes.clientes_live_invalidation_poll
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", _client_user(7)):
+                with flask_app.test_request_context("/clientes/live/invalidation/poll?after_id=0&limit=25", method="GET"):
+                    resp = target()
+    finally:
+        flask_app.config["CLIENTES_LIVE_SSE_ENABLED"] = prev_enabled
+
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("mode") == "poll_only"
+
+
+def test_client_live_stream_returns_poll_only_event_when_sse_disabled():
+    flask_app.config["TESTING"] = True
+    prev_enabled = flask_app.config.get("CLIENTES_LIVE_SSE_ENABLED", True)
+    flask_app.config["CLIENTES_LIVE_SSE_ENABLED"] = False
+    try:
+        target = clientes_routes.clientes_live_invalidation_stream
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", _client_user(7)):
+                with flask_app.test_request_context("/clientes/live/invalidation/stream?after_id=0", method="GET"):
+                    resp = target()
+                    body = resp.get_data(as_text=True)
+    finally:
+        flask_app.config["CLIENTES_LIVE_SSE_ENABLED"] = prev_enabled
+
+    assert resp.status_code == 200
+    assert "text/event-stream" in (resp.headers.get("Content-Type") or "")
+    assert (resp.headers.get("X-Realtime-Mode") or "").strip().lower() == "poll_only"
+    assert "event: poll_only" in body
+    assert "heartbeat" not in body
+
+
 def test_client_live_stream_requires_authentication_redirects():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -270,3 +315,7 @@ def test_client_live_js_reconvergence_contract():
     assert 'window.addEventListener("visibilitychange"' in js_txt
     assert "if (!fallbackMode) {" in js_txt
     assert 'markTransport("paused_hidden", "document_hidden")' in js_txt
+    assert "let ssePermanentlyDisabled = false;" in js_txt
+    assert 'eventSource.addEventListener("poll_only"' in js_txt
+    assert "if (ssePermanentlyDisabled) return;" in js_txt
+    assert 'markTransport("polling_fallback", "server_poll_only")' in js_txt

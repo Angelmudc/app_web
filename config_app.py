@@ -232,6 +232,14 @@ def create_app():
             "CLIENTES_PARTIAL_NAV_PILOT_ROUTES_LIST": _split_csv(
                 _env_str("CLIENTES_PARTIAL_NAV_PILOT_ROUTES", "")
             ),
+            # Realtime clientes: en producción apagado por defecto para evitar SSE largo sobre workers sync.
+            "CLIENTES_LIVE_SSE_ENABLED": _is_true(
+                os.getenv("CLIENTES_LIVE_SSE_ENABLED", "0" if prod else "1")
+            ),
+            # Realtime admin: en producción apagado por defecto para evitar SSE largo sobre workers sync.
+            "ADMIN_LIVE_SSE_ENABLED": _is_true(
+                os.getenv("ADMIN_LIVE_SSE_ENABLED", "0" if prod else "1")
+            ),
         }
     )
 

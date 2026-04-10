@@ -201,6 +201,13 @@ def _clientes_partial_nav_enabled_for_request() -> bool:
     return path in pilot_routes
 
 
+def _clientes_live_sse_enabled() -> bool:
+    cfg = current_app.config.get("CLIENTES_LIVE_SSE_ENABLED", True)
+    if isinstance(cfg, bool):
+        return cfg
+    return _flag_true(cfg)
+
+
 def _operational_rate_limits_enabled() -> bool:
     raw = os.getenv("ENABLE_OPERATIONAL_RATE_LIMITS")
     if raw is not None and str(raw).strip() != "":
@@ -2342,7 +2349,7 @@ def clientes_live_invalidation_poll():
 
     return _json_no_cache({
         "ok": True,
-        "mode": "outbox_poll",
+        "mode": "outbox_poll" if _clientes_live_sse_enabled() else "poll_only",
         "items": items,
         "count": len(items),
         "next_after_id": int(cursor),
@@ -2354,6 +2361,18 @@ def clientes_live_invalidation_poll():
 @login_required
 @cliente_required
 def clientes_live_invalidation_stream():
+    if not _clientes_live_sse_enabled():
+        payload = {"mode": "poll_only", "reason": "sse_disabled", "ts": iso_utc_z()}
+        body = f"event: poll_only\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        headers = {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Realtime-Mode": "poll_only",
+        }
+        return Response(body, headers=headers)
+
     def _sse(event: str, payload: dict) -> str:
         return f"event: {event}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 

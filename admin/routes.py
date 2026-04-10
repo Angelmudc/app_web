@@ -292,11 +292,20 @@ def _operational_rate_limits_enabled() -> bool:
 
 
 def _live_invalidation_stream_enabled() -> bool:
+    cfg = current_app.config.get("ADMIN_LIVE_SSE_ENABLED")
+    if cfg is not None:
+        if isinstance(cfg, bool):
+            return cfg
+        return _is_true_env(str(cfg), default=True)
+
+    # Compat legado por variable env.
+    raw_new = os.getenv("ADMIN_LIVE_SSE_ENABLED")
+    if raw_new is not None and str(raw_new).strip() != "":
+        return _is_true_env(str(raw_new), default=False)
+
     raw = os.getenv("ENABLE_ADMIN_LIVE_INVALIDATION_STREAM")
     if raw is not None and str(raw).strip() != "":
         return _is_true_env(str(raw), default=False)
-    if bool(current_app.config.get("TESTING")):
-        return True
     run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
     return run_env not in ("prod", "production")
 
@@ -1256,7 +1265,7 @@ def live_invalidation_poll():
     with _p1c1_perf_scope("live_invalidation_poll", enabled=perf_enabled) as perf_done:
         after_id = max(0, _safe_int(request.args.get("after_id"), default=0))
         limit = min(80, max(1, _safe_int(request.args.get("limit"), default=25)))
-        mode = _LIVE_INVALIDATION_MODE_RELAY
+        mode = "poll_only" if not _live_invalidation_stream_enabled() else _LIVE_INVALIDATION_MODE_RELAY
 
         rows = (
             DomainOutbox.query
@@ -1339,18 +1348,35 @@ def live_invalidation_stream():
         return response
 
     if not _live_invalidation_stream_enabled():
-        response = jsonify(
-            {
-                "ok": False,
-                "error": "stream_disabled",
-                "mode": "poll_only",
-                "replaced_by": {"poll_url": url_for("admin.live_invalidation_poll")},
-                "ts": iso_utc_z(),
-            }
-        )
-        response.status_code = 503
-        response.headers["X-Live-Invalidation-Mode"] = "poll_only"
-        return response
+        wants_json_probe = str(request.args.get("probe") or "").strip() == "1"
+        accept = str(request.headers.get("Accept") or "").lower()
+        xrw = str(request.headers.get("X-Requested-With") or "").lower()
+        if ("application/json" in accept) or (xrw == "xmlhttprequest"):
+            wants_json_probe = True
+        if wants_json_probe:
+            response = jsonify(
+                {
+                    "ok": False,
+                    "error": "stream_disabled",
+                    "mode": "poll_only",
+                    "replaced_by": {"poll_url": url_for("admin.live_invalidation_poll")},
+                    "ts": iso_utc_z(),
+                }
+            )
+            response.status_code = 503
+            response.headers["X-Live-Invalidation-Mode"] = "poll_only"
+            return response
+
+        payload = {"mode": "poll_only", "reason": "sse_disabled", "ts": iso_utc_z()}
+        body = f"event: poll_only\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        headers = {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Live-Invalidation-Mode": "poll_only",
+        }
+        return Response(body, headers=headers)
 
     stream_slot_id = secrets.token_hex(12)
     stream_slot = _live_stream_register(stream_slot_id)
