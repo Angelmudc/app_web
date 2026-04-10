@@ -224,6 +224,9 @@ def create_app():
             "REMEMBER_COOKIE_SECURE": _cookie_secure(),
             # Dominio público canónico para metadatos compartibles (OG/Twitter/links públicos).
             "PUBLIC_BASE_URL": _env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"),
+            # Canal de soporte por WhatsApp (sin hardcode en rutas/templates).
+            "SUPPORT_WHATSAPP_NUMBER": _env_str("SUPPORT_WHATSAPP_NUMBER", "18094296892"),
+            "SUPPORT_WHATSAPP_DISPLAY": _env_str("SUPPORT_WHATSAPP_DISPLAY", "+1 809 429 6892"),
             # Feature flag rollout: navegación parcial clientes (infra, sin activar comportamiento aún).
             "CLIENTES_PARTIAL_NAV_ENABLED": _is_true(os.getenv("CLIENTES_PARTIAL_NAV_ENABLED", "0")),
             # CSV de rutas piloto exactas (ej: "/clientes/informacion,/clientes/planes").

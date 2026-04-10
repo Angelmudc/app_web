@@ -500,7 +500,10 @@ def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
     with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
         success_resp = client.get("/clientes/solicitudes/publica/tok123?estado=enviado")
 
-    for resp in (form_resp, used_resp, invalid_resp, success_resp):
+    assert success_resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/91/recomendaciones" in (success_resp.location or "")
+
+    for resp in (form_resp, used_resp, invalid_resp):
         assert resp.status_code in (200, 410)
         html = resp.get_data(as_text=True)
         assert "/clientes/live/ping" not in html
@@ -635,8 +638,8 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
         success = client.get("/solicitud/ABCD2345EF/continuar?estado=enviado")
         later = client.get("/solicitud/ABCD2345EF/continuar")
 
-    assert success.status_code == 200
-    assert "Tu solicitud fue enviada correctamente" in success.get_data(as_text=True)
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/91/recomendaciones" in (success.location or "")
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 

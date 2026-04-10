@@ -1448,6 +1448,70 @@
     sync();
   }
 
+  function initSolicitudShortlistPolling() {
+    const root = (arguments[0] && arguments[0].querySelector) ? arguments[0] : d;
+    const marker = root.querySelector('[data-shortlist-poll]');
+    if (!marker) return;
+    if (marker.getAttribute('data-shortlist-poll-bound') === '1') return;
+    marker.setAttribute('data-shortlist-poll-bound', '1');
+
+    const state = String(marker.getAttribute('data-shortlist-state') || '').trim().toLowerCase();
+    if (!['pending', 'pending_refresh', 'stale'].includes(state)) return;
+
+    const pollUrl = String(marker.getAttribute('data-shortlist-url') || '').trim();
+    if (!pollUrl) return;
+
+    const baseMsRaw = parseInt(String(marker.getAttribute('data-shortlist-poll-base-ms') || '4000'), 10);
+    const maxAttemptsRaw = parseInt(String(marker.getAttribute('data-shortlist-poll-max-attempts') || '6'), 10);
+    const baseMs = Number.isFinite(baseMsRaw) ? Math.max(1000, baseMsRaw) : 4000;
+    const maxAttempts = Number.isFinite(maxAttemptsRaw) ? Math.max(1, maxAttemptsRaw) : 6;
+    const msgEl = root.querySelector('[data-shortlist-status-msg]');
+
+    let attempt = 0;
+    let stopped = false;
+
+    const nextDelay = () => {
+      const factor = Math.pow(1.7, Math.max(0, attempt));
+      return Math.min(30000, Math.round(baseMs * factor));
+    };
+
+    const schedule = () => {
+      if (stopped) return;
+      if (attempt >= maxAttempts) {
+        if (msgEl) {
+          msgEl.textContent = 'Seguimos preparando tu shortlist. Intenta recargar en unos minutos.';
+        }
+        return;
+      }
+      const delay = nextDelay();
+      attempt += 1;
+      setTimeout(runPoll, delay);
+    };
+
+    const runPoll = () => {
+      fetch(pollUrl, {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      })
+        .then((resp) => resp.json().catch(() => null))
+        .then((data) => {
+          const stateCode = String((((data || {}).state || {}).code || '')).trim().toLowerCase();
+          if (['ready', 'empty', 'error'].includes(stateCode)) {
+            stopped = true;
+            window.location.reload();
+            return;
+          }
+          schedule();
+        })
+        .catch(() => {
+          schedule();
+        });
+    };
+
+    schedule();
+  }
+
   function getViewportRoot() {
     return d.querySelector('#clientMainViewport') || d;
   }
@@ -1459,6 +1523,7 @@
     initForms(mountRoot);
     initSolicitudForm(mountRoot);
     initSolicitudShortlistSelection(mountRoot);
+    initSolicitudShortlistPolling(mountRoot);
 
     setTimeout(() => {
       initAutosave(mountRoot);

@@ -262,11 +262,8 @@ def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once()
         success = client.get(f"/clientes/solicitudes/nueva-publica/{token}?estado=enviado")
         later = client.get(f"/clientes/solicitudes/nueva-publica/{token}")
 
-    assert success.status_code == 200
-    html = success.get_data(as_text=True)
-    assert "Cliente Nuevo" in html
-    assert "2,154-A" in html
-    assert "Solicitud registrada correctamente." in html
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/88/recomendaciones" in (success.location or "")
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
@@ -473,8 +470,8 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
         success = client.get("/solicitud/WXYZ5678JK/continuar?estado=enviado")
         later = client.get("/solicitud/WXYZ5678JK/continuar")
 
-    assert success.status_code == 200
-    assert "Tu solicitud fue recibida correctamente" in success.get_data(as_text=True)
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/88/recomendaciones" in (success.location or "")
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 

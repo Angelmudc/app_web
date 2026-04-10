@@ -32,6 +32,7 @@ try:
         Candidata,
         CandidataWeb,
         SolicitudCandidata,
+        SolicitudRecommendationSelection,
         ClienteNotificacion,
         ChatConversation,
         ChatMessage,
@@ -48,6 +49,7 @@ except Exception:
     Candidata = None
     CandidataWeb = None
     SolicitudCandidata = None
+    SolicitudRecommendationSelection = None
     ClienteNotificacion = None
     ChatConversation = None
     ChatMessage = None
@@ -78,6 +80,7 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.enterprise_layer import bump_operational_counter
 from utils.modalidad import (
     canonicalize_modalidad_trabajo,
     split_modalidad_for_ui,
@@ -169,9 +172,10 @@ def _trigger_recommendation_generation_safe(*, solicitud_id: int, trigger_source
             int(solicitud_id),
             trigger_source=trigger_source,
             requested_by=requested_by,
-            synchronous=True,
+            synchronous=False,
             best_effort=True,
             commit=True,
+            dispatch_async=True,
         )
     except Exception:
         current_app.logger.exception(
@@ -179,6 +183,63 @@ def _trigger_recommendation_generation_safe(*, solicitud_id: int, trigger_source
             int(solicitud_id),
             str(trigger_source or ""),
         )
+
+
+_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY = "public_recommendation_access_ids"
+_PUBLIC_RECOMMENDATION_ACCESS_MAX_IDS = 8
+
+
+def _public_recommendation_access_ids() -> set[int]:
+    raw = session.get(_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY)
+    if not isinstance(raw, list):
+        return set()
+    out = set()
+    for item in raw:
+        try:
+            sid = int(item or 0)
+        except Exception:
+            sid = 0
+        if sid > 0:
+            out.add(sid)
+    return out
+
+
+def _grant_public_recommendation_access(*, solicitud_id: int) -> None:
+    sid = int(solicitud_id or 0)
+    if sid <= 0:
+        return
+    ids = list(_public_recommendation_access_ids())
+    if sid not in ids:
+        ids.append(sid)
+    ids = [int(x) for x in ids if int(x or 0) > 0][-int(_PUBLIC_RECOMMENDATION_ACCESS_MAX_IDS):]
+    session[_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = ids
+    session.modified = True
+
+
+def _current_user_is_cliente() -> bool:
+    try:
+        if not bool(getattr(current_user, "is_authenticated", False)):
+            return False
+        from models import Cliente as _ClienteModel
+
+        return isinstance(current_user, _ClienteModel)
+    except Exception:
+        role = str(getattr(current_user, "role", "") or "").strip().lower()
+        return bool(getattr(current_user, "is_authenticated", False)) and role == "cliente"
+
+
+def _get_solicitud_for_shortlist_or_403(solicitud_id: int) -> Solicitud:
+    sid = int(solicitud_id or 0)
+    if sid <= 0:
+        abort(404)
+
+    if _current_user_is_cliente():
+        return Solicitud.query.filter_by(id=sid, cliente_id=current_user.id).first_or_404()
+
+    if sid in _public_recommendation_access_ids():
+        return Solicitud.query.filter_by(id=sid).first_or_404()
+
+    abort(403)
 
 
 def _flag_true(value) -> bool:
@@ -1768,7 +1829,7 @@ def planes():
 @login_required
 @cliente_required
 def ayuda():
-    whatsapp = "+1 809 429 6892"  # reemplaza por el real
+    whatsapp_message = "Hola soporte, necesito ayuda con mi solicitud."
     ayuda_secciones = [
         {
             "id": "proceso",
@@ -1828,7 +1889,8 @@ def ayuda():
     ]
     return render_template(
         'clientes/ayuda.html',
-        whatsapp=whatsapp,
+        whatsapp_display=_support_whatsapp_display(),
+        whatsapp_url=_support_whatsapp_url(message=whatsapp_message),
         ayuda_secciones=ayuda_secciones,
     )
 
@@ -3381,7 +3443,7 @@ def nueva_solicitud():
             )
             _clear_cliente_solicitud_draft(cliente_id=cliente_id)
             flash(f'Solicitud {codigo} creada correctamente.', 'success')
-            return redirect(url_for('clientes.listar_solicitudes'))
+            return redirect(url_for('clientes.solicitud_recomendaciones', id=int(getattr(s, "id", 0) or 0)))
 
         except SQLAlchemyError as e:
             db.session.rollback()
@@ -4194,12 +4256,29 @@ def detalle_solicitud(id):
     estado_legible = _estado_cliente_label(getattr(s, "estado", None))
     shortlist_payload = {}
     shortlist_vm = _build_shortlist_view_model({})
+    shortlist_selection = {
+        "count": 0,
+        "candidate_ids": [],
+        "candidate_names": [],
+        "selection_fingerprint": "",
+    }
     try:
         shortlist_payload = SolicitudRecommendationService().get_active_shortlist(
             int(s.id),
             include_ineligible=False,
         )
         shortlist_vm = _build_shortlist_view_model(shortlist_payload)
+        shortlist_selection = _get_saved_shortlist_selection_summary(solicitud_id=int(s.id))
+        state_code = str(shortlist_vm.get("state_code") or "pending").strip().lower()
+        _rec_obs_counter("rec:usage:shortlist_view_count")
+        _rec_obs_counter(f"rec:usage:shortlist_view_state:{state_code}_count")
+        _rec_obs_event(
+            "shortlist_viewed",
+            solicitud_id=int(getattr(s, "id", 0) or 0),
+            cliente_id=int(getattr(current_user, "id", 0) or 0),
+            state_code=state_code,
+            cards_count=int(len(shortlist_vm.get("cards") or [])),
+        )
     except Exception:
         current_app.logger.exception(
             "shortlist_ui_load_failed solicitud_id=%s cliente_id=%s",
@@ -4231,7 +4310,64 @@ def detalle_solicitud(id):
         estado_legible=estado_legible,
         shortlist_payload=shortlist_payload,
         shortlist_vm=shortlist_vm,
+        shortlist_selection=shortlist_selection,
     )
+
+
+@clientes_bp.route('/solicitudes/<int:id>/recomendaciones')
+def solicitud_recomendaciones(id):
+    s = _get_solicitud_for_shortlist_or_403(id)
+
+    shortlist_payload = {}
+    shortlist_vm = _build_shortlist_view_model({})
+    shortlist_selection = {
+        "count": 0,
+        "candidate_ids": [],
+        "candidate_names": [],
+        "selection_fingerprint": "",
+    }
+    try:
+        shortlist_payload = SolicitudRecommendationService().get_active_shortlist(
+            int(s.id),
+            include_ineligible=False,
+        )
+        shortlist_vm = _build_shortlist_view_model(shortlist_payload)
+        shortlist_selection = _get_saved_shortlist_selection_summary(solicitud_id=int(s.id))
+        state_code = str(shortlist_vm.get("state_code") or "pending").strip().lower()
+        _rec_obs_counter("rec:usage:shortlist_view_count")
+        _rec_obs_counter(f"rec:usage:shortlist_view_state:{state_code}_count")
+        _rec_obs_event(
+            "shortlist_viewed",
+            solicitud_id=int(getattr(s, "id", 0) or 0),
+            cliente_id=int(getattr(current_user, "id", 0) or 0) if _current_user_is_cliente() else 0,
+            state_code=state_code,
+            cards_count=int(len(shortlist_vm.get("cards") or [])),
+            entrypoint="post_create_screen",
+        )
+    except Exception:
+        current_app.logger.exception(
+            "shortlist_recommendations_ui_load_failed solicitud_id=%s cliente_id=%s",
+            int(getattr(s, "id", 0) or 0),
+            int(getattr(current_user, "id", 0) or 0) if _current_user_is_cliente() else 0,
+        )
+        shortlist_vm = _build_shortlist_view_model(
+            {
+                "state": {"code": "error", "message": _SHORTLIST_STATE_MESSAGES.get("error", "")},
+                "items": [],
+            }
+        )
+
+    response = make_response(
+        render_template(
+            'clientes/solicitud_recomendaciones.html',
+            s=s,
+            shortlist_payload=shortlist_payload,
+            shortlist_vm=shortlist_vm,
+            shortlist_selection=shortlist_selection,
+        )
+    )
+    response.headers["Cache-Control"] = _CACHE_STRICT_NO_STORE
+    return response
 
 
 _CHAT_MESSAGE_MAX_LEN = 1800
@@ -5269,13 +5405,66 @@ _MATCH_STATUS_LABELS = {
 
 
 _SHORTLIST_STATE_MESSAGES = {
-    "pending": "Estamos preparando recomendaciones para tu solicitud.",
-    "ready": "Estas recomendaciones están listas para que selecciones una o varias candidatas.",
-    "empty": "No encontramos candidatas recomendadas por el momento.",
-    "error": "No pudimos cargar recomendaciones en este momento.",
-    "stale": "Las recomendaciones están desactualizadas; estamos refrescando la shortlist.",
-    "pending_refresh": "Estamos actualizando la shortlist para mostrar opciones más recientes.",
+    "pending": "Estamos preparando tu shortlist para esta solicitud.",
+    "ready": "Revisa las candidatas sugeridas y elige una o varias para continuar.",
+    "empty": "Aún no tenemos candidatas recomendadas para esta solicitud.",
+    "error": "No pudimos cargar la shortlist en este momento.",
+    "stale": "La shortlist se está actualizando para mostrarte opciones vigentes.",
+    "pending_refresh": "Estamos actualizando la shortlist para mostrarte opciones vigentes.",
 }
+_SHORTLIST_POLL_BASE_MS = int((os.getenv("SHORTLIST_POLL_BASE_MS") or "4000").strip() or 4000)
+_SHORTLIST_POLL_MAX_ATTEMPTS = int((os.getenv("SHORTLIST_POLL_MAX_ATTEMPTS") or "6").strip() or 6)
+_SHORTLIST_MAX_VISIBLE = 5
+
+
+def _rec_obs_counter(name: str, *, delta: int = 1) -> int:
+    try:
+        return int(bump_operational_counter(name, delta=int(delta)))
+    except Exception:
+        return 0
+
+
+def _rec_obs_event(event: str, **fields) -> None:
+    try:
+        payload = {
+            "component": "solicitud_recommendation",
+            "event": str(event or "").strip().lower()[:80],
+            "ts": iso_utc_z(utc_now_naive()),
+        }
+        for key, value in (fields or {}).items():
+            if value is None:
+                continue
+            payload[str(key)[:60]] = value
+        current_app.logger.info("[solrec-obs] %s", json.dumps(payload, ensure_ascii=True, sort_keys=True))
+    except Exception:
+        return
+
+
+def _support_whatsapp_number_digits() -> str:
+    raw = str(current_app.config.get("SUPPORT_WHATSAPP_NUMBER") or "").strip()
+    digits = re.sub(r"\D+", "", raw)
+    if digits:
+        return digits
+    return "18094296892"
+
+
+def _support_whatsapp_display() -> str:
+    configured = str(current_app.config.get("SUPPORT_WHATSAPP_DISPLAY") or "").strip()
+    if configured:
+        return configured
+    digits = _support_whatsapp_number_digits()
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits[0]} {digits[1:4]} {digits[4:7]} {digits[7:]}"
+    return f"+{digits}"
+
+
+def _support_whatsapp_url(*, message: str = "") -> str:
+    number = _support_whatsapp_number_digits()
+    text = str(message or "")
+    if not text:
+        return f"https://wa.me/{number}"
+    encoded = urllib.parse.quote(text, safe="")
+    return f"https://wa.me/{number}?text={encoded}"
 
 
 def _safe_location_summary(breakdown: dict) -> str:
@@ -5350,6 +5539,7 @@ def _build_shortlist_view_model(payload: dict) -> dict:
                     row.get("experiencia_resumen") or "Experiencia validada por el equipo de matching.",
                     max_len=140,
                 ),
+                "profile_photo_url": str(row.get("perfil_foto_data_url") or "").strip() or None,
                 "reasons": reasons[:3],
                 "compatibility_label": _clean_short_text(badge.get("label") or f"Compatibilidad {score_final}%", max_len=40),
                 "compatibility_tone": str(badge.get("tone") or "secondary"),
@@ -5357,14 +5547,191 @@ def _build_shortlist_view_model(payload: dict) -> dict:
             }
         )
 
+    cards = cards[:_SHORTLIST_MAX_VISIBLE]
+    run = data.get("run") if isinstance(data.get("run"), dict) else {}
+    counts = run.get("counts") if isinstance(run.get("counts"), dict) else {}
+    total_eligible = int(counts.get("eligible_count") or len(items) or 0)
+    hidden_eligible_count = max(0, total_eligible - len(cards))
+
     return {
         "state_code": state_code,
         "state_message": _clean_short_text(state.get("message") or _SHORTLIST_STATE_MESSAGES.get(state_code) or "", max_len=180),
         "cards": cards,
-        "visible_cards": cards[:3],
-        "extra_cards": cards[3:],
+        "visible_cards": cards,
+        "extra_cards": [],
+        "shortlist_limit": int(_SHORTLIST_MAX_VISIBLE),
+        "hidden_eligible_count": int(hidden_eligible_count),
         "selected_count": 0,
     }
+
+
+def _shortlist_selection_fingerprint(candidate_ids: list[int]) -> str:
+    ordered = sorted({int(x) for x in (candidate_ids or []) if int(x or 0) > 0})
+    if not ordered:
+        return ""
+    raw = ",".join(str(x) for x in ordered)
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+
+
+def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
+    empty = {
+        "count": 0,
+        "candidate_ids": [],
+        "candidate_names": [],
+        "selection_fingerprint": "",
+    }
+    if SolicitudRecommendationSelection is None or Candidata is None:
+        return empty
+
+    rows = (
+        SolicitudRecommendationSelection.query
+        .outerjoin(Candidata, Candidata.fila == SolicitudRecommendationSelection.candidata_id)
+        .filter(
+            SolicitudRecommendationSelection.solicitud_id == int(solicitud_id),
+            SolicitudRecommendationSelection.status == "valid",
+        )
+        .order_by(
+            SolicitudRecommendationSelection.validated_at.desc(),
+            SolicitudRecommendationSelection.id.desc(),
+        )
+        .all()
+    )
+    if not rows:
+        return empty
+
+    seen = set()
+    candidate_ids: list[int] = []
+    candidate_names: list[str] = []
+    for row in rows:
+        cid = int(getattr(row, "candidata_id", 0) or 0)
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        candidate_ids.append(cid)
+        cand = getattr(row, "candidata", None)
+        name = re.sub(r"\s+", " ", str(getattr(cand, "nombre_completo", "") or "")).strip()
+        if not name:
+            name = f"Candidata {cid}"
+        candidate_names.append(name[:80])
+
+    return {
+        "count": len(candidate_ids),
+        "candidate_ids": candidate_ids,
+        "candidate_names": candidate_names,
+        "selection_fingerprint": _shortlist_selection_fingerprint(candidate_ids),
+    }
+
+
+def _build_shortlist_chat_message(*, solicitud: Solicitud, candidate_names: list[str]) -> str:
+    codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
+    clean_names = [re.sub(r"\s+", " ", str(x or "")).strip()[:80] for x in (candidate_names or [])]
+    clean_names = [x for x in clean_names if x]
+    nombres = ", ".join(clean_names) if clean_names else "Sin candidatas"
+    return (
+        f"Hola, ya revisé la shortlist de mi solicitud y quiero continuar.\n"
+        f"Solicitud: {codigo}\n"
+        f"Candidatas seleccionadas: {nombres}\n"
+        f"Quiero continuar por este chat con esta selección."
+    )
+
+
+def _build_shortlist_whatsapp_message(*, solicitud: Solicitud, candidate_names: list[str]) -> str:
+    codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
+    clean_names = [re.sub(r"\s+", " ", str(x or "")).strip()[:80] for x in (candidate_names or [])]
+    clean_names = [x for x in clean_names if x]
+    nombres = ", ".join(clean_names) if clean_names else "Sin candidatas"
+    return (
+        f"Hola, ya revisé la shortlist de la solicitud {codigo} y quiero continuar. "
+        f"Candidatas seleccionadas: {nombres}."
+    )
+
+
+def _shortlist_intent_is_duplicate(*, recent_messages: list, solicitud_id: int, selection_fingerprint: str) -> bool:
+    sid = int(solicitud_id or 0)
+    fp = str(selection_fingerprint or "").strip()
+    if sid <= 0 or not fp:
+        return False
+    for msg in (recent_messages or []):
+        meta = getattr(msg, "meta", None)
+        if not isinstance(meta, dict):
+            continue
+        if str(meta.get("kind") or "").strip().lower() != "shortlist_selection_intent":
+            continue
+        if int(meta.get("solicitud_id") or 0) != sid:
+            continue
+        if str(meta.get("selection_fingerprint") or "").strip() == fp:
+            return True
+    return False
+
+
+def _post_shortlist_intent_message_to_chat(
+    *,
+    conversation,
+    solicitud_id: int,
+    message_body: str,
+    candidate_ids: list[int],
+    candidate_names: list[str],
+    selection_fingerprint: str,
+) -> dict:
+    recent_messages = (
+        ChatMessage.query
+        .filter_by(
+            conversation_id=int(getattr(conversation, "id", 0) or 0),
+            sender_type="cliente",
+            sender_cliente_id=int(getattr(current_user, "id", 0) or 0),
+            is_deleted=False,
+        )
+        .order_by(ChatMessage.id.desc())
+        .limit(20)
+        .all()
+    )
+    if _shortlist_intent_is_duplicate(
+        recent_messages=recent_messages,
+        solicitud_id=int(solicitud_id),
+        selection_fingerprint=selection_fingerprint,
+    ):
+        return {"ok": True, "created": False, "duplicate": True}
+
+    conv = _chat_cliente_conversation_for_update_or_404(int(getattr(conversation, "id", 0) or 0))
+    now = utc_now_naive()
+    msg = ChatMessage(
+        conversation_id=int(conv.id),
+        sender_type="cliente",
+        sender_cliente_id=int(getattr(current_user, "id", 0) or 0),
+        body=str(message_body or "")[:_CHAT_MESSAGE_MAX_LEN],
+        meta=e2e_message_meta(
+            {
+                "kind": "shortlist_selection_intent",
+                "solicitud_id": int(solicitud_id or 0),
+                "selection_fingerprint": str(selection_fingerprint or "")[:40],
+                "candidate_ids": [int(x) for x in (candidate_ids or []) if int(x or 0) > 0][:20],
+                "candidate_names": [str(x or "").strip()[:80] for x in (candidate_names or []) if str(x or "").strip()][:20],
+            }
+        ),
+        created_at=now,
+    )
+    db.session.add(msg)
+
+    conv.last_message_at = now
+    conv.last_message_preview = _chat_message_preview(str(message_body or ""))
+    conv.last_message_sender_type = "cliente"
+    conv.staff_unread_count = int(getattr(conv, "staff_unread_count", 0) or 0) + 1
+    prev_status = _chat_valid_status(getattr(conv, "status", None), default=_CHAT_STATUS_OPEN)
+    conv.status = _CHAT_STATUS_OPEN
+    conv.updated_at = now
+    db.session.add(conv)
+    db.session.flush()
+
+    _chat_set_typing_state(conversation_id=int(conv.id), actor_type="cliente", is_typing=False)
+    _chat_emit_event(event_type="CHAT_MESSAGE_CREATED", conversation=conv, message=msg)
+    if prev_status != _CHAT_STATUS_OPEN:
+        _chat_emit_event(
+            event_type="CHAT_CONVERSATION_STATUS_CHANGED",
+            conversation=conv,
+            reader_type="cliente",
+            extra_payload={"from": prev_status, "to": _CHAT_STATUS_OPEN},
+        )
+    return {"ok": True, "created": True, "duplicate": False, "message_id": int(getattr(msg, "id", 0) or 0)}
 
 
 def _candidate_public_payload(sc: SolicitudCandidata) -> dict:
@@ -5402,24 +5769,26 @@ def _get_cliente_sc_or_404(solicitud_id: int, sc_id: int) -> tuple[Solicitud, So
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist', methods=['GET'])
-@login_required
-@cliente_required
 def solicitud_shortlist(solicitud_id):
-    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
     service = SolicitudRecommendationService()
     payload = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
     status_code = 200
     state_code = str((payload.get("state") or {}).get("code") or "").strip().lower()
+    response = jsonify(payload)
+    response.headers["Cache-Control"] = _CACHE_STRICT_NO_STORE
+    response.headers["X-Shortlist-Poll-Base-Ms"] = str(max(1000, _SHORTLIST_POLL_BASE_MS))
+    response.headers["X-Shortlist-Poll-Max-Attempts"] = str(max(1, _SHORTLIST_POLL_MAX_ATTEMPTS))
+    if state_code in {"pending", "pending_refresh", "stale"}:
+        response.headers["Retry-After"] = str(max(1, int(max(1000, _SHORTLIST_POLL_BASE_MS) / 1000)))
     if state_code == "error":
         status_code = 500
-    return jsonify(payload), status_code
+    return response, status_code
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/validate-selection', methods=['POST'])
-@login_required
-@cliente_required
 def solicitud_shortlist_validate_selection(solicitud_id):
-    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
+    solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
 
     candidata_raw = None
     if request.is_json:
@@ -5439,18 +5808,20 @@ def solicitud_shortlist_validate_selection(solicitud_id):
     result = service.validate_client_selection(
         solicitud_id=int(solicitud.id),
         candidata_id=int(candidata_id),
-        selected_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
+        selected_by=(
+            f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
+            if _current_user_is_cliente()
+            else f"public_session:{int(solicitud.id)}"
+        ),
     )
     http_status = 200 if bool(result.get("ok")) else 409
     return jsonify(result), http_status
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/select', methods=['POST'])
-@login_required
-@cliente_required
 def solicitud_shortlist_submit_selection(solicitud_id):
-    solicitud = _get_solicitud_cliente_or_404(solicitud_id)
-    redirect_url = url_for("clientes.detalle_solicitud", id=solicitud.id) + "#shortlist-recomendaciones"
+    solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
+    redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
 
     raw_ids = request.form.getlist("candidata_ids")
     dedup_ids = []
@@ -5466,7 +5837,7 @@ def solicitud_shortlist_submit_selection(solicitud_id):
         dedup_ids.append(cid)
 
     if not dedup_ids:
-        flash("Selecciona al menos una candidata para registrar tu intención.", "warning")
+        flash("Para continuar, selecciona al menos una candidata.", "warning")
         return redirect(redirect_url)
 
     service = SolicitudRecommendationService()
@@ -5482,7 +5853,11 @@ def solicitud_shortlist_submit_selection(solicitud_id):
         result = service.validate_client_selection(
             solicitud_id=int(solicitud.id),
             candidata_id=int(cid),
-            selected_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
+            selected_by=(
+                f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
+                if _current_user_is_cliente()
+                else f"public_session:{int(solicitud.id)}"
+            ),
         )
         if bool(result.get("ok")):
             valid_count += 1
@@ -5490,16 +5865,130 @@ def solicitud_shortlist_submit_selection(solicitud_id):
             invalid_count += 1
 
     if valid_count > 0:
+        _rec_obs_counter("rec:usage:selection_submit_count")
+        _rec_obs_counter("rec:usage:selected_candidates_sum", delta=int(valid_count))
         flash(
-            f"Registramos tu selección de {valid_count} candidata{'s' if valid_count != 1 else ''}.",
+            f"Guardamos tu selección de {valid_count} candidata{'s' if valid_count != 1 else ''}.",
             "success",
         )
     if invalid_count > 0:
+        _rec_obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(invalid_count))
         flash(
-            f"{invalid_count} selección{'es' if invalid_count != 1 else ''} no pudieron validarse con el snapshot actual.",
+            f"No pudimos validar {invalid_count} selección{'es' if invalid_count != 1 else ''} porque la shortlist cambió. Puedes intentarlo de nuevo.",
             "warning",
         )
+    _rec_obs_event(
+        "shortlist_selection_submitted",
+        solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+        cliente_id=int(getattr(current_user, "id", 0) or 0) if _current_user_is_cliente() else 0,
+        requested_count=int(len(dedup_ids)),
+        valid_count=int(valid_count),
+        invalid_count=int(invalid_count),
+    )
     return redirect(redirect_url)
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/continue/chat', methods=['POST'])
+@login_required
+@cliente_required
+def solicitud_shortlist_continue_chat(solicitud_id):
+    solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
+    redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
+
+    if not _chat_enabled():
+        flash("El chat no está disponible en este momento. Intenta de nuevo más tarde.", "warning")
+        return redirect(redirect_url)
+
+    selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    if int(selection.get("count") or 0) <= 0:
+        flash("Selecciona al menos una candidata antes de continuar por chat.", "warning")
+        return redirect(redirect_url)
+
+    conv = _chat_get_or_create_conversation_for_cliente(
+        cliente_id=int(getattr(current_user, "id", 0) or 0),
+        solicitud_id=int(solicitud.id),
+    )
+    if conv is None:
+        flash("No pudimos abrir el chat de esta solicitud. Intenta nuevamente.", "warning")
+        return redirect(redirect_url)
+
+    msg_body = _build_shortlist_chat_message(
+        solicitud=solicitud,
+        candidate_names=list(selection.get("candidate_names") or []),
+    )
+
+    try:
+        send_result = _post_shortlist_intent_message_to_chat(
+            conversation=conv,
+            solicitud_id=int(solicitud.id),
+            message_body=msg_body,
+            candidate_ids=list(selection.get("candidate_ids") or []),
+            candidate_names=list(selection.get("candidate_names") or []),
+            selection_fingerprint=str(selection.get("selection_fingerprint") or ""),
+        )
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception(
+            "shortlist_continue_chat_failed solicitud_id=%s cliente_id=%s",
+            int(getattr(solicitud, "id", 0) or 0),
+            int(getattr(current_user, "id", 0) or 0),
+        )
+        flash("No pudimos registrar tu mensaje en el chat. Intenta nuevamente.", "warning")
+        return redirect(redirect_url)
+
+    if bool(send_result.get("duplicate")):
+        _rec_obs_event(
+            "shortlist_continue_chat",
+            solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+            cliente_id=int(getattr(current_user, "id", 0) or 0),
+            selected_count=int(selection.get("count") or 0),
+            duplicate=True,
+        )
+        flash("Ya habías enviado esta selección por chat.", "info")
+    elif bool(send_result.get("created")):
+        _rec_obs_counter("rec:usage:continue_chat_count")
+        _rec_obs_event(
+            "shortlist_continue_chat",
+            solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+            cliente_id=int(getattr(current_user, "id", 0) or 0),
+            selected_count=int(selection.get("count") or 0),
+            duplicate=False,
+        )
+        flash("Listo, registramos tu selección y abrimos el chat de esta solicitud.", "success")
+    else:
+        _rec_obs_event(
+            "shortlist_continue_chat",
+            solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+            cliente_id=int(getattr(current_user, "id", 0) or 0),
+            selected_count=int(selection.get("count") or 0),
+            duplicate=bool(send_result.get("duplicate")),
+        )
+
+    return redirect(url_for("clientes.chat_cliente", conversation_id=int(getattr(conv, "id", 0) or 0)))
+
+
+@clientes_bp.route('/solicitudes/<int:solicitud_id>/shortlist/continue/whatsapp', methods=['POST'])
+def solicitud_shortlist_continue_whatsapp(solicitud_id):
+    solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
+    redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
+    selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    if int(selection.get("count") or 0) <= 0:
+        flash("Selecciona al menos una candidata antes de continuar por WhatsApp.", "warning")
+        return redirect(redirect_url)
+
+    mensaje = _build_shortlist_whatsapp_message(
+        solicitud=solicitud,
+        candidate_names=list(selection.get("candidate_names") or []),
+    )
+    _rec_obs_counter("rec:usage:continue_whatsapp_count")
+    _rec_obs_event(
+        "shortlist_continue_whatsapp",
+        solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+        cliente_id=int(getattr(current_user, "id", 0) or 0) if _current_user_is_cliente() else 0,
+        selected_count=int(selection.get("count") or 0),
+    )
+    return redirect(_support_whatsapp_url(message=mensaje))
 
 
 @clientes_bp.route('/solicitudes/<int:solicitud_id>/candidatas')
@@ -5638,15 +6127,12 @@ def solicitar_entrevista_whatsapp(solicitud_id, sc_id):
             flash('No se pudo seleccionar esta candidata en este momento.', 'warning')
             return redirect(url_for('clientes.solicitud_candidatas', solicitud_id=solicitud.id))
 
-    cliente_nombre = (getattr(current_user, 'nombre_completo', None) or 'Cliente').strip()
     codigo_solicitud = getattr(solicitud, 'codigo_solicitud', None) or f"SOL-{solicitud.id}"
     codigo_candidata = getattr(sc.candidata, 'codigo', None) or '(sin código)'
     nombre_candidata = getattr(sc.candidata, 'nombre_completo', None) or 'Sin nombre'
 
     mensaje = f"Hola, quiero entrevistar a la candidata {nombre_candidata} ({codigo_candidata}). Solicitud {codigo_solicitud}."
-    encoded = urllib.parse.quote(mensaje, safe="")
-    agency_phone = "18094296892"
-    wa_url = f"https://wa.me/{agency_phone}?text={encoded}"
+    wa_url = _support_whatsapp_url(message=mensaje)
     return redirect(wa_url)
 
 
@@ -6131,7 +6617,11 @@ def solicitud_publica_nueva_token(token):
             and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
         )
         if show_success:
+            solicitud_id = int(success_state.get("solicitud_id") or 0)
             session.pop("public_new_solicitud_success", None)
+            if solicitud_id > 0:
+                _grant_public_recommendation_access(solicitud_id=solicitud_id)
+                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             return render_template(
                 'clientes/public_new_success.html',
                 cliente_nombre=str(success_state.get("cliente_nombre") or ""),
@@ -6450,8 +6940,9 @@ def solicitud_publica_nueva_token(token):
             )
 
             if result.ok:
+                solicitud_id = int(state.get("solicitud_id") or 0)
                 _trigger_recommendation_generation_safe(
-                    solicitud_id=int(state.get("solicitud_id") or 0),
+                    solicitud_id=solicitud_id,
                     trigger_source="public_link_new_cliente_create",
                     requested_by=f"public_new_cliente:{int(state.get('cliente_id') or 0)}",
                 )
@@ -6460,8 +6951,11 @@ def solicitud_publica_nueva_token(token):
                     "cliente_nombre": str(state.get("cliente_nombre") or ""),
                     "cliente_codigo": str(state.get("cliente_codigo") or ""),
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
-                    "solicitud_id": int(state.get("solicitud_id") or 0),
+                    "solicitud_id": solicitud_id,
                 }
+                if solicitud_id > 0:
+                    _grant_public_recommendation_access(solicitud_id=solicitud_id)
+                    return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
                 if share_code:
                     return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
                 if request.endpoint == "clientes.solicitud_publica_nueva_short":
@@ -6534,7 +7028,11 @@ def solicitud_publica(token):
             and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
         )
         if show_success:
+            solicitud_id = int(success_state.get("solicitud_id") or 0)
             session.pop("public_solicitud_success", None)
+            if solicitud_id > 0:
+                _grant_public_recommendation_access(solicitud_id=solicitud_id)
+                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             return render_template(
                 'clientes/public_link_success.html',
                 cliente_nombre=str(success_state.get("cliente_nombre") or ""),
@@ -6966,8 +7464,9 @@ def solicitud_publica(token):
         )
 
         if result.ok:
+            solicitud_id = int(solicitud_id_holder.get("value") or 0)
             _trigger_recommendation_generation_safe(
-                solicitud_id=int(solicitud_id_holder.get("value") or 0),
+                solicitud_id=solicitud_id,
                 trigger_source="public_link_existing_cliente_create",
                 requested_by=f"public_cliente:{int(getattr(c, 'id', 0) or 0)}",
             )
@@ -6988,8 +7487,11 @@ def solicitud_publica(token):
                 "token_hash": token_hash_storage,
                 "cliente_nombre": str(getattr(c, "nombre_completo", "") or ""),
                 "solicitud_codigo": str(codigo_holder.get("value") or ""),
-                "solicitud_id": int(solicitud_id_holder.get("value") or 0),
+                "solicitud_id": solicitud_id,
             }
+            if solicitud_id > 0:
+                _grant_public_recommendation_access(solicitud_id=solicitud_id)
+                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             if share_code:
                 return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
             if request.endpoint == "clientes.solicitud_publica_short":

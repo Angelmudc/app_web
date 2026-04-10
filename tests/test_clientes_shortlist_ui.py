@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import unquote
 
 from app import app as flask_app
 import clientes.routes as clientes_routes
@@ -33,9 +34,22 @@ class _SolicitudCandidataQuery:
         return self.rows
 
 
+class _SolicitudCreateQuery:
+    def filter_by(self, **kwargs):
+        return self
+
+    def count(self):
+        return 0
+
+    def first(self):
+        return None
+
+
 def _unwrap_cliente_view(fn):
     out = fn
-    for _ in range(2):  # login_required + cliente_required
+    for _ in range(5):
+        if not hasattr(out, "__wrapped__"):
+            break
         out = out.__wrapped__
     return out
 
@@ -79,6 +93,7 @@ def _shortlist_item(cid: int, name: str) -> dict:
         "compatibility_badge": {"label": "Compatibilidad media", "tone": "warning"},
         "ubicacion_resumen": "Santiago · Sectores cercanos: villa, maria",
         "experiencia_resumen": "5 años de experiencia en limpieza y cocina",
+        "perfil_foto_data_url": "data:image/png;base64,AAAA",
         "reasons": [
             "La modalidad de trabajo es compatible con lo que solicitaste.",
             "El horario disponible coincide con tus necesidades.",
@@ -107,17 +122,23 @@ def test_build_shortlist_vm_states_and_visibility():
     ready_vm = clientes_routes._build_shortlist_view_model(
         {
             "state": {"code": "ready", "message": "Shortlist disponible."},
+            "run": {"counts": {"eligible_count": 6}},
             "items": [
                 _shortlist_item(101, "Ana"),
                 _shortlist_item(102, "Luz"),
                 _shortlist_item(103, "Marta"),
                 _shortlist_item(104, "Carla"),
+                _shortlist_item(105, "Sara"),
+                _shortlist_item(106, "Diana"),
             ],
         }
     )
     assert ready_vm["state_code"] == "ready"
-    assert len(ready_vm["visible_cards"]) == 3
-    assert len(ready_vm["extra_cards"]) == 1
+    assert len(ready_vm["visible_cards"]) == 5
+    assert len(ready_vm["extra_cards"]) == 0
+    assert ready_vm["hidden_eligible_count"] == 1
+    assert ready_vm["shortlist_limit"] == 5
+    assert str(ready_vm["visible_cards"][0]["profile_photo_url"] or "").startswith("data:image/png;base64,")
 
     empty_vm = clientes_routes._build_shortlist_view_model({"state": {"code": "ready", "message": "ok"}, "items": []})
     assert empty_vm["state_code"] == "empty"
@@ -132,6 +153,63 @@ def test_build_shortlist_vm_states_and_visibility():
     assert stale_vm["state_code"] == "stale"
 
 
+def test_nueva_solicitud_redirects_to_recomendaciones_after_create():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(
+        id=7,
+        is_authenticated=True,
+        role="cliente",
+        codigo="CL-007",
+        total_solicitudes=0,
+        fecha_ultima_solicitud=None,
+        fecha_ultima_actividad=None,
+    )
+    target = _unwrap_cliente_view(clientes_routes.nueva_solicitud)
+    fake_form = SimpleNamespace(
+        areas_comunes=SimpleNamespace(choices=[], data=[]),
+        funciones=SimpleNamespace(data=[]),
+        edad_requerida=SimpleNamespace(choices=[], data=[]),
+        dos_pisos=SimpleNamespace(data=False),
+        pasaje_aporte=SimpleNamespace(data=False),
+        modalidad_trabajo=SimpleNamespace(data=""),
+        area_otro=SimpleNamespace(data=""),
+        nota_cliente=SimpleNamespace(data=""),
+        sueldo=SimpleNamespace(data=""),
+    )
+    fake_form.validate_on_submit = lambda: True
+    fake_form.populate_obj = lambda _obj: None
+
+    def _db_add_side_effect(obj):
+        if getattr(obj, "codigo_solicitud", None) and int(getattr(obj, "id", 0) or 0) <= 0:
+            setattr(obj, "id", 123)
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "SolicitudForm", return_value=fake_form), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudCreateQuery()), \
+             patch.object(clientes_routes, "compose_codigo_solicitud", return_value="CL-007-A"), \
+             patch.object(clientes_routes, "enforce_business_limit", return_value=(False, {})), \
+             patch.object(clientes_routes, "enforce_min_human_interval", return_value=(False, {})), \
+             patch.object(clientes_routes, "_cliente_active_solicitudes_count", return_value=0), \
+             patch.object(clientes_routes, "_prevent_double_post", return_value=True), \
+             patch.object(clientes_routes, "_cache_ok", return_value=False), \
+             patch.object(clientes_routes, "_emit_cliente_outbox_event", return_value=None), \
+             patch.object(clientes_routes, "_clear_cliente_solicitud_draft", return_value=None), \
+             patch.object(clientes_routes, "flash", return_value=None), \
+             patch.object(clientes_routes.db.session, "add", side_effect=_db_add_side_effect), \
+             patch.object(clientes_routes.db.session, "flush", return_value=None), \
+             patch.object(clientes_routes.db.session, "commit", return_value=None), \
+             patch.object(clientes_routes, "_trigger_recommendation_generation_safe", return_value=None) as trigger_mock:
+            with flask_app.test_request_context("/clientes/solicitudes/nueva", method="POST", data={"wizard_step": "1"}):
+                resp = target()
+
+    assert resp.status_code == 302
+    assert "/clientes/solicitudes/123/recomendaciones" in (resp.location or "")
+    trigger_mock.assert_called_once()
+    assert trigger_mock.call_args.kwargs.get("solicitud_id") == 123
+
+
 def test_detalle_solicitud_includes_shortlist_ready_vm():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -142,6 +220,7 @@ def test_detalle_solicitud_includes_shortlist_ready_vm():
     fake_service = _FakeRecommendationService(
         shortlist_payload={
             "state": {"code": "ready", "message": "Shortlist disponible."},
+            "run": {"counts": {"eligible_count": 4}},
             "items": [
                 _shortlist_item(101, "Ana"),
                 _shortlist_item(102, "Luz"),
@@ -163,8 +242,8 @@ def test_detalle_solicitud_includes_shortlist_ready_vm():
 
     shortlist_vm = out["ctx"]["shortlist_vm"]
     assert shortlist_vm["state_code"] == "ready"
-    assert len(shortlist_vm["visible_cards"]) == 3
-    assert len(shortlist_vm["extra_cards"]) == 1
+    assert len(shortlist_vm["visible_cards"]) == 4
+    assert len(shortlist_vm["extra_cards"]) == 0
     assert out["template"] == "clientes/solicitud_detail.html"
 
 
@@ -200,6 +279,146 @@ def test_detalle_solicitud_includes_shortlist_pending_and_error():
                 assert out_error["ctx"]["shortlist_vm"]["state_code"] == "error"
 
 
+def test_detalle_solicitud_includes_shortlist_selection_for_channel_cta():
+    flask_app.config["TESTING"] = True
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    detalle_target = _unwrap_cliente_view(clientes_routes.detalle_solicitud)
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery([])), \
+             patch.object(clientes_routes, "_chat_enabled", return_value=True), \
+             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 2, "candidate_ids": [101, 102], "candidate_names": ["Ana", "Luz"], "selection_fingerprint": "fp-1"}), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=_FakeRecommendationService(shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]})), \
+             patch.object(clientes_routes, "render_template", side_effect=lambda template, **ctx: {"template": template, "ctx": ctx}):
+            with flask_app.test_request_context("/clientes/solicitudes/10", method="GET"):
+                out = detalle_target(10)
+
+    selection = out["ctx"]["shortlist_selection"]
+    assert int(selection["count"]) == 2
+    assert selection["candidate_names"] == ["Ana", "Luz"]
+
+
+def test_build_shortlist_channel_messages_include_request_and_candidates():
+    solicitud = _make_solicitud(codigo_solicitud="SOL-ABC")
+    chat_msg = clientes_routes._build_shortlist_chat_message(
+        solicitud=solicitud,
+        candidate_names=["Ana", "Luz"],
+    )
+    wa_msg = clientes_routes._build_shortlist_whatsapp_message(
+        solicitud=solicitud,
+        candidate_names=["Ana", "Luz"],
+    )
+    assert "SOL-ABC" in chat_msg
+    assert "Ana, Luz" in chat_msg
+    assert "continuar por este chat" in chat_msg.lower()
+    assert "SOL-ABC" in wa_msg
+    assert "Ana, Luz" in wa_msg
+
+
+def test_shortlist_continue_chat_redirects_to_conversation_with_intent_message():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    continue_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_chat)
+    conv = SimpleNamespace(id=333)
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_chat_enabled", return_value=True), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 2, "candidate_ids": [101, 102], "candidate_names": ["Ana", "Luz"], "selection_fingerprint": "fp-1"}), \
+             patch.object(clientes_routes, "_chat_get_or_create_conversation_for_cliente", return_value=conv), \
+             patch.object(clientes_routes, "_post_shortlist_intent_message_to_chat", return_value={"ok": True, "created": True, "duplicate": False}), \
+             patch.object(clientes_routes.db.session, "commit", return_value=None):
+            with flask_app.test_request_context(
+                "/clientes/solicitudes/10/shortlist/continue/chat",
+                method="POST",
+                data={},
+            ):
+                resp = continue_target(10)
+
+    assert resp.status_code == 302
+    assert "conversation_id=333" in (resp.location or "")
+
+
+def test_shortlist_continue_whatsapp_builds_prefilled_message():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    prev_phone = flask_app.config.get("SUPPORT_WHATSAPP_NUMBER")
+    flask_app.config["SUPPORT_WHATSAPP_NUMBER"] = "15551234567"
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud(codigo_solicitud="SOL-010")
+    continue_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_whatsapp)
+
+    try:
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", fake_user), \
+                 patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 2, "candidate_ids": [101, 102], "candidate_names": ["Ana", "Luz"], "selection_fingerprint": "fp-1"}):
+                with flask_app.test_request_context(
+                    "/clientes/solicitudes/10/shortlist/continue/whatsapp",
+                    method="POST",
+                    data={},
+                ):
+                    resp = continue_target(10)
+
+        assert resp.status_code == 302
+        assert "https://wa.me/15551234567?text=" in (resp.location or "")
+        decoded = unquote(resp.location or "")
+        assert "SOL-010" in decoded
+        assert "Ana, Luz" in decoded
+    finally:
+        if prev_phone is None:
+            flask_app.config.pop("SUPPORT_WHATSAPP_NUMBER", None)
+        else:
+            flask_app.config["SUPPORT_WHATSAPP_NUMBER"] = prev_phone
+
+
+def test_shortlist_continue_channel_without_selection_redirects_back():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    chat_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_chat)
+    wa_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_whatsapp)
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_chat_enabled", return_value=True), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 0, "candidate_ids": [], "candidate_names": [], "selection_fingerprint": ""}):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist/continue/chat", method="POST", data={}):
+                resp_chat = chat_target(10)
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist/continue/whatsapp", method="POST", data={}):
+                resp_wa = wa_target(10)
+
+    assert resp_chat.status_code == 302
+    assert "shortlist-recomendaciones" in (resp_chat.location or "")
+    assert resp_wa.status_code == 302
+    assert "shortlist-recomendaciones" in (resp_wa.location or "")
+
+
+def test_shortlist_intent_duplicate_detection_uses_fingerprint():
+    recent = [
+        SimpleNamespace(meta={"kind": "shortlist_selection_intent", "solicitud_id": 10, "selection_fingerprint": "abc"}),
+        SimpleNamespace(meta={"kind": "other_kind", "solicitud_id": 10, "selection_fingerprint": "abc"}),
+    ]
+    assert clientes_routes._shortlist_intent_is_duplicate(
+        recent_messages=recent,
+        solicitud_id=10,
+        selection_fingerprint="abc",
+    ) is True
+    assert clientes_routes._shortlist_intent_is_duplicate(
+        recent_messages=recent,
+        solicitud_id=10,
+        selection_fingerprint="zzz",
+    ) is False
+
+
 def test_shortlist_submit_selection_multiple_records_intent():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -215,7 +434,7 @@ def test_shortlist_submit_selection_multiple_records_intent():
 
     with flask_app.app_context():
         with patch.object(clientes_routes, "current_user", fake_user), \
-             patch.object(clientes_routes, "_get_solicitud_cliente_or_404", return_value=solicitud), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
              patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
             with flask_app.test_request_context(
                 "/clientes/solicitudes/10/shortlist/select",
@@ -244,7 +463,7 @@ def test_shortlist_submit_selection_pending_is_blocked():
 
     with flask_app.app_context():
         with patch.object(clientes_routes, "current_user", fake_user), \
-             patch.object(clientes_routes, "_get_solicitud_cliente_or_404", return_value=solicitud), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
              patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
             with flask_app.test_request_context(
                 "/clientes/solicitudes/10/shortlist/select",
@@ -255,3 +474,209 @@ def test_shortlist_submit_selection_pending_is_blocked():
 
     assert resp.status_code == 302
     assert calls == []
+
+
+def test_trigger_recommendation_generation_safe_uses_async_request():
+    flask_app.config["TESTING"] = True
+    captured = {}
+
+    class _Svc:
+        def request_generation(self, solicitud_id, **kwargs):
+            captured["solicitud_id"] = int(solicitud_id)
+            captured["kwargs"] = dict(kwargs)
+            return None
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "SolicitudRecommendationService", return_value=_Svc()):
+            clientes_routes._trigger_recommendation_generation_safe(
+                solicitud_id=10,
+                trigger_source="pytest",
+                requested_by="pytest:user",
+            )
+
+    assert captured["solicitud_id"] == 10
+    assert captured["kwargs"].get("synchronous") is False
+    assert captured["kwargs"].get("dispatch_async") is True
+
+
+def test_shortlist_endpoint_sets_polling_headers_for_pending():
+    flask_app.config["TESTING"] = True
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    endpoint = _unwrap_cliente_view(clientes_routes.solicitud_shortlist)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "pending", "message": "progreso"}, "items": []},
+    )
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist", method="GET"):
+                response, status_code = endpoint(10)
+
+    assert status_code == 200
+    assert response.headers.get("Retry-After")
+    assert response.headers.get("X-Shortlist-Poll-Base-Ms")
+    assert response.headers.get("X-Shortlist-Poll-Max-Attempts")
+
+
+def test_shortlist_endpoint_returns_500_on_error():
+    flask_app.config["TESTING"] = True
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    endpoint = _unwrap_cliente_view(clientes_routes.solicitud_shortlist)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "error", "message": "fallo"}, "items": []},
+    )
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist", method="GET"):
+                _response, status_code = endpoint(10)
+
+    assert status_code == 500
+
+
+def test_detalle_solicitud_shortlist_view_increments_usage_counter():
+    flask_app.config["TESTING"] = True
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    detalle_target = _unwrap_cliente_view(clientes_routes.detalle_solicitud)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]},
+    )
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery([])), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service), \
+             patch.object(clientes_routes, "_chat_enabled", return_value=True), \
+             patch.object(clientes_routes, "_rec_obs_counter", return_value=1) as counter_mock, \
+             patch.object(clientes_routes, "_rec_obs_event", return_value=None), \
+             patch.object(clientes_routes, "render_template", side_effect=lambda template, **ctx: {"template": template, "ctx": ctx}):
+            with flask_app.test_request_context("/clientes/solicitudes/10", method="GET"):
+                _ = detalle_target(10)
+
+    called_metrics = [str(c.args[0]) for c in counter_mock.call_args_list if c.args]
+    assert "rec:usage:shortlist_view_count" in called_metrics
+
+
+def test_shortlist_submit_selection_updates_usage_counters():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud()
+    submit_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_submit_selection)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]},
+        validate_ok=True,
+    )
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service), \
+             patch.object(clientes_routes, "_rec_obs_counter", return_value=1) as counter_mock, \
+             patch.object(clientes_routes, "_rec_obs_event", return_value=None):
+            with flask_app.test_request_context(
+                "/clientes/solicitudes/10/shortlist/select",
+                method="POST",
+                data={"candidata_ids": ["101"]},
+            ):
+                resp = submit_target(10)
+
+    assert resp.status_code == 302
+    called_metrics = [str(c.args[0]) for c in counter_mock.call_args_list if c.args]
+    assert "rec:usage:selection_submit_count" in called_metrics
+    assert "rec:usage:selected_candidates_sum" in called_metrics
+
+
+def test_shortlist_continue_whatsapp_updates_usage_counter():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=7, is_authenticated=True)
+    solicitud = _make_solicitud(codigo_solicitud="SOL-010")
+    target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_whatsapp)
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
+             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 1, "candidate_ids": [101], "candidate_names": ["Ana"], "selection_fingerprint": "fp-1"}), \
+             patch.object(clientes_routes, "_rec_obs_counter", return_value=1) as counter_mock, \
+             patch.object(clientes_routes, "_rec_obs_event", return_value=None):
+            with flask_app.test_request_context(
+                "/clientes/solicitudes/10/shortlist/continue/whatsapp",
+                method="POST",
+                data={},
+            ):
+                resp = target(10)
+
+    assert resp.status_code == 302
+    called_metrics = [str(c.args[0]) for c in counter_mock.call_args_list if c.args]
+    assert "rec:usage:continue_whatsapp_count" in called_metrics
+
+
+def test_public_shortlist_submit_selection_with_temporary_access():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=0, is_authenticated=False, role=None)
+    solicitud = _make_solicitud()
+    submit_target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_submit_selection)
+    calls = []
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]},
+        validate_calls=calls,
+        validate_ok=True,
+    )
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
+            with flask_app.test_request_context(
+                "/clientes/solicitudes/10/shortlist/select",
+                method="POST",
+                data={"candidata_ids": ["101"]},
+            ):
+                clientes_routes.session[clientes_routes._PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = [10]
+                resp = submit_target(10)
+
+    assert resp.status_code == 302
+    assert "shortlist-recomendaciones" in (resp.location or "")
+    assert calls == [101]
+
+
+def test_public_shortlist_continue_whatsapp_with_temporary_access():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    prev_phone = flask_app.config.get("SUPPORT_WHATSAPP_NUMBER")
+    flask_app.config["SUPPORT_WHATSAPP_NUMBER"] = "15551234567"
+    fake_user = SimpleNamespace(id=0, is_authenticated=False, role=None)
+    solicitud = _make_solicitud(codigo_solicitud="SOL-010")
+    target = _unwrap_cliente_view(clientes_routes.solicitud_shortlist_continue_whatsapp)
+
+    try:
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", fake_user), \
+                 patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 1, "candidate_ids": [101], "candidate_names": ["Ana"], "selection_fingerprint": "fp-1"}):
+                with flask_app.test_request_context(
+                    "/clientes/solicitudes/10/shortlist/continue/whatsapp",
+                    method="POST",
+                    data={},
+                ):
+                    clientes_routes.session[clientes_routes._PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = [10]
+                    resp = target(10)
+
+        assert resp.status_code == 302
+        assert "https://wa.me/15551234567?text=" in (resp.location or "")
+        assert "SOL-010" in unquote(resp.location or "")
+    finally:
+        if prev_phone is None:
+            flask_app.config.pop("SUPPORT_WHATSAPP_NUMBER", None)
+        else:
+            flask_app.config["SUPPORT_WHATSAPP_NUMBER"] = prev_phone

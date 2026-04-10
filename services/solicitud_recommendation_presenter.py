@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import base64
 import re
 from typing import Any
 
@@ -72,6 +73,55 @@ def _safe_experience_summary(cand) -> str:
     return ""
 
 
+def _to_blob_bytes(value: Any) -> bytes:
+    if value is None:
+        return b""
+    if isinstance(value, memoryview):
+        try:
+            return value.tobytes()
+        except Exception:
+            return b""
+    if isinstance(value, bytearray):
+        return bytes(value)
+    if isinstance(value, bytes):
+        return value
+    try:
+        return bytes(value)
+    except Exception:
+        return b""
+
+
+def _detect_image_mimetype(data: bytes) -> str:
+    if not data:
+        return ""
+    head = data[:12]
+    if head.startswith(b"\x89PNG"):
+        return "image/png"
+    if head.startswith(b"\xFF\xD8\xFF"):
+        return "image/jpeg"
+    if head[:4] == b"GIF8":
+        return "image/gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return ""
+
+
+def _safe_perfil_photo_data_url(cand) -> str | None:
+    if cand is None:
+        return None
+    blob = _to_blob_bytes(getattr(cand, "perfil", None))
+    if not blob:
+        return None
+    mimetype = _detect_image_mimetype(blob)
+    if not mimetype:
+        return None
+    # Evita inflar el payload de shortlist con blobs demasiado pesados.
+    if len(blob) > 1_500_000:
+        return None
+    encoded = base64.b64encode(blob).decode("ascii")
+    return f"data:{mimetype};base64,{encoded}"
+
+
 def _compatibility_badge(*, score_final: int, confidence_band: str) -> dict[str, str]:
     score = int(score_final or 0)
     band = str(confidence_band or "").strip().lower()
@@ -127,6 +177,7 @@ def present_shortlist_payload(
                 "reasons": client_bullets_from_breakdown(breakdown)[:3],
                 "ubicacion_resumen": _safe_location_summary(breakdown),
                 "experiencia_resumen": _safe_experience_summary(cand),
+                "perfil_foto_data_url": _safe_perfil_photo_data_url(cand),
                 "compatibility_badge": _compatibility_badge(
                     score_final=score_final,
                     confidence_band=confidence_band,
