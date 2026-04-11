@@ -103,9 +103,10 @@
 }
 
 :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-photo-wrap {
-  width: 52px;
-  height: 52px;
-  min-width: 52px;
+  width: 100px;
+  height: 100px;
+  min-width: 100px;
+  flex: 0 0 100px;
 }
 
 :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-photo {
@@ -125,6 +126,22 @@
   font-weight: 700;
   font-size: 1rem;
   background: linear-gradient(135deg, #eef5ff, #e2edf8);
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-ident {
+  min-width: 0;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-copy {
+  min-width: 0;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-name {
+  line-height: 1.2;
+}
+
+:where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-meta {
+  line-height: 1.35;
 }
 
 :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-more summary {
@@ -149,6 +166,13 @@
   :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-cards-scroll {
     max-height: min(58vh, 28rem);
     padding-right: 0;
+  }
+
+  :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-card-photo-wrap {
+    width: 78px;
+    height: 78px;
+    min-width: 78px;
+    flex-basis: 78px;
   }
 
   :where(body.clientes, [data-portal="clientes"]) .solicitud-shortlist-block .shortlist-next-step-ctas form {

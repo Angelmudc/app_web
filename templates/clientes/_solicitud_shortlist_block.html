@@ -52,8 +52,8 @@
             {% for card in shortlist_vm.visible_cards %}
               <div class="col-12">
                 <label class="shortlist-card card h-100 border-0 shadow-sm p-3">
-                  <div class="d-flex justify-content-between align-items-start gap-2">
-                    <div class="d-flex align-items-start gap-2">
+                  <div class="d-flex justify-content-between align-items-start gap-2 shortlist-card-head">
+                    <div class="d-flex align-items-start gap-3 shortlist-card-ident">
                       <div class="shortlist-card-photo-wrap">
                         {% if card.profile_photo_url %}
                         <img
@@ -68,9 +68,9 @@
                         </div>
                         {% endif %}
                       </div>
-                      <div>
-                        <div class="fw-semibold">{{ card.name }}</div>
-                        <div class="small text-muted">{{ card.edad }} años · {{ card.location }}</div>
+                      <div class="shortlist-card-copy">
+                        <div class="fw-semibold shortlist-card-name">{{ card.name }}</div>
+                        <div class="small text-muted shortlist-card-meta">{{ card.edad }} años · {{ card.location }}</div>
                       </div>
                     </div>
                     <span class="badge text-bg-{{ card.compatibility_tone }}">{{ card.compatibility_label }}</span>
@@ -106,15 +106,32 @@
         </div>
         {% endif %}
 
-        <div class="d-flex justify-content-end mt-3">
-          <button type="submit" class="btn btn-primary" data-shortlist-submit disabled>
-            Guardar selección
+        <div class="d-flex flex-wrap justify-content-end gap-2 mt-3">
+          {% if shortlist_allow_chat_cta %}
+          <button
+            type="submit"
+            class="btn btn-primary"
+            formaction="{{ url_for('clientes.solicitud_shortlist_continue_chat', solicitud_id=s.id) }}"
+            data-shortlist-continue
+            disabled
+          >
+            <i class="bi bi-chat-left-text me-1"></i> Continuar por chat
+          </button>
+          {% endif %}
+          <button
+            type="submit"
+            class="btn btn-outline-success"
+            formaction="{{ url_for('clientes.solicitud_shortlist_continue_whatsapp', solicitud_id=s.id) }}"
+            data-shortlist-continue
+            disabled
+          >
+            <i class="bi bi-whatsapp me-1"></i> Continuar por WhatsApp
           </button>
         </div>
       </form>
     {% endif %}
 
-    {% if shortlist_selection and (shortlist_selection.count or 0) > 0 %}
+    {% if shortlist_state != 'ready' and shortlist_selection and (shortlist_selection.count or 0) > 0 %}
     {% set selected_count = (shortlist_selection.count or 0) %}
     {% set selected_names = shortlist_selection.candidate_names or [] %}
     {% set selected_preview = selected_names[:3] %}

@@ -23,33 +23,10 @@ def _clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value)).strip()
 
 
-def _token_hint(value: Any, *, limit: int = 2) -> str:
-    text = _clean_text(value).lower()
-    if not text:
-        return ""
-    tokens = re.findall(r"[a-z0-9áéíóúñ]{2,24}", text)
-    blocked = {"tokens", "coinciden", "rutas", "ruta", "ciudad", "detectada", "sin", "datos"}
-    out: list[str] = []
-    for tok in tokens:
-        if tok in blocked or tok in out:
-            continue
-        out.append(tok)
-        if len(out) >= limit:
-            break
-    return ", ".join(out)
-
-
 def _safe_location_summary(breakdown: dict) -> str:
     bd = breakdown if isinstance(breakdown, dict) else {}
     city = _clean_text(bd.get("city_detectada"))
-    tokens = _token_hint(bd.get("tokens_match"), limit=2)
-    if city and tokens:
-        return f"{city} · Sectores cercanos: {tokens}"
-    if city:
-        return city
-    if tokens:
-        return f"Sectores cercanos: {tokens}"
-    return ""
+    return city if city else ""
 
 
 def _safe_experience_summary(cand) -> str:

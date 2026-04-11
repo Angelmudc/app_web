@@ -1425,7 +1425,7 @@
     form.setAttribute('data-shortlist-bound', '1');
 
     const counter = form.querySelector('[data-shortlist-count]');
-    const submitBtn = form.querySelector('[data-shortlist-submit]');
+    const continueBtns = Array.from(form.querySelectorAll('[data-shortlist-continue]'));
     const checkboxes = Array.from(form.querySelectorAll('input[type="checkbox"][name="candidata_ids"]'));
 
     const sync = () => {
@@ -1433,9 +1433,9 @@
       if (counter) {
         counter.textContent = `${selected} seleccionada${selected === 1 ? '' : 's'}`;
       }
-      if (submitBtn) {
-        submitBtn.disabled = selected <= 0;
-      }
+      continueBtns.forEach((btn) => {
+        btn.disabled = selected <= 0;
+      });
     };
 
     form.addEventListener('change', (evt) => {

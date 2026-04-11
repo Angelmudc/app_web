@@ -151,7 +151,20 @@ _CACHE_REALTIME = "no-cache, must-revalidate, max-age=0"
 CLIENTE_CODIGO_PUBLICO_MIN = 2152
 PUBLIC_SHARE_CODE_LENGTH = 10
 PUBLIC_SHARE_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-BUSINESS_ACTIVE_SOLICITUD_STATES = {"proceso", "activa", "reemplazo", "espera_pago"}
+BUSINESS_TERMINAL_SOLICITUD_STATES = {
+    "cancelada",
+    "cancelado",
+    "finalizada",
+    "finalizado",
+    "cerrada",
+    "cerrado",
+}
+BUSINESS_ACTIVE_SOLICITUD_STATES = {
+    "proceso",
+    "activa",
+    "espera_pago",
+    "reemplazo",
+}
 BUSINESS_MAX_CLIENTE_CREACIONES_DIA = int((os.getenv("BUSINESS_MAX_CLIENTE_CREACIONES_DIA") or "6").strip() or 6)
 BUSINESS_MAX_CLIENTE_ACTIVAS = int((os.getenv("BUSINESS_MAX_CLIENTE_ACTIVAS") or "4").strip() or 4)
 BUSINESS_MAX_PUBLIC_IP_DIA = int((os.getenv("BUSINESS_MAX_PUBLIC_IP_DIA") or "20").strip() or 20)
@@ -178,6 +191,10 @@ def _trigger_recommendation_generation_safe(*, solicitud_id: int, trigger_source
             dispatch_async=True,
         )
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         current_app.logger.exception(
             "solicitud_recommendation.trigger_failed solicitud_id=%s source=%s",
             int(solicitud_id),
@@ -383,21 +400,43 @@ def _get_plan_solicitud(s: 'Solicitud') -> str:
     return ''
 
 
-def _cliente_active_solicitudes_count(cliente_id: int) -> int:
+def _cliente_active_solicitudes_count(cliente_id: int) -> Optional[int]:
+    cid = 0
     try:
         cid = int(cliente_id or 0)
         if cid <= 0:
             return 0
+        estado_text = db.func.lower(db.cast(Solicitud.estado, db.String))
         return (
             Solicitud.query
             .filter(
                 Solicitud.cliente_id == cid,
-                Solicitud.estado.in_(tuple(BUSINESS_ACTIVE_SOLICITUD_STATES)),
+                estado_text.in_(tuple(BUSINESS_ACTIVE_SOLICITUD_STATES)),
             )
             .count()
         )
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            current_app.logger.exception(
+                "cliente_active_solicitudes_count_failed cliente_id=%s",
+                int(cid or 0),
+            )
+        except Exception:
+            pass
+        return None
     except Exception:
-        return 0
+        try:
+            current_app.logger.exception(
+                "cliente_active_solicitudes_count_unexpected_failed cliente_id=%s",
+                int(cid or 0),
+            )
+        except Exception:
+            pass
+        return None
 
 
 def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
@@ -3274,6 +3313,21 @@ def nueva_solicitud():
             return redirect(url_for('clientes.listar_solicitudes'))
 
         active_count = _cliente_active_solicitudes_count(int(getattr(current_user, 'id', 0) or 0))
+        if active_count is None:
+            log_action(
+                action_type="BUSINESS_FLOW_BLOCKED",
+                entity_type="cliente",
+                entity_id=int(getattr(current_user, 'id', 0) or 0),
+                summary="No se pudo validar solicitudes activas",
+                metadata={
+                    "rule": "active_solicitudes_validation_failed",
+                    "route": (request.path or ""),
+                },
+                success=False,
+                error="active_solicitudes_validation_failed",
+            )
+            flash("No pudimos validar tus solicitudes en este momento. Intenta de nuevo.", "warning")
+            return redirect(url_for('clientes.listar_solicitudes'))
         if active_count >= BUSINESS_MAX_CLIENTE_ACTIVAS:
             log_action(
                 action_type="BUSINESS_FLOW_BLOCKED",
@@ -3289,7 +3343,10 @@ def nueva_solicitud():
                 success=False,
                 error="max_active_solicitudes_reached",
             )
-            flash('Tienes demasiadas solicitudes activas en este momento. Gestiona las actuales antes de crear otra.', 'warning')
+            flash(
+                f"Ya tienes {int(BUSINESS_MAX_CLIENTE_ACTIVAS)} solicitudes en proceso. Gestiona una para crear una nueva.",
+                'warning',
+            )
             return redirect(url_for('clientes.listar_solicitudes'))
 
         # Anti doble submit (global, sin JS)
@@ -3466,6 +3523,20 @@ def nueva_solicitud():
                 pass
 
             flash(msg, 'danger')
+        except Exception:
+            db.session.rollback()
+            # Si falló, liberar dedupe para permitir reintento limpio
+            try:
+                if dedupe_key and _cache_ok():
+                    _cache_del(cache, dedupe_key)
+            except Exception:
+                pass
+            try:
+                current_app.logger.exception("ERROR creando solicitud (cliente)")
+            except Exception:
+                pass
+
+            flash('No se pudo crear la solicitud. Intenta de nuevo.', 'danger')
         finally:
             # Liberar lock corto (si existe)
             try:
@@ -5474,28 +5545,8 @@ def _safe_location_summary(breakdown: dict) -> str:
     def _clean(v):
         return re.sub(r'\s+', ' ', str(v or '')).strip()
 
-    def _tokens(v):
-        raw = _clean(v).lower()
-        found = re.findall(r'[a-z0-9áéíóúñ]{2,24}', raw)
-        blocked = {'tokens', 'coinciden', 'rutas', 'ruta', 'ciudad', 'detectada', 'sin', 'datos'}
-        keep = []
-        for tok in found:
-            if tok in blocked or tok in keep:
-                continue
-            keep.append(tok)
-            if len(keep) >= 2:
-                break
-        return keep
-
     city = _clean(breakdown.get('city_detectada'))
-    sector_tokens = _tokens(breakdown.get('tokens_match'))
-    if city and sector_tokens:
-        return f"{city} · Sectores cercanos: {', '.join(sector_tokens)}"
-    if city:
-        return city
-    if sector_tokens:
-        return f"Sectores cercanos: {', '.join(sector_tokens)}"
-    return ''
+    return city if city else ''
 
 
 def _clean_short_text(value, *, max_len: int = 180) -> str:
@@ -5503,6 +5554,18 @@ def _clean_short_text(value, *, max_len: int = 180) -> str:
     if len(text) <= max_len:
         return text
     return text[: max(0, max_len - 1)].rstrip() + "…"
+
+
+def _shortlist_city_only(value) -> str:
+    text = _clean_short_text(value or "", max_len=90)
+    if not text:
+        return ""
+    if "sectores cercanos" in text.lower():
+        head = text.split("·", 1)[0].strip()
+        if head and "sectores cercanos" not in head.lower():
+            return head
+        return ""
+    return text
 
 
 def _build_shortlist_view_model(payload: dict) -> dict:
@@ -5533,7 +5596,7 @@ def _build_shortlist_view_model(payload: dict) -> dict:
                 "item_id": int(row.get("item_id") or 0),
                 "name": _clean_short_text(cand.get("nombre") or "Sin nombre", max_len=70),
                 "edad": _clean_short_text(cand.get("edad") or "—", max_len=24) or "—",
-                "location": _clean_short_text(row.get("ubicacion_resumen") or "Ubicación no disponible", max_len=90),
+                "location": _shortlist_city_only(row.get("ubicacion_resumen")) or "Ubicación no disponible",
                 "modalidad": _clean_short_text(cand.get("modalidad") or "Modalidad no indicada", max_len=80),
                 "experience": _clean_short_text(
                     row.get("experiencia_resumen") or "Experiencia validada por el equipo de matching.",
@@ -5573,11 +5636,143 @@ def _shortlist_selection_fingerprint(candidate_ids: list[int]) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
 
+def _shortlist_candidate_ids_from_request() -> list[int]:
+    raw_values = []
+    if request.is_json:
+        body = request.get_json(silent=True) or {}
+        payload_ids = body.get("candidata_ids")
+        if isinstance(payload_ids, list):
+            raw_values.extend(payload_ids)
+        elif payload_ids not in (None, ""):
+            raw_values.append(payload_ids)
+        single_id = body.get("candidata_id")
+        if single_id not in (None, ""):
+            raw_values.append(single_id)
+
+    raw_values.extend(request.form.getlist("candidata_ids"))
+    if request.form.get("candidata_id") not in (None, ""):
+        raw_values.append(request.form.get("candidata_id"))
+
+    dedup_ids = []
+    seen = set()
+    for raw in raw_values:
+        try:
+            cid = int(raw or 0)
+        except Exception:
+            cid = 0
+        if cid <= 0 or cid in seen:
+            continue
+        seen.add(cid)
+        dedup_ids.append(cid)
+    return dedup_ids
+
+
+def _shortlist_candidate_names(candidate_ids: list[int]) -> list[str]:
+    details = _shortlist_candidate_details(candidate_ids)
+    return [str(item.get("nombre") or "").strip() for item in details if str(item.get("nombre") or "").strip()]
+
+
+def _shortlist_candidate_details(candidate_ids: list[int]) -> list[dict]:
+    ordered_ids = [int(x) for x in (candidate_ids or []) if int(x or 0) > 0]
+    if not ordered_ids:
+        return []
+    if Candidata is None:
+        return [
+            {
+                "codigo": "(sin código)",
+                "nombre": f"Candidata {int(x)}",
+            }
+            for x in ordered_ids
+        ]
+
+    rows = (
+        Candidata.query
+        .filter(Candidata.fila.in_(ordered_ids))
+        .all()
+    )
+    details_by_id = {}
+    for row in rows:
+        cid = int(getattr(row, "fila", 0) or 0)
+        if cid <= 0:
+            continue
+        codigo = re.sub(r"\s+", " ", str(getattr(row, "codigo", "") or "")).strip()
+        nombre = (
+            re.sub(r"\s+", " ", str(getattr(row, "nombre", "") or "")).strip()
+            or re.sub(r"\s+", " ", str(getattr(row, "nombre_completo", "") or "")).strip()
+        )
+        if not codigo:
+            codigo = "(sin código)"
+        details_by_id[cid] = {
+            "codigo": codigo[:40],
+            "nombre": (nombre[:80] if nombre else f"Candidata {cid}"),
+        }
+
+    out = []
+    for cid in ordered_ids:
+        out.append(
+            details_by_id.get(
+                int(cid),
+                {
+                    "codigo": "(sin código)",
+                    "nombre": f"Candidata {int(cid)}",
+                },
+            )
+        )
+    return out
+
+
+def _shortlist_validate_and_persist_selection(
+    *,
+    solicitud: Solicitud,
+    candidate_ids: list[int],
+) -> dict:
+    out = {
+        "requested_count": int(len(candidate_ids or [])),
+        "valid_count": 0,
+        "invalid_count": 0,
+        "valid_ids": [],
+        "shortlist_blocked": False,
+    }
+    if not candidate_ids:
+        return out
+
+    service = SolicitudRecommendationService()
+    shortlist = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
+    shortlist_state = str(((shortlist.get("state") or {}).get("code") or "pending")).strip().lower()
+    if shortlist_state in {"pending", "error", "stale", "pending_refresh"}:
+        out["shortlist_blocked"] = True
+        return out
+
+    selected_by = (
+        f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
+        if _current_user_is_cliente()
+        else f"public_session:{int(solicitud.id)}"
+    )
+    valid_ids = []
+    invalid_count = 0
+    for cid in candidate_ids:
+        result = service.validate_client_selection(
+            solicitud_id=int(solicitud.id),
+            candidata_id=int(cid),
+            selected_by=selected_by,
+        )
+        if bool(result.get("ok")):
+            valid_ids.append(int(cid))
+        else:
+            invalid_count += 1
+
+    out["valid_count"] = int(len(valid_ids))
+    out["invalid_count"] = int(invalid_count)
+    out["valid_ids"] = valid_ids
+    return out
+
+
 def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
     empty = {
         "count": 0,
         "candidate_ids": [],
         "candidate_names": [],
+        "candidate_details": [],
         "selection_fingerprint": "",
     }
     if SolicitudRecommendationSelection is None or Candidata is None:
@@ -5602,6 +5797,7 @@ def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
     seen = set()
     candidate_ids: list[int] = []
     candidate_names: list[str] = []
+    candidate_details: list[dict] = []
     for row in rows:
         cid = int(getattr(row, "candidata_id", 0) or 0)
         if cid <= 0 or cid in seen:
@@ -5609,40 +5805,64 @@ def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
         seen.add(cid)
         candidate_ids.append(cid)
         cand = getattr(row, "candidata", None)
-        name = re.sub(r"\s+", " ", str(getattr(cand, "nombre_completo", "") or "")).strip()
+        codigo = re.sub(r"\s+", " ", str(getattr(cand, "codigo", "") or "")).strip()
+        name = (
+            re.sub(r"\s+", " ", str(getattr(cand, "nombre", "") or "")).strip()
+            or re.sub(r"\s+", " ", str(getattr(cand, "nombre_completo", "") or "")).strip()
+        )
+        if not codigo:
+            codigo = "(sin código)"
         if not name:
             name = f"Candidata {cid}"
-        candidate_names.append(name[:80])
+        name = name[:80]
+        candidate_names.append(name)
+        candidate_details.append(
+            {
+                "codigo": codigo[:40],
+                "nombre": name,
+            }
+        )
 
     return {
         "count": len(candidate_ids),
         "candidate_ids": candidate_ids,
         "candidate_names": candidate_names,
+        "candidate_details": candidate_details,
         "selection_fingerprint": _shortlist_selection_fingerprint(candidate_ids),
     }
 
 
-def _build_shortlist_chat_message(*, solicitud: Solicitud, candidate_names: list[str]) -> str:
+def _build_shortlist_chat_message(*, solicitud: Solicitud, candidate_details: list[dict]) -> str:
     codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
-    clean_names = [re.sub(r"\s+", " ", str(x or "")).strip()[:80] for x in (candidate_names or [])]
-    clean_names = [x for x in clean_names if x]
-    nombres = ", ".join(clean_names) if clean_names else "Sin candidatas"
+    rows = []
+    for item in (candidate_details or []):
+        codigo_candidata = re.sub(r"\s+", " ", str((item or {}).get("codigo") or "")).strip()[:40] or "(sin código)"
+        nombre_candidata = re.sub(r"\s+", " ", str((item or {}).get("nombre") or "")).strip()[:80] or "Sin nombre"
+        rows.append(f"- Código: {codigo_candidata} | Nombre: {nombre_candidata}")
+    if not rows:
+        rows.append("- Código: (sin código) | Nombre: Sin candidata")
+    listado = "\n".join(rows)
     return (
         f"Hola, ya revisé la shortlist de mi solicitud y quiero continuar.\n"
         f"Solicitud: {codigo}\n"
-        f"Candidatas seleccionadas: {nombres}\n"
+        f"Candidatas seleccionadas:\n{listado}\n"
         f"Quiero continuar por este chat con esta selección."
     )
 
 
-def _build_shortlist_whatsapp_message(*, solicitud: Solicitud, candidate_names: list[str]) -> str:
+def _build_shortlist_whatsapp_message(*, solicitud: Solicitud, candidate_details: list[dict]) -> str:
     codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
-    clean_names = [re.sub(r"\s+", " ", str(x or "")).strip()[:80] for x in (candidate_names or [])]
-    clean_names = [x for x in clean_names if x]
-    nombres = ", ".join(clean_names) if clean_names else "Sin candidatas"
+    rows = []
+    for item in (candidate_details or []):
+        codigo_candidata = re.sub(r"\s+", " ", str((item or {}).get("codigo") or "")).strip()[:40] or "(sin código)"
+        nombre_candidata = re.sub(r"\s+", " ", str((item or {}).get("nombre") or "")).strip()[:80] or "Sin nombre"
+        rows.append(f"- Código: {codigo_candidata} | Nombre: {nombre_candidata}")
+    if not rows:
+        rows.append("- Código: (sin código) | Nombre: Sin candidata")
+    listado = "\n".join(rows)
     return (
-        f"Hola, ya revisé la shortlist de la solicitud {codigo} y quiero continuar. "
-        f"Candidatas seleccionadas: {nombres}."
+        f"Hola, ya revisé la shortlist de la solicitud {codigo} y quiero continuar.\n"
+        f"Candidatas seleccionadas:\n{listado}"
     )
 
 
@@ -5823,46 +6043,22 @@ def solicitud_shortlist_submit_selection(solicitud_id):
     solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
     redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
 
-    raw_ids = request.form.getlist("candidata_ids")
-    dedup_ids = []
-    seen = set()
-    for raw in raw_ids:
-        try:
-            cid = int(raw or 0)
-        except Exception:
-            cid = 0
-        if cid <= 0 or cid in seen:
-            continue
-        seen.add(cid)
-        dedup_ids.append(cid)
+    dedup_ids = _shortlist_candidate_ids_from_request()
 
     if not dedup_ids:
         flash("Para continuar, selecciona al menos una candidata.", "warning")
         return redirect(redirect_url)
 
-    service = SolicitudRecommendationService()
-    shortlist = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
-    shortlist_state = str(((shortlist.get("state") or {}).get("code") or "pending")).strip().lower()
-    if shortlist_state in {"pending", "error", "stale", "pending_refresh"}:
+    selection_result = _shortlist_validate_and_persist_selection(
+        solicitud=solicitud,
+        candidate_ids=dedup_ids,
+    )
+    if bool(selection_result.get("shortlist_blocked")):
         flash("La shortlist aún no está lista para selección. Intenta de nuevo en unos minutos.", "warning")
         return redirect(redirect_url)
 
-    valid_count = 0
-    invalid_count = 0
-    for cid in dedup_ids:
-        result = service.validate_client_selection(
-            solicitud_id=int(solicitud.id),
-            candidata_id=int(cid),
-            selected_by=(
-                f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
-                if _current_user_is_cliente()
-                else f"public_session:{int(solicitud.id)}"
-            ),
-        )
-        if bool(result.get("ok")):
-            valid_count += 1
-        else:
-            invalid_count += 1
+    valid_count = int(selection_result.get("valid_count") or 0)
+    invalid_count = int(selection_result.get("invalid_count") or 0)
 
     if valid_count > 0:
         _rec_obs_counter("rec:usage:selection_submit_count")
@@ -5899,7 +6095,34 @@ def solicitud_shortlist_continue_chat(solicitud_id):
         flash("El chat no está disponible en este momento. Intenta de nuevo más tarde.", "warning")
         return redirect(redirect_url)
 
+    dedup_ids = _shortlist_candidate_ids_from_request()
     selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    if dedup_ids:
+        selection_result = _shortlist_validate_and_persist_selection(
+            solicitud=solicitud,
+            candidate_ids=dedup_ids,
+        )
+        if bool(selection_result.get("shortlist_blocked")):
+            flash("La shortlist aún no está lista para selección. Intenta de nuevo en unos minutos.", "warning")
+            return redirect(redirect_url)
+        valid_ids = [int(x) for x in (selection_result.get("valid_ids") or []) if int(x or 0) > 0]
+        if valid_ids:
+            candidate_details = _shortlist_candidate_details(valid_ids)
+            candidate_names = [str(item.get("nombre") or "").strip() for item in candidate_details if str(item.get("nombre") or "").strip()]
+            selection = {
+                "count": len(valid_ids),
+                "candidate_ids": valid_ids,
+                "candidate_names": candidate_names,
+                "candidate_details": candidate_details,
+                "selection_fingerprint": _shortlist_selection_fingerprint(valid_ids),
+            }
+        if int(selection_result.get("invalid_count") or 0) > 0:
+            _rec_obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(selection_result.get("invalid_count") or 0))
+            flash(
+                f"No pudimos validar {int(selection_result.get('invalid_count') or 0)} selección{'es' if int(selection_result.get('invalid_count') or 0) != 1 else ''} porque la shortlist cambió.",
+                "warning",
+            )
+
     if int(selection.get("count") or 0) <= 0:
         flash("Selecciona al menos una candidata antes de continuar por chat.", "warning")
         return redirect(redirect_url)
@@ -5914,7 +6137,7 @@ def solicitud_shortlist_continue_chat(solicitud_id):
 
     msg_body = _build_shortlist_chat_message(
         solicitud=solicitud,
-        candidate_names=list(selection.get("candidate_names") or []),
+        candidate_details=list(selection.get("candidate_details") or []),
     )
 
     try:
@@ -5972,14 +6195,41 @@ def solicitud_shortlist_continue_chat(solicitud_id):
 def solicitud_shortlist_continue_whatsapp(solicitud_id):
     solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
     redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
+    dedup_ids = _shortlist_candidate_ids_from_request()
     selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    if dedup_ids:
+        selection_result = _shortlist_validate_and_persist_selection(
+            solicitud=solicitud,
+            candidate_ids=dedup_ids,
+        )
+        if bool(selection_result.get("shortlist_blocked")):
+            flash("La shortlist aún no está lista para selección. Intenta de nuevo en unos minutos.", "warning")
+            return redirect(redirect_url)
+        valid_ids = [int(x) for x in (selection_result.get("valid_ids") or []) if int(x or 0) > 0]
+        if valid_ids:
+            candidate_details = _shortlist_candidate_details(valid_ids)
+            candidate_names = [str(item.get("nombre") or "").strip() for item in candidate_details if str(item.get("nombre") or "").strip()]
+            selection = {
+                "count": len(valid_ids),
+                "candidate_ids": valid_ids,
+                "candidate_names": candidate_names,
+                "candidate_details": candidate_details,
+                "selection_fingerprint": _shortlist_selection_fingerprint(valid_ids),
+            }
+        if int(selection_result.get("invalid_count") or 0) > 0:
+            _rec_obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(selection_result.get("invalid_count") or 0))
+            flash(
+                f"No pudimos validar {int(selection_result.get('invalid_count') or 0)} selección{'es' if int(selection_result.get('invalid_count') or 0) != 1 else ''} porque la shortlist cambió.",
+                "warning",
+            )
+
     if int(selection.get("count") or 0) <= 0:
         flash("Selecciona al menos una candidata antes de continuar por WhatsApp.", "warning")
         return redirect(redirect_url)
 
     mensaje = _build_shortlist_whatsapp_message(
         solicitud=solicitud,
-        candidate_names=list(selection.get("candidate_names") or []),
+        candidate_details=list(selection.get("candidate_details") or []),
     )
     _rec_obs_counter("rec:usage:continue_whatsapp_count")
     _rec_obs_event(
@@ -7228,6 +7478,31 @@ def solicitud_publica(token):
             ), 429
 
         active_count = _cliente_active_solicitudes_count(int(c.id))
+        if active_count is None:
+            log_action(
+                action_type="BUSINESS_FLOW_BLOCKED",
+                entity_type="cliente",
+                entity_id=int(c.id),
+                summary="No se pudo validar solicitudes activas vía enlace público",
+                metadata={
+                    "rule": "active_solicitudes_validation_failed",
+                    "route": (request.path or ""),
+                },
+                success=False,
+                error="active_solicitudes_validation_failed",
+            )
+            flash("No pudimos validar tus solicitudes en este momento. Intenta de nuevo.", "warning")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 429
         if active_count >= BUSINESS_MAX_CLIENTE_ACTIVAS:
             log_action(
                 action_type="BUSINESS_FLOW_BLOCKED",
