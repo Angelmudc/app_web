@@ -795,6 +795,7 @@
     const ok = Boolean(payload && (payload.success === true || payload.ok === true));
     const message = (payload && (payload.message || payload.detail)) || "";
     const category = (payload && (payload.category || (ok ? "success" : "danger"))) || "info";
+    const hasExplicitTarget = !!(payload && Object.prototype.hasOwnProperty.call(payload, "update_target"));
 
     const targetOps = normalizePayloadTargets(payload || {}, context || {});
     targetOps.forEach((op) => registerRequestClaim(op && op.target, context.requestId));
@@ -811,8 +812,15 @@
 
     if (ok) {
       if (message) showToast(message, normalizeType(category, true));
-      if (payload && payload.redirect_url && !hadTargets && !hadAppliedTarget) {
-        const targetSelector = normalizeSelector((payload && payload.update_target) || context.updateTarget);
+      if (payload && payload.redirect_url) {
+        if (hasExplicitTarget && payload.update_target === null) {
+          window.location.assign(payload.redirect_url);
+          return true;
+        }
+      }
+      if (payload && payload.redirect_url && !hadAppliedTarget) {
+        const candidateTarget = hasExplicitTarget ? payload.update_target : context.updateTarget;
+        const targetSelector = normalizeSelector(candidateTarget);
         if (targetSelector) {
           const replaced = await loadAndReplaceFromUrl(payload.redirect_url, targetSelector, { preserveScroll: context.preserveScroll });
           if (!replaced) {
@@ -884,7 +892,7 @@
 
       if (parsed.type === "json") {
         const payload = parsed.data || {};
-        if (payload.update_target == null && updateTarget) {
+        if (typeof payload.update_target === "undefined" && updateTarget) {
           payload.update_target = updateTarget;
         }
         const ok = await handleJsonPayload(payload, { updateTarget, preserveScroll, requestId });

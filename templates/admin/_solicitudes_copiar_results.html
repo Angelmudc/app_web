@@ -99,9 +99,10 @@
                   data-action="{{ url_for('admin.cancelar_solicitud_desde_copiar', id=s.id) }}"
                   data-row-version="{{ s.row_version if s is defined and s is not none else '' }}"
                   data-next="{{ request.full_path }}"
+                  aria-label="Cancelar solicitud {{ s.codigo_solicitud or ('SOL-' ~ s.id) }}"
                   data-no-loader="true"
                 >
-                  🛑 Cancelación
+                  <i class="bi bi-x-octagon me-1" aria-hidden="true"></i> Cancelar solicitud
                 </button>
               </li>
 

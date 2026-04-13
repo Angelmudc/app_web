@@ -206,6 +206,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('data-no-loader="true"', html)
         self.assertIn('id="contextActionPanel"', html)
         self.assertIn('class="dropdown-item js-open-cancel"', html)
+        self.assertIn("Cancelar solicitud", html)
         self.assertNotIn('data-bs-target="#cancelModalShared"', html)
         self.assertIn('id="cancelModalSharedForm" class="d-none" data-no-loader="true"', html)
         self.assertIn('<textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>', html)
