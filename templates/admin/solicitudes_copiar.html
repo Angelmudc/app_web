@@ -418,7 +418,15 @@ document.addEventListener('DOMContentLoaded', () => {
       return true;
     }
     if (result === false) {
-      setModalFeedback(form, 'No se pudo completar la acción.', 'danger');
+      const meta = (window.AdminAsync && typeof window.AdminAsync.getLastResponseMeta === 'function')
+        ? window.AdminAsync.getLastResponseMeta()
+        : null;
+      const fallback = 'No se pudo completar la acción.';
+      const msg = (meta && Array.isArray(meta.errors) && meta.errors.length > 0)
+        ? meta.errors.join(' ')
+        : ((meta && meta.message) ? meta.message : fallback);
+      const category = (meta && meta.category) ? meta.category : 'danger';
+      setModalFeedback(form, msg, category);
       return true;
     }
     clearUiLoaders();

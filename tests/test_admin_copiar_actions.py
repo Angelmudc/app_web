@@ -559,6 +559,62 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(solicitud.estado, "cancelada")
         commit_cancel.assert_called_once()
 
+    def test_cancelar_desde_copiar_estado_pagada_devuelve_409_con_mensaje_claro(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="pagada")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_cancel:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/cancelar_desde_copiar",
+                    data={
+                        "motivo": "Cliente detuvo el proceso",
+                        "next": "/admin/solicitudes/copiar?page=1",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 409)
+        data = resp.get_json() or {}
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("error_code"), "state_conflict")
+        self.assertIn("estado «pagada»", data.get("message", ""))
+        commit_cancel.assert_not_called()
+
+    def test_cancelar_desde_copiar_row_version_stale_devuelve_409_con_mensaje_claro(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.row_version = 9
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_cancel:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/cancelar_desde_copiar",
+                    data={
+                        "motivo": "Cliente detuvo el proceso",
+                        "row_version": "8",
+                        "next": "/admin/solicitudes/copiar?page=1",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 409)
+        data = resp.get_json() or {}
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("error_code"), "conflict")
+        self.assertIn("La solicitud cambió mientras trabajabas", data.get("message", ""))
+        commit_cancel.assert_not_called()
+
     def test_pagado_desde_copiar_ajax_devuelve_json(self):
         self._login("Cruz", "8998")
         solicitud = _SolicitudStub(estado="activa")

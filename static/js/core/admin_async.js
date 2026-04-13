@@ -15,6 +15,7 @@
   const rowHighlightTimers = new WeakMap();
   let globalRequestSeq = 0;
   const latestRequestByTarget = new Map();
+  let lastResponseMeta = null;
 
   function wantsJsonHeaders(extra) {
     const headers = {
@@ -881,6 +882,7 @@
     }
 
     try {
+      lastResponseMeta = null;
       const resp = await fetch(url, {
         method,
         body,
@@ -896,6 +898,14 @@
           payload.update_target = updateTarget;
         }
         const ok = await handleJsonPayload(payload, { updateTarget, preserveScroll, requestId });
+        lastResponseMeta = {
+          ok: !!ok,
+          status: Number(resp.status || 0),
+          message: String(payload.message || payload.detail || ""),
+          category: String(payload.category || (ok ? "success" : "danger")),
+          errorCode: String(payload.error_code || ""),
+          errors: Array.isArray(payload.errors) ? payload.errors.map((e) => String(e || "")) : [],
+        };
         if (ok) {
           closeEnclosingModal(sourceEl);
         }
@@ -917,6 +927,14 @@
       }
 
       showToast(statusMessage(resp.status), "danger");
+      lastResponseMeta = {
+        ok: false,
+        status: Number(resp.status || 0),
+        message: statusMessage(resp.status),
+        category: "danger",
+        errorCode: "",
+        errors: [],
+      };
       if (resp.status === 401 || resp.status === 403) {
         const redirectTo = resp.url || "";
         if (redirectTo) {
@@ -926,6 +944,14 @@
       return resp.status >= 500 ? null : false;
     } catch (_err) {
       showToast("No se pudo conectar con el servidor. Intenta nuevamente.", "danger");
+      lastResponseMeta = {
+        ok: false,
+        status: 0,
+        message: "No se pudo conectar con el servidor. Intenta nuevamente.",
+        category: "danger",
+        errorCode: "network_error",
+        errors: [],
+      };
       return null;
     } finally {
       setBusyState(container, submitter, false);
@@ -1080,6 +1106,7 @@
     init,
     request: handleAsyncRequest,
     replaceTargetHtml,
+    getLastResponseMeta: () => (lastResponseMeta ? { ...lastResponseMeta } : null),
   };
 
   if (document.readyState === "loading") {

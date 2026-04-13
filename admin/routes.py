@@ -17365,21 +17365,24 @@ def cancelar_solicitud_desde_copiar(id):
             )
         return _copiar_action_response(
             ok=False,
-            message='La solicitud no se puede cancelar en su estado actual.',
+            message=f'La solicitud está en estado «{estado_actual}» y no puede cancelarse desde esta pantalla.',
             category='warning',
             next_url=next_url,
             fallback=fallback,
             http_status=409,
+            error_code='state_conflict',
         )
 
     if estado_actual not in ('proceso', 'activa', 'reemplazo', 'espera_pago'):
+        estado_label = estado_actual or 'desconocido'
         return _copiar_action_response(
             ok=False,
-            message='La solicitud no se puede cancelar en su estado actual.',
+            message=f'La solicitud está en estado «{estado_label}» y no admite cancelación desde este flujo.',
             category='warning',
             next_url=next_url,
             fallback=fallback,
             http_status=409,
+            error_code='state_conflict',
         )
 
     expected_version = _expected_row_version()
