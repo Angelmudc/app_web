@@ -9621,9 +9621,10 @@ def nueva_solicitud_admin(cliente_id):
                         int(state.get("solicitud_id") or 0),
                         trigger_source="admin_create",
                         requested_by=str(_staff_actor_name() or "staff"),
-                        synchronous=True,
+                        synchronous=False,
                         best_effort=True,
                         commit=True,
+                        dispatch_async=True,
                     )
                 except Exception:
                     current_app.logger.exception(

@@ -103,6 +103,52 @@ def test_admin_nueva_solicitud_emite_eventos_live_cliente():
     assert "CLIENTE_DASHBOARD_UPDATED" in event_types
 
 
+def test_admin_nueva_solicitud_trigger_recomendacion_async_only():
+    flask_app.config["TESTING"] = True
+    cliente = SimpleNamespace(id=7, total_solicitudes=0, fecha_ultima_solicitud=None, fecha_ultima_actividad=None)
+    captured = {}
+
+    def _solicitud_factory(**kwargs):
+        data = {
+            "id": 901,
+            "row_version": 1,
+            "estado": "proceso",
+            "codigo_solicitud": kwargs.get("codigo_solicitud", "SOL-901"),
+            "tipo_servicio": kwargs.get("tipo_servicio", "DOMESTICA_LIMPIEZA"),
+            "detalle_servicio": None,
+            "nota_cliente": "",
+            "pasaje_aporte": False,
+        }
+        data.update(kwargs)
+        return SimpleNamespace(**data)
+
+    class _Svc:
+        def request_generation(self, solicitud_id, **kwargs):
+            captured["solicitud_id"] = int(solicitud_id)
+            captured["kwargs"] = dict(kwargs)
+            return None
+
+    with flask_app.app_context():
+        with patch.object(admin_routes.Cliente, "query", SimpleNamespace(get_or_404=lambda _cid: cliente)), \
+             patch("admin.routes.AdminSolicitudForm", _CreateFormStub), \
+             patch("admin.routes.Solicitud", _solicitud_factory), \
+             patch("admin.routes._execute_form_save", side_effect=_ok_execute_form_save), \
+             patch("admin.routes._next_codigo_solicitud", return_value="SOL-901"), \
+             patch("admin.routes.db.session.add"), \
+             patch("admin.routes.db.session.flush"), \
+             patch("admin.routes._resolve_modalidad_ui_context_from_request", return_value=("", "", "")), \
+             patch("admin.routes.normalize_pasaje_mode_text", return_value=("incluido", "")), \
+             patch.object(admin_routes, "SolicitudRecommendationService", return_value=_Svc()):
+            with flask_app.test_request_context("/admin/clientes/7/solicitudes/nueva", method="POST", data={"csrf_token": "ok"}):
+                resp = _unwrap(admin_routes.nueva_solicitud_admin)(7)
+
+    assert resp.status_code in (302, 303)
+    assert captured["solicitud_id"] == 901
+    assert captured["kwargs"].get("trigger_source") == "admin_create"
+    assert captured["kwargs"].get("synchronous") is False
+    assert captured["kwargs"].get("dispatch_async") is True
+
+
 def test_admin_editar_solicitud_emite_eventos_live_cliente():
     flask_app.config["TESTING"] = True
     solicitud = SimpleNamespace(
