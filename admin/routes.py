@@ -9702,7 +9702,7 @@ def editar_solicitud_admin(cliente_id, id):
     next_url = request.args.get("next") or request.form.get("next") or request.referrer or ""
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback
-    success_redirect_url = _cliente_detail_solicitudes_redirect_url(cliente_id=cliente_id, solicitud_id=int(id))
+    success_redirect_url = _cliente_detail_solicitudes_redirect_url(cliente_id=cliente_id)
 
     # Mantener en sync con constantes
     form.areas_comunes.choices = AREAS_COMUNES_CHOICES
@@ -9990,11 +9990,11 @@ def editar_solicitud_admin(cliente_id, id):
                     summary=f"Solicitud editada: {s.codigo_solicitud or s.id}",
                     metadata={"cliente_id": s.cliente_id, "tipo_servicio": s.tipo_servicio},
                 )
-                flash(f'Solicitud {s.codigo_solicitud} actualizada correctamente.', 'success')
+                flash('Solicitud actualizada correctamente.', 'success')
                 if wants_async:
                     return _async_edit_response(
                         ok=True,
-                        message=f'Solicitud {s.codigo_solicitud} actualizada correctamente.',
+                        message='Solicitud actualizada correctamente.',
                         category='success',
                         redirect_url=success_redirect_url,
                         include_update_target=False,

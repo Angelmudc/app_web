@@ -147,7 +147,7 @@ def test_admin_editar_solicitud_emite_eventos_live_cliente():
                 resp = _unwrap(admin_routes.editar_solicitud_admin)(7, 10)
 
     assert resp.status_code in (302, 303)
-    assert "/admin/clientes/7#sol-10" in (resp.location or "")
+    assert "/admin/clientes/7#clienteSolicitudesAsyncScope" in (resp.location or "")
     event_types = [str(c.kwargs.get("event_type") or "") for c in emit_mock.call_args_list]
     assert "CLIENTE_SOLICITUD_UPDATED" in event_types
     assert "CLIENTE_DASHBOARD_UPDATED" in event_types

@@ -139,7 +139,7 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertIsNone(data["update_target"])
-        self.assertEqual(data["redirect_url"], "/admin/clientes/7#sol-10")
+        self.assertEqual(data["redirect_url"], "/admin/clientes/7#clienteSolicitudesAsyncScope")
 
     def test_editar_solicitud_async_error_validacion_inline(self):
         solicitud = _solicitud_stub()
