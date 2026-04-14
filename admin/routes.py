@@ -18,6 +18,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
 from sqlalchemy import and_, or_, func, cast, desc, case, inspect as sa_inspect, Table, MetaData, select as sa_select, event
+from sqlalchemy.sql import table as sa_table, column as sa_column
 from sqlalchemy.engine import Engine
 from sqlalchemy.types import Numeric
 from sqlalchemy.orm import joinedload, load_only, selectinload  # ➜ para evitar N+1 en copiar_solicitudes
@@ -8310,6 +8311,11 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_cliente": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "recommendation_runs": 0,
+        "recommendation_items": 0,
+        "recommendation_selections": 0,
+        "chat_conversations": 0,
+        "chat_messages": 0,
         "tareas": 0,
     }
     warnings: list[str] = []
@@ -8387,6 +8393,36 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
             .filter(TareaCliente.cliente_id == cid)
         )
 
+    if _table_exists("solicitud_recommendation_runs") and solicitud_ids:
+        summary["recommendation_runs"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationRun.id))
+            .filter(SolicitudRecommendationRun.solicitud_id.in_(solicitud_ids))
+        )
+
+    if _table_exists("solicitud_recommendation_items") and solicitud_ids:
+        summary["recommendation_items"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationItem.id))
+            .filter(SolicitudRecommendationItem.solicitud_id.in_(solicitud_ids))
+        )
+
+    if _table_exists("solicitud_recommendation_selections") and solicitud_ids:
+        summary["recommendation_selections"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationSelection.id))
+            .filter(SolicitudRecommendationSelection.solicitud_id.in_(solicitud_ids))
+        )
+
+    if ChatConversation is not None and _table_exists("chat_conversations"):
+        summary["chat_conversations"] = _safe_count(
+            db.session.query(func.count(ChatConversation.id))
+            .filter(ChatConversation.cliente_id == cid)
+        )
+
+    if ChatMessage is not None and _table_exists("chat_messages"):
+        summary["chat_messages"] = _safe_count(
+            db.session.query(func.count(ChatMessage.id))
+            .filter(ChatMessage.sender_cliente_id == cid)
+        )
+
     blocked_issues: list[str] = []
     if int(summary.get("solicitudes_criticas") or 0) > 0:
         blocked_issues.append(
@@ -8442,6 +8478,11 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         "clientes_notificaciones",
         "public_solicitud_tokens_usados",
         "public_solicitud_cliente_nuevo_tokens_usados",
+        "solicitud_recommendation_runs",
+        "solicitud_recommendation_items",
+        "solicitud_recommendation_selections",
+        "chat_conversations",
+        "chat_messages",
         "tareas_clientes",
     }
     try:
@@ -8453,7 +8494,16 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
             has_ref = any((fk.get("referred_table") or "") in {"clientes", "solicitudes"} for fk in fks)
             if not has_ref:
                 continue
-            tbl = Table(table_name, MetaData(), autoload_with=db.engine)
+            # Evita reflexión pesada por tabla en cada solicitud:
+            # se construye una tabla ligera con columnas FK detectadas.
+            fk_cols: set[str] = set()
+            for fk in fks:
+                for col_name in (fk.get("constrained_columns") or []):
+                    if col_name:
+                        fk_cols.add(str(col_name))
+            if not fk_cols:
+                continue
+            tbl = sa_table(table_name, *[sa_column(col_name) for col_name in sorted(fk_cols)])
             row_hits = 0
             for fk in fks:
                 ref_table = (fk.get("referred_table") or "").strip()
@@ -8461,9 +8511,9 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
                 if not cols:
                     continue
                 for col_name in cols:
-                    if col_name not in tbl.c:
+                    if str(col_name) not in tbl.c:
                         continue
-                    col = tbl.c[col_name]
+                    col = tbl.c[str(col_name)]
                     if ref_table == "clientes":
                         row_hits += int(
                             db.session.execute(
@@ -8512,12 +8562,18 @@ def _delete_plan_has_uncertain_inspection(plan: dict[str, object]) -> bool:
 
 def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str, int]:
     cid = int(cliente_id or 0)
+    sid_list = [int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0]
     deleted: dict[str, int] = {
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
         "notificaciones_solicitud": 0,
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "recommendation_selections": 0,
+        "recommendation_items": 0,
+        "recommendation_runs": 0,
+        "chat_messages": 0,
+        "chat_conversations": 0,
         "solicitudes": 0,
         "tareas": 0,
         "notificaciones_cliente": 0,
@@ -8525,50 +8581,52 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
         "tokens_cliente_nuevo_cliente": 0,
         "cliente": 0,
     }
+    run_ids: list[int] = []
+    item_ids: list[int] = []
 
-    if solicitud_ids and _table_exists("solicitudes_candidatas"):
+    if sid_list and _table_exists("solicitudes_candidatas"):
         deleted["solicitudes_candidatas"] = int(
             SolicitudCandidata.query
-            .filter(SolicitudCandidata.solicitud_id.in_(solicitud_ids))
+            .filter(SolicitudCandidata.solicitud_id.in_(sid_list))
             .delete(synchronize_session=False)
             or 0
         )
 
-    if solicitud_ids and _table_exists("reemplazos"):
+    if sid_list and _table_exists("reemplazos"):
         deleted["reemplazos"] = int(
             Reemplazo.query
-            .filter(Reemplazo.solicitud_id.in_(solicitud_ids))
+            .filter(Reemplazo.solicitud_id.in_(sid_list))
             .delete(synchronize_session=False)
             or 0
         )
 
-    if solicitud_ids and _table_exists("clientes_notificaciones"):
+    if sid_list and _table_exists("clientes_notificaciones"):
         deleted["notificaciones_solicitud"] = int(
             ClienteNotificacion.query
             .filter(
-                ClienteNotificacion.solicitud_id.in_(solicitud_ids),
+                ClienteNotificacion.solicitud_id.in_(sid_list),
                 ClienteNotificacion.cliente_id == cid,
             )
             .delete(synchronize_session=False)
             or 0
         )
 
-    if solicitud_ids and _table_exists("public_solicitud_tokens_usados"):
+    if sid_list and _table_exists("public_solicitud_tokens_usados"):
         deleted["tokens_publicos_solicitud"] = int(
             PublicSolicitudTokenUso.query
             .filter(
-                PublicSolicitudTokenUso.solicitud_id.in_(solicitud_ids),
+                PublicSolicitudTokenUso.solicitud_id.in_(sid_list),
                 PublicSolicitudTokenUso.cliente_id == cid,
             )
             .delete(synchronize_session=False)
             or 0
         )
 
-    if solicitud_ids and _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+    if sid_list and _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
         deleted["tokens_cliente_nuevo_solicitud"] = int(
             PublicSolicitudClienteNuevoTokenUso.query
             .filter(
-                PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(solicitud_ids),
+                PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(sid_list),
                 (
                     (PublicSolicitudClienteNuevoTokenUso.cliente_id == cid)
                     | (PublicSolicitudClienteNuevoTokenUso.cliente_id.is_(None))
@@ -8578,11 +8636,78 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
             or 0
         )
 
+    if sid_list and _table_exists("solicitud_recommendation_runs"):
+        run_rows = (
+            db.session.query(SolicitudRecommendationRun.id)
+            .filter(SolicitudRecommendationRun.solicitud_id.in_(sid_list))
+            .all()
+        )
+        run_ids = [int(row[0]) for row in (run_rows or []) if int(row[0] or 0) > 0]
+
+    if sid_list and _table_exists("solicitud_recommendation_items"):
+        item_filters = [SolicitudRecommendationItem.solicitud_id.in_(sid_list)]
+        if run_ids:
+            item_filters.append(SolicitudRecommendationItem.run_id.in_(run_ids))
+        item_rows = (
+            db.session.query(SolicitudRecommendationItem.id)
+            .filter(or_(*item_filters))
+            .all()
+        )
+        item_ids = [int(row[0]) for row in (item_rows or []) if int(row[0] or 0) > 0]
+
+    if sid_list and _table_exists("solicitud_recommendation_selections"):
+        sel_filters = [SolicitudRecommendationSelection.solicitud_id.in_(sid_list)]
+        if run_ids:
+            sel_filters.append(SolicitudRecommendationSelection.run_id.in_(run_ids))
+        if item_ids:
+            sel_filters.append(SolicitudRecommendationSelection.recommendation_item_id.in_(item_ids))
+        deleted["recommendation_selections"] = int(
+            SolicitudRecommendationSelection.query
+            .filter(or_(*sel_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if sid_list and _table_exists("solicitud_recommendation_items"):
+        item_filters = [SolicitudRecommendationItem.solicitud_id.in_(sid_list)]
+        if run_ids:
+            item_filters.append(SolicitudRecommendationItem.run_id.in_(run_ids))
+        deleted["recommendation_items"] = int(
+            SolicitudRecommendationItem.query
+            .filter(or_(*item_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if sid_list and _table_exists("solicitud_recommendation_runs"):
+        deleted["recommendation_runs"] = int(
+            SolicitudRecommendationRun.query
+            .filter(SolicitudRecommendationRun.solicitud_id.in_(sid_list))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if ChatMessage is not None and _table_exists("chat_messages"):
+        deleted["chat_messages"] = int(
+            ChatMessage.query
+            .filter(ChatMessage.sender_cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if ChatConversation is not None and _table_exists("chat_conversations"):
+        deleted["chat_conversations"] = int(
+            ChatConversation.query
+            .filter(ChatConversation.cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
     if _table_exists("solicitudes"):
-        if solicitud_ids:
+        if sid_list:
             deleted["solicitudes"] = int(
                 Solicitud.query
-                .filter(Solicitud.id.in_(solicitud_ids), Solicitud.cliente_id == cid)
+                .filter(Solicitud.id.in_(sid_list), Solicitud.cliente_id == cid)
                 .delete(synchronize_session=False)
                 or 0
             )

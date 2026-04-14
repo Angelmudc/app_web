@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import uuid
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app import app as flask_app
 from config_app import db
@@ -50,6 +50,27 @@ def test_owner_can_delete_simple_cliente():
         return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
     ):
         resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is None
+        assert Cliente.query.get(survivor_id) is not None
+
+
+def test_owner_can_delete_simple_cliente_without_mocked_plan():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_realplan_del")
+        survivor = _new_cliente(prefix="owner_realplan_keep")
+        target_id = int(target.id)
+        survivor_id = int(survivor.id)
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
     assert resp.status_code in (302, 303)
 
     with flask_app.app_context():
@@ -269,3 +290,76 @@ def test_owner_delete_cliente_is_blocked_when_dependency_inspection_is_uncertain
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is not None
+
+
+def test_collect_cliente_delete_plan_marks_chat_and_recommendation_tables_as_managed():
+    from admin import routes as admin_routes
+
+    inspector = MagicMock()
+    inspector.get_table_names.return_value = [
+        "chat_conversations",
+        "chat_messages",
+        "solicitud_recommendation_runs",
+        "solicitud_recommendation_items",
+        "solicitud_recommendation_selections",
+    ]
+    inspector.get_foreign_keys.return_value = [
+        {"referred_table": "clientes", "constrained_columns": ["cliente_id"]}
+    ]
+
+    with patch("admin.routes._table_exists", return_value=False), patch(
+        "admin.routes.sa_inspect",
+        return_value=inspector,
+    ):
+        plan = admin_routes._collect_cliente_delete_plan(cliente_id=999)
+
+    assert list(plan.get("blocked_issues") or []) == []
+
+
+def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
+    from admin import routes as admin_routes
+
+    run_ids_query = MagicMock()
+    run_ids_query.filter.return_value.all.return_value = [(1001,), (1002,)]
+    item_ids_query = MagicMock()
+    item_ids_query.filter.return_value.all.return_value = [(2001,)]
+
+    enabled_tables = {
+        "solicitud_recommendation_runs",
+        "solicitud_recommendation_items",
+        "solicitud_recommendation_selections",
+        "chat_messages",
+        "chat_conversations",
+    }
+
+    with patch(
+        "admin.routes._table_exists",
+        side_effect=lambda name: name in enabled_tables,
+    ), patch(
+        "admin.routes.db.session.query",
+        side_effect=[run_ids_query, item_ids_query],
+    ), patch(
+        "admin.routes.or_",
+        return_value=MagicMock(name="or_clause"),
+    ), patch("admin.routes.SolicitudRecommendationSelection") as selection_model, patch(
+        "admin.routes.SolicitudRecommendationItem"
+    ) as item_model, patch("admin.routes.SolicitudRecommendationRun") as run_model, patch(
+        "admin.routes.ChatMessage"
+    ) as chat_message_model, patch("admin.routes.ChatConversation") as chat_conv_model, patch(
+        "admin.routes.Cliente"
+    ) as cliente_model:
+        selection_model.query.filter.return_value.delete.return_value = 3
+        item_model.query.filter.return_value.delete.return_value = 5
+        run_model.query.filter.return_value.delete.return_value = 2
+        chat_message_model.query.filter.return_value.delete.return_value = 4
+        chat_conv_model.query.filter.return_value.delete.return_value = 1
+        cliente_model.query.filter.return_value.delete.return_value = 1
+
+        deleted = admin_routes._delete_cliente_tree(321, solicitud_ids=[501, 502])
+
+    assert int(deleted.get("recommendation_selections") or 0) == 3
+    assert int(deleted.get("recommendation_items") or 0) == 5
+    assert int(deleted.get("recommendation_runs") or 0) == 2
+    assert int(deleted.get("chat_messages") or 0) == 4
+    assert int(deleted.get("chat_conversations") or 0) == 1
+    assert int(deleted.get("cliente") or 0) == 1
