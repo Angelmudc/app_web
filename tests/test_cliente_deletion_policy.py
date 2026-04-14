@@ -63,8 +63,8 @@ def test_owner_can_delete_simple_cliente_without_mocked_plan():
 
     with flask_app.app_context():
         _ensure_cliente_table()
-        target = _new_cliente(prefix="owner_realplan_del")
-        survivor = _new_cliente(prefix="owner_realplan_keep")
+        target = _new_cliente(prefix="realplan_del")
+        survivor = _new_cliente(prefix="realplan_keep")
         target_id = int(target.id)
         survivor_id = int(survivor.id)
 
@@ -323,6 +323,8 @@ def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
     run_ids_query.filter.return_value.all.return_value = [(1001,), (1002,)]
     item_ids_query = MagicMock()
     item_ids_query.filter.return_value.all.return_value = [(2001,)]
+    chat_conv_ids_query = MagicMock()
+    chat_conv_ids_query.filter.return_value.all.return_value = [(3001,)]
 
     enabled_tables = {
         "solicitud_recommendation_runs",
@@ -337,7 +339,7 @@ def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
         side_effect=lambda name: name in enabled_tables,
     ), patch(
         "admin.routes.db.session.query",
-        side_effect=[run_ids_query, item_ids_query],
+        side_effect=[run_ids_query, item_ids_query, chat_conv_ids_query],
     ), patch(
         "admin.routes.or_",
         return_value=MagicMock(name="or_clause"),
@@ -363,3 +365,34 @@ def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
     assert int(deleted.get("chat_messages") or 0) == 4
     assert int(deleted.get("chat_conversations") or 0) == 1
     assert int(deleted.get("cliente") or 0) == 1
+
+
+def test_delete_cliente_tree_chat_message_delete_includes_conversation_scope():
+    from admin import routes as admin_routes
+
+    chat_conv_ids_query = MagicMock()
+    chat_conv_ids_query.filter.return_value.all.return_value = [(9001,), (9002,)]
+    or_clause = MagicMock(name="or_clause")
+
+    with patch(
+        "admin.routes._table_exists",
+        side_effect=lambda name: name in {"chat_messages", "chat_conversations"},
+    ), patch(
+        "admin.routes.db.session.query",
+        side_effect=[chat_conv_ids_query],
+    ), patch(
+        "admin.routes.or_",
+        return_value=or_clause,
+    ) as or_mock, patch("admin.routes.ChatMessage") as chat_message_model, patch(
+        "admin.routes.ChatConversation"
+    ) as chat_conv_model, patch("admin.routes.Cliente") as cliente_model:
+        chat_message_model.query.filter.return_value.delete.return_value = 7
+        chat_conv_model.query.filter.return_value.delete.return_value = 2
+        cliente_model.query.filter.return_value.delete.return_value = 1
+
+        deleted = admin_routes._delete_cliente_tree(321, solicitud_ids=[501])
+
+    assert or_mock.called
+    chat_message_model.query.filter.assert_called_once_with(or_clause)
+    assert int(deleted.get("chat_messages") or 0) == 7
+    assert int(deleted.get("chat_conversations") or 0) == 2

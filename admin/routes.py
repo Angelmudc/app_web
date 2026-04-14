@@ -8300,6 +8300,7 @@ def _safe_count(query) -> int:
 def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
     cid = int(cliente_id or 0)
     solicitud_ids: list[int] = []
+    chat_conv_ids: list[int] = []
     summary: dict[str, int] = {
         "solicitudes": 0,
         "solicitudes_criticas": 0,
@@ -8412,15 +8413,25 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         )
 
     if ChatConversation is not None and _table_exists("chat_conversations"):
-        summary["chat_conversations"] = _safe_count(
-            db.session.query(func.count(ChatConversation.id))
-            .filter(ChatConversation.cliente_id == cid)
-        )
+        try:
+            chat_rows = (
+                db.session.query(ChatConversation.id)
+                .filter(ChatConversation.cliente_id == cid)
+                .all()
+            )
+            chat_conv_ids = [int(r[0]) for r in (chat_rows or []) if int(r[0] or 0) > 0]
+            summary["chat_conversations"] = len(chat_conv_ids)
+        except SQLAlchemyError:
+            warnings.append("No se pudo leer conversaciones de chat del cliente.")
+            summary["chat_conversations"] = -1
 
     if ChatMessage is not None and _table_exists("chat_messages"):
+        msg_filters = [ChatMessage.sender_cliente_id == cid]
+        if chat_conv_ids:
+            msg_filters.append(ChatMessage.conversation_id.in_(chat_conv_ids))
         summary["chat_messages"] = _safe_count(
             db.session.query(func.count(ChatMessage.id))
-            .filter(ChatMessage.sender_cliente_id == cid)
+            .filter(or_(*msg_filters))
         )
 
     blocked_issues: list[str] = []
@@ -8563,6 +8574,7 @@ def _delete_plan_has_uncertain_inspection(plan: dict[str, object]) -> bool:
 def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str, int]:
     cid = int(cliente_id or 0)
     sid_list = [int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0]
+    chat_conv_ids: list[int] = []
     deleted: dict[str, int] = {
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
@@ -8687,10 +8699,21 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
             or 0
         )
 
+    if ChatConversation is not None and _table_exists("chat_conversations"):
+        chat_rows = (
+            db.session.query(ChatConversation.id)
+            .filter(ChatConversation.cliente_id == cid)
+            .all()
+        )
+        chat_conv_ids = [int(r[0]) for r in (chat_rows or []) if int(r[0] or 0) > 0]
+
     if ChatMessage is not None and _table_exists("chat_messages"):
+        msg_filters = [ChatMessage.sender_cliente_id == cid]
+        if chat_conv_ids:
+            msg_filters.append(ChatMessage.conversation_id.in_(chat_conv_ids))
         deleted["chat_messages"] = int(
             ChatMessage.query
-            .filter(ChatMessage.sender_cliente_id == cid)
+            .filter(or_(*msg_filters))
             .delete(synchronize_session=False)
             or 0
         )
