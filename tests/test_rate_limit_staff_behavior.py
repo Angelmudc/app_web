@@ -2,9 +2,12 @@
 
 import os
 import re
+import uuid
 from unittest.mock import patch
 
 from app import app as flask_app
+from config_app import db
+from models import StaffUser
 
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -172,5 +175,60 @@ def test_presence_ping_does_not_block_create_cliente_global_admin_bucket():
             html = create_resp.get_data(as_text=True)
             assert "Nuevo Cliente" in html
     finally:
+        flask_app.config["TESTING"] = prev_testing
+        flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
+
+
+def test_admin_login_with_email_does_not_accumulate_security_lock_on_success():
+    prev_testing = bool(flask_app.config.get("TESTING"))
+    prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
+    flask_app.config["TESTING"] = False
+    flask_app.config["WTF_CSRF_ENABLED"] = True
+
+    suffix = uuid.uuid4().hex[:8]
+    username = f"sec_email_login_{suffix}"
+    email = f"{username}@example.com"
+    password = "Pass12345"
+
+    env = {
+        "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+        "STAFF_MFA_REQUIRED": "0",
+        "LOGIN_RATE_IP_1M": "200",
+        "LOGIN_RATE_USER_1M": "200",
+        "LOGIN_RATE_IP_1H": "200",
+        "LOGIN_RATE_USER_1H": "200",
+        # Umbral bajo para detectar rápidamente acumulación incorrecta de intentos.
+        "LOGIN_BLOCK_THRESHOLD": "3",
+        "LOGIN_DELAY_MS_BASE": "1",
+        "ADMIN_LOGIN_MAX_INTENTOS": "200",
+    }
+
+    try:
+        with flask_app.app_context():
+            row = StaffUser(username=username, email=email, role="secretaria", is_active=True, mfa_enabled=False)
+            row.set_password(password)
+            db.session.add(row)
+            db.session.commit()
+
+        with patch.dict(os.environ, env, clear=False):
+            ip = "10.31.44.14"
+            client = flask_app.test_client()
+            statuses = []
+
+            for _ in range(6):
+                login_page = client.get("/admin/login", follow_redirects=False, environ_overrides={"REMOTE_ADDR": ip})
+                csrf_token = _extract_csrf(login_page.data.decode("utf-8", errors="ignore"))
+                assert csrf_token
+                resp = _login(client, email, password, ip, csrf_token)
+                statuses.append(resp.status_code)
+
+            # Si la limpieza usa el identificador correcto (email), no debe caer en 429.
+            assert all(code in (302, 303) for code in statuses), f"statuses={statuses}"
+    finally:
+        with flask_app.app_context():
+            row = StaffUser.query.filter_by(username=username).first()
+            if row is not None:
+                db.session.delete(row)
+                db.session.commit()
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

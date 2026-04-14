@@ -2845,6 +2845,39 @@ def _clear_security_layer_lock_admin(endpoint: str = "/admin/login", usuario: st
         pass
 
 
+def _clear_security_layer_login_counters_admin(
+    *,
+    endpoint: str = "/admin/login",
+    input_identifier: str = "",
+    staff_user: StaffUser | None = None,
+):
+    """
+    Limpia contadores de login para todos los identificadores válidos del intento:
+    - identificador ingresado (username/email)
+    - username canónico del usuario autenticado
+    - email canónico del usuario autenticado
+    """
+    candidates: list[str] = []
+    input_norm = (input_identifier or "").strip().lower()
+    if input_norm:
+        candidates.append(input_norm)
+
+    if isinstance(staff_user, StaffUser):
+        username_norm = str(getattr(staff_user, "username", "") or "").strip().lower()
+        email_norm = str(getattr(staff_user, "email", "") or "").strip().lower()
+        if username_norm:
+            candidates.append(username_norm)
+        if email_norm:
+            candidates.append(email_norm)
+
+    seen: set[str] = set()
+    for ident in candidates:
+        if not ident or ident in seen:
+            continue
+        seen.add(ident)
+        _clear_security_layer_lock_admin(endpoint=endpoint, usuario=ident)
+
+
 def _is_safe_next(target: str) -> bool:
     """Permite solo redirects internos (sin dominio externo)."""
     if not target:
@@ -3132,15 +3165,22 @@ def login():
             staff_user = None
 
         staff_password_ok = False
+        auth_reject_reason = "staff_not_found"
         if staff_user and staff_user.is_active:
             try:
                 staff_password_ok = bool(staff_user.check_password(clave))
             except Exception:
                 staff_password_ok = False
+        if staff_user:
+            if not bool(getattr(staff_user, "is_active", False)):
+                auth_reject_reason = "staff_inactive"
+            elif not bool(staff_password_ok):
+                auth_reject_reason = "password_mismatch"
         if staff_user and staff_user.is_active and staff_password_ok:
             auth_ok = True
             authenticated_user = staff_user
             authenticated_username = staff_user.username
+            auth_reject_reason = ""
 
         # 2) Breakglass por ENV (emergencia)
         breakglass_ok = False
@@ -3191,7 +3231,11 @@ def login():
                     previous_fail_count = 0
             # Reset locks después de validar credenciales correctas.
             _admin_reset_fail(usuario_norm)
-            _clear_security_layer_lock_admin(endpoint="/admin/login", usuario=str(authenticated_username))
+            _clear_security_layer_login_counters_admin(
+                endpoint="/admin/login",
+                input_identifier=usuario_norm,
+                staff_user=(authenticated_user if isinstance(authenticated_user, StaffUser) else None),
+            )
 
             if isinstance(authenticated_user, StaffUser) and _staff_user_needs_mfa(authenticated_user):
                 trust_eval = evaluate_staff_trusted_device_decision(
@@ -3338,8 +3382,23 @@ def login():
             status="fail",
             user_identifier=usuario_norm or None,
             reason="invalid_credentials",
-            metadata={"path": "/admin/login"},
+            metadata={
+                "path": "/admin/login",
+                "reason_code": auth_reject_reason or "invalid_credentials",
+                "staff_found": bool(staff_user),
+                "staff_active": bool(getattr(staff_user, "is_active", False)) if staff_user else False,
+            },
         )
+        try:
+            current_app.logger.warning(
+                "STAFF_LOGIN_REJECT route=/admin/login user=%s reason=%s found=%s active=%s",
+                usuario_norm,
+                auth_reject_reason or "invalid_credentials",
+                bool(staff_user),
+                bool(getattr(staff_user, "is_active", False)) if staff_user else False,
+            )
+        except Exception:
+            pass
         error = 'Credenciales incorrectas.'
 
     return render_template('admin/login.html', error=error)
@@ -8142,6 +8201,7 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
     solicitud_ids: list[int] = []
     summary: dict[str, int] = {
         "solicitudes": 0,
+        "solicitudes_criticas": 0,
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
         "notificaciones_cliente": 0,
@@ -8163,9 +8223,18 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
             )
             solicitud_ids = [int(r[0]) for r in rows]
             summary["solicitudes"] = len(solicitud_ids)
+            protected_states = ("pagada", "activa", "reemplazo", "espera_pago")
+            summary["solicitudes_criticas"] = _safe_count(
+                db.session.query(func.count(Solicitud.id))
+                .filter(
+                    Solicitud.cliente_id == cid,
+                    func.lower(Solicitud.estado).in_(protected_states),
+                )
+            )
         except SQLAlchemyError:
             warnings.append("No se pudo leer solicitudes del cliente.")
             summary["solicitudes"] = -1
+            summary["solicitudes_criticas"] = -1
 
     if _table_exists("solicitudes_candidatas") and solicitud_ids:
         summary["solicitudes_candidatas"] = _safe_count(
@@ -8219,6 +8288,10 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         )
 
     blocked_issues: list[str] = []
+    if int(summary.get("solicitudes_criticas") or 0) > 0:
+        blocked_issues.append(
+            "El cliente tiene solicitudes activas/pagadas/reemplazo/espera de pago y no puede eliminarse."
+        )
     if solicitud_ids and _table_exists("clientes_notificaciones"):
         mismatch = _safe_count(
             db.session.query(func.count(ClienteNotificacion.id))
@@ -8287,22 +8360,22 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
                 cols = fk.get("constrained_columns") or []
                 if not cols:
                     continue
-                col_name = cols[0]
-                if col_name not in tbl.c:
-                    continue
-                col = tbl.c[col_name]
-                if ref_table == "clientes":
-                    row_hits += int(
-                        db.session.execute(
-                            sa_select(func.count()).select_from(tbl).where(col == cid)
-                        ).scalar() or 0
-                    )
-                elif ref_table == "solicitudes" and solicitud_ids:
-                    row_hits += int(
-                        db.session.execute(
-                            sa_select(func.count()).select_from(tbl).where(col.in_(solicitud_ids))
-                        ).scalar() or 0
-                    )
+                for col_name in cols:
+                    if col_name not in tbl.c:
+                        continue
+                    col = tbl.c[col_name]
+                    if ref_table == "clientes":
+                        row_hits += int(
+                            db.session.execute(
+                                sa_select(func.count()).select_from(tbl).where(col == cid)
+                            ).scalar() or 0
+                        )
+                    elif ref_table == "solicitudes" and solicitud_ids:
+                        row_hits += int(
+                            db.session.execute(
+                                sa_select(func.count()).select_from(tbl).where(col.in_(solicitud_ids))
+                            ).scalar() or 0
+                        )
             if row_hits > 0:
                 blocked_issues.append(
                     f"Dependencia no gestionada detectada en tabla '{table_name}'."
@@ -8481,6 +8554,42 @@ def eliminar_cliente(cliente_id):
             )
         return blocked_resp
 
+    idem_row, duplicate = _claim_idempotency(
+        scope="admin_cliente_delete",
+        entity_type="Cliente",
+        entity_id=cliente_pk,
+        action="eliminar_cliente",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _clientes_list_action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category="warning",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=409,
+                error_code="idempotency_conflict",
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _clientes_list_action_response(
+                ok=True,
+                message="Acción ya aplicada previamente.",
+                category="info",
+                next_url=next_url,
+                fallback=fallback,
+            )
+        return _clientes_list_action_response(
+            ok=False,
+            message="Solicitud duplicada detectada. Espera y vuelve a intentar.",
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="conflict",
+        )
+
     plan = _collect_cliente_delete_plan(cliente_pk)
     blocked_issues = list(plan.get("blocked_issues") or [])
     warnings = list(plan.get("warnings") or [])
@@ -8519,6 +8628,7 @@ def eliminar_cliente(cliente_id):
             if int(deleted_rows.get("cliente") or 0) != 1:
                 raise SQLAlchemyError("No se pudo confirmar la eliminación del cliente.")
             db.session.flush()
+            _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="CLIENTE_DELETE_OK",
@@ -8550,6 +8660,10 @@ def eliminar_cliente(cliente_id):
             entity_type="Cliente",
             entity_id=str(cliente_pk),
             summary=f"Error de integridad al eliminar cliente {cliente_code}",
+            metadata={
+                "dependency_summary": summary,
+                "warnings": warnings,
+            },
             success=False,
             error=msg,
         )
@@ -8570,6 +8684,10 @@ def eliminar_cliente(cliente_id):
             entity_type="Cliente",
             entity_id=str(cliente_pk),
             summary=f"Fallo técnico al eliminar cliente {cliente_code}",
+            metadata={
+                "dependency_summary": summary,
+                "warnings": warnings,
+            },
             success=False,
             error=msg,
         )
@@ -10276,43 +10394,453 @@ def _choice_codes(choices):
 # ─────────────────────────────────────────────────────────────
 # ADMIN: Eliminar solicitud (seguro)
 # ─────────────────────────────────────────────────────────────
+def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dict[str, object]:
+    sid = int(solicitud_id or 0)
+    cid = int(cliente_id or 0)
+    summary: dict[str, int] = {
+        "solicitudes_candidatas": 0,
+        "reemplazos": 0,
+        "notificaciones_solicitud": 0,
+        "tokens_publicos_solicitud": 0,
+        "tokens_cliente_nuevo_solicitud": 0,
+        "contratos_digitales": 0,
+        "chat_conversaciones": 0,
+    }
+    warnings: list[str] = []
+    blocked_issues: list[str] = []
+
+    if _table_exists("solicitudes_candidatas"):
+        summary["solicitudes_candidatas"] = _safe_count(
+            db.session.query(func.count(SolicitudCandidata.id))
+            .filter(SolicitudCandidata.solicitud_id == sid)
+        )
+
+    if _table_exists("reemplazos"):
+        summary["reemplazos"] = _safe_count(
+            db.session.query(func.count(Reemplazo.id))
+            .filter(Reemplazo.solicitud_id == sid)
+        )
+        if int(summary.get("reemplazos") or 0) > 0:
+            blocked_issues.append("La solicitud tiene reemplazos asociados.")
+
+    if _table_exists("clientes_notificaciones"):
+        summary["notificaciones_solicitud"] = _safe_count(
+            db.session.query(func.count(ClienteNotificacion.id))
+            .filter(ClienteNotificacion.solicitud_id == sid)
+        )
+        mismatch = _safe_count(
+            db.session.query(func.count(ClienteNotificacion.id))
+            .filter(
+                ClienteNotificacion.solicitud_id == sid,
+                ClienteNotificacion.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen notificaciones cruzadas con otro cliente para esta solicitud."
+            )
+
+    if _table_exists("public_solicitud_tokens_usados"):
+        summary["tokens_publicos_solicitud"] = _safe_count(
+            db.session.query(func.count(PublicSolicitudTokenUso.id))
+            .filter(PublicSolicitudTokenUso.solicitud_id == sid)
+        )
+        mismatch = _safe_count(
+            db.session.query(func.count(PublicSolicitudTokenUso.id))
+            .filter(
+                PublicSolicitudTokenUso.solicitud_id == sid,
+                PublicSolicitudTokenUso.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen tokens públicos cruzados con otro cliente para esta solicitud."
+            )
+
+    if _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        summary["tokens_cliente_nuevo_solicitud"] = _safe_count(
+            db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
+            .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id == sid)
+        )
+        mismatch = _safe_count(
+            db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
+            .filter(
+                PublicSolicitudClienteNuevoTokenUso.solicitud_id == sid,
+                PublicSolicitudClienteNuevoTokenUso.cliente_id.isnot(None),
+                PublicSolicitudClienteNuevoTokenUso.cliente_id != cid,
+            )
+        )
+        if mismatch > 0:
+            blocked_issues.append(
+                "Existen tokens de cliente nuevo cruzados con otro cliente para esta solicitud."
+            )
+
+    if _table_exists("contratos_digitales"):
+        summary["contratos_digitales"] = _safe_count(
+            db.session.query(func.count(ContratoDigital.id))
+            .filter(ContratoDigital.solicitud_id == sid)
+        )
+        if int(summary.get("contratos_digitales") or 0) > 0:
+            blocked_issues.append("La solicitud tiene contratos digitales asociados.")
+
+    if ChatConversation is not None and _table_exists("chat_conversations"):
+        summary["chat_conversaciones"] = _safe_count(
+            db.session.query(func.count(ChatConversation.id))
+            .filter(ChatConversation.solicitud_id == sid)
+        )
+        if int(summary.get("chat_conversaciones") or 0) > 0:
+            blocked_issues.append("La solicitud tiene conversaciones de chat asociadas.")
+
+    managed_tables = {
+        "solicitudes",
+        "solicitudes_candidatas",
+        "reemplazos",
+        "clientes_notificaciones",
+        "public_solicitud_tokens_usados",
+        "public_solicitud_cliente_nuevo_tokens_usados",
+        "contratos_digitales",
+        "chat_conversations",
+    }
+    try:
+        inspector = sa_inspect(db.engine)
+        for table_name in inspector.get_table_names():
+            if table_name in managed_tables:
+                continue
+            fks = inspector.get_foreign_keys(table_name) or []
+            has_ref = any((fk.get("referred_table") or "") == "solicitudes" for fk in fks)
+            if not has_ref:
+                continue
+            tbl = Table(table_name, MetaData(), autoload_with=db.engine)
+            row_hits = 0
+            for fk in fks:
+                ref_table = (fk.get("referred_table") or "").strip()
+                if ref_table != "solicitudes":
+                    continue
+                cols = fk.get("constrained_columns") or []
+                if not cols:
+                    continue
+                for col_name in cols:
+                    if col_name not in tbl.c:
+                        continue
+                    col = tbl.c[col_name]
+                    row_hits += int(
+                        db.session.execute(
+                            sa_select(func.count()).select_from(tbl).where(col == sid)
+                        ).scalar() or 0
+                    )
+            if row_hits > 0:
+                blocked_issues.append(
+                    f"Dependencia no gestionada detectada en tabla '{table_name}'."
+                )
+    except Exception:
+        warnings.append("No se pudo completar la inspección de dependencias no gestionadas.")
+
+    return {
+        "solicitud_id": sid,
+        "cliente_id": cid,
+        "summary": summary,
+        "warnings": warnings,
+        "blocked_issues": blocked_issues,
+    }
+
+
+def _delete_solicitud_tree(*, solicitud_id: int, cliente_id: int) -> dict[str, int]:
+    sid = int(solicitud_id or 0)
+    cid = int(cliente_id or 0)
+    deleted: dict[str, int] = {
+        "solicitudes_candidatas": 0,
+        "notificaciones_solicitud": 0,
+        "tokens_publicos_solicitud": 0,
+        "tokens_cliente_nuevo_solicitud": 0,
+        "solicitud": 0,
+    }
+
+    if _table_exists("solicitudes_candidatas"):
+        deleted["solicitudes_candidatas"] = int(
+            SolicitudCandidata.query
+            .filter(SolicitudCandidata.solicitud_id == sid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("clientes_notificaciones"):
+        deleted["notificaciones_solicitud"] = int(
+            ClienteNotificacion.query
+            .filter(
+                ClienteNotificacion.solicitud_id == sid,
+                ClienteNotificacion.cliente_id == cid,
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("public_solicitud_tokens_usados"):
+        deleted["tokens_publicos_solicitud"] = int(
+            PublicSolicitudTokenUso.query
+            .filter(
+                PublicSolicitudTokenUso.solicitud_id == sid,
+                PublicSolicitudTokenUso.cliente_id == cid,
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("public_solicitud_cliente_nuevo_tokens_usados"):
+        deleted["tokens_cliente_nuevo_solicitud"] = int(
+            PublicSolicitudClienteNuevoTokenUso.query
+            .filter(
+                PublicSolicitudClienteNuevoTokenUso.solicitud_id == sid,
+                (
+                    (PublicSolicitudClienteNuevoTokenUso.cliente_id == cid)
+                    | (PublicSolicitudClienteNuevoTokenUso.cliente_id.is_(None))
+                ),
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    deleted["solicitud"] = int(
+        Solicitud.query
+        .filter(Solicitud.id == sid, Solicitud.cliente_id == cid)
+        .delete(synchronize_session=False)
+        or 0
+    )
+    return deleted
+
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/eliminar', methods=['POST'])
 @login_required
 @admin_required
 @admin_action_limit(bucket="delete_solicitud", max_actions=10, window_sec=60)
 def eliminar_solicitud_admin(cliente_id, id):
+    _owner_only()
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
+    sid = int(getattr(s, "id", 0) or 0)
+    cid = int(getattr(s, "cliente_id", 0) or 0)
+    codigo = str((getattr(s, "codigo_solicitud", "") or "")).strip() or str(sid)
+    next_url = (request.form.get("next") or request.args.get("next") or request.referrer or "").strip()
+    fallback = url_for("admin.detalle_cliente", cliente_id=cliente_id)
 
-    # Reglas de negocio: no permitir borrar pagadas o con reemplazos
-    if s.estado == 'pagada':
-        flash('No puedes eliminar una solicitud pagada. Cancélala o revierte el pago primero.', 'warning')
-        return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
-    if getattr(s, 'reemplazos', None):
-        if len(s.reemplazos) > 0:
-            flash('No puedes eliminar la solicitud porque tiene reemplazos asociados.', 'warning')
-            return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url,
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+        )
+
+    blocked_resp = _admin_block_sensitive_action(
+        scope="admin_solicitud_delete",
+        entity_type="Solicitud",
+        entity_id=sid,
+        limit=10,
+        window_seconds=600,
+        min_interval_seconds=1,
+        summary=f"Bloqueo de eliminación de solicitud por patrón de abuso ({sid})",
+        next_url=next_url,
+        fallback=fallback,
+    )
+    if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message="Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.",
+                category="warning",
+                http_status=429,
+                error_code="rate_limit",
+            )
+        return blocked_resp
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="admin_solicitud_delete",
+        entity_type="Solicitud",
+        entity_id=sid,
+        action="eliminar_solicitud_admin",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category="warning",
+                http_status=409,
+                error_code="idempotency_conflict",
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message="Acción ya aplicada previamente.",
+                category="info",
+            )
+        return _action_response(
+            ok=False,
+            message="Solicitud duplicada detectada. Espera y vuelve a intentar.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
+
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message="La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.",
+                category="warning",
+                http_status=409,
+                error_code="conflict",
+            )
+
+    estado = (getattr(s, "estado", "") or "").strip().lower()
+    if estado in {"pagada", "activa", "reemplazo", "espera_pago"}:
+        msg = (
+            "No puedes eliminar una solicitud activa/pagada/reemplazo/espera de pago. "
+            "Usa el flujo operativo de cancelación."
+        )
+        _audit_log(
+            action_type="SOLICITUD_DELETE_BLOCKED",
+            entity_type="Solicitud",
+            entity_id=str(sid),
+            summary=f"Borrado bloqueado por estado para solicitud {codigo}",
+            metadata={"estado": estado},
+            success=False,
+            error=msg,
+        )
+        return _action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
+
+    plan = _collect_solicitud_delete_plan(solicitud_id=sid, cliente_id=cid)
+    blocked_issues = list(plan.get("blocked_issues") or [])
+    warnings = list(plan.get("warnings") or [])
+    summary = dict(plan.get("summary") or {})
+    if blocked_issues:
+        msg = "Esta solicitud no puede eliminarse de forma segura: " + " | ".join(blocked_issues)
+        _audit_log(
+            action_type="SOLICITUD_DELETE_BLOCKED",
+            entity_type="Solicitud",
+            entity_id=str(sid),
+            summary=f"Borrado bloqueado para solicitud {codigo}",
+            metadata={
+                "cliente_id": cid,
+                "blocked_issues": blocked_issues,
+                "warnings": warnings,
+                "dependency_summary": summary,
+            },
+            success=False,
+            error=msg,
+        )
+        return _action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
 
     try:
-        c = Cliente.query.get_or_404(cliente_id)
-        db.session.delete(s)
-
-        # Métricas del cliente
-        c.total_solicitudes = max((c.total_solicitudes or 1) - 1, 0)
-        c.fecha_ultima_actividad = utc_now_naive()
-
+        deleted_rows: dict[str, int] = {}
+        with db.session.begin_nested():
+            deleted_rows = _delete_solicitud_tree(solicitud_id=sid, cliente_id=cid)
+            if int(deleted_rows.get("solicitud") or 0) != 1:
+                raise SQLAlchemyError("No se pudo confirmar la eliminación de la solicitud.")
+            db.session.flush()
+            cliente = Cliente.query.get(cid)
+            if cliente is not None:
+                total_restante = int(
+                    db.session.query(func.count(Solicitud.id))
+                    .filter(Solicitud.cliente_id == cid)
+                    .scalar()
+                    or 0
+                )
+                cliente.total_solicitudes = max(total_restante, 0)
+                cliente.fecha_ultima_actividad = utc_now_naive()
+            _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
-        flash('Solicitud eliminada.', 'success')
+        _audit_log(
+            action_type="SOLICITUD_DELETE_OK",
+            entity_type="Solicitud",
+            entity_id=str(sid),
+            summary=f"Solicitud eliminada {codigo}",
+            metadata={
+                "cliente_id": cid,
+                "deleted_rows": deleted_rows,
+                "dependency_summary": summary,
+                "warnings": warnings,
+            },
+            success=True,
+        )
+        return _action_response(
+            ok=True,
+            message=f"Solicitud {codigo} eliminada correctamente.",
+            category="success",
+        )
     except IntegrityError:
         db.session.rollback()
-        flash('No se pudo eliminar: existen relaciones asociadas (FK).', 'danger')
+        msg = (
+            "No se pudo eliminar la solicitud por restricciones de integridad. "
+            "No se aplicaron cambios."
+        )
+        _audit_log(
+            action_type="SOLICITUD_DELETE_FAIL",
+            entity_type="Solicitud",
+            entity_id=str(sid),
+            summary=f"Error de integridad al eliminar solicitud {codigo}",
+            metadata={"cliente_id": cid},
+            success=False,
+            error=msg,
+        )
+        return _action_response(
+            ok=False,
+            message=msg,
+            category="danger",
+            http_status=409,
+            error_code="conflict",
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message="La solicitud cambió por otra sesión. Recarga e intenta nuevamente.",
+            category="warning",
+            http_status=409,
+            error_code="conflict",
+        )
     except SQLAlchemyError:
         db.session.rollback()
-        flash('Error de base de datos al eliminar la solicitud.', 'danger')
-    except Exception:
-        db.session.rollback()
-        flash('Ocurrió un error al eliminar la solicitud.', 'danger')
-
-    return redirect(url_for('admin.detalle_cliente', cliente_id=cliente_id))
+        msg = "No se pudo eliminar la solicitud de forma segura. No se aplicaron cambios."
+        _audit_log(
+            action_type="SOLICITUD_DELETE_FAIL",
+            entity_type="Solicitud",
+            entity_id=str(sid),
+            summary=f"Fallo técnico al eliminar solicitud {codigo}",
+            metadata={"cliente_id": cid},
+            success=False,
+            error=msg,
+        )
+        return _action_response(
+            ok=False,
+            message=msg,
+            category="danger",
+            http_status=500,
+            error_code="server_error",
+        )
 
 
 # ─────────────────────────────────────────────────────────────

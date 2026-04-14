@@ -444,6 +444,27 @@
                       🛑 <i class="bi bi-x-octagon ms-1"></i><span class="sr-only">Cancelar con motivo</span>
                     </a>
                   {% endif %}
+
+                  {% if current_user.role|default('')|lower == 'owner' %}
+                    {% if s.estado in ['proceso', 'cancelada'] %}
+                      <form method="post"
+                            action="{{ url_for('admin.eliminar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
+                            class="d-inline"
+                            onsubmit="return confirm('¿Eliminar DEFINITIVAMENTE la solicitud {{ s.codigo_solicitud or ('#' ~ s.id) }}? Esta acción no se puede deshacer.');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Eliminar solicitud (solo owner)">
+                          🗑️
+                        </button>
+                      </form>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-secondary" disabled data-bs-toggle="tooltip" title="Solo se permite eliminar solicitudes en proceso o canceladas.">
+                        🗑️
+                      </button>
+                    {% endif %}
+                  {% endif %}
                 </div>
 
               </td>

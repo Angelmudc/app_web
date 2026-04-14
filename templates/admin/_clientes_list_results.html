@@ -72,8 +72,9 @@
                         data-async-busy-container="#clientesAsyncScope"
                         data-async-preserve-scroll="true"
                         data-async-fallback="native"
-                        data-async-confirm="¿Eliminar cliente #{{ c.id }}? Esta acción es irreversible.">
+                        data-async-confirm="¿Eliminar definitivamente el cliente {{ c.codigo or ('#' ~ c.id) }}? Esta acción es irreversible y solo debe usarse para registros de prueba/error.">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
                     <input type="hidden" name="next" value="{{ request.full_path }}">
                     <button type="submit" class="dropdown-item text-danger" data-loading-text="Eliminando...">
                       <i class="fa-solid fa-trash me-2"></i>Eliminar

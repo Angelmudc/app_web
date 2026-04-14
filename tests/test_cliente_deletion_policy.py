@@ -202,3 +202,34 @@ def test_owner_delete_rolls_back_when_tree_delete_fails():
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is not None
+
+
+def test_owner_delete_cliente_blocked_when_has_critical_solicitudes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_block_real")
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    with patch(
+        "admin.routes._collect_cliente_delete_plan",
+        return_value={
+            "solicitud_ids": [501],
+            "summary": {"solicitudes": 1, "solicitudes_criticas": 1},
+            "warnings": [],
+            "blocked_issues": [
+                "El cliente tiene solicitudes activas/pagadas/reemplazo/espera de pago y no puede eliminarse."
+            ],
+        },
+    ):
+        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=True)
+
+    assert resp.status_code == 200
+    assert "no puede eliminarse".encode("utf-8") in resp.data
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is not None

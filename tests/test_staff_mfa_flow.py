@@ -388,6 +388,11 @@ def test_presence_tracker_disabled_on_login_and_mfa_verify(monkeypatch):
     assert 'data-live-presence-enabled="0"' in login_html
     assert "/admin/monitoreo/presence/ping" not in login_html
     assert "js/core/control_room_presence.js" not in login_html
+    assert 'data-chat-global-badge-enabled="0"' in login_html
+    assert "/admin/chat/badge.json" not in login_html
+    assert "/admin/live/invalidation/poll" not in login_html
+    assert "js/chat/chat_global_badge.js" not in login_html
+    assert "js/core/live_invalidation.js" not in login_html
 
     start = _login_admin(client, "Cruz", "8998")
     assert start.status_code in (302, 303)
@@ -399,6 +404,32 @@ def test_presence_tracker_disabled_on_login_and_mfa_verify(monkeypatch):
     assert 'data-live-presence-enabled="0"' in verify_html
     assert "/admin/monitoreo/presence/ping" not in verify_html
     assert "js/core/control_room_presence.js" not in verify_html
+    assert 'data-chat-global-badge-enabled="0"' in verify_html
+    assert "/admin/chat/badge.json" not in verify_html
+    assert "/admin/live/invalidation/poll" not in verify_html
+    assert "js/chat/chat_global_badge.js" not in verify_html
+    assert "js/core/live_invalidation.js" not in verify_html
+
+
+def test_admin_login_view_does_not_enable_chat_or_live_runtime_even_if_authenticated():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    _set_staff_mfa(username="Cruz", enabled=False)
+
+    client = flask_app.test_client()
+    login_resp = _login_admin(client, "Cruz", "8998")
+    assert login_resp.status_code in (302, 303)
+    assert "/admin/mfa/" not in (login_resp.headers.get("Location") or "")
+
+    login_page = client.get("/admin/login", follow_redirects=False)
+    assert login_page.status_code == 200
+    html = login_page.data.decode("utf-8", errors="ignore")
+    assert 'data-chat-global-badge-enabled="0"' in html
+    assert "/admin/chat/badge.json" not in html
+    assert "/admin/live/invalidation/poll" not in html
+    assert "js/chat/chat_global_badge.js" not in html
+    assert "js/core/live_invalidation.js" not in html
 
 
 def test_totp_code_reuse_is_denied(monkeypatch):
