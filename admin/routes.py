@@ -43,6 +43,9 @@ from models import (
     TrustedDevice,
     PublicSolicitudTokenUso,
     PublicSolicitudClienteNuevoTokenUso,
+    SolicitudRecommendationRun,
+    SolicitudRecommendationItem,
+    SolicitudRecommendationSelection,
     RequestIdempotencyKey,
     DomainOutbox,
 )
@@ -10546,6 +10549,9 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
         "notificaciones_solicitud": 0,
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "recommendation_runs": 0,
+        "recommendation_items": 0,
+        "recommendation_selections": 0,
         "contratos_digitales": 0,
         "chat_conversaciones": 0,
     }
@@ -10618,6 +10624,24 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
                 "Existen tokens de cliente nuevo cruzados con otro cliente para esta solicitud."
             )
 
+    if _table_exists("solicitud_recommendation_runs"):
+        summary["recommendation_runs"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationRun.id))
+            .filter(SolicitudRecommendationRun.solicitud_id == sid)
+        )
+
+    if _table_exists("solicitud_recommendation_items"):
+        summary["recommendation_items"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationItem.id))
+            .filter(SolicitudRecommendationItem.solicitud_id == sid)
+        )
+
+    if _table_exists("solicitud_recommendation_selections"):
+        summary["recommendation_selections"] = _safe_count(
+            db.session.query(func.count(SolicitudRecommendationSelection.id))
+            .filter(SolicitudRecommendationSelection.solicitud_id == sid)
+        )
+
     if _table_exists("contratos_digitales"):
         summary["contratos_digitales"] = _safe_count(
             db.session.query(func.count(ContratoDigital.id))
@@ -10641,6 +10665,9 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
         "clientes_notificaciones",
         "public_solicitud_tokens_usados",
         "public_solicitud_cliente_nuevo_tokens_usados",
+        "solicitud_recommendation_runs",
+        "solicitud_recommendation_items",
+        "solicitud_recommendation_selections",
         "contratos_digitales",
         "chat_conversations",
     }
@@ -10699,8 +10726,13 @@ def _delete_solicitud_tree(*, solicitud_id: int, cliente_id: int) -> dict[str, i
         "notificaciones_solicitud": 0,
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "recommendation_selections": 0,
+        "recommendation_items": 0,
+        "recommendation_runs": 0,
         "solicitud": 0,
     }
+    run_ids: list[int] = []
+    item_ids: list[int] = []
 
     if _table_exists("solicitudes_candidatas"):
         deleted["solicitudes_candidatas"] = int(
@@ -10742,6 +10774,58 @@ def _delete_solicitud_tree(*, solicitud_id: int, cliente_id: int) -> dict[str, i
                     | (PublicSolicitudClienteNuevoTokenUso.cliente_id.is_(None))
                 ),
             )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("solicitud_recommendation_runs"):
+        run_rows = (
+            db.session.query(SolicitudRecommendationRun.id)
+            .filter(SolicitudRecommendationRun.solicitud_id == sid)
+            .all()
+        )
+        run_ids = [int(row[0]) for row in (run_rows or []) if int(row[0] or 0) > 0]
+
+    if _table_exists("solicitud_recommendation_items"):
+        item_filters = [SolicitudRecommendationItem.solicitud_id == sid]
+        if run_ids:
+            item_filters.append(SolicitudRecommendationItem.run_id.in_(run_ids))
+        item_rows = (
+            db.session.query(SolicitudRecommendationItem.id)
+            .filter(or_(*item_filters))
+            .all()
+        )
+        item_ids = [int(row[0]) for row in (item_rows or []) if int(row[0] or 0) > 0]
+
+    # Borrar en orden defensivo para respetar FKs (selections -> items -> runs).
+    if _table_exists("solicitud_recommendation_selections"):
+        sel_filters = [SolicitudRecommendationSelection.solicitud_id == sid]
+        if run_ids:
+            sel_filters.append(SolicitudRecommendationSelection.run_id.in_(run_ids))
+        if item_ids:
+            sel_filters.append(SolicitudRecommendationSelection.recommendation_item_id.in_(item_ids))
+        deleted["recommendation_selections"] = int(
+            SolicitudRecommendationSelection.query
+            .filter(or_(*sel_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("solicitud_recommendation_items"):
+        item_filters = [SolicitudRecommendationItem.solicitud_id == sid]
+        if run_ids:
+            item_filters.append(SolicitudRecommendationItem.run_id.in_(run_ids))
+        deleted["recommendation_items"] = int(
+            SolicitudRecommendationItem.query
+            .filter(or_(*item_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("solicitud_recommendation_runs"):
+        deleted["recommendation_runs"] = int(
+            SolicitudRecommendationRun.query
+            .filter(SolicitudRecommendationRun.solicitud_id == sid)
             .delete(synchronize_session=False)
             or 0
         )

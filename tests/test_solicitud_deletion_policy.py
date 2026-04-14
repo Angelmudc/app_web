@@ -114,3 +114,65 @@ def test_owner_delete_solicitud_rolls_back_when_tree_delete_fails():
         )
 
     assert resp.status_code in (302, 303)
+
+
+def test_collect_solicitud_delete_plan_marks_recommendation_tables_as_managed():
+    from admin import routes as admin_routes
+
+    inspector = MagicMock()
+    inspector.get_table_names.return_value = [
+        "solicitud_recommendation_runs",
+        "solicitud_recommendation_items",
+        "solicitud_recommendation_selections",
+    ]
+    inspector.get_foreign_keys.return_value = [
+        {"referred_table": "solicitudes", "constrained_columns": ["solicitud_id"]}
+    ]
+
+    with patch("admin.routes._table_exists", return_value=False), patch(
+        "admin.routes.sa_inspect",
+        return_value=inspector,
+    ):
+        plan = admin_routes._collect_solicitud_delete_plan(solicitud_id=734, cliente_id=621)
+
+    assert list(plan.get("blocked_issues") or []) == []
+
+
+def test_delete_solicitud_tree_deletes_recommendation_artifacts_safely():
+    from admin import routes as admin_routes
+
+    run_ids_query = MagicMock()
+    run_ids_query.filter.return_value.all.return_value = [(501,), (502,)]
+    item_ids_query = MagicMock()
+    item_ids_query.filter.return_value.all.return_value = [(801,)]
+
+    with patch(
+        "admin.routes._table_exists",
+        side_effect=lambda name: name
+        in {
+            "solicitud_recommendation_runs",
+            "solicitud_recommendation_items",
+            "solicitud_recommendation_selections",
+        },
+    ), patch(
+        "admin.routes.db.session.query",
+        side_effect=[run_ids_query, item_ids_query],
+    ), patch(
+        "admin.routes.or_",
+        return_value=MagicMock(name="or_clause"),
+    ), patch("admin.routes.SolicitudRecommendationSelection") as selection_model, patch(
+        "admin.routes.SolicitudRecommendationItem"
+    ) as item_model, patch("admin.routes.SolicitudRecommendationRun") as run_model, patch(
+        "admin.routes.Solicitud"
+    ) as solicitud_model:
+        selection_model.query.filter.return_value.delete.return_value = 3
+        item_model.query.filter.return_value.delete.return_value = 5
+        run_model.query.filter.return_value.delete.return_value = 2
+        solicitud_model.query.filter.return_value.delete.return_value = 1
+
+        deleted = admin_routes._delete_solicitud_tree(solicitud_id=734, cliente_id=621)
+
+    assert int(deleted.get("recommendation_selections") or 0) == 3
+    assert int(deleted.get("recommendation_items") or 0) == 5
+    assert int(deleted.get("recommendation_runs") or 0) == 2
+    assert int(deleted.get("solicitud") or 0) == 1
