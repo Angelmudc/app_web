@@ -14,7 +14,7 @@
   if (path.indexOf('/admin/mfa/') === 0) return;
   if (path.indexOf('/home') === 0) return;
 
-  const HEARTBEAT_MS = 5000;
+  const HEARTBEAT_MS = 10000;
   var IDLE_AFTER_MS = 60000;
   var IDLE_CHECK_MS = 1000;
   var TYPING_STOP_MS = 1200;

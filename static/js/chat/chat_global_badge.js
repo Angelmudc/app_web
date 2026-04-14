@@ -127,7 +127,7 @@
     if (pollTimer || !pollUrl) return;
     pollTimer = window.setInterval(function () {
       pollOnce().catch(function () {});
-    }, 10000);
+    }, 30000);
     pollOnce().catch(function () {});
   }
 

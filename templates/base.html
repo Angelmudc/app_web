@@ -441,18 +441,16 @@
   {% endif %}
   <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
+  {% if not _is_admin_auth_view %}
   <script src="{{ url_for('static', filename='js/ui/search.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/validate.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/autosave.js') }}" defer></script>
-  {% if not _is_admin_auth_view %}
   <script src="{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}" defer></script>
-  {% endif %}
   <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
-  {% if not _is_admin_auth_view %}
   <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
   {% endif %}
+  <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   {% if _chat_badge_enabled %}
   <script src="{{ url_for('static', filename='js/chat/chat_global_badge.js') }}" defer></script>
   {% endif %}

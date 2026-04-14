@@ -56,7 +56,7 @@
     const EVENT_DEDUPE_TTL_MS = 10 * 60 * 1000;
     const ENTITY_DEBOUNCE_MS = 500;
     const REGION_THROTTLE_MS = 1800;
-    const POLL_INTERVAL_MS = 25000;
+    const POLL_INTERVAL_MS = 45000;
     const SSE_RETRY_MS = 60000;
 
     const seenEvents = new Map();

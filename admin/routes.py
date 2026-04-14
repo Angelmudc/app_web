@@ -13548,6 +13548,235 @@ _SOLICITUDES_TRIAGE_CODES = {code for code, _label in _SOLICITUDES_TRIAGE_DEFS}
 _SOLICITUDES_TRIAGE_LABELS = {code: label for code, label in _SOLICITUDES_TRIAGE_DEFS}
 
 
+def _solicitudes_query_supports_sql_triage(query) -> bool:
+    return bool(
+        query is not None
+        and hasattr(query, "session")
+        and hasattr(query, "with_entities")
+        and hasattr(query, "limit")
+        and hasattr(query, "offset")
+    )
+
+
+def _solicitudes_triage_sql_parts(*, now_dt: datetime, today_rd):
+    estado_norm = func.lower(Solicitud.estado)
+    estado_activa = estado_norm == "activa"
+    estado_reemplazo = estado_norm == "reemplazo"
+    estado_espera_pago = estado_norm == "espera_pago"
+    estado_proceso = estado_norm == "proceso"
+
+    manual_vencida = Solicitud.fecha_seguimiento_manual.isnot(None) & (Solicitud.fecha_seguimiento_manual < today_rd)
+    manual_hoy = Solicitud.fecha_seguimiento_manual.isnot(None) & (Solicitud.fecha_seguimiento_manual == today_rd)
+    manual_normal = Solicitud.fecha_seguimiento_manual.is_(None)
+
+    active_reemplazo_exists = (
+        db.session.query(Reemplazo.id)
+        .filter(
+            Reemplazo.solicitud_id == Solicitud.id,
+            Reemplazo.fecha_inicio_reemplazo.isnot(None),
+            Reemplazo.fecha_fin_reemplazo.is_(None),
+        )
+        .exists()
+    )
+    active_reemplazo_started_at = (
+        db.session.query(func.max(Reemplazo.fecha_inicio_reemplazo))
+        .filter(
+            Reemplazo.solicitud_id == Solicitud.id,
+            Reemplazo.fecha_inicio_reemplazo.isnot(None),
+            Reemplazo.fecha_fin_reemplazo.is_(None),
+        )
+        .correlate(Solicitud)
+        .scalar_subquery()
+    )
+
+    state_anchor = case(
+        (
+            and_(estado_reemplazo, active_reemplazo_started_at.isnot(None)),
+            active_reemplazo_started_at,
+        ),
+        (Solicitud.estado_actual_desde.isnot(None), Solicitud.estado_actual_desde),
+        (
+            and_(estado_activa, Solicitud.fecha_inicio_seguimiento.isnot(None)),
+            Solicitud.fecha_inicio_seguimiento,
+        ),
+        (
+            and_(estado_activa, Solicitud.fecha_ultima_modificacion.isnot(None)),
+            Solicitud.fecha_ultima_modificacion,
+        ),
+        (
+            and_(estado_activa, Solicitud.fecha_solicitud.isnot(None)),
+            Solicitud.fecha_solicitud,
+        ),
+        (
+            and_(estado_reemplazo, Solicitud.fecha_ultima_modificacion.isnot(None)),
+            Solicitud.fecha_ultima_modificacion,
+        ),
+        (
+            and_(estado_reemplazo, Solicitud.fecha_solicitud.isnot(None)),
+            Solicitud.fecha_solicitud,
+        ),
+        else_=None,
+    )
+    last_activity_at = func.coalesce(
+        Solicitud.fecha_ultima_actividad,
+        Solicitud.fecha_ultima_modificacion,
+        Solicitud.updated_at,
+        Solicitud.fecha_solicitud,
+    )
+    stale_by_days = and_(state_anchor.isnot(None), state_anchor <= (now_dt - timedelta(days=7)))
+    stale_by_activity = and_(last_activity_at.isnot(None), last_activity_at <= (now_dt - timedelta(hours=_OPERATIVE_STALE_ACTIVITY_HOURS)))
+
+    espera_pago_prolongada = and_(
+        estado_espera_pago,
+        state_anchor.isnot(None),
+        state_anchor <= (now_dt - timedelta(days=int(_OPERATIVE_ESPERA_PAGO_PROLONGADA_DIAS))),
+    )
+    reemplazo_sin_seguimiento = and_(
+        estado_reemplazo,
+        active_reemplazo_exists,
+        manual_normal,
+    )
+    sin_movimiento_base = and_(
+        or_(estado_activa, estado_proceso, estado_reemplazo),
+        or_(stale_by_days, stale_by_activity),
+    )
+    sin_movimiento_signal = and_(
+        sin_movimiento_base,
+        ~manual_vencida,
+        ~reemplazo_sin_seguimiento,
+        ~manual_hoy,
+        ~espera_pago_prolongada,
+    )
+    activas_estables = and_(
+        estado_activa,
+        ~manual_vencida,
+        ~manual_hoy,
+        ~sin_movimiento_base,
+    )
+
+    latest_audit_id = (
+        db.session.query(func.max(StaffAuditLog.id))
+        .filter(
+            func.lower(StaffAuditLog.entity_type) == "solicitud",
+            StaffAuditLog.entity_id == cast(Solicitud.id, db.String(64)),
+        )
+        .correlate(Solicitud)
+        .scalar_subquery()
+    )
+    latest_has_actor = (
+        db.session.query(StaffAuditLog.id)
+        .filter(
+            StaffAuditLog.id == latest_audit_id,
+            StaffAuditLog.actor_user_id.isnot(None),
+        )
+        .exists()
+    )
+    sin_responsable = ~latest_has_actor
+
+    signal_rank = case(
+        (manual_vencida, 100),
+        (reemplazo_sin_seguimiento, 95),
+        (manual_hoy, 90),
+        (espera_pago_prolongada, 85),
+        (sin_movimiento_signal, 80),
+        (estado_espera_pago, 70),
+        (and_(estado_reemplazo, active_reemplazo_exists), 60),
+        (estado_norm == "pagada", 10),
+        (estado_norm == "cancelada", 5),
+        else_=40,
+    )
+
+    clauses = {
+        "urgentes": or_(
+            manual_vencida,
+            manual_hoy,
+            sin_movimiento_signal,
+            espera_pago_prolongada,
+            reemplazo_sin_seguimiento,
+        ),
+        "vencidas": manual_vencida,
+        "atencion_hoy": manual_hoy,
+        "espera_pago": estado_espera_pago,
+        "espera_pago_prolongada": and_(
+            espera_pago_prolongada,
+            ~manual_vencida,
+            ~manual_hoy,
+        ),
+        "reemplazo": estado_reemplazo,
+        "reemplazo_sin_seguimiento": reemplazo_sin_seguimiento,
+        "sin_movimiento": sin_movimiento_signal,
+        "activas_estables": activas_estables,
+        "sin_responsable": sin_responsable,
+    }
+    return {
+        "clauses": clauses,
+        "signal_rank": signal_rank,
+        "state_anchor": state_anchor,
+    }
+
+
+def _query_count_distinct_solicitudes(query) -> int:
+    try:
+        return int(
+            query
+            .with_entities(func.count(func.distinct(Solicitud.id)))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        return int(query.order_by(None).count() or 0)
+
+
+def _solicitudes_triage_options_sql(*, base_query, selected: str, now_dt: datetime, today_rd):
+    selected_code = str(selected or "").strip().lower()
+    parts = _solicitudes_triage_sql_parts(now_dt=now_dt, today_rd=today_rd)
+    clauses = parts["clauses"]
+    code_order = [code for code, _label in _SOLICITUDES_TRIAGE_DEFS]
+    counts_by_code = {code: 0 for code in code_order}
+    all_count = 0
+
+    try:
+        entities = [func.count(func.distinct(Solicitud.id)).label("all_count")]
+        for code in code_order:
+            clause = clauses.get(code)
+            if clause is None:
+                entities.append(func.count(func.distinct(case((False, Solicitud.id), else_=None))).label(f"count_{code}"))
+                continue
+            entities.append(
+                func.count(
+                    func.distinct(
+                        case((clause, Solicitud.id), else_=None)
+                    )
+                ).label(f"count_{code}")
+            )
+        row = base_query.order_by(None).with_entities(*entities).first()
+        all_count = int(getattr(row, "all_count", 0) or 0) if row is not None else 0
+        if row is not None:
+            for code in code_order:
+                counts_by_code[code] = int(getattr(row, f"count_{code}", 0) or 0)
+    except Exception:
+        all_count = _query_count_distinct_solicitudes(base_query)
+        for code in code_order:
+            clause = clauses.get(code)
+            if clause is not None:
+                counts_by_code[code] = _query_count_distinct_solicitudes(base_query.filter(clause))
+
+    options = [{
+        "code": "",
+        "label": "Todas",
+        "count": int(all_count),
+        "active": selected_code == "",
+    }]
+    for code, label in _SOLICITUDES_TRIAGE_DEFS:
+        options.append({
+            "code": code,
+            "label": label,
+            "count": int(counts_by_code.get(code, 0) or 0),
+            "active": selected_code == code,
+        })
+    return options
+
+
 def _solicitud_has_responsable(item) -> bool:
     return str(getattr(item, "last_actor_label", "") or "").strip().lower() not in {"", "sin responsable"}
 
@@ -13858,6 +14087,7 @@ def _solicitudes_prioridad_context():
         'codigo_solicitud',
         'ciudad_sector',
         'estado',
+        'row_version',
         'fecha_solicitud',
         'estado_actual_desde',
         'fecha_ultima_actividad',
@@ -14352,8 +14582,8 @@ def listar_solicitudes():
         per_page = max(10, min(per_page, 200))
 
         allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada', 'cancelada']
-
-        solicitud_attrs = []
+        row_order = (Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+        detail_attrs = []
         for attr in (
             "id",
             "cliente_id",
@@ -14375,33 +14605,41 @@ def listar_solicitudes():
             "fecha_ultima_actividad",
         ):
             if hasattr(Solicitud, attr):
-                solicitud_attrs.append(getattr(Solicitud, attr))
+                detail_attrs.append(getattr(Solicitud, attr))
 
-        query = Solicitud.query
-        options_list = []
-        if solicitud_attrs:
-            options_list.append(load_only(*solicitud_attrs))
-        options_list.extend([
-            joinedload(Solicitud.cliente),
-            joinedload(Solicitud.candidata),
-            selectinload(Solicitud.reemplazos).load_only(
-                Reemplazo.id,
-                Reemplazo.fecha_inicio_reemplazo,
-                Reemplazo.fecha_fin_reemplazo,
-                Reemplazo.created_at,
-            ),
-        ])
-        query = query.options(*options_list)
+        triage_scan_attrs = []
+        for attr in (
+            "id",
+            "cliente_id",
+            "candidata_id",
+            "codigo_solicitud",
+            "ciudad_sector",
+            "rutas_cercanas",
+            "modalidad_trabajo",
+            "horario",
+            "nota_cliente",
+            "estado",
+            "fecha_solicitud",
+            "estado_actual_desde",
+            "fecha_seguimiento_manual",
+            "row_version",
+            "updated_at",
+            "fecha_ultima_modificacion",
+            "fecha_ultima_actividad",
+        ):
+            if hasattr(Solicitud, attr):
+                triage_scan_attrs.append(getattr(Solicitud, attr))
 
+        base_query = Solicitud.query
         if estado and estado in allowed_states:
-            query = query.filter(Solicitud.estado == estado)
+            base_query = base_query.filter(Solicitud.estado == estado)
         else:
             estado = ''
 
         if q:
             like = f"%{q}%"
-            query = (
-                query
+            base_query = (
+                base_query
                 .outerjoin(Cliente, Solicitud.cliente_id == Cliente.id)
                 .outerjoin(Candidata, Solicitud.candidata_id == Candidata.fila)
                 .filter(or_(
@@ -14417,61 +14655,225 @@ def listar_solicitudes():
                 ))
             )
 
-        query = query.order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
-        solicitudes_rows = query.all()
-
-        reemplazos_activos = {}
-        for s in (solicitudes_rows or []):
-            repl = _active_reemplazo_for_solicitud(s)
-            if repl:
-                reemplazos_activos[s.id] = repl
-
         now_utc = utc_now_naive()
         today_rd = rd_today()
-        page_ids = [int(getattr(s, "id", 0) or 0) for s in (solicitudes_rows or []) if int(getattr(s, "id", 0) or 0) > 0]
-        last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(page_ids)
-        actor_ids = sorted({
-            int(uid) for uid in (last_actor_by_solicitud.values() or [])
-            if uid is not None and int(uid or 0) > 0
-        })
-        username_by_actor = _staff_username_map(actor_ids)
+        start = max(0, (page - 1) * per_page)
+        triage_options = _solicitudes_triage_options(rows=[], selected=triage)
         solicitudes_operativas = []
-        for s in (solicitudes_rows or []):
-            sid = int(getattr(s, "id", 0) or 0)
-            actor_user_id = last_actor_by_solicitud.get(sid)
-            actor_label = "Sin responsable"
-            if actor_user_id is not None:
-                try:
-                    actor_user_id = int(actor_user_id)
-                except Exception:
-                    actor_user_id = None
-            if actor_user_id is not None and actor_user_id > 0:
-                actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-            solicitudes_operativas.append(
-                _SolicitudOperativaListVM(
-                    s,
-                    now_dt=now_utc,
-                    today_rd=today_rd,
-                    last_actor_label=actor_label,
-                    has_active_reemplazo=bool(reemplazos_activos.get(sid)),
+        reemplazos_activos = {}
+        total = 0
+        has_more = False
+
+        if triage:
+            triage_options_list = []
+            if triage_scan_attrs:
+                triage_options_list.append(load_only(*triage_scan_attrs))
+            triage_options_list.extend([
+                joinedload(Solicitud.cliente),
+                joinedload(Solicitud.candidata),
+            ])
+            triage_options_list.append(
+                selectinload(Solicitud.reemplazos).load_only(
+                    Reemplazo.id,
+                    Reemplazo.fecha_inicio_reemplazo,
+                    Reemplazo.fecha_fin_reemplazo,
+                    Reemplazo.created_at,
                 )
             )
+            if _solicitudes_query_supports_sql_triage(base_query):
+                triage_parts = _solicitudes_triage_sql_parts(now_dt=now_utc, today_rd=today_rd)
+                triage_clause = triage_parts["clauses"].get(triage)
+                triage_options = _solicitudes_triage_options_sql(
+                    base_query=base_query,
+                    selected=triage,
+                    now_dt=now_utc,
+                    today_rd=today_rd,
+                )
+                triage_query = base_query
+                if triage_clause is not None:
+                    triage_query = triage_query.filter(triage_clause)
+                total = _query_count_distinct_solicitudes(triage_query)
+                end = start + per_page
+                has_more = end < total
+                triage_query = (
+                    triage_query
+                    .options(*triage_options_list)
+                    .order_by(
+                        triage_parts["signal_rank"].desc(),
+                        func.coalesce(triage_parts["state_anchor"], now_utc).asc(),
+                        Solicitud.id.asc(),
+                    )
+                    .offset(start)
+                    .limit(per_page)
+                )
+                triage_rows = triage_query.all()
+                triage_ids = [
+                    int(getattr(s, "id", 0) or 0)
+                    for s in (triage_rows or [])
+                    if int(getattr(s, "id", 0) or 0) > 0
+                ]
+                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                actor_ids = sorted({
+                    int(uid) for uid in (last_actor_by_solicitud.values() or [])
+                    if uid is not None and int(uid or 0) > 0
+                })
+                username_by_actor = _staff_username_map(actor_ids)
+                for s in (triage_rows or []):
+                    sid = int(getattr(s, "id", 0) or 0)
+                    actor_user_id = last_actor_by_solicitud.get(sid)
+                    actor_label = "Sin responsable"
+                    if actor_user_id is not None:
+                        try:
+                            actor_user_id = int(actor_user_id)
+                        except Exception:
+                            actor_user_id = None
+                    if actor_user_id is not None and actor_user_id > 0:
+                        actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                    repl = _active_reemplazo_for_solicitud(s)
+                    if repl:
+                        reemplazos_activos[sid] = repl
+                    item = _SolicitudOperativaListVM(
+                        s,
+                        now_dt=now_utc,
+                        today_rd=today_rd,
+                        last_actor_label=actor_label,
+                        has_active_reemplazo=bool(repl),
+                    )
+                    if _solicitud_matches_triage(item, triage):
+                        solicitudes_operativas.append(item)
+            else:
+                triage_query = base_query.options(*triage_options_list).order_by(*row_order)
+                triage_rows = triage_query.all()
 
-        solicitudes_operativas.sort(
-            key=lambda item: (
-                -int(getattr(item, "operational_signal_rank", 0) or 0),
-                -int(getattr(item, "days_in_state", 0) or 0),
-                int(getattr(item, "id", 0) or 0),
+                triage_ids = [
+                    int(getattr(s, "id", 0) or 0)
+                    for s in (triage_rows or [])
+                    if int(getattr(s, "id", 0) or 0) > 0
+                ]
+                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                actor_ids = sorted({
+                    int(uid) for uid in (last_actor_by_solicitud.values() or [])
+                    if uid is not None and int(uid or 0) > 0
+                })
+                username_by_actor = _staff_username_map(actor_ids)
+                triage_rows_wrapped = []
+                for s in (triage_rows or []):
+                    sid = int(getattr(s, "id", 0) or 0)
+                    actor_user_id = last_actor_by_solicitud.get(sid)
+                    actor_label = "Sin responsable"
+                    if actor_user_id is not None:
+                        try:
+                            actor_user_id = int(actor_user_id)
+                        except Exception:
+                            actor_user_id = None
+                    if actor_user_id is not None and actor_user_id > 0:
+                        actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                    repl = _active_reemplazo_for_solicitud(s)
+                    if repl:
+                        reemplazos_activos[sid] = repl
+                    triage_rows_wrapped.append(
+                        _SolicitudOperativaListVM(
+                            s,
+                            now_dt=now_utc,
+                            today_rd=today_rd,
+                            last_actor_label=actor_label,
+                            has_active_reemplazo=bool(repl),
+                        )
+                    )
+
+                triage_rows_wrapped.sort(
+                    key=lambda item: (
+                        -int(getattr(item, "operational_signal_rank", 0) or 0),
+                        -int(getattr(item, "days_in_state", 0) or 0),
+                        int(getattr(item, "id", 0) or 0),
+                    )
+                )
+                triage_options = _solicitudes_triage_options(rows=triage_rows_wrapped, selected=triage)
+                filtered_rows = [item for item in triage_rows_wrapped if _solicitud_matches_triage(item, triage)]
+                total = len(filtered_rows)
+                end = start + per_page
+                has_more = end < total
+                solicitudes_operativas = filtered_rows[start:end]
+        else:
+            try:
+                total = int(
+                    base_query
+                    .with_entities(func.count(func.distinct(Solicitud.id)))
+                    .scalar()
+                    or 0
+                )
+            except Exception:
+                # Compatibilidad con stubs/unit tests que no implementan with_entities/scalar.
+                total = int(base_query.order_by(None).count() or 0)
+            has_more = (start + per_page) < total
+            detail_query = base_query
+            detail_options = []
+            if detail_attrs:
+                detail_options.append(load_only(*detail_attrs))
+            detail_options.extend([
+                joinedload(Solicitud.cliente),
+                joinedload(Solicitud.candidata),
+                selectinload(Solicitud.reemplazos).load_only(
+                    Reemplazo.id,
+                    Reemplazo.fecha_inicio_reemplazo,
+                    Reemplazo.fecha_fin_reemplazo,
+                    Reemplazo.created_at,
+                ),
+            ])
+            detail_query = (
+                detail_query
+                .options(*detail_options)
+                .order_by(*row_order)
+                .offset(start)
+                .limit(per_page)
             )
-        )
-        triage_options = _solicitudes_triage_options(rows=solicitudes_operativas, selected=triage)
-        if triage:
-            solicitudes_operativas = [item for item in solicitudes_operativas if _solicitud_matches_triage(item, triage)]
-        total = len(solicitudes_operativas)
-        start = max(0, (page - 1) * per_page)
-        end = start + per_page
-        has_more = end < total
-        solicitudes_operativas = solicitudes_operativas[start:end]
+            page_rows = detail_query.all()
+
+            page_ids = [
+                int(getattr(s, "id", 0) or 0)
+                for s in (page_rows or [])
+                if int(getattr(s, "id", 0) or 0) > 0
+            ]
+            last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(page_ids)
+            actor_ids = sorted({
+                int(uid) for uid in (last_actor_by_solicitud.values() or [])
+                if uid is not None and int(uid or 0) > 0
+            })
+            username_by_actor = _staff_username_map(actor_ids)
+            for s in (page_rows or []):
+                sid = int(getattr(s, "id", 0) or 0)
+                actor_user_id = last_actor_by_solicitud.get(sid)
+                actor_label = "Sin responsable"
+                if actor_user_id is not None:
+                    try:
+                        actor_user_id = int(actor_user_id)
+                    except Exception:
+                        actor_user_id = None
+                if actor_user_id is not None and actor_user_id > 0:
+                    actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                repl = _active_reemplazo_for_solicitud(s)
+                if repl:
+                    reemplazos_activos[sid] = repl
+                solicitudes_operativas.append(
+                    _SolicitudOperativaListVM(
+                        s,
+                        now_dt=now_utc,
+                        today_rd=today_rd,
+                        last_actor_label=actor_label,
+                        has_active_reemplazo=bool(repl),
+                    )
+                )
+
+            solicitudes_operativas.sort(
+                key=lambda item: (
+                    -int(getattr(item, "operational_signal_rank", 0) or 0),
+                    -int(getattr(item, "days_in_state", 0) or 0),
+                    int(getattr(item, "id", 0) or 0),
+                )
+            )
+            triage_options = _solicitudes_triage_options(rows=solicitudes_operativas, selected=triage)
+            if triage_options:
+                triage_options[0]["count"] = int(total)
 
         proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
         if copiable_warning and (not _admin_async_wants_json()):
@@ -16215,26 +16617,119 @@ def marcar_candidata_lista_para_trabajar(candidata_id: int):
 # ============================================================
 #                               RESUMEN KPI
 # ============================================================
+_SOLICITUDES_RESUMEN_CACHE_KEY = "admin:solicitudes:resumen:v2"
+_SOLICITUDES_RESUMEN_CACHE_TTL_SEC_DEFAULT = 45
+
+
+def _solicitudes_resumen_cache_ttl_sec() -> int:
+    try:
+        raw = int((os.getenv("ADMIN_SOLICITUDES_RESUMEN_CACHE_TTL_SEC") or str(_SOLICITUDES_RESUMEN_CACHE_TTL_SEC_DEFAULT)).strip())
+    except Exception:
+        raw = _SOLICITUDES_RESUMEN_CACHE_TTL_SEC_DEFAULT
+    return max(15, min(raw, 300))
+
+
+def _solicitudes_resumen_cache_get() -> dict | None:
+    if not _cache_ok():
+        return None
+    try:
+        payload = cache.get(_SOLICITUDES_RESUMEN_CACHE_KEY)
+        if isinstance(payload, dict):
+            return payload
+    except Exception:
+        pass
+    return None
+
+
+def _solicitudes_resumen_cache_set(payload: dict) -> None:
+    if not _cache_ok():
+        return
+    try:
+        cache.set(_SOLICITUDES_RESUMEN_CACHE_KEY, payload, timeout=_solicitudes_resumen_cache_ttl_sec())
+    except Exception:
+        pass
+
+
+def _db_dialect_name() -> str:
+    try:
+        bind = db.session.get_bind()
+        if bind is not None and getattr(bind, "dialect", None) is not None:
+            return str(bind.dialect.name or "").strip().lower()
+    except Exception:
+        pass
+    return ""
+
+
+def _trend_bucket_expr(column, *, grain: str, dialect: str):
+    if dialect == "sqlite":
+        # SQLite no trae date_trunc: agrupamos por llave de texto estable y luego normalizamos a datetime.
+        if grain == "week":
+            return func.strftime("%Y-%W-1", column)
+        return func.strftime("%Y-%m-01", column)
+    return func.date_trunc(grain, column)
+
+
+def _avg_seconds_expr(end_column, start_column, *, dialect: str):
+    if dialect == "sqlite":
+        # julianday() es portable en SQLite y devuelve diferencia en días.
+        return (func.julianday(end_column) - func.julianday(start_column)) * 86400.0
+    return func.extract("epoch", end_column - start_column)
+
+
+def _normalize_bucket_value(value, *, grain: str, dialect: str) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime(value.year, value.month, value.day)
+    if dialect == "sqlite":
+        text = str(value or "").strip()
+        try:
+            if grain == "week":
+                # `%W` usa semana iniciando lunes; fijamos el lunes de esa semana.
+                return datetime.strptime(text, "%Y-%W-%w")
+            return datetime.strptime(text, "%Y-%m-%d")
+        except Exception:
+            return None
+    return None
+
+
 @admin_bp.route('/solicitudes/resumen')
 @login_required
 @admin_required
 def resumen_solicitudes():
     """
     KPIs con fechas coherentes en UTC y casteo numérico robusto.
-    Requiere Postgres (usa date_trunc/extract). Si usas otro motor, adaptar funciones.
+    Usa cache corto para reducir costo y soporta agrupación temporal en SQLite.
     """
+    cached_payload = _solicitudes_resumen_cache_get()
+    if cached_payload:
+        return render_template('admin/solicitudes_resumen.html', **cached_payload)
+
+    dialect = _db_dialect_name()
+
     # Bordes UTC para hoy/semana/mes
     hoy = rd_today()
     week_start = hoy - timedelta(days=hoy.weekday())
     month_start = date(hoy.year, hoy.month, 1)
 
     # — Totales y estados —
-    total_sol    = Solicitud.query.count()
-    proc_count   = Solicitud.query.filter_by(estado='proceso').count()
-    act_count    = Solicitud.query.filter_by(estado='activa').count()
-    pag_count    = Solicitud.query.filter_by(estado='pagada').count()
-    cancel_count = Solicitud.query.filter_by(estado='cancelada').count()
-    repl_count   = Solicitud.query.filter_by(estado='reemplazo').count()
+    state_rows = (
+        db.session.query(
+            Solicitud.estado,
+            func.count(Solicitud.id).label("cnt"),
+        )
+        .group_by(Solicitud.estado)
+        .all()
+    )
+    state_counts = {str(st or "").strip().lower(): int(cnt or 0) for st, cnt in state_rows}
+    total_sol = int(sum(int(cnt or 0) for _, cnt in state_rows))
+    proc_count = int(state_counts.get('proceso', 0))
+    act_count = int(state_counts.get('activa', 0))
+    pag_count = int(state_counts.get('pagada', 0))
+    cancel_count = int(state_counts.get('cancelada', 0))
+    repl_count = int(state_counts.get('reemplazo', 0))
 
     # — Tasas —
     conversion_rate  = (pag_count    / total_sol * 100) if total_sol else 0
@@ -16244,19 +16739,19 @@ def resumen_solicitudes():
     # — Promedios de tiempo (en días) —
     # Promedio publicación (last_copiado_at - fecha_solicitud)
     avg_pub_secs = (db.session.query(
-        func.avg(func.extract('epoch', Solicitud.last_copiado_at - Solicitud.fecha_solicitud))
+        func.avg(_avg_seconds_expr(Solicitud.last_copiado_at, Solicitud.fecha_solicitud, dialect=dialect))
     ).filter(Solicitud.last_copiado_at.isnot(None)).scalar()) or 0
     avg_pub_days = avg_pub_secs / 86400
 
     # Promedio hasta pago (fecha_ultima_modificacion - fecha_solicitud) solo pagadas
     avg_pay_secs = (db.session.query(
-        func.avg(func.extract('epoch', Solicitud.fecha_ultima_modificacion - Solicitud.fecha_solicitud))
+        func.avg(_avg_seconds_expr(Solicitud.fecha_ultima_modificacion, Solicitud.fecha_solicitud, dialect=dialect))
     ).filter(Solicitud.estado == 'pagada').scalar()) or 0
     avg_pay_days = avg_pay_secs / 86400
 
     # Promedio hasta cancelación
     avg_cancel_secs = (db.session.query(
-        func.avg(func.extract('epoch', Solicitud.fecha_cancelacion - Solicitud.fecha_solicitud))
+        func.avg(_avg_seconds_expr(Solicitud.fecha_cancelacion, Solicitud.fecha_solicitud, dialect=dialect))
     ).filter(Solicitud.fecha_cancelacion.isnot(None)).scalar()) or 0
     avg_cancel_days = avg_cancel_secs / 86400
 
@@ -16296,7 +16791,7 @@ def resumen_solicitudes():
     # — Tendencias (semanal/mensual) —
     trend_new_weekly  = (
         db.session.query(
-            func.date_trunc('week', Solicitud.fecha_solicitud).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_solicitud, grain='week', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .group_by('period').order_by('period')
@@ -16304,7 +16799,7 @@ def resumen_solicitudes():
     )
     trend_new_monthly = (
         db.session.query(
-            func.date_trunc('month', Solicitud.fecha_solicitud).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_solicitud, grain='month', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .group_by('period').order_by('period')
@@ -16313,7 +16808,7 @@ def resumen_solicitudes():
 
     trend_paid_weekly  = (
         db.session.query(
-            func.date_trunc('week', Solicitud.fecha_ultima_modificacion).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_ultima_modificacion, grain='week', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .filter(Solicitud.estado == 'pagada')
@@ -16322,7 +16817,7 @@ def resumen_solicitudes():
     )
     trend_paid_monthly = (
         db.session.query(
-            func.date_trunc('month', Solicitud.fecha_ultima_modificacion).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_ultima_modificacion, grain='month', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .filter(Solicitud.estado == 'pagada')
@@ -16332,7 +16827,7 @@ def resumen_solicitudes():
 
     trend_cancel_weekly  = (
         db.session.query(
-            func.date_trunc('week', Solicitud.fecha_cancelacion).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_cancelacion, grain='week', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .filter(Solicitud.estado == 'cancelada')
@@ -16341,7 +16836,7 @@ def resumen_solicitudes():
     )
     trend_cancel_monthly = (
         db.session.query(
-            func.date_trunc('month', Solicitud.fecha_cancelacion).label('period'),
+            _trend_bucket_expr(Solicitud.fecha_cancelacion, grain='month', dialect=dialect).label('period'),
             func.count(Solicitud.id)
         )
         .filter(Solicitud.estado == 'cancelada')
@@ -16403,7 +16898,7 @@ def resumen_solicitudes():
     # el casteo directo a NUMERIC es seguro.
     stats_mensual = (
         db.session.query(
-            func.date_trunc('month', Solicitud.fecha_solicitud).label('mes'),
+            _trend_bucket_expr(Solicitud.fecha_solicitud, grain='month', dialect=dialect).label('mes'),
             func.count(Solicitud.id).label('cantidad'),
             func.sum(cast(Solicitud.monto_pagado, Numeric(12, 2))).label('total_pagado')
         )
@@ -16411,57 +16906,100 @@ def resumen_solicitudes():
         .group_by('mes').order_by('mes')
         .all()
     )
+    trend_new_weekly_norm = []
+    for period, cnt in trend_new_weekly:
+        period_norm = _normalize_bucket_value(period, grain='week', dialect=dialect)
+        if period_norm is not None:
+            trend_new_weekly_norm.append((period_norm, int(cnt or 0)))
 
-    return render_template(
-        'admin/solicitudes_resumen.html',
+    trend_new_monthly_norm = []
+    for period, cnt in trend_new_monthly:
+        period_norm = _normalize_bucket_value(period, grain='month', dialect=dialect)
+        if period_norm is not None:
+            trend_new_monthly_norm.append((period_norm, int(cnt or 0)))
+
+    trend_paid_weekly_norm = []
+    for period, cnt in trend_paid_weekly:
+        period_norm = _normalize_bucket_value(period, grain='week', dialect=dialect)
+        if period_norm is not None:
+            trend_paid_weekly_norm.append((period_norm, int(cnt or 0)))
+
+    trend_paid_monthly_norm = []
+    for period, cnt in trend_paid_monthly:
+        period_norm = _normalize_bucket_value(period, grain='month', dialect=dialect)
+        if period_norm is not None:
+            trend_paid_monthly_norm.append((period_norm, int(cnt or 0)))
+
+    trend_cancel_weekly_norm = []
+    for period, cnt in trend_cancel_weekly:
+        period_norm = _normalize_bucket_value(period, grain='week', dialect=dialect)
+        if period_norm is not None:
+            trend_cancel_weekly_norm.append((period_norm, int(cnt or 0)))
+
+    trend_cancel_monthly_norm = []
+    for period, cnt in trend_cancel_monthly:
+        period_norm = _normalize_bucket_value(period, grain='month', dialect=dialect)
+        if period_norm is not None:
+            trend_cancel_monthly_norm.append((period_norm, int(cnt or 0)))
+
+    stats_mensual_norm = []
+    for mes, cantidad, total in stats_mensual:
+        mes_norm = _normalize_bucket_value(mes, grain='month', dialect=dialect)
+        if mes_norm is None:
+            continue
+        stats_mensual_norm.append((mes_norm, int(cantidad or 0), (total or Decimal("0.00"))))
+
+    payload = {
         # Totales y estados
-        total_sol=total_sol,
-        proc_count=proc_count,
-        act_count=act_count,
-        pag_count=pag_count,
-        cancel_count=cancel_count,
-        repl_count=repl_count,
+        "total_sol": total_sol,
+        "proc_count": proc_count,
+        "act_count": act_count,
+        "pag_count": pag_count,
+        "cancel_count": cancel_count,
+        "repl_count": repl_count,
         # Tasas y promedios
-        conversion_rate=conversion_rate,
-        replacement_rate=replacement_rate,
-        abandon_rate=abandon_rate,
-        avg_pub_days=avg_pub_days,
-        avg_pay_days=avg_pay_days,
-        avg_cancel_days=avg_cancel_days,
+        "conversion_rate": conversion_rate,
+        "replacement_rate": replacement_rate,
+        "abandon_rate": abandon_rate,
+        "avg_pub_days": avg_pub_days,
+        "avg_pay_days": avg_pay_days,
+        "avg_cancel_days": avg_cancel_days,
         # Top y distribución
-        top_cities=top_cities,
-        modality_dist=modality_dist,
-        backlog_threshold_days=backlog_threshold_days,
-        backlog_alert=backlog_alert,
+        "top_cities": [(city, int(cnt or 0)) for city, cnt in top_cities],
+        "modality_dist": [(mod, int(cnt or 0)) for mod, cnt in modality_dist],
+        "backlog_threshold_days": backlog_threshold_days,
+        "backlog_alert": backlog_alert,
         # Tendencias
-        trend_new_weekly=trend_new_weekly,
-        trend_new_monthly=trend_new_monthly,
-        trend_paid_weekly=trend_paid_weekly,
-        trend_paid_monthly=trend_paid_monthly,
-        trend_cancel_weekly=trend_cancel_weekly,
-        trend_cancel_monthly=trend_cancel_monthly,
+        "trend_new_weekly": trend_new_weekly_norm,
+        "trend_new_monthly": trend_new_monthly_norm,
+        "trend_paid_weekly": trend_paid_weekly_norm,
+        "trend_paid_monthly": trend_paid_monthly_norm,
+        "trend_cancel_weekly": trend_cancel_weekly_norm,
+        "trend_cancel_monthly": trend_cancel_monthly_norm,
         # Órdenes realizadas
-        orders_today=orders_today,
-        orders_week=orders_week,
-        orders_month=orders_month,
+        "orders_today": orders_today,
+        "orders_week": orders_week,
+        "orders_month": orders_month,
         # Publicadas (copias)
-        daily_copy=daily_copy,
-        weekly_copy=weekly_copy,
-        monthly_copy=monthly_copy,
+        "daily_copy": daily_copy,
+        "weekly_copy": weekly_copy,
+        "monthly_copy": monthly_copy,
         # Pagos
-        daily_paid=daily_paid,
-        weekly_paid=weekly_paid,
-        monthly_paid=monthly_paid,
+        "daily_paid": daily_paid,
+        "weekly_paid": weekly_paid,
+        "monthly_paid": monthly_paid,
         # Cancelaciones
-        daily_cancel=daily_cancel,
-        weekly_cancel=weekly_cancel,
-        monthly_cancel=monthly_cancel,
+        "daily_cancel": daily_cancel,
+        "weekly_cancel": weekly_cancel,
+        "monthly_cancel": monthly_cancel,
         # Reemplazos
-        weekly_repl=weekly_repl,
-        monthly_repl=monthly_repl,
+        "weekly_repl": weekly_repl,
+        "monthly_repl": monthly_repl,
         # Ingreso mensual
-        stats_mensual=stats_mensual
-    )
+        "stats_mensual": stats_mensual_norm,
+    }
+    _solicitudes_resumen_cache_set(payload)
+    return render_template('admin/solicitudes_resumen.html', **payload)
 
 
 
