@@ -3937,8 +3937,9 @@ def editar_usuario(user_id: int):
 
     if form.validate_on_submit():
         email = (form.email.data or '').strip().lower() or None
-        new_password = StaffUser.normalize_password(form.new_password.data or "")
-        new_password_confirm = StaffUser.normalize_password(form.new_password_confirm.data or "")
+        change_password_requested = bool(getattr(form, "change_password", None) and form.change_password.data)
+        new_password = StaffUser.normalize_password(form.new_password.data or "") if change_password_requested else ""
+        new_password_confirm = StaffUser.normalize_password(form.new_password_confirm.data or "") if change_password_requested else ""
         old_role = (user.role or "").strip().lower()
         role_from_form = (form.role.data or '').strip().lower()
         role_to_apply = old_role if wants_async else role_from_form

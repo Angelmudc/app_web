@@ -46,9 +46,17 @@
     </div>
 
     <div class="mb-3">
+      <div class="form-check">
+        {{ form.change_password(class="form-check-input js-password-toggle", id="change_password") }}
+        <label class="form-check-label" for="change_password">Quiero cambiar la contraseña de este usuario</label>
+      </div>
+      <div class="form-text">Para evitar cambios accidentales, el sistema solo aplicará la nueva contraseña si esta opción está marcada.</div>
+    </div>
+
+    <div class="mb-3">
       <label class="form-label" for="new_password">Reset password (opcional)</label>
       {{ form.new_password(
-        class="form-control" + (" is-invalid" if form.new_password.errors else ""),
+        class="form-control js-password-field" + (" is-invalid" if form.new_password.errors else ""),
         id="new_password",
         placeholder="Mínimo " ~ min_password_len ~ " caracteres"
       ) }}
@@ -61,7 +69,7 @@
     <div class="mb-3">
       <label class="form-label" for="new_password_confirm">Confirmar nueva contraseña</label>
       {{ form.new_password_confirm(
-        class="form-control" + (" is-invalid" if form.new_password_confirm.errors else ""),
+        class="form-control js-password-field" + (" is-invalid" if form.new_password_confirm.errors else ""),
         id="new_password_confirm",
         placeholder="Repite la nueva contraseña"
       ) }}
@@ -75,3 +83,25 @@
     </button>
   </form>
 </div>
+
+<script>
+  (function () {
+    var root = document.currentScript && document.currentScript.previousElementSibling;
+    if (!root || !root.matches('div.p-0')) return;
+
+    var toggle = root.querySelector('.js-password-toggle');
+    var fields = root.querySelectorAll('.js-password-field');
+    if (!toggle || !fields.length) return;
+
+    function syncPasswordFields() {
+      var enabled = !!toggle.checked;
+      fields.forEach(function (input) {
+        input.disabled = !enabled;
+        if (!enabled) input.value = '';
+      });
+    }
+
+    toggle.addEventListener('change', syncPasswordFields);
+    syncPasswordFields();
+  })();
+</script>

@@ -57,6 +57,7 @@ def test_editar_usuario_async_ok_local_success_without_redirect():
         data={
             "email": unique_email,
             "role": "owner",
+            "change_password": "y",
             "new_password": "NuevaPass123",
             "new_password_confirm": "NuevaPass123",
         },
@@ -96,6 +97,7 @@ def test_editar_usuario_async_new_password_without_confirm_fails_and_keeps_hash(
         data={
             "email": "missing.confirm.{0}@example.com".format(uuid.uuid4().hex[:8]),
             "role": "owner",
+            "change_password": "y",
             "new_password": "NuevaPass123",
             "new_password_confirm": "",
         },
@@ -132,6 +134,7 @@ def test_editar_usuario_async_validation_error_returns_inline_errors():
         data={
             "email": "correo-invalido",
             "role": "secretaria",
+            "change_password": "y",
             "new_password": "123",
         },
         headers=_async_headers(),
@@ -244,3 +247,38 @@ def test_editar_usuario_async_ignores_role_change_even_if_post_is_tampered():
     assert updated is not None
     assert updated.email == tampered_email
     assert updated.role == "secretaria"
+
+
+def test_editar_usuario_async_ignora_password_si_no_hay_intencion_explicita():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        user = _create_staff_user(role="secretaria")
+        user_id = int(user.id)
+        original_hash = str(user.password_hash or "")
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+
+    resp = client.post(
+        f"/admin/usuarios/{user_id}/editar",
+        data={
+            "email": "autofill.guard.{0}@example.com".format(uuid.uuid4().hex[:8]),
+            "role": "owner",
+            # Simula autofill accidental: valores presentes sin marcar change_password.
+            "new_password": "AccidentalPass123",
+            "new_password_confirm": "AccidentalPass123",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("success") is True
+
+    updated = _get_staff_user(user_id)
+    assert updated is not None
+    assert str(updated.password_hash or "") == original_hash
+    assert updated.check_password("Pass12345") is True

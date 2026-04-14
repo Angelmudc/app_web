@@ -123,6 +123,7 @@ class StaffUserEditForm(FlaskForm):
         choices=[('secretaria', 'Secretaria'), ('admin', 'Admin'), ('owner', 'Owner')],
         validators=[DataRequired("Selecciona un rol.")]
     )
+    change_password = BooleanField('Cambiar contraseña')
     new_password = PasswordField(
         'Reset password (opcional)',
         validators=[Optional(), Length(min=8, max=128)],
