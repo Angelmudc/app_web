@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 from flask import render_template
@@ -150,6 +151,33 @@ def test_create_app_sets_secure_cookies_in_production(monkeypatch):
     assert app.config["SESSION_COOKIE_SECURE"] is True
     assert app.config["REMEMBER_COOKIE_SECURE"] is True
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
+
+
+def test_create_app_keeps_pool_pre_ping_enabled(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "testing")
+    monkeypatch.setenv("FLASK_SECRET_KEY", "x" * 64)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    app = create_app()
+    engine_opts = app.config.get("SQLALCHEMY_ENGINE_OPTIONS") or {}
+    assert engine_opts.get("pool_pre_ping") is True
+
+
+def test_create_app_has_no_global_db_ping_before_request(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "testing")
+    monkeypatch.setenv("FLASK_SECRET_KEY", "x" * 64)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
+    app = create_app()
+    app.config["TESTING"] = True
+    funcs = [getattr(f, "__name__", "") for f in (app.before_request_funcs.get(None) or [])]
+    assert "_ensure_db_connection" not in funcs
+
+    client = app.test_client()
+    with patch("config_app.db.session.execute") as execute_mock:
+        resp = client.get("/ping", follow_redirects=False)
+    assert resp.status_code == 200
+    execute_mock.assert_not_called()
 
 
 def test_autosave_uses_session_storage_and_sensitive_filters():

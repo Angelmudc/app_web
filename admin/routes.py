@@ -311,6 +311,47 @@ def _live_invalidation_stream_enabled() -> bool:
     return run_env not in ("prod", "production")
 
 
+def _admin_auto_presence_touch_enabled() -> bool:
+    raw = os.getenv("ADMIN_AUTO_PRESENCE_TOUCH_ENABLED")
+    if raw is None or str(raw).strip() == "":
+        return True
+    return _is_true_env(str(raw), default=True)
+
+
+def _should_auto_touch_presence() -> bool:
+    if request.method not in {"GET", "HEAD"}:
+        return False
+    if not _admin_auto_presence_touch_enabled():
+        return False
+
+    endpoint = (request.endpoint or "").strip().lower()
+    path = (request.path or "").strip().lower()
+    if endpoint in {
+        "admin.monitoreo_presence_ping",
+        "admin.monitoreo_presence_json",
+        "admin.monitoreo_presence_stream",
+        "admin.seguridad_locks_ping",
+        "admin.live_invalidation_poll",
+        "admin.live_invalidation_stream",
+        "admin.chat_staff_badge_json",
+        "admin.live_observability_ingest",
+    }:
+        return False
+    if path.startswith("/admin/live/"):
+        return False
+    if path in {
+        "/admin/chat/badge.json",
+        "/admin/monitoreo/presence.json",
+        "/admin/monitoreo/presence/stream",
+    }:
+        return False
+    if path.endswith(".json"):
+        return False
+    if _admin_async_wants_json():
+        return False
+    return True
+
+
 def _admin_global_action_guard_enabled() -> bool:
     """Guard global admin para POST/PUT/PATCH/DELETE.
 
@@ -2537,6 +2578,7 @@ def _admin_guard_and_rate_limit():
             user=current_user,
             flask_session=session,
             path=(request.full_path or request.path or ""),
+            endpoint=(request.endpoint or ""),
         )
         if not bool(sess_state.get("ok")) and sess_state.get("reason") in {"revoked", "backplane_unavailable"}:
             try:
@@ -2570,7 +2612,7 @@ def _admin_guard_and_rate_limit():
                 flash("Debes completar MFA para acceder al panel.", "warning")
                 return redirect(url_for("admin.login"))
 
-        if request.endpoint != "admin.monitoreo_presence_ping" and request.method in {"GET", "HEAD"}:
+        if _should_auto_touch_presence():
             _touch_staff_presence(current_path=request.path, page_title=(request.endpoint or request.path))
 
         required_permission = permission_required_for_path(request.path or "")
@@ -4992,6 +5034,7 @@ def _touch_staff_presence(
     lock_owner: str | None = None,
     preserve_entity_when_missing: bool = True,
     log_event: bool = False,
+    load_previous_state: bool = True,
 ) -> None:
     try:
         if not bool(session.get("is_admin_session")):
@@ -5003,14 +5046,16 @@ def _touch_staff_presence(
 
         uid = int(current_user.id)
         sid = _resolve_presence_session_id(session_id)
-        prev = (
-            StaffPresenceState.query
-            .filter(
-                StaffPresenceState.user_id == uid,
-                StaffPresenceState.session_id == sid,
+        prev = None
+        if load_previous_state:
+            prev = (
+                StaffPresenceState.query
+                .filter(
+                    StaffPresenceState.user_id == uid,
+                    StaffPresenceState.session_id == sid,
+                )
+                .first()
             )
-            .first()
-        )
         effective_path = (current_path or (getattr(prev, "route", "") or "") or request.path or "")[:255]
         effective_hint = (
             action_hint
@@ -5078,12 +5123,21 @@ def _touch_staff_presence(
             },
             fallback_route=effective_path,
         )
-        upsert_staff_presence_snapshot(
-            user_id=uid,
-            session_id=sid,
-            snapshot=payload,
-            now=now,
-        )
+        if load_previous_state:
+            upsert_staff_presence_snapshot(
+                user_id=uid,
+                session_id=sid,
+                snapshot=payload,
+                now=now,
+                existing_row=prev,
+            )
+        else:
+            upsert_staff_presence_snapshot(
+                user_id=uid,
+                session_id=sid,
+                snapshot=payload,
+                now=now,
+            )
 
         if log_event and _should_log_live_event(
             user_id=uid,
@@ -6376,6 +6430,7 @@ def monitoreo_presence_ping():
         lock_owner=lock_owner,
         preserve_entity_when_missing=False,
         log_event=True,
+        load_previous_state=False,
     )
     return jsonify({"ok": True})
 
@@ -13617,14 +13672,19 @@ def _solicitudes_triage_sql_parts(*, now_dt: datetime, today_rd):
         ),
         else_=None,
     )
-    last_activity_at = func.coalesce(
-        Solicitud.fecha_ultima_actividad,
-        Solicitud.fecha_ultima_modificacion,
-        Solicitud.updated_at,
-        Solicitud.fecha_solicitud,
-    )
+    # Hardening: algunos builds no exponen `fecha_ultima_actividad` en Solicitud.
+    last_activity_candidates = []
+    for attr in ("fecha_ultima_actividad", "fecha_ultima_modificacion", "updated_at", "fecha_solicitud"):
+        col = getattr(Solicitud, attr, None)
+        if col is not None:
+            last_activity_candidates.append(col)
+    last_activity_at = func.coalesce(*last_activity_candidates) if last_activity_candidates else None
     stale_by_days = and_(state_anchor.isnot(None), state_anchor <= (now_dt - timedelta(days=7)))
-    stale_by_activity = and_(last_activity_at.isnot(None), last_activity_at <= (now_dt - timedelta(hours=_OPERATIVE_STALE_ACTIVITY_HOURS)))
+    stale_by_activity = (
+        and_(last_activity_at.isnot(None), last_activity_at <= (now_dt - timedelta(hours=_OPERATIVE_STALE_ACTIVITY_HOURS)))
+        if last_activity_at is not None
+        else False
+    )
 
     espera_pago_prolongada = and_(
         estado_espera_pago,

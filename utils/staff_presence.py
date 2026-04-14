@@ -12,6 +12,7 @@ from utils.timezone import parse_iso_utc, utc_now_naive
 
 PRESENCE_TOUCH_MIN_SECONDS = 3
 PRESENCE_RECENT_MAX_AGE_SECONDS = 65 * 3
+_EXISTING_ROW_UNSET = object()
 
 
 def _norm_text(value: Any, limit: int) -> str:
@@ -126,20 +127,30 @@ def upsert_staff_presence_snapshot(
     snapshot: dict[str, Any],
     now: datetime | None = None,
     touch_min_seconds: int = PRESENCE_TOUCH_MIN_SECONDS,
+    existing_row: StaffPresenceState | object = _EXISTING_ROW_UNSET,
 ) -> dict[str, Any]:
     ts = now or utc_now_naive()
     sid = _norm_text(session_id, 120)
     if int(user_id or 0) <= 0 or not sid:
         return {"ok": False, "write_kind": "error", "reason": "invalid_identity"}
 
-    row = (
-        StaffPresenceState.query
-        .filter(
-            StaffPresenceState.user_id == int(user_id),
-            StaffPresenceState.session_id == sid,
+    row: StaffPresenceState | None
+    if existing_row is _EXISTING_ROW_UNSET:
+        row = (
+            StaffPresenceState.query
+            .filter(
+                StaffPresenceState.user_id == int(user_id),
+                StaffPresenceState.session_id == sid,
+            )
+            .first()
         )
-        .first()
-    )
+    else:
+        row = existing_row if isinstance(existing_row, StaffPresenceState) else None
+        if row is not None:
+            row_user_id = int(getattr(row, "user_id", 0) or 0)
+            row_session_id = _norm_text(getattr(row, "session_id", ""), 120)
+            if row_user_id != int(user_id) or row_session_id != sid:
+                row = None
 
     state_hash = _norm_text(snapshot.get("state_hash"), 64)
     write_kind = "noop"

@@ -1090,16 +1090,6 @@ def create_app():
         entrevistas_cfg = {}
     app.config["ENTREVISTAS_CONFIG"] = entrevistas_cfg
 
-    # ─────────────────────────────────────────────────────────
-    # Ping preventivo por request (evita conexiones muertas)
-    # ─────────────────────────────────────────────────────────
-    @app.before_request
-    def _ensure_db_connection():
-        try:
-            db.session.execute(text("SELECT 1"))
-        except Exception:
-            db.session.remove()
-
     @app.teardown_appcontext
     def _shutdown_session(exception=None):
         db.session.remove()

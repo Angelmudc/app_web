@@ -46,6 +46,9 @@ SESSION_TTL_SECONDS = 60 * 60 * 12
 SESSION_INDEX_KEY = "enterprise:sessions:index"
 SESSION_KEY_PREFIX = "enterprise:session"
 SESSION_REV_KEY_PREFIX = "enterprise:session_rev"
+STAFF_SESSION_TOUCH_INTERVAL_SECONDS = 15
+STAFF_SESSION_INDEX_REFRESH_SECONDS = 60 * 60
+STAFF_SESSION_LIVE_REV_CHECK_SECONDS = 5
 
 ANOMALY_WINDOW_SEC = 60
 ALERT_DEDUPE_DEFAULT_SEC = 180
@@ -521,51 +524,133 @@ def _session_rev_key(user_id: int) -> str:
     return f"{SESSION_REV_KEY_PREFIX}:{int(user_id)}"
 
 
-def touch_staff_session(*, user: StaffUser, flask_session, path: str) -> dict[str, Any]:
+def _bounded_env_int(name: str, default: int, *, min_value: int, max_value: int) -> int:
+    try:
+        value = int((os.getenv(name) or "").strip())
+    except Exception:
+        value = default
+    return max(min_value, min(max_value, value))
+
+
+def _is_live_or_polling_session_path(path: str, endpoint: str) -> bool:
+    ep = (endpoint or "").strip().lower()
+    p = (path or "").strip().lower()
+    if ep in {
+        "admin.monitoreo_presence_ping",
+        "admin.seguridad_locks_ping",
+        "admin.live_observability_ingest",
+        "admin.live_invalidation_poll",
+        "admin.chat_staff_badge_json",
+        "admin.monitoreo_presence_json",
+    }:
+        return True
+    if p.startswith("/admin/live/"):
+        return True
+    if p in {
+        "/admin/monitoreo/presence/ping",
+        "/admin/seguridad/locks/ping",
+        "/admin/chat/badge.json",
+        "/admin/monitoreo/presence.json",
+        "/admin/live/observability",
+    }:
+        return True
+    return p.endswith(".json")
+
+
+def touch_staff_session(*, user: StaffUser, flask_session, path: str, endpoint: str = "") -> dict[str, Any]:
     if not user:
         return {"ok": False, "reason": "no_user"}
 
     uid = int(user.id)
     rev_key = _session_rev_key(uid)
-    try:
-        current_rev = int(_coord_get(rev_key, default=1) or 1)
-    except BackplaneUnavailable:
-        return {"ok": False, "reason": "backplane_unavailable"}
+    now = _utcnow()
+    now_iso = _dt_iso(now)
     token = str(flask_session.get("staff_session_token") or "").strip()
-    session_rev = int(flask_session.get("staff_session_rev") or current_rev)
+    session_rev = int(flask_session.get("staff_session_rev") or 1)
+    created_new_token = False
 
-    if session_rev != current_rev:
+    is_live_or_polling = _is_live_or_polling_session_path(path=path, endpoint=endpoint)
+    live_rev_check_seconds = _bounded_env_int(
+        "STAFF_SESSION_LIVE_REV_CHECK_SECONDS",
+        STAFF_SESSION_LIVE_REV_CHECK_SECONDS,
+        min_value=1,
+        max_value=30,
+    )
+    skip_rev_read = False
+    if is_live_or_polling:
+        last_rev_check = _parse_dt(str(flask_session.get("staff_session_rev_checked_at") or ""))
+        if last_rev_check and (now - last_rev_check).total_seconds() < live_rev_check_seconds:
+            skip_rev_read = True
+
+    if skip_rev_read:
+        current_rev = int(flask_session.get("staff_session_rev") or 1)
+    else:
+        try:
+            current_rev = int(_coord_get(rev_key, default=1) or 1)
+        except BackplaneUnavailable:
+            return {"ok": False, "reason": "backplane_unavailable"}
+        flask_session["staff_session_rev_checked_at"] = now_iso
+
+    if session_rev and current_rev and session_rev != current_rev:
         return {"ok": False, "reason": "revoked"}
 
-    now = _utcnow()
     if not token:
         token = uuid.uuid4().hex
         flask_session["staff_session_token"] = token
         flask_session["staff_session_rev"] = current_rev
-        flask_session["staff_session_created_at"] = _dt_iso(now)
+        flask_session["staff_session_created_at"] = now_iso
+        created_new_token = True
+    else:
+        flask_session["staff_session_rev"] = current_rev
 
-    try:
-        payload = _coord_get(_session_key(token), default={}) or {}
-    except BackplaneUnavailable:
-        return {"ok": False, "reason": "backplane_unavailable"}
-    payload.update(
-        {
-            "token": token,
-            "user_id": uid,
-            "username": (user.username or f"U{uid}"),
-            "role": (user.role or "").strip().lower(),
-            "ip": (_client_ip() or "")[:64],
-            "user_agent": (_user_agent() or "")[:512],
-            "current_path": (path or "")[:255],
-            "last_seen": _dt_iso(now),
-            "created_at": payload.get("created_at") or flask_session.get("staff_session_created_at") or _dt_iso(now),
-        }
+    touch_interval_seconds = _bounded_env_int(
+        "STAFF_SESSION_TOUCH_INTERVAL_SECONDS",
+        STAFF_SESSION_TOUCH_INTERVAL_SECONDS,
+        min_value=2,
+        max_value=120,
     )
-    try:
-        _coord_set(_session_key(token), payload, timeout=SESSION_TTL_SECONDS)
-    except BackplaneUnavailable:
-        return {"ok": False, "reason": "backplane_unavailable"}
-    _append_index(SESSION_INDEX_KEY, token, timeout=SESSION_TTL_SECONDS * 4)
+    last_touch_at = _parse_dt(str(flask_session.get("staff_session_last_touch_at") or ""))
+    should_refresh_payload = (
+        created_new_token
+        or last_touch_at is None
+        or (now - last_touch_at).total_seconds() >= touch_interval_seconds
+    )
+
+    payload = {
+        "token": token,
+        "user_id": uid,
+        "username": (user.username or f"U{uid}"),
+        "role": (user.role or "").strip().lower(),
+        "ip": (_client_ip() or "")[:64],
+        "user_agent": (_user_agent() or "")[:512],
+        "current_path": (path or "")[:255],
+        "last_seen": now_iso,
+        "created_at": flask_session.get("staff_session_created_at") or now_iso,
+    }
+
+    if should_refresh_payload:
+        try:
+            _coord_set(_session_key(token), payload, timeout=SESSION_TTL_SECONDS)
+        except BackplaneUnavailable:
+            return {"ok": False, "reason": "backplane_unavailable"}
+        flask_session["staff_session_last_touch_at"] = now_iso
+
+    index_refresh_seconds = _bounded_env_int(
+        "STAFF_SESSION_INDEX_REFRESH_SECONDS",
+        STAFF_SESSION_INDEX_REFRESH_SECONDS,
+        min_value=60,
+        max_value=60 * 60 * 12,
+    )
+    last_index_refresh = _parse_dt(str(flask_session.get("staff_session_index_refreshed_at") or ""))
+    should_refresh_index = (
+        created_new_token
+        or last_index_refresh is None
+        or (now - last_index_refresh).total_seconds() >= index_refresh_seconds
+    )
+    if should_refresh_index:
+        _append_index(SESSION_INDEX_KEY, token, timeout=SESSION_TTL_SECONDS * 4)
+        flask_session["staff_session_index_refreshed_at"] = now_iso
+
     return {"ok": True, "token": token, "payload": payload}
 
 
