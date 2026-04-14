@@ -17,9 +17,14 @@
       const candidataId = params.get('candidata_id') || params.get('fila') || '';
       const solicitudId = params.get('solicitud_id') || '';
 
-      const mSolEdit = path.match(/\/clientes\/\d+\/solicitudes\/(\d+)\/editar/);
+      const mSolEdit = path.match(/\/clientes\/\d+\/solicitudes\/(\d+)\/editar\/?/);
       if (mSolEdit && mSolEdit[1]) {
         return { entity_type: 'solicitud', entity_id: String(mSolEdit[1]) };
+      }
+
+      const mSolGeneric = path.match(/\/solicitudes\/(\d+)(?:\/|$)/);
+      if (mSolGeneric && mSolGeneric[1]) {
+        return { entity_type: 'solicitud', entity_id: String(mSolGeneric[1]) };
       }
 
       if (solicitudId) {

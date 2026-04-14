@@ -62,6 +62,49 @@ def test_locks_conflict_still_returns_readonly_with_backplane():
     assert (r2.get_json() or {}).get("state") == "readonly"
 
 
+def test_locks_ping_infers_solicitud_from_current_path_when_payload_is_incomplete():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    assert _login(client, "Cruz", "8998").status_code in (302, 303)
+
+    resp = client.post(
+        "/admin/seguridad/locks/ping",
+        json={"entity_type": "", "entity_id": "", "current_path": "/admin/clientes/337/solicitudes/731/editar"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("ok") is True
+    lock = payload.get("lock") or {}
+    assert lock.get("entity_type") == "solicitud"
+    assert str(lock.get("entity_id") or "") == "731"
+
+
+def test_locks_ping_returns_explicit_invalid_payload_details_when_entity_cannot_be_inferred():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    assert _login(client, "Cruz", "8998").status_code in (302, 303)
+
+    resp = client.post(
+        "/admin/seguridad/locks/ping",
+        json={"entity_type": "", "entity_id": "", "current_path": "/admin/seguridad/locks"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 400
+    payload = resp.get_json() or {}
+    assert payload.get("error_code") == "invalid_entity_payload"
+    assert payload.get("ok") is False
+    missing_fields = set(payload.get("missing_fields") or [])
+    assert "entity_type" in missing_fields
+    assert "entity_id" in missing_fields
+
+
 def test_admin_guard_fail_closed_when_backplane_session_control_is_unavailable():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

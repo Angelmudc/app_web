@@ -233,3 +233,39 @@ def test_owner_delete_cliente_blocked_when_has_critical_solicitudes():
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is not None
+
+
+def test_owner_delete_cliente_is_blocked_when_dependency_inspection_is_uncertain():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_uncertain")
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    with patch(
+        "admin.routes._collect_cliente_delete_plan",
+        return_value={
+            "solicitud_ids": [6201],
+            "summary": {"solicitudes": 1, "solicitudes_criticas": -1, "tareas": -1},
+            "warnings": ["No se pudo completar la inspección de dependencias no gestionadas."],
+            "blocked_issues": [],
+        },
+    ), patch("admin.routes._delete_cliente_tree") as delete_tree_mock:
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={},
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 409
+    payload = resp.get_json() or {}
+    assert payload.get("error_code") == "dependency_inspection_failed"
+    delete_tree_mock.assert_not_called()
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is not None

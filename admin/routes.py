@@ -6433,8 +6433,43 @@ def seguridad_locks_ping():
     entity_type = (payload.get("entity_type") or "").strip().lower()
     entity_id = str(payload.get("entity_id") or "").strip()
     current_path = (payload.get("current_path") or request.path or "").strip()[:255]
+    if not entity_type or not entity_id:
+        lock_path = (current_path or request.referrer or "").strip()
+        lock_path_l = lock_path.lower()
+        m_sol = re.search(r"/clientes/\d+/solicitudes/(\d+)(?:/editar)?/?", lock_path_l)
+        if not m_sol:
+            m_sol = re.search(r"/solicitudes/(\d+)(?:/editar)?/?", lock_path_l)
+        if m_sol and m_sol.group(1):
+            entity_type = entity_type or "solicitud"
+            entity_id = entity_id or str(m_sol.group(1))
+        if (not entity_type or not entity_id) and lock_path:
+            q = parse_qs(urlparse(lock_path).query)
+            solicitud_id_qs = str(((q.get("solicitud_id") or [""])[0]) or "").strip()
+            candidata_id_qs = str(((q.get("candidata_id") or q.get("fila") or [""])[0]) or "").strip()
+            if solicitud_id_qs:
+                entity_type = entity_type or "solicitud"
+                entity_id = entity_id or solicitud_id_qs
+            elif candidata_id_qs:
+                entity_type = entity_type or "candidata"
+                entity_id = entity_id or candidata_id_qs
     if not isinstance(current_user, StaffUser):
         return jsonify({"ok": False, "error": "Sesión inválida."}), 403
+    if entity_type not in {"candidata", "solicitud"} or not entity_id:
+        missing_fields: list[str] = []
+        if not entity_type:
+            missing_fields.append("entity_type")
+        if not entity_id:
+            missing_fields.append("entity_id")
+        return jsonify({
+            "ok": False,
+            "error": "Entidad inválida.",
+            "error_code": "invalid_entity_payload",
+            "missing_fields": missing_fields,
+            "received": {
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+            },
+        }), 400
     data = lock_ping(user=current_user, entity_type=entity_type, entity_id=entity_id, current_path=current_path)
     if not data.get("ok"):
         if data.get("error") == "distributed_backplane_unavailable":
@@ -8194,6 +8229,12 @@ def _safe_count(query) -> int:
     try:
         return int(query.scalar() or 0)
     except Exception:
+        # Evita que un fallo en una sola consulta deje la sesión en estado abortado
+        # y contamine el resto de conteos del plan con errores en cascada.
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return -1
 
 
@@ -8229,7 +8270,7 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
                 db.session.query(func.count(Solicitud.id))
                 .filter(
                     Solicitud.cliente_id == cid,
-                    func.lower(Solicitud.estado).in_(protected_states),
+                    func.lower(cast(Solicitud.estado, db.String)).in_(protected_states),
                 )
             )
         except SQLAlchemyError:
@@ -8382,6 +8423,10 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
                     f"Dependencia no gestionada detectada en tabla '{table_name}'."
                 )
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         warnings.append("No se pudo completar la inspección de dependencias no gestionadas.")
 
     return {
@@ -8391,6 +8436,20 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         "warnings": warnings,
         "blocked_issues": blocked_issues,
     }
+
+
+def _delete_plan_has_uncertain_inspection(plan: dict[str, object]) -> bool:
+    warnings = list(plan.get("warnings") or [])
+    if warnings:
+        return True
+    summary = dict(plan.get("summary") or {})
+    for value in summary.values():
+        try:
+            if int(value) < 0:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str, int]:
@@ -8596,6 +8655,7 @@ def eliminar_cliente(cliente_id):
     warnings = list(plan.get("warnings") or [])
     summary = dict(plan.get("summary") or {})
     solicitud_ids = list(plan.get("solicitud_ids") or [])
+    inspection_uncertain = _delete_plan_has_uncertain_inspection(plan)
 
     if blocked_issues:
         msg = "Este cliente no puede eliminarse de forma segura: " + " | ".join(blocked_issues)
@@ -8620,6 +8680,33 @@ def eliminar_cliente(cliente_id):
             fallback=fallback,
             http_status=409,
             error_code="conflict",
+        )
+
+    if inspection_uncertain:
+        msg = (
+            "No se pudo validar de forma confiable todas las dependencias del cliente. "
+            "La eliminación fue cancelada y no se aplicaron cambios."
+        )
+        _audit_log(
+            action_type="CLIENTE_DELETE_BLOCKED",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Borrado cancelado por inspección incompleta para cliente {cliente_code}",
+            metadata={
+                "warnings": warnings,
+                "dependency_summary": summary,
+            },
+            success=False,
+            error=msg,
+        )
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="dependency_inspection_failed",
         )
 
     try:
@@ -10534,6 +10621,10 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
                     f"Dependencia no gestionada detectada en tabla '{table_name}'."
                 )
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         warnings.append("No se pudo completar la inspección de dependencias no gestionadas.")
 
     return {
