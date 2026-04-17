@@ -3,6 +3,7 @@
 
 import os
 import time
+from threading import Lock
 from flask import request, abort, make_response, session
 from utils.distributed_backplane import bp_delete, bp_get, bp_incr, bp_set
 
@@ -10,6 +11,9 @@ try:
     from flask_login import current_user
 except Exception:
     current_user = None
+
+_LOCAL_FALLBACK_LOCK = Lock()
+_LOCAL_FALLBACK_KV: dict[str, tuple[object, float]] = {}
 
 
 def _is_true(v: str) -> bool:
@@ -64,15 +68,41 @@ def _get_client_ip() -> str:
 
 
 def _cache_get(cache, key):
-    return bp_get(key, default=None, context="security_cache_get")
+    now = time.time()
+    with _LOCAL_FALLBACK_LOCK:
+        local = _LOCAL_FALLBACK_KV.get(key)
+        if local is not None:
+            val, exp = local
+            if exp > now:
+                return val
+            _LOCAL_FALLBACK_KV.pop(key, None)
+    try:
+        return bp_get(key, default=None, context="security_cache_get")
+    except Exception:
+        return None
 
 
 def _cache_set(cache, key, value, timeout):
-    return bp_set(key, value, timeout=timeout, context="security_cache_set")
+    ttl = max(1, int(timeout or 1))
+    try:
+        ok = bool(bp_set(key, value, timeout=ttl, context="security_cache_set"))
+        if ok:
+            return True
+    except Exception:
+        pass
+    with _LOCAL_FALLBACK_LOCK:
+        _LOCAL_FALLBACK_KV[key] = (value, time.time() + float(ttl))
+    return True
 
 
 def _cache_delete(cache, key):
-    return bp_delete(key, context="security_cache_delete")
+    try:
+        bp_delete(key, context="security_cache_delete")
+    except Exception:
+        pass
+    with _LOCAL_FALLBACK_LOCK:
+        _LOCAL_FALLBACK_KV.pop(key, None)
+    return True
 
 
 def init_security(app, cache):
@@ -341,14 +371,29 @@ def init_security(app, cache):
         return any(p in ua for p in BOT_UA_PATTERNS)
 
     def _bucket_inc(key: str, window_seconds: int) -> int:
-        return int(
-            bp_incr(
-                key,
-                delta=1,
-                timeout=max(1, int(window_seconds)),
-                context="security_bucket_incr",
-            ) or 0
-        )
+        ttl = max(1, int(window_seconds))
+        try:
+            out = int(
+                bp_incr(
+                    key,
+                    delta=1,
+                    timeout=ttl,
+                    context="security_bucket_incr",
+                ) or 0
+            )
+            if out > 0:
+                return out
+        except Exception:
+            pass
+
+        now = time.time()
+        with _LOCAL_FALLBACK_LOCK:
+            cur, exp = _LOCAL_FALLBACK_KV.get(key, (0, 0.0))
+            if float(exp) <= now:
+                cur = 0
+            nxt = int(cur or 0) + 1
+            _LOCAL_FALLBACK_KV[key] = (nxt, now + float(ttl))
+            return nxt
 
     def _match_scrape_group(path: str, endpoint: str) -> str:
         ep = (endpoint or "").strip()

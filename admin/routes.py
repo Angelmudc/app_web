@@ -2768,7 +2768,10 @@ def _admin_login_keys(usuario_norm: str):
 
 def _cache_ok() -> bool:
     """Retorna True si el cache está disponible y operativo."""
-    return bool(bp_healthcheck(strict=False))
+    try:
+        return bool(bp_healthcheck(strict=False))
+    except Exception:
+        return False
 
 
 def _sess_key(usuario_norm: str) -> str:

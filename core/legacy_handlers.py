@@ -11,6 +11,7 @@ import unicodedata
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 from time import perf_counter
+import time
 
 import requests  # HTTP externo (si lo usas en otras partes)
 
@@ -882,34 +883,101 @@ def _login_keys(usuario_norm: str):
         "lock": f"{base}:lock",
     }
 
+
+def _login_sess_key(usuario_norm: str) -> str:
+    ip = _client_ip()
+    user = (usuario_norm or "").strip().lower()[:64]
+    return f"legacy_login_fail:{ip}:{user}"
+
+
+def _session_is_locked(usuario_norm: str) -> bool:
+    data = session.get(_login_sess_key(usuario_norm)) or {}
+    locked_until = data.get("locked_until")
+    if not locked_until:
+        return False
+    try:
+        return time.time() < float(locked_until)
+    except Exception:
+        return False
+
+
+def _session_fail_count(usuario_norm: str) -> int:
+    data = session.get(_login_sess_key(usuario_norm)) or {}
+    try:
+        return int(data.get("tries") or 0)
+    except Exception:
+        return 0
+
+
+def _session_lock(usuario_norm: str):
+    key = _login_sess_key(usuario_norm)
+    data = session.get(key) or {}
+    data["locked_until"] = time.time() + (LOGIN_LOCK_MINUTOS * 60)
+    session[key] = data
+
+
+def _session_register_fail(usuario_norm: str) -> int:
+    key = _login_sess_key(usuario_norm)
+    data = session.get(key) or {}
+    tries = int(data.get("tries") or 0) + 1
+    data["tries"] = tries
+    if tries >= LOGIN_MAX_INTENTOS:
+        data["locked_until"] = time.time() + (LOGIN_LOCK_MINUTOS * 60)
+    session[key] = data
+    return tries
+
+
+def _session_reset_fail(usuario_norm: str):
+    try:
+        session.pop(_login_sess_key(usuario_norm), None)
+    except Exception:
+        pass
+
+
 def _is_locked(usuario_norm: str) -> bool:
     if not _operational_rate_limits_enabled():
         return False
     keys = _login_keys(usuario_norm)
-    return bool(cache.get(keys["lock"]))
+    try:
+        return bool(cache.get(keys["lock"]))
+    except Exception:
+        return _session_is_locked(usuario_norm)
 
 def _lock(usuario_norm: str):
     keys = _login_keys(usuario_norm)
-    cache.set(keys["lock"], True, timeout=LOGIN_LOCK_MINUTOS * 60)
+    try:
+        cache.set(keys["lock"], True, timeout=LOGIN_LOCK_MINUTOS * 60)
+    except Exception:
+        _session_lock(usuario_norm)
 
 def _fail_count(usuario_norm: str) -> int:
     keys = _login_keys(usuario_norm)
-    return int(cache.get(keys["fail"]) or 0)
+    try:
+        return int(cache.get(keys["fail"]) or 0)
+    except Exception:
+        return _session_fail_count(usuario_norm)
 
 def _register_fail(usuario_norm: str) -> int:
     if not _operational_rate_limits_enabled():
         return 0
     keys = _login_keys(usuario_norm)
     n = _fail_count(usuario_norm) + 1
-    cache.set(keys["fail"], n, timeout=LOGIN_LOCK_MINUTOS * 60)
+    try:
+        cache.set(keys["fail"], n, timeout=LOGIN_LOCK_MINUTOS * 60)
+    except Exception:
+        return _session_register_fail(usuario_norm)
     if n >= LOGIN_MAX_INTENTOS:
         _lock(usuario_norm)
     return n
 
 def _reset_fail(usuario_norm: str):
     keys = _login_keys(usuario_norm)
-    cache.delete(keys["fail"])
-    cache.delete(keys["lock"])
+    try:
+        cache.delete(keys["fail"])
+        cache.delete(keys["lock"])
+    except Exception:
+        pass
+    _session_reset_fail(usuario_norm)
 
 
 

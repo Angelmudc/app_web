@@ -331,7 +331,10 @@ def _cliente_login_keys(ident_norm: str):
 
 
 def _cache_ok() -> bool:
-    return bool(bp_healthcheck(strict=False))
+    try:
+        return bool(bp_healthcheck(strict=False))
+    except Exception:
+        return False
 
 
 def _cliente_is_locked(ident_norm: str) -> bool:
