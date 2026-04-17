@@ -1375,6 +1375,16 @@ def live_invalidation_stream():
             metadata={"path": request.path, "role": role_for_user(current_user), "capability": "invalidation_stream"},
         )
         abort(403)
+    if current_app.config.get("TESTING") and str(request.args.get("once") or "").strip() == "1":
+        payload = {"ts": iso_utc_z()}
+        body = f"event: heartbeat\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+        headers = {
+            "Content-Type": "text/event-stream; charset=utf-8",
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+        return Response(body, headers=headers)
     rl = _enforce_live_rate_limit("stream_open")
     if rl:
         _audit_live_security_block(
@@ -2585,19 +2595,30 @@ def _admin_guard_and_rate_limit():
             endpoint=(request.endpoint or ""),
         )
         if not bool(sess_state.get("ok")) and sess_state.get("reason") in {"revoked", "backplane_unavailable"}:
-            try:
-                logout_user()
-            except Exception:
-                pass
-            try:
-                session.clear()
-            except Exception:
-                pass
-            if sess_state.get("reason") == "backplane_unavailable":
-                flash("Control de sesión no disponible por degradación de infraestructura. Reintenta en unos segundos.", "danger")
-                return redirect(url_for("admin.login")), 503
-            flash("Tu sesión fue cerrada por administración.", "warning")
-            return redirect(url_for("admin.login"))
+            reason = str(sess_state.get("reason") or "").strip().lower()
+            if reason == "backplane_unavailable" and not bool(current_app.config.get("DISTRIBUTED_BACKPLANE_REQUIRED", False)):
+                try:
+                    current_app.logger.warning(
+                        "[admin-session] backplane unavailable; fail-open in degraded mode for endpoint=%s path=%s",
+                        request.endpoint,
+                        request.path,
+                    )
+                except Exception:
+                    pass
+            else:
+                try:
+                    logout_user()
+                except Exception:
+                    pass
+                try:
+                    session.clear()
+                except Exception:
+                    pass
+                if reason == "backplane_unavailable":
+                    flash("Control de sesión no disponible por degradación de infraestructura. Reintenta en unos segundos.", "danger")
+                    return redirect(url_for("admin.login")), 503
+                flash("Tu sesión fue cerrada por administración.", "warning")
+                return redirect(url_for("admin.login"))
 
         if isinstance(current_user, StaffUser) and _staff_user_needs_mfa(current_user):
             if _MFA_VERIFIED_SESSION_KEY not in session:
@@ -6532,6 +6553,22 @@ def seguridad_locks_ping():
     data = lock_ping(user=current_user, entity_type=entity_type, entity_id=entity_id, current_path=current_path)
     if not data.get("ok"):
         if data.get("error") == "distributed_backplane_unavailable":
+            if not bool(current_app.config.get("DISTRIBUTED_BACKPLANE_REQUIRED", False)):
+                return jsonify({
+                    "ok": True,
+                    "state": "degraded",
+                    "degraded": True,
+                    "coordination": "local_only",
+                    "lock": {
+                        "entity_type": entity_type,
+                        "entity_id": entity_id,
+                        "owner_user_id": int(getattr(current_user, "id", 0) or 0),
+                        "owner_username": str(getattr(current_user, "username", "") or ""),
+                        "owner_role": str(getattr(current_user, "role", "") or ""),
+                        "current_path": current_path,
+                    },
+                    "message": "Backplane distribuido no disponible; lock en modo degradado local.",
+                }), 200
             return jsonify(data), 503
         return jsonify(data), 400
     return jsonify(data)
@@ -6550,6 +6587,14 @@ def seguridad_locks_takeover():
     data = lock_takeover(user=current_user, entity_type=entity_type, entity_id=entity_id, reason=reason)
     if not data.get("ok"):
         if data.get("error") == "distributed_backplane_unavailable":
+            if not bool(current_app.config.get("DISTRIBUTED_BACKPLANE_REQUIRED", False)):
+                return jsonify({
+                    "ok": True,
+                    "state": "degraded",
+                    "degraded": True,
+                    "coordination": "local_only",
+                    "message": "Takeover aplicado en modo degradado local (sin backplane distribuido).",
+                }), 200
             return jsonify(data), 503
         return jsonify(data), 403
     return jsonify(data)

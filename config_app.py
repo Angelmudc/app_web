@@ -461,25 +461,44 @@ def create_app():
         or (os.getenv("REDIS_URL") or "").strip()
         or (os.getenv("CACHE_REDIS_URL") or "").strip()
     )
-    distributed_backplane_enabled = bool(
-        redis_url
-        or cache_type_env in {"redis", "rediscache"}
+    autodetected_enabled = bool(redis_url or cache_type_env in {"redis", "rediscache"})
+
+    explicit_enabled_raw = (
+        os.getenv("ENTERPRISE_BACKPLANE_ENABLED")
+        if os.getenv("ENTERPRISE_BACKPLANE_ENABLED") is not None
+        else os.getenv("DISTRIBUTED_BACKPLANE_ENABLED")
     )
-    distributed_backplane_required = _is_true(
-        os.getenv("DISTRIBUTED_BACKPLANE_REQUIRED", "1" if (prod and not is_sqlite) else "0")
+    explicit_enabled = None
+    if explicit_enabled_raw is not None and str(explicit_enabled_raw).strip() != "":
+        explicit_enabled = _is_true(str(explicit_enabled_raw))
+
+    distributed_backplane_enabled = bool(autodetected_enabled if explicit_enabled is None else explicit_enabled)
+
+    required_raw = (
+        os.getenv("ENTERPRISE_BACKPLANE_REQUIRED")
+        if os.getenv("ENTERPRISE_BACKPLANE_REQUIRED") is not None
+        else os.getenv("DISTRIBUTED_BACKPLANE_REQUIRED", "0")
     )
-    strict_runtime = _is_true(
-        os.getenv("DISTRIBUTED_BACKPLANE_STRICT_RUNTIME", "0")
+    distributed_backplane_required = _is_true(str(required_raw))
+
+    strict_runtime_raw = (
+        os.getenv("ENTERPRISE_BACKPLANE_STRICT_RUNTIME")
+        if os.getenv("ENTERPRISE_BACKPLANE_STRICT_RUNTIME") is not None
+        else os.getenv("DISTRIBUTED_BACKPLANE_STRICT_RUNTIME", "0")
     )
+    strict_runtime_requested = _is_true(str(strict_runtime_raw))
 
     if distributed_backplane_enabled and not redis_url:
-        raise RuntimeError(
-            "Backplane distribuido habilitado pero falta BACKPLANE_REDIS_URL/REDIS_URL."
+        distributed_backplane_enabled = False
+        app.logger.warning(
+            "Backplane distribuido solicitado pero no hay URL Redis; se usa modo degradado local."
         )
     if distributed_backplane_required and not distributed_backplane_enabled:
         raise RuntimeError(
-            "DISTRIBUTED_BACKPLANE_REQUIRED=1 exige Redis distribuido, pero no hay URL configurada."
+            "Backplane requerido (ENTERPRISE_BACKPLANE_REQUIRED/DISTRIBUTED_BACKPLANE_REQUIRED=1) sin Redis disponible."
         )
+
+    strict_runtime = bool(strict_runtime_requested and distributed_backplane_enabled)
 
     cache_config = {
         "CACHE_DEFAULT_TIMEOUT": int(os.getenv("CACHE_DEFAULT_TIMEOUT", "120")),
@@ -497,8 +516,11 @@ def create_app():
 
     app.config.update(cache_config)
     app.config["DISTRIBUTED_BACKPLANE_ENABLED"] = bool(distributed_backplane_enabled)
+    app.config["ENTERPRISE_BACKPLANE_ENABLED"] = bool(distributed_backplane_enabled)
     app.config["DISTRIBUTED_BACKPLANE_REQUIRED"] = bool(distributed_backplane_required)
     app.config["DISTRIBUTED_BACKPLANE_STRICT_RUNTIME"] = bool(strict_runtime)
+    app.config["DISTRIBUTED_BACKPLANE_MODE"] = "redis" if distributed_backplane_enabled else "disabled"
+    app.config["DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP"] = False
 
     # ─────────────────────────────────────────────────────────
     # Inicializar extensiones
@@ -514,6 +536,8 @@ def create_app():
         if not backplane_ok and distributed_backplane_required:
             raise RuntimeError("Redis backplane requerido no disponible.")
         app.config["DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP"] = backplane_ok
+        if not backplane_ok:
+            app.config["DISTRIBUTED_BACKPLANE_MODE"] = "degraded_unavailable"
 
     # Importar modelos para Alembic/Migrate
     try:

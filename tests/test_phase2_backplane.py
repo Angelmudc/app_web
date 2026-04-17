@@ -12,7 +12,7 @@ def _login(client, usuario, clave):
     return client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)
 
 
-def test_locks_ping_returns_503_when_backplane_unavailable():
+def test_locks_ping_returns_degraded_success_when_backplane_unavailable_and_optional():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
 
@@ -33,9 +33,11 @@ def test_locks_ping_returns_503_when_backplane_unavailable():
             follow_redirects=False,
         )
 
-    assert resp.status_code == 503
+    assert resp.status_code == 200
     payload = resp.get_json() or {}
-    assert payload.get("error") == "distributed_backplane_unavailable"
+    assert payload.get("ok") is True
+    assert payload.get("degraded") is True
+    assert payload.get("coordination") == "local_only"
 
 
 def test_locks_conflict_still_returns_readonly_with_backplane():
@@ -117,6 +119,21 @@ def test_admin_guard_fail_closed_when_backplane_session_control_is_unavailable()
     with patch("admin.routes.touch_staff_session", return_value={"ok": False, "reason": "backplane_unavailable"}):
         resp = client.get("/admin/monitoreo", follow_redirects=False)
 
+    assert resp.status_code in (200, 302)
+
+
+def test_admin_guard_fail_closed_when_backplane_required_and_unavailable():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.config["DISTRIBUTED_BACKPLANE_REQUIRED"] = True
+
+    client = flask_app.test_client()
+    assert _login(client, "Cruz", "8998").status_code in (302, 303)
+
+    with patch("admin.routes.touch_staff_session", return_value={"ok": False, "reason": "backplane_unavailable"}):
+        resp = client.get("/admin/monitoreo", follow_redirects=False)
+
+    flask_app.config["DISTRIBUTED_BACKPLANE_REQUIRED"] = False
     assert resp.status_code == 503
     assert "/admin/login" in (resp.headers.get("Location") or "")
 

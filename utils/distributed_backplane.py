@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
+import time
 from typing import Any
 
 from flask import current_app
@@ -14,6 +16,7 @@ class BackplaneUnavailable(RuntimeError):
 
 
 _WARNED_CODES: set[str] = set()
+_BACKPLANE_DOWN_UNTIL_MONO: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -52,6 +55,38 @@ def _warn_once(code: str, message: str) -> None:
         pass
 
 
+def _degraded_cooldown_seconds() -> int:
+    try:
+        return max(1, min(120, int((os.getenv("DISTRIBUTED_BACKPLANE_DEGRADED_COOLDOWN_SECONDS") or "8").strip())))
+    except Exception:
+        return 8
+
+
+def _mark_temporarily_unavailable() -> None:
+    global _BACKPLANE_DOWN_UNTIL_MONO
+    _BACKPLANE_DOWN_UNTIL_MONO = time.monotonic() + float(_degraded_cooldown_seconds())
+
+
+def _temporarily_unavailable() -> bool:
+    return time.monotonic() < float(_BACKPLANE_DOWN_UNTIL_MONO or 0.0)
+
+
+def _fallback_without_cache(*, status: BackplaneStatus, strict: bool, fallback: Any, context: str):
+    msg = (
+        f"[backplane:{context}] disabled/degraded; "
+        f"cache_type={status.cache_type or 'unknown'} configured={status.configured} required={status.required}"
+    )
+    if strict or status.strict_runtime or status.required:
+        _warn_once(f"{context}:disabled_strict", msg)
+        raise BackplaneUnavailable(msg)
+    return fallback
+
+
+def _is_redis_cache_type(status: BackplaneStatus) -> bool:
+    cache_type = str(status.cache_type or "").strip().lower()
+    return "redis" in cache_type
+
+
 def _handle_unavailable(*, context: str, strict: bool, fallback: Any, exc: Exception):
     status = backplane_status()
     hard_fail = bool(strict or status.strict_runtime)
@@ -60,12 +95,19 @@ def _handle_unavailable(*, context: str, strict: bool, fallback: Any, exc: Excep
         f"cache_type={status.cache_type or 'unknown'} configured={status.configured} required={status.required}"
     )
     _warn_once(f"{context}:{type(exc).__name__}", msg)
+    _mark_temporarily_unavailable()
     if hard_fail:
         raise BackplaneUnavailable(msg) from exc
     return fallback
 
 
 def bp_get(key: str, *, default: Any = None, strict: bool = False, context: str = "get"):
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return _fallback_without_cache(status=status, strict=strict, fallback=default, context=context)
+    if using_redis and _temporarily_unavailable():
+        return _fallback_without_cache(status=status, strict=strict, fallback=default, context=context)
     try:
         value = cache.get(key)
         return default if value is None else value
@@ -74,6 +116,12 @@ def bp_get(key: str, *, default: Any = None, strict: bool = False, context: str 
 
 
 def bp_set(key: str, value: Any, *, timeout: int, strict: bool = False, context: str = "set") -> bool:
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
+    if using_redis and _temporarily_unavailable():
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
     try:
         cache.set(key, value, timeout=max(1, int(timeout)))
         return True
@@ -82,6 +130,12 @@ def bp_set(key: str, value: Any, *, timeout: int, strict: bool = False, context:
 
 
 def bp_delete(key: str, *, strict: bool = False, context: str = "delete") -> bool:
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
+    if using_redis and _temporarily_unavailable():
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
     try:
         cache.delete(key)
         return True
@@ -90,6 +144,12 @@ def bp_delete(key: str, *, strict: bool = False, context: str = "delete") -> boo
 
 
 def bp_add(key: str, value: Any, *, timeout: int, strict: bool = False, context: str = "add") -> bool:
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
+    if using_redis and _temporarily_unavailable():
+        return bool(_fallback_without_cache(status=status, strict=strict, fallback=False, context=context))
     try:
         if hasattr(cache, "add"):
             return bool(cache.add(key, value, timeout=max(1, int(timeout))))
@@ -102,6 +162,12 @@ def bp_add(key: str, value: Any, *, timeout: int, strict: bool = False, context:
 
 
 def bp_incr(key: str, *, delta: int = 1, timeout: int, strict: bool = False, context: str = "incr") -> int:
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return int(_fallback_without_cache(status=status, strict=strict, fallback=0, context=context) or 0)
+    if using_redis and _temporarily_unavailable():
+        return int(_fallback_without_cache(status=status, strict=strict, fallback=0, context=context) or 0)
     try:
         inc_delta = int(delta or 1)
         ttl = max(1, int(timeout))
@@ -117,6 +183,12 @@ def bp_incr(key: str, *, delta: int = 1, timeout: int, strict: bool = False, con
 
 
 def bp_healthcheck(*, strict: bool = False) -> bool:
+    status = backplane_status()
+    using_redis = _is_redis_cache_type(status)
+    if using_redis and not status.configured:
+        return False
+    if using_redis and _temporarily_unavailable():
+        return False
     key = "backplane:health:ping"
     try:
         cache.set(key, "1", timeout=10)

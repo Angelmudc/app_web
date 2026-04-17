@@ -27,6 +27,7 @@ from models import (
 from utils.audit_logger import log_action
 from utils.distributed_backplane import (
     BackplaneUnavailable,
+    backplane_status,
     bp_add,
     bp_delete,
     bp_get,
@@ -127,25 +128,31 @@ def _safe_cache_add(key: str, value, timeout: int) -> bool:
 
 
 def _coord_get(key: str, default=None):
-    return bp_get(key, default=default, strict=True, context="enterprise_coord_get")
+    status = backplane_status()
+    strict = bool(status.required or status.strict_runtime)
+    return bp_get(key, default=default, strict=strict, context="enterprise_coord_get")
 
 
 def _coord_set(key: str, value, timeout: int) -> bool:
+    status = backplane_status()
+    strict = bool(status.required or status.strict_runtime)
     return bp_set(
         key,
         value,
         timeout=timeout,
-        strict=True,
+        strict=strict,
         context="enterprise_coord_set",
     )
 
 
 def _coord_add(key: str, value, timeout: int) -> bool:
+    status = backplane_status()
+    strict = bool(status.required or status.strict_runtime)
     return bp_add(
         key,
         value,
         timeout=timeout,
-        strict=True,
+        strict=strict,
         context="enterprise_coord_add",
     )
 
