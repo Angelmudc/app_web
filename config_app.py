@@ -532,7 +532,7 @@ def create_app():
     if distributed_backplane_enabled:
         from utils.distributed_backplane import bp_healthcheck
 
-        backplane_ok = bool(bp_healthcheck(strict=distributed_backplane_required))
+        backplane_ok = bool(bp_healthcheck(strict=distributed_backplane_required, app_obj=app))
         if not backplane_ok and distributed_backplane_required:
             raise RuntimeError("Redis backplane requerido no disponible.")
         app.config["DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP"] = backplane_ok

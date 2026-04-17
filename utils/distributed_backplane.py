@@ -31,8 +31,17 @@ def _is_true(value: Any) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def backplane_status() -> BackplaneStatus:
-    cfg = getattr(current_app, "config", {}) or {}
+def _resolve_config(app_obj: Any | None = None) -> dict[str, Any]:
+    if app_obj is not None:
+        return getattr(app_obj, "config", {}) or {}
+    try:
+        return getattr(current_app, "config", {}) or {}
+    except Exception:
+        return {}
+
+
+def backplane_status(*, app_obj: Any | None = None) -> BackplaneStatus:
+    cfg = _resolve_config(app_obj=app_obj)
     cache_type = str(cfg.get("CACHE_TYPE") or "").strip()
     configured = bool(cfg.get("DISTRIBUTED_BACKPLANE_ENABLED", False))
     required = bool(cfg.get("DISTRIBUTED_BACKPLANE_REQUIRED", False))
@@ -182,8 +191,8 @@ def bp_incr(key: str, *, delta: int = 1, timeout: int, strict: bool = False, con
         return int(_handle_unavailable(context=context, strict=strict, fallback=0, exc=exc) or 0)
 
 
-def bp_healthcheck(*, strict: bool = False) -> bool:
-    status = backplane_status()
+def bp_healthcheck(*, strict: bool = False, app_obj: Any | None = None) -> bool:
+    status = backplane_status(app_obj=app_obj)
     using_redis = _is_redis_cache_type(status)
     if using_redis and not status.configured:
         return False
