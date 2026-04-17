@@ -100,6 +100,7 @@
 {% set _presence_auth_endpoints = ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel'] %}
 {% set _presence_path = request.path or '' %}
 {% set _is_admin_auth_view = (request.endpoint in _presence_auth_endpoints) or _presence_path.startswith('/admin/login') or _presence_path.startswith('/admin/mfa/') %}
+{% set _is_admin_runtime_page = _presence_path.startswith('/admin/') and (not _is_admin_auth_view) %}
 {% set _presence_operational_path = false %}
 {% if _presence_path.startswith('/buscar') %}
   {% set _presence_operational_path = true %}
@@ -120,8 +121,8 @@
 {% elif _presence_path.startswith('/admin/entrevistas') %}
   {% set _presence_operational_path = true %}
 {% endif %}
-{% set _presence_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and (not _is_admin_auth_view) and _presence_operational_path %}
-{% set _chat_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and (not _is_admin_auth_view) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
+{% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
+{% set _chat_badge_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -131,8 +132,8 @@
       data-presence-entity-id="{{ _p_id }}"
       data-presence-entity-name="{{ _p_name }}"
       data-presence-entity-code="{{ _p_code }}"
-      data-entity-lock-url="{% if (not _is_admin_auth_view) and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
-      data-entity-lock-takeover-url="{% if (not _is_admin_auth_view) and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-entity-lock-url="{% if _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
+      data-entity-lock-takeover-url="{% if _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
       data-chat-global-badge-enabled="{% if _chat_badge_enabled %}1{% else %}0{% endif %}"
       data-chat-global-badge-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_badge_json') }}{% endif %}"
       data-chat-global-inbox-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_inbox') }}{% endif %}"
@@ -435,13 +436,13 @@
   <!-- App JS -->
   <script src="{{ url_for('static', filename='js/core/toast.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/modal.js') }}" defer></script>
-  {% if not _is_admin_auth_view %}
+  {% if _is_admin_runtime_page %}
   <script src="{{ url_for('static', filename='js/core/admin_async.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/admin_nav.js') }}" defer></script>
   {% endif %}
   <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
-  {% if not _is_admin_auth_view %}
+  {% if _is_admin_runtime_page %}
   <script src="{{ url_for('static', filename='js/ui/search.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/validate.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/forms/autosave.js') }}" defer></script>
@@ -457,7 +458,7 @@
   {% if _presence_enabled %}
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
   {% endif %}
-  {% if not _is_admin_auth_view %}
+  {% if _is_admin_runtime_page %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
   {% endif %}
 

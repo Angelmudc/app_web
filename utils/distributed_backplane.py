@@ -43,7 +43,11 @@ def _resolve_config(app_obj: Any | None = None) -> dict[str, Any]:
 def backplane_status(*, app_obj: Any | None = None) -> BackplaneStatus:
     cfg = _resolve_config(app_obj=app_obj)
     cache_type = str(cfg.get("CACHE_TYPE") or "").strip()
-    configured = bool(cfg.get("DISTRIBUTED_BACKPLANE_ENABLED", False))
+    mode = str(cfg.get("DISTRIBUTED_BACKPLANE_MODE") or "").strip().lower()
+    configured_flag = bool(cfg.get("DISTRIBUTED_BACKPLANE_ENABLED", False))
+    startup_healthy = bool(cfg.get("DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP", configured_flag))
+    disabled_modes = {"disabled", "degraded_unavailable", "local_only", "simple"}
+    configured = bool(configured_flag and startup_healthy and (mode not in disabled_modes))
     required = bool(cfg.get("DISTRIBUTED_BACKPLANE_REQUIRED", False))
     strict_runtime = _is_true(cfg.get("DISTRIBUTED_BACKPLANE_STRICT_RUNTIME", "0"))
     return BackplaneStatus(
