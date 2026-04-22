@@ -7,6 +7,17 @@ from app import app as flask_app
 from config_app import db
 from models import StaffAuditLog, StaffUser
 
+_ADMIN_RUNTIME_ASSETS = (
+    "js/core/admin_async.js",
+    "js/core/admin_nav.js",
+    "js/core/entity_lock.js",
+    "js/core/live_invalidation.js",
+    "js/chat/chat_global_badge.js",
+    "js/core/control_room_presence.js",
+    "js/core/live-refresh.js",
+    "js/admin/solicitud_detail_ui.js",
+)
+
 
 def _login(client, usuario, clave):
     return client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)
@@ -146,3 +157,57 @@ def test_public_root_does_not_include_control_room_presence_bundle():
     assert resp.status_code == 200
     html = resp.data.decode("utf-8", errors="ignore")
     assert "js/core/control_room_presence.js" not in html
+
+
+def test_public_and_non_admin_views_do_not_include_admin_runtime_assets():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    assert _login(client, "Karla", "9989").status_code in (302, 303)
+
+    for url in ("/login", "/home", "/referencias"):
+        resp = client.get(url, follow_redirects=True)
+        assert resp.status_code == 200
+        html = resp.data.decode("utf-8", errors="ignore")
+        for asset in _ADMIN_RUNTIME_ASSETS:
+            assert asset not in html, f"{url} no debe cargar {asset}"
+        assert 'data-chat-global-badge-enabled="0"' in html
+        assert 'data-live-presence-enabled="0"' in html
+        assert "/admin/live/invalidation/poll" not in html
+        assert "/admin/live/invalidation/stream" not in html
+        assert "/admin/chat/badge.json" not in html
+
+
+def test_admin_core_views_keep_runtime_where_it_is_needed():
+    base_txt = Path("templates/base.html").read_text(encoding="utf-8", errors="ignore")
+    assert "{% set _admin_light_runtime_endpoints = ['admin.tareas_hoy'] %}" in base_txt
+    assert "{% set _admin_core_runtime_enabled = _is_admin_runtime_page and (not _is_admin_light_runtime_view) %}" in base_txt
+    assert "{% if _admin_core_runtime_enabled %}" in base_txt
+    assert "js/core/admin_async.js" in base_txt
+    assert "js/core/admin_nav.js" in base_txt
+    assert "js/core/entity_lock.js" in base_txt
+    assert "js/chat/chat_global_badge.js" in base_txt
+    assert "js/core/live_invalidation.js" in base_txt
+    assert "data-chat-global-badge-enabled" in base_txt
+
+    solicitudes_txt = Path("templates/admin/solicitudes_list.html").read_text(encoding="utf-8", errors="ignore")
+    clientes_txt = Path("templates/admin/clientes_list.html").read_text(encoding="utf-8", errors="ignore")
+    prioridad_txt = Path("templates/admin/solicitudes_prioridad.html").read_text(encoding="utf-8", errors="ignore")
+    assert "{% extends 'base.html' %}" in solicitudes_txt
+    assert "{% extends 'base.html' %}" in clientes_txt
+    assert "{% extends 'base.html' %}" in prioridad_txt
+    assert 'data-live-invalidation-scope="1"' in solicitudes_txt
+    assert 'data-live-invalidation-scope="1"' in prioridad_txt
+
+
+def test_solicitudes_views_use_single_live_runtime_channel_for_chat_badge():
+    live_txt = Path("static/js/core/live_invalidation.js").read_text(encoding="utf-8", errors="ignore")
+    badge_txt = Path("static/js/chat/chat_global_badge.js").read_text(encoding="utf-8", errors="ignore")
+
+    assert "admin:live-invalidation-event" in live_txt
+    assert "shouldUseSharedLiveChannel" in badge_txt
+    assert "data-live-invalidation-view" in badge_txt
+    assert "solicitudes_summary" in badge_txt
+    assert "solicitudes_prioridad_summary" in badge_txt
+    assert "if (sharedLiveChannel) return;" in badge_txt

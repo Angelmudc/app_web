@@ -383,49 +383,86 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  async function submitActionWithAdminAsync(form, submitter) {
-    const adminAsync = window.AdminAsync;
-    if (!form || !adminAsync || typeof adminAsync.request !== 'function') return null;
+  function removeElementBySelector(selector) {
+    const sel = String(selector || '').trim();
+    if (!sel) return false;
+    const node = document.querySelector(sel);
+    if (!node) return false;
+    node.remove();
+    return true;
+  }
+
+  function extractSolicitudIdFromAction(actionUrl) {
+    const txt = String(actionUrl || '');
+    const m = txt.match(/\/solicitudes\/(\d+)\//);
+    return (m && m[1]) ? String(m[1]) : '';
+  }
+
+  function removeSolicitudCardFromPayload(payload, fallbackForm) {
+    const removeSel = payload && payload.remove_element ? String(payload.remove_element || '') : '';
+    if (removeSel && removeElementBySelector(removeSel)) return true;
+
+    const shouldRemove = !!(payload && payload.remove_card);
+    if (!shouldRemove) return false;
+
+    const idFromExtra = (payload && payload.solicitud_id) ? String(payload.solicitud_id) : '';
+    const idFromFormAction = extractSolicitudIdFromAction(fallbackForm ? fallbackForm.action : '');
+    const id = idFromExtra || idFromFormAction || (actionPanel ? String(actionPanel.dataset.solicitudId || '') : '');
+    if (!id) return false;
+    return removeElementBySelector(`#sol-${id}`);
+  }
+
+  async function submitActionWithFetch(form, submitter) {
+    if (!form || !window.fetch) return { handled: false, ok: false, payload: null };
     const data = new FormData(form);
-    if (!data.has('_async_target')) {
-      data.append('_async_target', '#copiarSolicitudesResults');
+    if (!data.has('_async_target')) data.append('_async_target', '#copiarSolicitudesResults');
+    try {
+      const resp = await fetch(form.action, {
+        method: 'POST',
+        credentials: 'same-origin',
+        body: data,
+        headers: {
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+          'X-Admin-Async': '1',
+          'X-CSRFToken': getCsrfTokenFromForm(form),
+        },
+      });
+      const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+      if (!contentType.includes('application/json')) {
+        return { handled: true, ok: false, payload: null, status: resp.status };
+      }
+      const payload = await resp.json();
+      const ok = Boolean(payload && (payload.success === true || payload.ok === true));
+      if (submitter && submitter.tagName === 'BUTTON') {
+        submitter.disabled = false;
+      }
+      return { handled: true, ok, payload, status: resp.status };
+    } catch (_err) {
+      return { handled: true, ok: false, payload: null, status: 0 };
     }
-    const scope = document.getElementById('copiarSolicitudesScope') || form;
-    return adminAsync.request({
-      url: form.action,
-      method: 'POST',
-      body: data,
-      sourceEl: form,
-      busyContainer: scope,
-      submitter: submitter || form.querySelector('button[type="submit"]'),
-      updateTarget: '#copiarSolicitudesResults',
-      noLoader: true,
-      headers: { 'X-CSRFToken': getCsrfTokenFromForm(form) },
-      preserveScroll: true,
-    });
   }
 
   async function submitModalAjax(form, submitter) {
     if (!form) return false;
     clearUiLoaders();
     clearModalFeedback(form);
-    const result = await submitActionWithAdminAsync(form, submitter);
-    if (result === true) {
+    const result = await submitActionWithFetch(form, submitter);
+    if (result.ok) {
+      removeSolicitudCardFromPayload(result.payload, form);
       closeActionPanel();
       if (!hasSolicitudCards()) {
         setTimeout(() => refreshCopiarResults(pageBasePath), 220);
       }
       return true;
     }
-    if (result === false) {
-      const meta = (window.AdminAsync && typeof window.AdminAsync.getLastResponseMeta === 'function')
-        ? window.AdminAsync.getLastResponseMeta()
-        : null;
+    if (result.handled) {
+      const payload = result.payload || {};
       const fallback = 'No se pudo completar la acción.';
-      const msg = (meta && Array.isArray(meta.errors) && meta.errors.length > 0)
-        ? meta.errors.join(' ')
-        : ((meta && meta.message) ? meta.message : fallback);
-      const category = (meta && meta.category) ? meta.category : 'danger';
+      const msg = (Array.isArray(payload.errors) && payload.errors.length > 0)
+        ? payload.errors.join(' ')
+        : (payload.message || fallback);
+      const category = payload.category || 'danger';
       setModalFeedback(form, msg, category);
       return true;
     }
@@ -436,14 +473,23 @@ document.addEventListener('DOMContentLoaded', () => {
   async function submitInlineActionAjax(form, submitter) {
     if (!form) return { handled: false, ok: false };
     clearUiLoaders();
-    const result = await submitActionWithAdminAsync(form, submitter);
-    if (result === true) {
+    const result = await submitActionWithFetch(form, submitter);
+    if (result.ok) {
+      removeSolicitudCardFromPayload(result.payload, form);
+      if (result.payload && result.payload.message) {
+        showActionToast(result.payload.message, false);
+      }
       if (!hasSolicitudCards()) {
         setTimeout(() => refreshCopiarResults(pageBasePath), 220);
       }
       return { handled: true, ok: true };
     }
-    if (result === false) {
+    if (result.handled) {
+      const payload = result.payload || {};
+      const msg = (Array.isArray(payload.errors) && payload.errors.length > 0)
+        ? payload.errors.join(' ')
+        : (payload.message || 'No se pudo completar la acción.');
+      showActionToast(msg, true);
       return { handled: true, ok: false };
     }
     clearUiLoaders();
@@ -514,12 +560,7 @@ document.addEventListener('DOMContentLoaded', () => {
         btn.innerHTML = '<i class="bi bi-hourglass-split me-1"></i> Guardando...';
 
         const action = await submitInlineActionAjax(form, btn);
-        if (!action.handled) {
-          clearUiLoaders();
-          form.dataset.asyncBypass = '1';
-          form.submit();
-          return;
-        }
+        if (!action.handled) return;
         if (action.ok) {
           return;
         }
@@ -547,9 +588,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const submitter = ev.submitter || form.querySelector('button[type="submit"]');
         const action = await submitInlineActionAjax(form, submitter);
         if (action.handled) return;
-        clearUiLoaders();
-        form.dataset.asyncBypass = '1';
-        form.submit();
       });
     });
   }
@@ -625,12 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(cancelForm, ev.submitter || cancelForm.querySelector('button[type="submit"]'));
-      if (!handled) {
-        clearUiLoaders();
-        cancelForm.dataset.asyncBypass = '1';
-        cancelForm.submit();
-      }
+      await submitModalAjax(cancelForm, ev.submitter || cancelForm.querySelector('button[type="submit"]'));
     });
   }
 
@@ -641,12 +674,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       ev.preventDefault();
-      const handled = await submitModalAjax(paidForm, ev.submitter || paidForm.querySelector('button[type="submit"]'));
-      if (!handled) {
-        clearUiLoaders();
-        paidForm.dataset.asyncBypass = '1';
-        paidForm.submit();
-      }
+      await submitModalAjax(paidForm, ev.submitter || paidForm.querySelector('button[type="submit"]'));
     });
   }
 

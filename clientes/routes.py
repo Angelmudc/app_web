@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from datetime import datetime, date, timedelta
+from decimal import Decimal, InvalidOperation
 from functools import wraps
 import os
 import re
@@ -2889,6 +2890,38 @@ def _money_sanitize(raw):
     return limpio or s.strip()
 
 
+def _normalize_banos_value(raw_value):
+    """Normaliza baños desde POST/form sin forzar .0 ni transformar números válidos."""
+    if raw_value is None:
+        return None
+    txt = str(raw_value).strip()
+    if not txt:
+        return None
+    txt = txt.replace(",", ".")
+    try:
+        dec = Decimal(txt)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if dec < 0:
+        return None
+    # Persistimos como float (columna existente) sin reglas de redondeo extra.
+    return float(dec)
+
+
+def _apply_banos_from_request(solicitud_obj, form_obj):
+    if not hasattr(solicitud_obj, "banos"):
+        return
+    raw_post = None
+    try:
+        raw_post = request.form.get("banos")
+    except Exception:
+        raw_post = None
+    parsed = _normalize_banos_value(raw_post)
+    if parsed is None and hasattr(form_obj, "banos"):
+        parsed = _normalize_banos_value(getattr(getattr(form_obj, "banos", None), "data", None))
+    solicitud_obj.banos = parsed
+
+
 # ─────────────────────────────────────────────────────────────
 # Helpers: Anti-duplicados y locks para formularios de solicitud
 # ─────────────────────────────────────────────────────────────
@@ -3063,7 +3096,7 @@ def _apply_solicitud_draft_to_form(form_obj, payload: dict):
             elif field_type == "IntegerField":
                 txt = str(value or "").strip()
                 field.data = int(txt) if txt else None
-            elif field_type == "FloatField":
+            elif field_type in {"FloatField", "DecimalField"}:
                 txt = str(value or "").strip()
                 field.data = float(txt) if txt else None
             else:
@@ -3399,6 +3432,7 @@ def nueva_solicitud():
                 codigo_solicitud=codigo
             )
             form.populate_obj(s)
+            _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
 
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
@@ -3691,6 +3725,7 @@ def editar_solicitud(id):
         try:
             prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
             form.populate_obj(s)
+            _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
             submitted_modalidad = (
                 (getattr(form, "modalidad_trabajo", None).data or "").strip()
@@ -7071,6 +7106,7 @@ def solicitud_publica_nueva_token(token):
                     codigo_solicitud=codigo_solicitud
                 )
                 form.populate_obj(s)
+                _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
 
                 selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
@@ -7627,6 +7663,7 @@ def solicitud_publica(token):
             )
 
             form.populate_obj(s)
+            _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
 
             selected_funciones = _clean_list(getattr(form, 'funciones', type('x',(object,),{'data':[]})).data)

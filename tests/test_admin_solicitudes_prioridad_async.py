@@ -521,9 +521,11 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
             with patch.object(admin_routes, "utc_now_naive", return_value=datetime(2026, 3, 24, 10, 0, 0)), \
                  patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
                  patch.object(admin_routes, "_resolve_solicitud_last_actor_user_ids", return_value={10: 1, 11: 1}), \
-                 patch.object(admin_routes, "_staff_username_map", return_value={1: "Karla"}):
+                 patch.object(admin_routes, "_staff_username_map", return_value={1: "Karla"}), \
+                 patch.object(admin_routes, "_SolicitudPrioridadVM", side_effect=AssertionError("VM no debe construirse en fragments")) as vm_ctor:
                 summary_resp = self.client.get("/admin/solicitudes/prioridad/_summary", follow_redirects=False)
                 responsables_resp = self.client.get("/admin/solicitudes/prioridad/_responsables", follow_redirects=False)
+        vm_ctor.assert_not_called()
 
         self.assertEqual(summary_resp.status_code, 200)
         summary_html = summary_resp.get_data(as_text=True)

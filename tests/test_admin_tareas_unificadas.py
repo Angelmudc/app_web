@@ -83,6 +83,18 @@ class AdminTareasUnificadasTest(unittest.TestCase):
         self.assertIn("Llamar para validar horario", html)
         self.assertIn("Tarea", html)
         self.assertIn("Seguimiento", html)
+        self.assertIn('data-chat-global-badge-enabled="0"', html)
+        self.assertIn('data-live-presence-enabled="0"', html)
+        self.assertNotIn("js/chat/chat_global_badge.js", html)
+        self.assertNotIn("js/core/live_invalidation.js", html)
+        self.assertNotIn("js/core/live-refresh.js", html)
+        self.assertNotIn("js/core/entity_lock.js", html)
+        self.assertNotIn("js/core/admin_async.js", html)
+        self.assertNotIn("js/core/admin_nav.js", html)
+        self.assertNotIn("js/admin/solicitud_detail_ui.js", html)
+        self.assertNotIn("/admin/live/invalidation/poll", html)
+        self.assertNotIn("/admin/live/invalidation/stream", html)
+        self.assertNotIn("/admin/chat/badge.json", html)
 
     def test_completar_tarea_cliente_marca_completada(self):
         tarea = SimpleNamespace(

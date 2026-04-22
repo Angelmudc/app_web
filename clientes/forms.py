@@ -4,7 +4,7 @@ from flask import request
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, PasswordField, SelectField, SelectMultipleField,
-    TextAreaField, BooleanField, IntegerField, FloatField, SubmitField, HiddenField
+    TextAreaField, BooleanField, IntegerField, DecimalField, SubmitField, HiddenField
 )
 from wtforms.validators import (
     DataRequired, Length, NumberRange, Optional, ValidationError, Email
@@ -241,10 +241,11 @@ class SolicitudForm(FlaskForm):
         validators=[DataRequired("Indica cuántas habitaciones."), NumberRange(min=0)],
         render_kw={"min": 0}
     )
-    banos = FloatField(
+    banos = DecimalField(
         "Baños",
         validators=[DataRequired("Indica la cantidad de baños."), NumberRange(min=0)],
-        render_kw={"min": 0, "step": "0.5"}
+        places=None,
+        render_kw={"min": 0, "step": "any"}
     )
     dos_pisos = BooleanField("Dos pisos")
 

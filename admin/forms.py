@@ -426,9 +426,9 @@ class AdminSolicitudForm(FlaskForm):
     )
     banos = DecimalField(
         'Baños',
-        places=1,
+        places=None,
         validators=[Optional(), NumberRange(min=0)],
-        render_kw={"min": "0", "step": "0.5"}
+        render_kw={"min": "0", "step": "any"}
     )
     dos_pisos = BooleanField('¿Tiene dos pisos?')
 

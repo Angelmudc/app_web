@@ -7679,6 +7679,37 @@ def _fmt_banos(value) -> str:
     except Exception:
         return str(value)
 
+
+def _normalize_banos_value(raw_value):
+    """Normaliza baños desde request/form sin forzar formato decimal."""
+    if raw_value is None:
+        return None
+    txt = str(raw_value).strip()
+    if not txt:
+        return None
+    txt = txt.replace(",", ".")
+    try:
+        dec = Decimal(txt)
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    if dec < 0:
+        return None
+    return float(dec)
+
+
+def _apply_banos_from_request(solicitud_obj, form_obj):
+    if not hasattr(solicitud_obj, "banos"):
+        return
+    raw_post = None
+    try:
+        raw_post = request.form.get("banos")
+    except Exception:
+        raw_post = None
+    parsed = _normalize_banos_value(raw_post)
+    if parsed is None and hasattr(form_obj, "banos"):
+        parsed = _normalize_banos_value(getattr(getattr(form_obj, "banos", None), "data", None))
+    solicitud_obj.banos = parsed
+
 def _map_funciones(vals, extra_text):
     """
     Combina funciones seleccionadas con valores personalizados de 'otro',
@@ -9976,6 +10007,7 @@ def nueva_solicitud_admin(cliente_id):
                     codigo_solicitud=nuevo_codigo,
                 )
                 form.populate_obj(s)
+                _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
 
                 if hasattr(form, 'sueldo'):
@@ -10341,6 +10373,7 @@ def editar_solicitud_admin(cliente_id, id):
             prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
             def _persist_solicitud_update(_attempt: int):
                 form.populate_obj(s)
+                _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
                 submitted_modalidad = (
                     (getattr(form, "modalidad_trabajo", None).data or "").strip()
@@ -13894,7 +13927,8 @@ def _solicitudes_query_supports_sql_triage(query) -> bool:
 
 
 def _solicitudes_triage_sql_parts(*, now_dt: datetime, today_rd):
-    estado_norm = func.lower(Solicitud.estado)
+    # PostgreSQL no soporta lower(enum) directamente; primero convertimos a texto.
+    estado_norm = func.lower(cast(Solicitud.estado, db.String()))
     estado_activa = estado_norm == "activa"
     estado_reemplazo = estado_norm == "reemplazo"
     estado_espera_pago = estado_norm == "espera_pago"
@@ -14064,6 +14098,10 @@ def _query_count_distinct_solicitudes(query) -> int:
             or 0
         )
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return int(query.order_by(None).count() or 0)
 
 
@@ -14095,6 +14133,10 @@ def _solicitudes_triage_options_sql(*, base_query, selected: str, now_dt: dateti
             for code in code_order:
                 counts_by_code[code] = int(getattr(row, f"count_{code}", 0) or 0)
     except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         all_count = _query_count_distinct_solicitudes(base_query)
         for code in code_order:
             clause = clauses.get(code)
@@ -14373,6 +14415,81 @@ class _SolicitudOperativaListVM:
         return getattr(self._s, name)
 
 
+class _SolicitudOperativaTriageScanRow:
+    """Fila liviana para fallback in-memory de triage.
+
+    Calcula solo datos necesarios para filtros/conteos/orden, y difiere la VM
+    completa de render para las filas de la página actual.
+    """
+
+    __slots__ = (
+        "_s",
+        "id",
+        "estado",
+        "last_actor_user_id",
+        "last_actor_label",
+        "days_in_state",
+        "manual_followup_state",
+        "priority_label",
+        "operational_signal_code",
+        "operational_signal_rank",
+        "active_reemplazo",
+    )
+
+    def __init__(self, s, *, now_dt: datetime, today_rd, last_actor_user_id: int | None, active_reemplazo):
+        self._s = s
+        self.id = int(getattr(s, "id", 0) or 0)
+        self.estado = str(getattr(s, "estado", "") or "")
+        self.last_actor_user_id = int(last_actor_user_id) if last_actor_user_id is not None else None
+        self.last_actor_label = "Sin responsable" if self.last_actor_user_id is None else f"Staff #{self.last_actor_user_id}"
+        self.active_reemplazo = active_reemplazo
+
+        estado_norm = str(self.estado or "").strip().lower()
+        estado_desde = None
+        repl_inicio = getattr(active_reemplazo, "fecha_inicio_reemplazo", None) if active_reemplazo is not None else None
+        if estado_norm == "reemplazo" and repl_inicio is not None:
+            estado_desde = repl_inicio
+        if estado_desde is None:
+            estado_desde = getattr(s, "estado_actual_desde", None)
+        if estado_desde is None and estado_norm == "activa":
+            estado_desde = (
+                getattr(s, "fecha_inicio_seguimiento", None)
+                or getattr(s, "fecha_ultima_modificacion", None)
+                or getattr(s, "fecha_solicitud", None)
+            )
+        if estado_desde is None and estado_norm == "reemplazo":
+            estado_desde = (
+                getattr(s, "fecha_ultima_modificacion", None)
+                or getattr(s, "fecha_solicitud", None)
+            )
+
+        days_value = int(days_in_state(estado_desde, now_dt=now_dt) or 0)
+        label = priority_band_for_days(days_value)
+        if estado_norm not in {"activa", "reemplazo"}:
+            label = "normal"
+        self.priority_label = str(label or "")
+        self.days_in_state = days_value
+        manual_followup = _manual_followup_snapshot(
+            getattr(s, "fecha_seguimiento_manual", None),
+            today_rd=today_rd,
+        )
+        self.manual_followup_state = str(manual_followup.get("state", "") or "")
+        signal = _solicitud_operativa_signal(
+            estado_raw=getattr(s, "estado", ""),
+            priority_label=self.priority_label,
+            manual_followup_state=self.manual_followup_state,
+            days_in_state=self.days_in_state,
+            has_active_reemplazo=bool(active_reemplazo),
+            last_activity_at=_solicitud_last_activity_at(s),
+            now_dt=now_dt,
+        )
+        self.operational_signal_code = str(signal.get("code", "estable") or "estable")
+        self.operational_signal_rank = int(signal.get("rank", 0) or 0)
+
+    def __getattr__(self, name):
+        return getattr(self._s, name)
+
+
 def _solicitudes_prioridad_as_int(name: str, default: int, *, lo: int | None = None, hi: int | None = None) -> int:
     try:
         value = int(request.args.get(name, default) or default)
@@ -14385,7 +14502,7 @@ def _solicitudes_prioridad_as_int(name: str, default: int, *, lo: int | None = N
     return value
 
 
-def _solicitudes_prioridad_context():
+def _solicitudes_prioridad_context(*, include_rows: bool = True, include_filter_options: bool = True):
     q = (request.args.get('q') or '').strip()
     estado = (request.args.get('estado') or '').strip().lower()
     prioridad = (request.args.get('prioridad') or '').strip().lower()
@@ -14517,10 +14634,10 @@ def _solicitudes_prioridad_context():
     })
     username_by_actor = _staff_username_map(actor_ids)
 
-    wrapped = []
+    selected_rows = []
     filter_options_raw: dict[int | None, dict] = {}
     for s in (rows or []):
-        score, label, stale, hours = _solicitud_priority_snapshot(s, now_dt=ahora)
+        score, label, stale, _hours = _solicitud_priority_snapshot(s, now_dt=ahora)
         if prioridad and label != prioridad:
             continue
         if estancadas and not stale:
@@ -14549,25 +14666,48 @@ def _solicitudes_prioridad_context():
         actor_label = "Sin responsable"
         if actor_user_id is not None and actor_user_id > 0:
             actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-        wrapped.append(_SolicitudPrioridadVM(
-            s,
-            score=score,
-            label=label,
-            stagnant=stale,
-            now_dt=ahora,
+        estado_desde, _source, _estimated = resolve_solicitud_estado_priority_anchor(s)
+        days_state = int(days_in_state(estado_desde, now_dt=ahora) or 0)
+        needs_followup_today = _solicitud_needs_followup_today(
+            is_stagnant=bool(stale),
+            priority_label=label,
+        )
+        manual_followup = _manual_followup_snapshot(
+            getattr(s, "fecha_seguimiento_manual", None),
             today_rd=today_value,
-            last_actor_label=actor_label,
-        ))
+        )
+        signal = _solicitud_operativa_signal(
+            estado_raw=getattr(s, "estado", ""),
+            priority_label=label,
+            manual_followup_state=manual_followup["state"],
+            days_in_state=days_state,
+            has_active_reemplazo=bool(_active_reemplazo_for_solicitud(s)),
+            last_activity_at=_solicitud_last_activity_at(s),
+            now_dt=ahora,
+        )
+        selected_rows.append({
+            "s": s,
+            "id": sid,
+            "score": int(score),
+            "label": str(label or ""),
+            "stale": bool(stale),
+            "days": int(days_state),
+            "actor_user_id": actor_user_id,
+            "actor_label": actor_label,
+            "needs_followup_today": bool(needs_followup_today),
+            "manual_followup_state": str(manual_followup["state"] or ""),
+            "signal_code": str(signal.get("code", "") or ""),
+        })
 
-    wrapped.sort(
-        key=lambda item: (
-            -priority_band_rank(getattr(item, "priority_label", "")),
-            -int(getattr(item, "days_in_state", 0) or 0),
-            int(getattr(item, 'id', 0) or 0),
+    selected_rows.sort(
+        key=lambda row: (
+            -priority_band_rank(row["label"]),
+            -int(row["days"] or 0),
+            int(row["id"] or 0),
         )
     )
 
-    total = len(wrapped)
+    total = len(selected_rows)
     responsible_summary_raw: dict[int | None, dict] = {}
 
     count_activa = 0
@@ -14580,16 +14720,8 @@ def _solicitudes_prioridad_context():
     count_espera_pago_prolongada = 0
     count_reemplazo_sin_seguimiento = 0
 
-    for item in wrapped:
-        sid = int(getattr(item, 'id', 0) or 0)
-        actor_user_id = last_actor_by_solicitud.get(sid)
-        if actor_user_id is not None:
-            try:
-                actor_user_id = int(actor_user_id)
-            except Exception:
-                actor_user_id = None
-        if actor_user_id is not None and actor_user_id <= 0:
-            actor_user_id = None
+    for row in selected_rows:
+        actor_user_id = row["actor_user_id"]
         key = actor_user_id if actor_user_id is not None else None
         if key not in responsible_summary_raw:
             responsible_summary_raw[key] = {
@@ -14606,7 +14738,7 @@ def _solicitudes_prioridad_context():
             }
         bucket = responsible_summary_raw[key]
         bucket["total"] += 1
-        current_label = str(getattr(item, 'priority_label', '') or '').strip().lower()
+        current_label = str(row["label"] or "").strip().lower()
         if current_label == 'critica':
             count_critica += 1
             bucket["stagnant"] += 1
@@ -14619,17 +14751,17 @@ def _solicitudes_prioridad_context():
             count_atencion += 1
         else:
             count_normal += 1
-        current_estado = str(getattr(item, 'estado', '') or '').strip().lower()
+        current_estado = str(getattr(row["s"], 'estado', '') or '').strip().lower()
         if current_estado == 'activa':
             count_activa += 1
         elif current_estado == 'reemplazo':
             count_reemplazo += 1
             bucket["reemplazo"] += 1
-        if bool(getattr(item, 'needs_followup_today', False)):
+        if bool(row["needs_followup_today"]):
             bucket["needs_today"] += 1
-        if str(getattr(item, "manual_followup_state", "") or "").strip().lower() == "vencida":
+        if str(row["manual_followup_state"] or "").strip().lower() == "vencida":
             bucket["overdue"] += 1
-        signal_code = str(getattr(item, "operational_signal_code", "") or "").strip().lower()
+        signal_code = str(row["signal_code"] or "").strip().lower()
         if signal_code == "sin_movimiento":
             count_sin_movimiento += 1
         elif signal_code == "espera_pago_prolongada":
@@ -14661,18 +14793,20 @@ def _solicitudes_prioridad_context():
         else:
             row["load_tier"] = "normal"
 
-    responsible_filter_options = sorted(
-        (value for key, value in filter_options_raw.items() if key is not None),
-        key=lambda row: (-int(row["count"]), str(row["label"]).lower()),
-    )
-    if None in filter_options_raw:
-        responsible_filter_options.append(filter_options_raw[None])
-    total_filter_count = sum(int(row.get("count", 0) or 0) for row in responsible_filter_options)
-    responsible_filter_options = [{
-        "value": "",
-        "label": "Todos",
-        "count": int(total_filter_count),
-    }] + responsible_filter_options
+    responsible_filter_options = []
+    if include_filter_options:
+        responsible_filter_options = sorted(
+            (value for key, value in filter_options_raw.items() if key is not None),
+            key=lambda row: (-int(row["count"]), str(row["label"]).lower()),
+        )
+        if None in filter_options_raw:
+            responsible_filter_options.append(filter_options_raw[None])
+        total_filter_count = sum(int(row.get("count", 0) or 0) for row in responsible_filter_options)
+        responsible_filter_options = [{
+            "value": "",
+            "label": "Todos",
+            "count": int(total_filter_count),
+        }] + responsible_filter_options
 
     assigned_responsibles = [row for row in responsible_summary if row.get("actor_user_id") is not None]
     top_load_label = ""
@@ -14695,7 +14829,21 @@ def _solicitudes_prioridad_context():
 
     start = (page - 1) * per_page
     end = start + per_page
-    paged = wrapped[start:end]
+    paged = []
+    if include_rows:
+        page_rows = selected_rows[start:end]
+        paged = [
+            _SolicitudPrioridadVM(
+                row["s"],
+                score=row["score"],
+                label=row["label"],
+                stagnant=row["stale"],
+                now_dt=ahora,
+                today_rd=today_value,
+                last_actor_label=row["actor_label"],
+            )
+            for row in page_rows
+        ]
 
     return dict(
         solicitudes=paged,
@@ -14725,7 +14873,7 @@ def _solicitudes_prioridad_context():
         top_risk_value=top_risk_value,
         responsible_summary=responsible_summary,
         responsible_filter_options=responsible_filter_options,
-        has_more=end < total,
+        has_more=(end < total) if include_rows else False,
         allowed_states=allowed_states,
         allowed_priority=allowed_priority,
     )
@@ -14779,7 +14927,7 @@ def solicitudes_prioridad():
 @admin_required
 def solicitudes_prioridad_summary_fragment():
     with _p1c1_perf_scope("solicitudes_prioridad_summary_fragment") as perf_done:
-        list_ctx = _solicitudes_prioridad_context()
+        list_ctx = _solicitudes_prioridad_context(include_rows=False, include_filter_options=False)
         html = render_template('admin/_solicitudes_prioridad_summary_region.html', **list_ctx)
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -14792,7 +14940,7 @@ def solicitudes_prioridad_summary_fragment():
 @admin_required
 def solicitudes_prioridad_responsables_fragment():
     with _p1c1_perf_scope("solicitudes_prioridad_responsables_fragment") as perf_done:
-        list_ctx = _solicitudes_prioridad_context()
+        list_ctx = _solicitudes_prioridad_context(include_rows=False, include_filter_options=False)
         html = render_template('admin/_solicitudes_prioridad_responsables_region.html', **list_ctx)
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -14903,6 +15051,7 @@ def api_candidatas():
 @staff_required
 def listar_solicitudes():
     with _p1c1_perf_scope("solicitudes_list") as perf_done:
+        is_async = _admin_async_wants_json()
         q = (request.args.get('q') or '').strip()
         estado = (request.args.get('estado') or '').strip().lower()
         triage = (request.args.get('triage') or '').strip().lower()
@@ -14950,19 +15099,11 @@ def listar_solicitudes():
         triage_scan_attrs = []
         for attr in (
             "id",
-            "cliente_id",
-            "candidata_id",
-            "codigo_solicitud",
-            "ciudad_sector",
-            "rutas_cercanas",
-            "modalidad_trabajo",
-            "horario",
-            "nota_cliente",
             "estado",
             "fecha_solicitud",
             "estado_actual_desde",
+            "fecha_inicio_seguimiento",
             "fecha_seguimiento_manual",
-            "row_version",
             "updated_at",
             "fecha_ultima_modificacion",
             "fecha_ultima_actividad",
@@ -15005,14 +15146,17 @@ def listar_solicitudes():
         has_more = False
 
         if triage:
-            triage_options_list = []
+            triage_scan_options = []
             if triage_scan_attrs:
-                triage_options_list.append(load_only(*triage_scan_attrs))
-            triage_options_list.extend([
+                triage_scan_options.append(load_only(*triage_scan_attrs))
+            triage_detail_options = []
+            if detail_attrs:
+                triage_detail_options.append(load_only(*detail_attrs))
+            triage_detail_options.extend([
                 joinedload(Solicitud.cliente),
                 joinedload(Solicitud.candidata),
             ])
-            triage_options_list.append(
+            triage_detail_options.append(
                 selectinload(Solicitud.reemplazos).load_only(
                     Reemplazo.id,
                     Reemplazo.fecha_inicio_reemplazo,
@@ -15020,120 +15164,173 @@ def listar_solicitudes():
                     Reemplazo.created_at,
                 )
             )
-            if _solicitudes_query_supports_sql_triage(base_query):
-                triage_parts = _solicitudes_triage_sql_parts(now_dt=now_utc, today_rd=today_rd)
-                triage_clause = triage_parts["clauses"].get(triage)
-                triage_options = _solicitudes_triage_options_sql(
-                    base_query=base_query,
-                    selected=triage,
-                    now_dt=now_utc,
-                    today_rd=today_rd,
-                )
-                triage_query = base_query
-                if triage_clause is not None:
-                    triage_query = triage_query.filter(triage_clause)
-                total = _query_count_distinct_solicitudes(triage_query)
-                end = start + per_page
-                has_more = end < total
-                triage_query = (
-                    triage_query
-                    .options(*triage_options_list)
-                    .order_by(
-                        triage_parts["signal_rank"].desc(),
-                        func.coalesce(triage_parts["state_anchor"], now_utc).asc(),
-                        Solicitud.id.asc(),
-                    )
-                    .offset(start)
-                    .limit(per_page)
-                )
-                triage_rows = triage_query.all()
-                triage_ids = [
-                    int(getattr(s, "id", 0) or 0)
-                    for s in (triage_rows or [])
-                    if int(getattr(s, "id", 0) or 0) > 0
-                ]
-                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
-                actor_ids = sorted({
-                    int(uid) for uid in (last_actor_by_solicitud.values() or [])
-                    if uid is not None and int(uid or 0) > 0
-                })
-                username_by_actor = _staff_username_map(actor_ids)
-                for s in (triage_rows or []):
-                    sid = int(getattr(s, "id", 0) or 0)
-                    actor_user_id = last_actor_by_solicitud.get(sid)
-                    actor_label = "Sin responsable"
-                    if actor_user_id is not None:
-                        try:
-                            actor_user_id = int(actor_user_id)
-                        except Exception:
-                            actor_user_id = None
-                    if actor_user_id is not None and actor_user_id > 0:
-                        actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-                    repl = _active_reemplazo_for_solicitud(s)
-                    if repl:
-                        reemplazos_activos[sid] = repl
-                    item = _SolicitudOperativaListVM(
-                        s,
+            use_in_memory_triage = not _solicitudes_query_supports_sql_triage(base_query)
+            if not use_in_memory_triage:
+                try:
+                    triage_parts = _solicitudes_triage_sql_parts(now_dt=now_utc, today_rd=today_rd)
+                    triage_clause = triage_parts["clauses"].get(triage)
+                    triage_options = _solicitudes_triage_options_sql(
+                        base_query=base_query,
+                        selected=triage,
                         now_dt=now_utc,
                         today_rd=today_rd,
-                        last_actor_label=actor_label,
-                        has_active_reemplazo=bool(repl),
                     )
-                    if _solicitud_matches_triage(item, triage):
-                        solicitudes_operativas.append(item)
-            else:
-                triage_query = base_query.options(*triage_options_list).order_by(*row_order)
-                triage_rows = triage_query.all()
-
-                triage_ids = [
-                    int(getattr(s, "id", 0) or 0)
-                    for s in (triage_rows or [])
-                    if int(getattr(s, "id", 0) or 0) > 0
-                ]
-                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
-                actor_ids = sorted({
-                    int(uid) for uid in (last_actor_by_solicitud.values() or [])
-                    if uid is not None and int(uid or 0) > 0
-                })
-                username_by_actor = _staff_username_map(actor_ids)
-                triage_rows_wrapped = []
-                for s in (triage_rows or []):
-                    sid = int(getattr(s, "id", 0) or 0)
-                    actor_user_id = last_actor_by_solicitud.get(sid)
-                    actor_label = "Sin responsable"
-                    if actor_user_id is not None:
-                        try:
-                            actor_user_id = int(actor_user_id)
-                        except Exception:
-                            actor_user_id = None
-                    if actor_user_id is not None and actor_user_id > 0:
-                        actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-                    repl = _active_reemplazo_for_solicitud(s)
-                    if repl:
-                        reemplazos_activos[sid] = repl
-                    triage_rows_wrapped.append(
-                        _SolicitudOperativaListVM(
+                    triage_query = base_query
+                    if triage_clause is not None:
+                        triage_query = triage_query.filter(triage_clause)
+                    total = _query_count_distinct_solicitudes(triage_query)
+                    end = start + per_page
+                    has_more = end < total
+                    triage_query = (
+                        triage_query
+                        .options(*triage_scan_options, *triage_detail_options)
+                        .order_by(
+                            triage_parts["signal_rank"].desc(),
+                            func.coalesce(triage_parts["state_anchor"], now_utc).asc(),
+                            Solicitud.id.asc(),
+                        )
+                        .offset(start)
+                        .limit(per_page)
+                    )
+                    triage_rows = triage_query.all()
+                    triage_ids = [
+                        int(getattr(s, "id", 0) or 0)
+                        for s in (triage_rows or [])
+                        if int(getattr(s, "id", 0) or 0) > 0
+                    ]
+                    last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                    actor_ids = sorted({
+                        int(uid) for uid in (last_actor_by_solicitud.values() or [])
+                        if uid is not None and int(uid or 0) > 0
+                    })
+                    username_by_actor = _staff_username_map(actor_ids)
+                    for s in (triage_rows or []):
+                        sid = int(getattr(s, "id", 0) or 0)
+                        actor_user_id = last_actor_by_solicitud.get(sid)
+                        actor_label = "Sin responsable"
+                        if actor_user_id is not None:
+                            try:
+                                actor_user_id = int(actor_user_id)
+                            except Exception:
+                                actor_user_id = None
+                        if actor_user_id is not None and actor_user_id > 0:
+                            actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                        repl = _active_reemplazo_for_solicitud(s)
+                        if repl:
+                            reemplazos_activos[sid] = repl
+                        item = _SolicitudOperativaListVM(
                             s,
                             now_dt=now_utc,
                             today_rd=today_rd,
                             last_actor_label=actor_label,
                             has_active_reemplazo=bool(repl),
                         )
+                        if _solicitud_matches_triage(item, triage):
+                            solicitudes_operativas.append(item)
+                except Exception as exc:
+                    rollback_done = False
+                    try:
+                        db.session.rollback()
+                        rollback_done = True
+                    except Exception:
+                        rollback_done = False
+                    current_app.logger.exception(
+                        "admin.solicitudes triage SQL failed; falling back to in-memory triage",
+                        extra={
+                            "triage": triage,
+                            "error_type": exc.__class__.__name__,
+                            "error_message": str(exc),
+                            "rollback_done": rollback_done,
+                            "used_in_memory_fallback": True,
+                        },
+                    )
+                    use_in_memory_triage = True
+            if use_in_memory_triage:
+                triage_query = base_query.options(*triage_scan_options).order_by(*row_order)
+                triage_rows = triage_query.all()
+
+                triage_ids = [
+                    int(getattr(s, "id", 0) or 0)
+                    for s in (triage_rows or [])
+                    if int(getattr(s, "id", 0) or 0) > 0
+                ]
+                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                active_reemplazo_by_solicitud = _active_reemplazo_map_for_solicitudes(triage_ids)
+                triage_rows_scan = []
+                for s in (triage_rows or []):
+                    sid = int(getattr(s, "id", 0) or 0)
+                    actor_user_id = last_actor_by_solicitud.get(sid)
+                    if actor_user_id is not None:
+                        try:
+                            actor_user_id = int(actor_user_id)
+                        except Exception:
+                            actor_user_id = None
+                    repl = active_reemplazo_by_solicitud.get(sid)
+                    triage_rows_scan.append(
+                        _SolicitudOperativaTriageScanRow(
+                            s,
+                            now_dt=now_utc,
+                            today_rd=today_rd,
+                            last_actor_user_id=actor_user_id,
+                            active_reemplazo=repl,
+                        )
                     )
 
-                triage_rows_wrapped.sort(
+                triage_rows_scan.sort(
                     key=lambda item: (
                         -int(getattr(item, "operational_signal_rank", 0) or 0),
                         -int(getattr(item, "days_in_state", 0) or 0),
                         int(getattr(item, "id", 0) or 0),
                     )
                 )
-                triage_options = _solicitudes_triage_options(rows=triage_rows_wrapped, selected=triage)
-                filtered_rows = [item for item in triage_rows_wrapped if _solicitud_matches_triage(item, triage)]
-                total = len(filtered_rows)
+                triage_options = _solicitudes_triage_options(rows=triage_rows_scan, selected=triage)
+                filtered_scan_rows = [item for item in triage_rows_scan if _solicitud_matches_triage(item, triage)]
+                total = len(filtered_scan_rows)
                 end = start + per_page
                 has_more = end < total
-                solicitudes_operativas = filtered_rows[start:end]
+                page_scan_rows = filtered_scan_rows[start:end]
+                page_actor_ids = sorted({
+                    int(getattr(item, "last_actor_user_id", 0) or 0)
+                    for item in (page_scan_rows or [])
+                    if int(getattr(item, "last_actor_user_id", 0) or 0) > 0
+                })
+                username_by_actor = _staff_username_map(page_actor_ids)
+                page_ids = [int(getattr(item, "id", 0) or 0) for item in (page_scan_rows or []) if int(getattr(item, "id", 0) or 0) > 0]
+                page_detail_by_id: dict[int, Solicitud] = {}
+                if page_ids:
+                    page_detail_rows = (
+                        Solicitud.query
+                        .options(*triage_detail_options)
+                        .filter(Solicitud.id.in_(page_ids))
+                        .all()
+                    )
+                    page_detail_by_id = {
+                        int(getattr(row, "id", 0) or 0): row
+                        for row in (page_detail_rows or [])
+                        if int(getattr(row, "id", 0) or 0) > 0
+                    }
+                solicitudes_operativas = []
+                for item in (page_scan_rows or []):
+                    sid = int(getattr(item, "id", 0) or 0)
+                    actor_user_id = getattr(item, "last_actor_user_id", None)
+                    actor_label = "Sin responsable"
+                    if actor_user_id is not None and int(actor_user_id or 0) > 0:
+                        actor_label = username_by_actor.get(int(actor_user_id), f"Staff #{int(actor_user_id)}")
+                    page_solicitud = page_detail_by_id.get(sid) or item._s
+                    repl = getattr(item, "active_reemplazo", None)
+                    if sid in page_detail_by_id:
+                        repl = _active_reemplazo_for_solicitud(page_solicitud) or repl
+                    if repl is not None:
+                        reemplazos_activos[sid] = repl
+                    solicitudes_operativas.append(
+                        _SolicitudOperativaListVM(
+                            page_solicitud,
+                            now_dt=now_utc,
+                            today_rd=today_rd,
+                            last_actor_label=actor_label,
+                            has_active_reemplazo=bool(repl),
+                        )
+                    )
         else:
             try:
                 total = int(
@@ -15215,9 +15412,12 @@ def listar_solicitudes():
             if triage_options:
                 triage_options[0]["count"] = int(total)
 
-        proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
-        if copiable_warning and (not _admin_async_wants_json()):
-            flash(copiable_warning, "warning")
+        proc_count = 0
+        copiable_count = 0
+        if not is_async:
+            proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
+            if copiable_warning:
+                flash(copiable_warning, "warning")
 
         role = (
             str(getattr(current_user, "role", "") or "").strip().lower()
@@ -15241,7 +15441,7 @@ def listar_solicitudes():
             triage_options=triage_options,
         )
 
-        if _admin_async_wants_json():
+        if is_async:
             html = render_template('admin/_solicitudes_list_results.html', **list_ctx)
             payload = _admin_async_payload(
                 success=True,
@@ -15862,6 +16062,46 @@ def _active_reemplazo_for_solicitud(solicitud: Solicitud):
         key=lambda rr: getattr(rr, "fecha_inicio_reemplazo", None) or getattr(rr, "created_at", None) or datetime.min,
         reverse=True,
     )[0]
+
+
+def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int, Reemplazo]:
+    ids = sorted({int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0})
+    if not ids:
+        return {}
+    try:
+        rows = (
+            Reemplazo.query
+            .options(load_only(
+                Reemplazo.id,
+                Reemplazo.solicitud_id,
+                Reemplazo.fecha_inicio_reemplazo,
+                Reemplazo.fecha_fin_reemplazo,
+                Reemplazo.created_at,
+            ))
+            .filter(
+                Reemplazo.solicitud_id.in_(ids),
+                Reemplazo.fecha_inicio_reemplazo.isnot(None),
+                Reemplazo.fecha_fin_reemplazo.is_(None),
+            )
+            .all()
+        )
+    except Exception:
+        return {}
+
+    out: dict[int, Reemplazo] = {}
+    for row in (rows or []):
+        sid = int(getattr(row, "solicitud_id", 0) or 0)
+        if sid <= 0:
+            continue
+        prev = out.get(sid)
+        row_anchor = getattr(row, "fecha_inicio_reemplazo", None) or getattr(row, "created_at", None) or datetime.min
+        if prev is None:
+            out[sid] = row
+            continue
+        prev_anchor = getattr(prev, "fecha_inicio_reemplazo", None) or getattr(prev, "created_at", None) or datetime.min
+        if row_anchor >= prev_anchor:
+            out[sid] = row
+    return out
 
 
 def _parse_matching_candidata_ids(raw_ids: list[str] | None) -> list[int]:
@@ -19016,15 +19256,37 @@ def marcar_pagada_desde_copiar(id):
     s = Solicitud.query.get_or_404(id)
     next_url = (request.form.get('next') or request.referrer or '').strip()
     fallback = url_for('admin.copiar_solicitudes')
+    action_payload = {"action": "paid"}
+
+    def _paid_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+        extra: dict | None = None,
+    ):
+        merged = dict(action_payload)
+        if extra:
+            merged.update(dict(extra))
+        return _copiar_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url,
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            extra=merged,
+        )
 
     estado_actual = (s.estado or '').strip().lower()
     if estado_actual in ('cancelada', 'pagada'):
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='Esta solicitud no admite marcarse como pagada en su estado actual.',
             category='warning',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code='conflict',
         )
@@ -19033,12 +19295,10 @@ def marcar_pagada_desde_copiar(id):
     if _critical_concurrency_guards_enabled() and expected_version is not None:
         current_version = int(getattr(s, "row_version", 0) or 0)
         if int(expected_version) != current_version:
-            return _copiar_action_response(
+            return _paid_response(
                 ok=False,
                 message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
                 category='warning',
-                next_url=next_url,
-                fallback=fallback,
                 http_status=409,
                 error_code='conflict',
             )
@@ -19051,31 +19311,25 @@ def marcar_pagada_desde_copiar(id):
     )
     if duplicate:
         if _idempotency_request_conflict(idem_row):
-            return _copiar_action_response(
+            return _paid_response(
                 ok=False,
                 message=_idempotency_conflict_message(),
                 category='warning',
-                next_url=next_url,
-                fallback=fallback,
                 http_status=409,
                 error_code='idempotency_conflict',
             )
         prev_status = int(getattr(idem_row, "response_status", 0) or 0)
         if 200 <= prev_status < 300:
-            return _copiar_action_response(
+            return _paid_response(
                 ok=True,
                 message='Acción ya aplicada previamente.',
                 category='info',
-                next_url=next_url,
-                fallback=fallback,
                 http_status=200,
             )
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
             category='warning',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code='conflict',
         )
@@ -19083,57 +19337,47 @@ def marcar_pagada_desde_copiar(id):
     candidata_raw = (request.form.get('candidata_id') or '').strip()
     monto_raw = (request.form.get('monto_pagado') or '').strip()
     if not candidata_raw or not monto_raw:
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='Para marcar pagado debes indicar candidata y monto pagado.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=400,
         )
 
     try:
         candidata_id = int(candidata_raw)
     except Exception:
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='La candidata seleccionada no es válida.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=400,
         )
 
     cand = _lock_candidata_for_update(candidata_id)
     if not cand:
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='La candidata seleccionada no existe.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=404,
         )
 
     if candidata_esta_descalificada(cand):
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='No se puede asignar una candidata descalificada.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code='conflict',
         )
 
     blocked_candidate_ids, _ = _matching_candidate_flags(s, [int(cand.fila)])
     if int(cand.fila) in blocked_candidate_ids:
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='Esta candidata ya está bloqueada por otra solicitud activa de otro cliente.',
             category='warning',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code='blocked_other_client',
         )
@@ -19157,9 +19401,19 @@ def marcar_pagada_desde_copiar(id):
                 "monto_pagado": s.monto_pagado,
             },
         )
-        _notify_cliente_candidata_asignada(s, candidata_id=int(getattr(cand, "fila", 0) or 0))
         _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
+        try:
+            _notify_cliente_candidata_asignada(s, candidata_id=int(getattr(cand, "fila", 0) or 0))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            current_app.logger.warning(
+                "marcar_pagada_desde_copiar notify_cliente_candidata_asignada_failed solicitud_id=%s candidata_id=%s",
+                int(getattr(s, "id", 0) or 0),
+                int(getattr(cand, "fila", 0) or 0),
+                exc_info=True,
+            )
         _audit_log(
             action_type="SOLICITUD_MARCAR_PAGADA_DESDE_COPIAR",
             entity_type="Solicitud",
@@ -19168,65 +19422,58 @@ def marcar_pagada_desde_copiar(id):
             changes={"estado": {"from": estado_actual, "to": "pagada"}},
             metadata={"candidata_id": cand.fila, "monto_pagado": s.monto_pagado},
         )
-        return _copiar_action_response(
+        return _paid_response(
             ok=True,
             message='Solicitud marcada como pagada.',
             category='success',
-            next_url=next_url,
-            fallback=fallback,
             http_status=200,
-            extra={"solicitud_id": s.id, "estado": "pagada", "remove_card": True, "candidata_id": cand.fila},
+            extra={
+                "solicitud_id": s.id,
+                "estado": "pagada",
+                "remove_card": True,
+                "candidata_id": cand.fila,
+            },
         )
     except InvariantConflictError as inv_exc:
         db.session.rollback()
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message=str(inv_exc) or 'Conflicto de estado de candidata.',
             category='warning',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code=getattr(inv_exc, "code", "conflict"),
         )
     except StaleDataError:
         db.session.rollback()
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
             category='warning',
-            next_url=next_url,
-            fallback=fallback,
             http_status=409,
             error_code='conflict',
         )
     except ValueError:
         db.session.rollback()
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='El monto ingresado no es válido. Revísalo e inténtalo de nuevo.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=400,
         )
     except SQLAlchemyError:
         db.session.rollback()
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='No se pudo marcar la solicitud como pagada.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=500,
         )
     except Exception:
         db.session.rollback()
-        return _copiar_action_response(
+        return _paid_response(
             ok=False,
             message='Ocurrió un error al marcar la solicitud como pagada.',
             category='danger',
-            next_url=next_url,
-            fallback=fallback,
             http_status=500,
         )
 

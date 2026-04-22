@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from flask import redirect, request
+from sqlalchemy.exc import SQLAlchemyError
 
 from app import app as flask_app
 import admin.routes as admin_routes
@@ -224,6 +225,226 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertNotIn("SOL-AC", html)
         self.assertIn("Bloque en foco: <strong>Espera de pago</strong>", html)
 
+    def test_triage_sql_parts_castea_estado_enum_antes_de_lower(self):
+        with flask_app.app_context():
+            parts = admin_routes._solicitudes_triage_sql_parts(
+                now_dt=datetime(2026, 3, 10, 10, 0, 0),
+                today_rd=date(2026, 3, 10),
+            )
+        clause_sql = str(parts["clauses"]["espera_pago"])
+        self.assertIn("lower(", clause_sql.lower())
+        self.assertIn("cast(", clause_sql.lower())
+
+    def test_triage_sql_fallback_hace_rollback_y_no_rompe_request(self):
+        sol_espera = _solicitud_stub(10, "SOL-ESPERA", "espera_pago")
+        sol_espera.estado_actual_desde = datetime(2026, 3, 1, 10, 0, 0)
+        sol_espera.fecha_ultima_actividad = datetime(2026, 3, 1, 10, 0, 0)
+
+        sol_stale = _solicitud_stub(11, "SOL-STALE", "activa")
+        sol_stale.estado_actual_desde = datetime(2026, 2, 20, 10, 0, 0)
+        sol_stale.fecha_ultima_actividad = datetime(2026, 2, 20, 10, 0, 0)
+
+        sol_otra = _solicitud_stub(12, "SOL-OTRA", "activa")
+        sol_otra.estado_actual_desde = datetime(2026, 3, 10, 10, 0, 0)
+        sol_otra.fecha_ultima_actividad = datetime(2026, 3, 10, 10, 0, 0)
+
+        rows = [sol_espera, sol_stale, sol_otra]
+        triage_cases = {
+            "espera_pago": "SOL-ESPERA",
+            "espera_pago_prolongada": "SOL-ESPERA",
+            "sin_movimiento": "SOL-STALE",
+            "sin_responsable": "SOL-ESPERA",
+        }
+
+        with flask_app.app_context():
+            for triage_code, expected_codigo in triage_cases.items():
+                with self.subTest(triage=triage_code):
+                    with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                         patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                         patch("admin.routes._solicitudes_triage_options_sql", side_effect=SQLAlchemyError("boom triage sql")), \
+                         patch("admin.routes._resolve_solicitud_last_actor_user_ids", return_value={11: 77, 12: 88}), \
+                         patch("admin.routes._staff_username_map", return_value={77: "staff77", 88: "staff88"}), \
+                         patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                         patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)), \
+                         patch("admin.routes.db.session.rollback") as rollback_mock:
+                        resp = self.client.get(
+                            f"/admin/solicitudes?triage={triage_code}",
+                            headers=self._async_headers(),
+                            follow_redirects=False,
+                        )
+
+                    self.assertEqual(resp.status_code, 200)
+                    payload = resp.get_json() or {}
+                    self.assertTrue(payload.get("success"))
+                    self.assertEqual(payload.get("triage"), triage_code)
+                    html = payload.get("replace_html") or ""
+                    self.assertIn(expected_codigo, html)
+                    rollback_mock.assert_called()
+
+    def test_triage_paridad_sql_vs_fallback_en_memoria(self):
+        sol_espera = _solicitud_stub(10, "SOL-ESPERA", "espera_pago")
+        sol_espera.estado_actual_desde = datetime(2026, 3, 1, 10, 0, 0)
+        sol_espera.fecha_ultima_actividad = datetime(2026, 3, 1, 10, 0, 0)
+
+        sol_stale = _solicitud_stub(11, "SOL-STALE", "activa")
+        sol_stale.estado_actual_desde = datetime(2026, 2, 20, 10, 0, 0)
+        sol_stale.fecha_ultima_actividad = datetime(2026, 2, 20, 10, 0, 0)
+
+        sol_otra = _solicitud_stub(12, "SOL-OTRA", "activa")
+        sol_otra.estado_actual_desde = datetime(2026, 3, 10, 10, 0, 0)
+        sol_otra.fecha_ultima_actividad = datetime(2026, 3, 10, 10, 0, 0)
+
+        rows = [sol_espera, sol_stale, sol_otra]
+        triage_codes = [
+            "sin_responsable",
+            "espera_pago",
+            "espera_pago_prolongada",
+            "sin_movimiento",
+            "urgentes",
+            "activas_estables",
+        ]
+
+        with flask_app.app_context():
+            for triage_code in triage_codes:
+                with self.subTest(triage=triage_code):
+                    with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                         patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                         patch("admin.routes._solicitudes_triage_options_sql", return_value=[]), \
+                         patch("admin.routes._resolve_solicitud_last_actor_user_ids", return_value={11: 77, 12: 88}), \
+                         patch("admin.routes._staff_username_map", return_value={77: "staff77", 88: "staff88"}), \
+                         patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                         patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                        resp_sql = self.client.get(
+                            f"/admin/solicitudes?triage={triage_code}",
+                            headers=self._async_headers(),
+                            follow_redirects=False,
+                        )
+
+                    with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                         patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                         patch("admin.routes._solicitudes_triage_options_sql", side_effect=SQLAlchemyError("boom triage sql")), \
+                         patch("admin.routes._resolve_solicitud_last_actor_user_ids", return_value={11: 77, 12: 88}), \
+                         patch("admin.routes._staff_username_map", return_value={77: "staff77", 88: "staff88"}), \
+                         patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                         patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                        resp_mem = self.client.get(
+                            f"/admin/solicitudes?triage={triage_code}",
+                            headers=self._async_headers(),
+                            follow_redirects=False,
+                        )
+
+                    self.assertEqual(resp_sql.status_code, 200)
+                    self.assertEqual(resp_mem.status_code, 200)
+                    html_sql = (resp_sql.get_json() or {}).get("replace_html") or ""
+                    html_mem = (resp_mem.get_json() or {}).get("replace_html") or ""
+                    for code in ("SOL-ESPERA", "SOL-STALE", "SOL-OTRA"):
+                        self.assertEqual(code in html_sql, code in html_mem)
+
+    def test_triage_fallback_construye_vm_solo_para_fila_de_pagina(self):
+        rows = [_solicitud_stub(i, f"SOL-{i:03d}", "espera_pago") for i in range(1, 51)]
+        for row in rows:
+            row.estado_actual_desde = datetime(2026, 3, 1, 10, 0, 0)
+            row.fecha_ultima_actividad = datetime(2026, 3, 1, 10, 0, 0)
+
+        original_init = admin_routes._SolicitudOperativaListVM.__init__
+        vm_build_count = 0
+
+        def _counting_init(self, *args, **kwargs):
+            nonlocal vm_build_count
+            vm_build_count += 1
+            return original_init(self, *args, **kwargs)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                 patch("admin.routes._solicitudes_triage_options_sql", side_effect=SQLAlchemyError("boom triage sql")), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)), \
+                 patch.object(admin_routes._SolicitudOperativaListVM, "__init__", new=_counting_init):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=espera_pago&page=2&per_page=10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(payload.get("triage"), "espera_pago")
+        self.assertEqual(vm_build_count, 10)
+
+    def test_triage_fallback_no_resuelve_reemplazo_por_relacion_fuera_de_pagina(self):
+        rows = [_solicitud_stub(i, f"SOL-{i:03d}", "espera_pago") for i in range(1, 51)]
+        for row in rows:
+            row.estado_actual_desde = datetime(2026, 3, 1, 10, 0, 0)
+            row.fecha_ultima_actividad = datetime(2026, 3, 1, 10, 0, 0)
+
+        active_map = {int(r.id): SimpleNamespace(id=9000 + int(r.id), solicitud_id=int(r.id)) for r in rows}
+        active_call_sizes = []
+        page_repl_call_count = 0
+
+        def _active_map_stub(solicitud_ids):
+            active_call_sizes.append(len(list(solicitud_ids or [])))
+            return active_map
+
+        original_active_for = admin_routes._active_reemplazo_for_solicitud
+
+        def _counting_active_for(solicitud):
+            nonlocal page_repl_call_count
+            page_repl_call_count += 1
+            return original_active_for(solicitud)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                 patch("admin.routes._solicitudes_triage_options_sql", side_effect=SQLAlchemyError("boom triage sql")), \
+                 patch("admin.routes._active_reemplazo_map_for_solicitudes", side_effect=_active_map_stub), \
+                 patch("admin.routes._active_reemplazo_for_solicitud", side_effect=_counting_active_for), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=espera_pago&page=2&per_page=10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(active_call_sizes, [50])
+        self.assertEqual(page_repl_call_count, 10)
+
+    def test_triage_fallback_no_resuelve_anchor_global_antes_de_paginar(self):
+        rows = [_solicitud_stub(i, f"SOL-{i:03d}", "activa") for i in range(1, 51)]
+        for row in rows:
+            row.estado_actual_desde = None
+            row.fecha_inicio_seguimiento = datetime(2026, 3, 1, 10, 0, 0)
+            row.fecha_ultima_modificacion = datetime(2026, 3, 1, 10, 0, 0)
+            row.fecha_ultima_actividad = datetime(2026, 3, 1, 10, 0, 0)
+
+        resolve_call_count = 0
+        original_resolve = admin_routes.resolve_solicitud_estado_priority_anchor
+
+        def _counting_resolve(solicitud):
+            nonlocal resolve_call_count
+            resolve_call_count += 1
+            return original_resolve(solicitud)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                 patch("admin.routes._solicitudes_triage_options_sql", side_effect=SQLAlchemyError("boom triage sql")), \
+                 patch("admin.routes.resolve_solicitud_estado_priority_anchor", side_effect=_counting_resolve), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=urgentes&page=2&per_page=10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        # Debe evitar resolución global (50); solo se permite costo acotado al render de página.
+        self.assertLessEqual(resolve_call_count, 20)
+
     def test_listado_muestra_accion_rapida_espera_pago_y_quitar_espera(self):
         rows = [
             _solicitud_stub(10, "SOL-ACTIVA", "activa"),
@@ -244,6 +465,13 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIn("Quitar espera de pago</button>", html)
         self.assertIn('data-collapse-open-label="Ocultar resumen"', html)
         self.assertIn('data-collapse-open-label="Ocultar acciones"', html)
+        start_marker = 'id="sol-actions-10"'
+        idx = html.find(start_marker)
+        self.assertGreaterEqual(idx, 0)
+        next_article_idx = html.find('<article id="sol-11"', idx)
+        collapsed_section = html[idx:next_article_idx if next_article_idx > idx else len(html)]
+        self.assertIn("Marcar espera de pago</button>", collapsed_section)
+        self.assertNotIn("Quitar espera de pago</button>", collapsed_section)
 
     def test_paginacion_preserva_triage_en_links(self):
         rows = [_solicitud_stub(i, f"SOL-{i:03d}", "espera_pago") for i in range(1, 23)]
@@ -381,8 +609,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("replace_html") or ""
         self.assertIn("Atención hoy", html)
-        self.assertIn("Seguimiento: Hoy", html)
-        self.assertNotIn("Seguimiento Hoy</span>", html)
+        self.assertIn('<span class="sol-muted">Seguimiento:</span>', html)
+        self.assertIn('title="Seguimiento manual programado para hoy.">Hoy</span>', html)
 
     def test_accion_por_fila_async_poner_espera_pago(self):
         solicitud = _solicitud_stub(10, "SOL-010", "activa")
@@ -468,6 +696,20 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(resp.headers.get("X-Async-Fragment-Region"), "solicitudesSummaryAsyncRegion")
         self.assertIn("X-P1C1-Perf-DB-Queries", resp.headers)
         self.assertIn("X-P1C1-Perf-HTML-Bytes", resp.headers)
+
+    def test_async_listado_no_calcula_summary_counts(self):
+        rows = [_solicitud_stub(10, "SOL-A-10", "activa")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitudes_summary_counts") as summary_counts_mock:
+                resp = self.client.get(
+                    "/admin/solicitudes",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        summary_counts_mock.assert_not_called()
 
     def test_listado_solicitudes_expone_headers_baseline_minima(self):
         rows = [_solicitud_stub(10, "SOL-A-10", "activa")]

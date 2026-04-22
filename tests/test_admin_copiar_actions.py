@@ -643,16 +643,84 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.get_json()
         self.assertTrue(data["ok"])
+        self.assertEqual(data["action"], "paid")
         self.assertEqual(data["category"], "success")
         self.assertEqual(data["solicitud_id"], 10)
         self.assertEqual(data["estado"], "pagada")
         self.assertEqual(data["candidata_id"], 33)
         self.assertTrue(data["remove_card"])
+        self.assertIn("application/json", (resp.headers.get("Content-Type") or "").lower())
+        self.assertFalse(bool(resp.location))
         self.assertEqual(solicitud.estado, "pagada")
         self.assertEqual(solicitud.candidata_id, 33)
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
         commit_mock.assert_called_once()
+
+    def test_pagado_desde_copiar_notify_falla_no_rompe_operacion(self):
+        self._login("Cruz", "8998")
+        solicitud = _SolicitudStub(estado="activa")
+        candidata = _CandidataStub(fila=33)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: candidata)), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
+                 patch("admin.routes._mark_candidata_estado") as mark_mock, \
+                 patch("admin.routes._notify_cliente_candidata_asignada", side_effect=RuntimeError("notif down")), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/marcar_pagada_desde_copiar",
+                    data={
+                        "candidata_id": "33",
+                        "monto_pagado": "12000",
+                        "next": "/admin/solicitudes/copiar?per_page=50",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("ok"))
+        self.assertEqual(data.get("action"), "paid")
+        self.assertTrue(data.get("remove_card"))
+        self.assertIn("application/json", (resp.headers.get("Content-Type") or "").lower())
+        self.assertFalse(bool(resp.location))
+        sync_mock.assert_called_once()
+        mark_mock.assert_called_once()
+        commit_mock.assert_called_once()
+
+    def test_pagado_desde_copiar_error_funcional_async_es_json_controlado(self):
+        self._login("Cruz", "8998")
+        solicitud = _SolicitudStub(estado="activa")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/marcar_pagada_desde_copiar",
+                    data={
+                        "candidata_id": "33",
+                        "monto_pagado": "",
+                        "next": "/admin/solicitudes/copiar?per_page=50",
+                    },
+                    headers={
+                        "Accept": "application/json",
+                        "X-Requested-With": "XMLHttpRequest",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 400)
+        data = resp.get_json() or {}
+        self.assertFalse(data.get("ok"))
+        self.assertEqual(data.get("action"), "paid")
+        self.assertIn("monto pagado", data.get("message", "").lower())
+        self.assertIn("application/json", (resp.headers.get("Content-Type") or "").lower())
+        self.assertFalse(bool(resp.location))
 
     def test_pagado_desde_copiar_conflict_por_row_version_devuelve_409(self):
         self._login("Cruz", "8998")

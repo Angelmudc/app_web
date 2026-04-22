@@ -100,43 +100,30 @@
                       {% if s.cliente and s.cliente.codigo %} · {{ s.cliente.codigo }}{% endif %}
                     </div>
                     <p class="prioridad-main-msg">{{ s.priority_message }}</p>
-                    {% if s.next_step_reason %}
-                      <div class="prioridad-meta-line mt-1">{{ s.next_step_reason }}</div>
-                    {% endif %}
-                    {% if s.estado_desde_at %}
+                    {% if s.next_step_reason or s.estado_desde_at %}
                       <div class="prioridad-meta-line mt-1">
-                        Desde {{ s.estado_desde_at|rd_datetime('%Y-%m-%d %H:%M') }}
+                        {% if s.next_step_reason %}{{ s.next_step_reason }}{% endif %}
+                        {% if s.next_step_reason and s.estado_desde_at %} · {% endif %}
+                        {% if s.estado_desde_at %}Desde {{ s.estado_desde_at|rd_datetime('%Y-%m-%d %H:%M') }}{% endif %}
                       </div>
                     {% endif %}
-                    {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
-                      <div class="mt-1">
-                        <span class="badge {{ s.manual_followup_badge_class }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
-                      </div>
-                    {% endif %}
-                    <div class="mt-1">
+                    <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
                       <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
                     </div>
-                    <div class="border rounded px-2 py-1 mt-2 bg-light-subtle" data-testid="priority-operativa-mini-{{ s.id }}">
-                      <div class="small">
-                        <span class="text-muted">Responsable:</span>
-                        <span class="fw-semibold">{{ s.last_actor_label }}</span>
-                        {% if _is_unassigned %}
-                          <span class="badge text-bg-warning ms-1">Sin responsable</span>
-                        {% endif %}
-                      </div>
-                      <div class="small mt-1">
-                        <span class="text-muted">Seguimiento:</span>
-                        {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
-                          <span>{{ s.manual_followup_label }}</span>
-                          <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}">{{ s.manual_followup_label }}</span>
-                        {% else %}
-                          <span class="text-muted">Sin fecha</span>
-                        {% endif %}
-                      </div>
-                      <div class="small mt-1">
-                        <span class="text-muted">Última actividad:</span>
-                        <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
-                      </div>
+                    <div class="small mt-2 text-muted" data-testid="priority-operativa-mini-{{ s.id }}">
+                      Resp:
+                      <span class="fw-semibold">{{ s.last_actor_label }}</span>
+                      {% if _is_unassigned %}
+                        <span class="badge text-bg-warning ms-1">Sin responsable</span>
+                      {% endif %}
+                      · Seg:
+                      {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
+                        <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
+                      {% else %}
+                        <span>Sin fecha</span>
+                      {% endif %}
+                      · Act:
+                      <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
                     </div>
                   </div>
                 </div>
@@ -160,7 +147,6 @@
                   {% else %}
                     <a href="{{ _cta.href }}" class="btn btn-sm {{ _cta.btn_class }}" data-testid="priority-main-cta-{{ s.id }}">{{ _cta.label }}</a>
                   {% endif %}
-
                   <div class="d-flex gap-2 flex-wrap justify-content-end">
                     {% if _estado_norm == 'espera_pago' %}
                       <form method="post"

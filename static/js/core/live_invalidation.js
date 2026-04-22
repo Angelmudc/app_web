@@ -370,6 +370,11 @@
         cleanup();
         return;
       }
+      try {
+        document.dispatchEvent(new CustomEvent("admin:live-invalidation-event", {
+          detail: { event: payload || null, source: "live_invalidation" },
+        }));
+      } catch (_e) {}
       const evt = parseInvalidationEvent(payload);
       if (!evt) return;
       if (evt.eventId && isDuplicateEvent(evt.eventId)) return;

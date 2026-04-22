@@ -594,6 +594,17 @@
     if (hostForm.dataset.solicitudSharedInit === '1') return true;
     hostForm.dataset.solicitudSharedInit = '1';
 
+    function cleanBanosDisplayValue() {
+      var input = hostForm.querySelector('[name="banos"]');
+      if (!input) return;
+      var val = (input.value || '').toString().trim();
+      if (!val || !/^\d+(\.\d+)?$/.test(val)) return;
+      if (val.indexOf('.') >= 0) {
+        val = val.replace(/\.0+$/g, '').replace(/(\.\d*?)0+$/g, '$1').replace(/\.$/, '');
+      }
+      input.value = val;
+    }
+
     function norm(v) {
       return (v || '').toString().trim().toLowerCase();
     }
@@ -1342,6 +1353,10 @@
         syncNinosRules(true);
       });
     }
+    var banosInputNode = hostForm.querySelector('[name="banos"]');
+    if (banosInputNode) {
+      banosInputNode.addEventListener('blur', cleanBanosDisplayValue);
+    }
 
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
@@ -1359,6 +1374,8 @@
       if (piso === '3+') lines.push('Pisos reportados: 3+.');
       note.value = lines.join('\n').trim();
     });
+
+    cleanBanosDisplayValue();
 
     return true;
   }

@@ -20,9 +20,15 @@
   let sseDisabledByMode = false;
   let streamModeProbe = null;
   let refreshTimer = null;
+  let sharedRefreshTimer = null;
   let afterId = 0;
   let lastStreamId = "$";
+  let sharedLiveChannel = false;
   const SSE_MODE_STORAGE_KEY = "admin_live_invalidation_mode";
+  const SHARED_LIVE_VIEWS = new Set([
+    "solicitudes_summary",
+    "solicitudes_prioridad_summary",
+  ]);
 
   function readStoredSseMode() {
     try {
@@ -92,6 +98,29 @@
     return payload;
   }
 
+  function shouldUseSharedLiveChannel() {
+    const root = document.querySelector('[data-live-invalidation-scope="1"]');
+    if (!root) return false;
+    const view = String(root.getAttribute("data-live-invalidation-view") || "").trim();
+    if (!SHARED_LIVE_VIEWS.has(view)) return false;
+    const liveStreamUrl = String(root.getAttribute("data-live-invalidation-stream-url") || "").trim();
+    const livePollUrl = String(root.getAttribute("data-live-invalidation-poll-url") || "").trim();
+    return Boolean(streamUrl && pollUrl && streamUrl === liveStreamUrl && pollUrl === livePollUrl);
+  }
+
+  function startSharedRefreshTimer() {
+    if (sharedRefreshTimer) return;
+    sharedRefreshTimer = window.setInterval(function () {
+      refreshBadge().catch(function () {});
+    }, 120000);
+  }
+
+  function stopSharedRefreshTimer() {
+    if (!sharedRefreshTimer) return;
+    window.clearInterval(sharedRefreshTimer);
+    sharedRefreshTimer = null;
+  }
+
   function isChatInvalidation(evt) {
     if (!evt || typeof evt !== "object") return false;
     const target = (evt.target && typeof evt.target === "object") ? evt.target : {};
@@ -124,6 +153,7 @@
   }
 
   function startPolling() {
+    if (sharedLiveChannel) return;
     if (pollTimer || !pollUrl) return;
     pollTimer = window.setInterval(function () {
       pollOnce().catch(function () {});
@@ -197,6 +227,7 @@
   }
 
   function scheduleReconnect() {
+    if (sharedLiveChannel) return;
     if (sseDisabledByMode) return;
     clearReconnectTimer();
     reconnectTimer = window.setTimeout(function () {
@@ -205,6 +236,7 @@
   }
 
   function startSSE() {
+    if (sharedLiveChannel) return;
     closeSSE();
     if (sseDisabledByMode || !("EventSource" in window) || !streamUrl) {
       startPolling();
@@ -259,13 +291,46 @@
     });
   }
 
-  window.addEventListener("beforeunload", function () {
+  function stopOwnRealtimeRuntime() {
     closeSSE();
     stopPolling();
     clearReconnectTimer();
+  }
+
+  function syncRuntimeMode() {
+    const nextShared = shouldUseSharedLiveChannel();
+    if (nextShared === sharedLiveChannel) return;
+    sharedLiveChannel = nextShared;
+    if (sharedLiveChannel) {
+      stopOwnRealtimeRuntime();
+      startSharedRefreshTimer();
+      return;
+    }
+    stopSharedRefreshTimer();
+    startSSE();
+  }
+
+  document.addEventListener("admin:live-invalidation-event", function (ev) {
+    if (!sharedLiveChannel) return;
+    const detail = ev && ev.detail && typeof ev.detail === "object" ? ev.detail : {};
+    handleLiveEvent(detail.event || null);
+  });
+
+  document.addEventListener("admin:navigation-complete", function () {
+    syncRuntimeMode();
+  });
+
+  window.addEventListener("beforeunload", function () {
+    stopOwnRealtimeRuntime();
+    stopSharedRefreshTimer();
     if (refreshTimer) window.clearTimeout(refreshTimer);
   });
 
   refreshBadge().catch(function () {});
-  startSSE();
+  sharedLiveChannel = shouldUseSharedLiveChannel();
+  if (sharedLiveChannel) {
+    startSharedRefreshTimer();
+  } else {
+    startSSE();
+  }
 })();

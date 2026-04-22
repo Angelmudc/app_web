@@ -93,8 +93,6 @@
             <div class="small mt-1">
               <span class="sol-muted">Seguimiento:</span>
               {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
-                <span class="visually-hidden">Seguimiento: {{ s.manual_followup_label }}</span>
-                <span>{{ s.manual_followup_label }}</span>
                 <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}">{{ s.manual_followup_label }}</span>
               {% else %}
                 <span class="sol-muted">Sin fecha</span>
@@ -130,58 +128,6 @@
                 data-collapse-closed-label="Más acciones">
           Más acciones
         </button>
-        {% if s.estado != 'cancelada' %}
-          {% if s.estado != 'espera_pago' %}
-          <form method="post"
-                action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}"
-                class="d-inline"
-                data-admin-async-form
-                data-async-target="#solicitudesAsyncRegion"
-                data-async-busy-container="#solicitudesAsyncScope"
-                data-async-preserve-scroll="true"
-                data-async-fallback="native">
-            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-            <input type="hidden" name="next" value="{{ request.full_path }}">
-            <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
-            <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-            <button type="submit" class="btn btn-sm btn-outline-warning">Marcar espera de pago</button>
-          </form>
-          {% else %}
-          <form method="post"
-                action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}"
-                class="d-inline"
-                data-admin-async-form
-                data-async-target="#solicitudesAsyncRegion"
-                data-async-busy-container="#solicitudesAsyncScope"
-                data-async-preserve-scroll="true"
-                data-async-fallback="native">
-            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-            <input type="hidden" name="next" value="{{ request.full_path }}">
-            <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
-            <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-            <button type="submit" class="btn btn-sm btn-outline-success">Quitar espera de pago</button>
-          </form>
-          {% endif %}
-        {% endif %}
-
-        {% if s.primary_cta_label != 'Ver detalle' %}
-        <a href="{{ detail_url }}"
-           class="btn btn-sm btn-outline-primary"
-           data-admin-nav="true">Ver detalle</a>
-        {% endif %}
-        {% if cliente_url %}
-        <a href="{{ cliente_url }}"
-           class="btn btn-sm btn-outline-dark"
-           data-admin-nav="true">Ver cliente</a>
-        {% endif %}
-        {% if chat_enabled and s.cliente_id %}
-        <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
-          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-          <input type="hidden" name="cliente_id" value="{{ s.cliente_id }}">
-          <input type="hidden" name="solicitud_id" value="{{ s.id }}">
-          <button type="submit" class="btn btn-sm btn-outline-success">Abrir chat</button>
-        </form>
-        {% endif %}
       </div>
 
       <div class="collapse mt-3" id="{{ quick_view_id }}">
@@ -191,44 +137,6 @@
       <div class="collapse mt-3" id="{{ row_collapse_id }}">
         <div class="border rounded p-3 sol-operativa-block">
           <div class="d-flex flex-wrap gap-2 align-items-center">
-            {% if cliente_url %}
-            <a href="{{ cliente_url }}"
-               class="btn btn-sm btn-outline-dark"
-               data-admin-nav="true">Ver cliente</a>
-            {% endif %}
-
-            {% if s.estado != 'espera_pago' %}
-            <form method="post"
-                  action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}"
-                  class="d-inline"
-                  data-admin-async-form
-                  data-async-target="#solicitudesAsyncRegion"
-                  data-async-busy-container="#solicitudesAsyncScope"
-                  data-async-preserve-scroll="true"
-                  data-async-fallback="native">
-              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-              <input type="hidden" name="next" value="{{ request.full_path }}">
-              <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
-              <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-              <button type="submit" class="btn btn-sm btn-outline-warning">Marcar espera de pago</button>
-            </form>
-            {% else %}
-            <form method="post"
-                  action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}"
-                  class="d-inline"
-                  data-admin-async-form
-                  data-async-target="#solicitudesAsyncRegion"
-                  data-async-busy-container="#solicitudesAsyncScope"
-                  data-async-preserve-scroll="true"
-                  data-async-fallback="native">
-              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-              <input type="hidden" name="next" value="{{ request.full_path }}">
-              <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
-              <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-              <button type="submit" class="btn btn-sm btn-outline-success">Quitar espera de pago</button>
-            </form>
-            {% endif %}
-
             {% set async_target = '#solicitudReemplazoActionsAsyncRegion-' ~ s.id %}
             {% set async_scope = '#solicitudesAsyncScope' %}
             {% set next_url = request.full_path %}
@@ -238,6 +146,42 @@
             <div id="solicitudReemplazoActionsAsyncRegion-{{ s.id }}" data-async-preserve-scroll="true" class="d-inline">
               {% include 'admin/_reemplazo_actions_region.html' with context %}
             </div>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
+            {% if s.estado != 'cancelada' %}
+              {% if s.estado != 'espera_pago' %}
+              <form method="post"
+                    action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}"
+                    class="d-inline"
+                    data-admin-async-form
+                    data-async-target="#solicitudesAsyncRegion"
+                    data-async-busy-container="#solicitudesAsyncScope"
+                    data-async-preserve-scroll="true"
+                    data-async-fallback="native">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning">Marcar espera de pago</button>
+              </form>
+              {% else %}
+              <form method="post"
+                    action="{{ url_for('admin.quitar_espera_pago_solicitud', id=s.id) }}"
+                    class="d-inline"
+                    data-admin-async-form
+                    data-async-target="#solicitudesAsyncRegion"
+                    data-async-busy-container="#solicitudesAsyncScope"
+                    data-async-preserve-scroll="true"
+                    data-async-fallback="native">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                <input type="hidden" name="next" value="{{ request.full_path }}">
+                <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                <button type="submit" class="btn btn-sm btn-outline-success">Quitar espera de pago</button>
+              </form>
+              {% endif %}
+            {% endif %}
+
           </div>
         </div>
       </div>

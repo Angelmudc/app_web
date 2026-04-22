@@ -3,6 +3,7 @@
 
 {% block content %}
 {% set compat_ui = compat|compat_fmt if compat else None %}
+{% set _banos_txt = ((s.banos|string)|trim)|replace('.0', '') if (s.banos is not none and (s.banos|string)|trim != '') else '0' %}
 <div class="container py-4 clientes-solicitud-detail-page" data-client-live-view="solicitud_detail" data-solicitud-id="{{ s.id }}">
 
   <!-- Header -->
@@ -356,7 +357,7 @@
 
             <dt class="col-5">Habitaciones / Baños</dt>
             <dd class="col-7">
-              {{ s.habitaciones or 0 }} hab · {{ s.banos or 0 }} baños
+              {{ s.habitaciones or 0 }} hab · {{ _banos_txt }} baños
             </dd>
 
             <dt class="col-5">Dos pisos</dt><dd class="col-7">{{ 'Sí' if s.dos_pisos else 'No' }}</dd>

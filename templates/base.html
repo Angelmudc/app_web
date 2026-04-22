@@ -19,13 +19,30 @@
     - Mantiene tus bloques y tu navbar tal cual
   #}
 
+  {% set _vendor_path = request.path or '' %}
+  {% set _select2_opt_in = (requires_select2 if requires_select2 is defined else false) %}
+  {% set _legacy_datatables_paths = ['/buscar', '/inscripcion', '/referencias', '/porciento', '/gestionar_archivos', '/subir_fotos'] %}
+  {% set _vendor_flags = namespace(needs_datatables=false) %}
+  {% for _legacy_path in _legacy_datatables_paths %}
+    {% if _vendor_path.startswith(_legacy_path) %}
+      {% set _vendor_flags.needs_datatables = true %}
+    {% endif %}
+  {% endfor %}
+  {% set _needs_datatables_vendor = _vendor_flags.needs_datatables %}
+  {% set _needs_select2_vendor = _select2_opt_in %}
+  {% set _needs_jquery_vendor = _needs_datatables_vendor or _needs_select2_vendor %}
+
   <!-- Performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  {% if _needs_jquery_vendor %}
   <link rel="preconnect" href="https://code.jquery.com" crossorigin>
+  {% endif %}
+  {% if _needs_datatables_vendor %}
   <link rel="preconnect" href="https://cdn.datatables.net" crossorigin>
+  {% endif %}
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rubik:wght@500;700&display=swap" rel="stylesheet">
@@ -39,11 +56,15 @@
   <!-- Font Awesome (para <i class="fa-...">) -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
+  {% if _needs_select2_vendor %}
   <!-- Select2 CSS -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/css/select2.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  {% endif %}
 
+  {% if _needs_datatables_vendor %}
   <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  {% endif %}
 
   <!-- Modular CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
@@ -99,8 +120,18 @@
 {% endif %}
 {% set _presence_auth_endpoints = ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel'] %}
 {% set _presence_path = request.path or '' %}
+{% set _ui_path = _presence_path %}
+{% set _requires_autosave = (requires_autosave if requires_autosave is defined else false) %}
+{% set _requires_validate = (requires_validate if requires_validate is defined else false) %}
+{% set _requires_search_ui = (requires_search_ui if requires_search_ui is defined else false) %}
+{% set _requires_live_refresh = (requires_live_refresh if requires_live_refresh is defined else false) %}
+{% set _is_admin_entrevistas_path = _ui_path.startswith('/admin/entrevista') or _ui_path.startswith('/admin/entrevistas') %}
 {% set _is_admin_auth_view = (request.endpoint in _presence_auth_endpoints) or _presence_path.startswith('/admin/login') or _presence_path.startswith('/admin/mfa/') %}
 {% set _is_admin_runtime_page = _presence_path.startswith('/admin/') and (not _is_admin_auth_view) %}
+{% set _admin_light_runtime_endpoints = ['admin.tareas_hoy'] %}
+{% set _is_admin_light_runtime_view = _is_admin_runtime_page and (request.endpoint in _admin_light_runtime_endpoints) %}
+{% set _admin_core_runtime_enabled = _is_admin_runtime_page and (not _is_admin_light_runtime_view) %}
+{% set _admin_lazy_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _requires_live_refresh) %}
 {% set _presence_operational_path = false %}
 {% if _presence_path.startswith('/buscar') %}
   {% set _presence_operational_path = true %}
@@ -122,7 +153,7 @@
   {% set _presence_operational_path = true %}
 {% endif %}
 {% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
-{% set _chat_badge_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
+{% set _chat_badge_enabled = _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -132,13 +163,15 @@
       data-presence-entity-id="{{ _p_id }}"
       data-presence-entity-name="{{ _p_name }}"
       data-presence-entity-code="{{ _p_code }}"
-      data-entity-lock-url="{% if _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
-      data-entity-lock-takeover-url="{% if _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-entity-lock-url="{% if _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
+      data-entity-lock-takeover-url="{% if _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
       data-chat-global-badge-enabled="{% if _chat_badge_enabled %}1{% else %}0{% endif %}"
       data-chat-global-badge-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_badge_json') }}{% endif %}"
       data-chat-global-inbox-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_inbox') }}{% endif %}"
       data-chat-global-stream-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_stream') %}{{ url_for('admin.live_invalidation_stream') }}{% endif %}"
       data-chat-global-poll-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_poll') %}{{ url_for('admin.live_invalidation_poll') }}{% endif %}"
+      data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
+      data-lazy-script-live-refresh="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/core/live-refresh.js') }}{% endif %}"
       data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
 
   <noscript>
@@ -424,32 +457,47 @@
   <!-- Vendor JS (defer para no bloquear) -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
-  <!-- jQuery (requerido por Select2 y DataTables) -->
+  {% if _needs_jquery_vendor %}
+  <!-- jQuery (requerido por Select2/DataTables cuando aplica) -->
   <script src="https://code.jquery.com/jquery-3.6.0.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  {% endif %}
 
+  {% if _needs_select2_vendor %}
   <!-- Select2 -->
   <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0/dist/js/select2.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  {% endif %}
 
+  {% if _needs_datatables_vendor %}
   <!-- DataTables -->
   <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js" defer crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  {% endif %}
 
   <!-- App JS -->
   <script src="{{ url_for('static', filename='js/core/toast.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/modal.js') }}" defer></script>
-  {% if _is_admin_runtime_page %}
+  {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/admin_async.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/admin_nav.js') }}" defer></script>
   {% endif %}
   <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
-  {% if _is_admin_runtime_page %}
+  {% if _admin_core_runtime_enabled %}
+  {% if _requires_search_ui %}
   <script src="{{ url_for('static', filename='js/ui/search.js') }}" defer></script>
+  {% endif %}
+  {% if _requires_validate %}
   <script src="{{ url_for('static', filename='js/forms/validate.js') }}" defer></script>
+  {% endif %}
+  {% if _requires_autosave %}
   <script src="{{ url_for('static', filename='js/forms/autosave.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
-  <script src="{{ url_for('static', filename='js/core/live-refresh.js') }}" defer></script>
+  {% endif %}
+  {% if _admin_lazy_enabled %}
+  <script src="{{ url_for('static', filename='js/core/admin_lazy_scripts.js') }}" defer></script>
+  {% endif %}
   <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
+  {% endif %}
+  {% if _admin_core_runtime_enabled and _is_admin_entrevistas_path %}
+  <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
   {% endif %}
   <script src="{{ url_for('static', filename='js/core/app.js') }}" defer></script>
   {% if _chat_badge_enabled %}
@@ -458,7 +506,7 @@
   {% if _presence_enabled %}
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
   {% endif %}
-  {% if _is_admin_runtime_page %}
+  {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
   {% endif %}
 
