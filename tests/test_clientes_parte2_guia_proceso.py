@@ -78,6 +78,14 @@ class _EstadoAggQuery:
         return list(counts.items())
 
 
+class _CountShouldNotRunQuery:
+    def filter_by(self, **kwargs):
+        return self
+
+    def count(self):
+        raise AssertionError("count() no debe ejecutarse cuando total_solicitudes ya fue calculado")
+
+
 def _unwrap_cliente_view(fn):
     out = fn
     for _ in range(2):  # login_required + cliente_required
@@ -170,6 +178,43 @@ class ClientesParte2GuiaProcesoTest(unittest.TestCase):
         self.assertEqual(self._extract_kpi_value(html, "En espera de pago"), 1)
         self.assertEqual(self._extract_kpi_value(html, "Cerradas"), 2)
         self.assertIn("Etapa general: En espera de pago", html)
+
+    def test_3c_dashboard_pasa_total_solicitudes_calculado_a_guia(self):
+        rows = [
+            _SolicitudRow(201, 7, "proceso", datetime(2026, 4, 7, 10, 0, 0)),
+            _SolicitudRow(202, 7, "espera_pago", datetime(2026, 4, 6, 10, 0, 0)),
+            _SolicitudRow(203, 7, "pagada", datetime(2026, 4, 5, 10, 0, 0)),
+        ]
+        captured = {}
+
+        def _fake_guia(cliente_id, recientes=None, total_solicitudes=None):
+            captured["cliente_id"] = cliente_id
+            captured["total_solicitudes"] = total_solicitudes
+            captured["recientes_len"] = len(recientes or [])
+            return {"stage_key": "general"}
+
+        with flask_app.app_context():
+            with patch.object(clientes_routes, "current_user", self.fake_user), \
+                 patch.object(clientes_routes.Solicitud, "query", _SolicitudQuery(rows)), \
+                 patch("clientes.routes.db.session.query", return_value=_EstadoAggQuery(rows)), \
+                 patch.object(clientes_routes, "_build_cliente_guia_inteligente", side_effect=_fake_guia):
+                with flask_app.test_request_context("/clientes/dashboard", method="GET"):
+                    self.dashboard_target()
+
+        self.assertEqual(captured.get("cliente_id"), 7)
+        self.assertEqual(captured.get("total_solicitudes"), 3)
+        self.assertEqual(captured.get("recientes_len"), 3)
+
+    def test_3d_guia_inteligente_no_recuenta_si_total_ya_existe(self):
+        with flask_app.app_context():
+            with patch.object(clientes_routes.Solicitud, "query", _CountShouldNotRunQuery()):
+                with flask_app.test_request_context("/clientes/dashboard", method="GET"):
+                    guia = clientes_routes._build_cliente_guia_inteligente(
+                        cliente_id=7,
+                        recientes=[],
+                        total_solicitudes=0,
+                    )
+        self.assertEqual(guia.get("stage_key"), "sin_solicitudes")
 
     def test_4_ocultar_banner_misma_etapa_permanece_oculto_por_misma_key(self):
         rows = [_SolicitudRow(30, 7, "proceso")]

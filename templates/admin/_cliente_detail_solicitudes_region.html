@@ -1,0 +1,363 @@
+{% set cliente_detail_url = url_for('admin.detalle_cliente', cliente_id=cliente.id) %}
+
+  <!-- ===== Solicitudes ===== -->
+  <div class="mt-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+      <h2 class="h4 mb-0">Solicitudes</h2>
+      <a href="{{ url_for('admin.nueva_solicitud_admin', cliente_id=cliente.id) }}" class="btn btn-success">
+        ➕ <i class="bi bi-plus-lg ms-1"></i> Nueva Solicitud
+      </a>
+    </div>
+
+    {% if solicitudes|length == 0 %}
+      <div class="empty-block text-center surface-light">
+        <i class="bi bi-inbox fs-3 d-block mb-2"></i>
+        Aún no hay solicitudes para este cliente.
+      </div>
+    {% else %}
+      <!-- tarjeta opaca clara para contraste perfecto -->
+      <div class="table-responsive glass-card surface-light mt-3">
+        <div class="glass-header">
+          <i class="bi bi-card-checklist"></i>
+          Detalles de las Solicitudes
+        </div>
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Fecha</th>
+              <th>Ciudad/Sector</th>
+              <th>Tipo servicio</th>
+              <th>Modalidad</th>
+              <th>Plan</th>
+              <th>Estado</th>
+              <th>Contrato digital</th>
+              <th class="text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in solicitudes %}
+            {% set repl_activo = reemplazos_activos.get(s.id) if reemplazos_activos is defined else None %}
+            {% set est_norm = (s.estado or '')|lower %}
+            {% set repl_operable = repl_activo and est_norm == 'reemplazo' %}
+            {% set back_to = (url_for('admin.detalle_cliente', cliente_id=cliente.id) ~ '#sol-' ~ s.id) %}
+            {% set contract_info = latest_contracts_by_solicitud.get(s.id) if latest_contracts_by_solicitud is defined else None %}
+            {% set contract = contract_info.contract if contract_info else None %}
+            {% set contract_state = contract_info.effective_state if contract_info else 'sin_contrato' %}
+            {% set contract_is_expired = contract_info.is_expired if contract_info else False %}
+            {% set contract_link = contract_links_by_solicitud.get(s.id) if contract_links_by_solicitud is defined else '' %}
+            <tr id="sol-{{ s.id }}">
+              <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
+              <td>
+                {% if s.fecha_solicitud %}
+                  {{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ s.ciudad_sector | default('—') }}</td>
+
+              <!-- ===== TIPO SERVICIO ===== -->
+              <td>
+                {% set ts = s.tipo_servicio or '' %}
+                {% if ts == 'NINERA' %}
+                  Niñera
+                {% elif ts == 'ENFERMERA' %}
+                  Enfermera / Cuidadora
+                {% elif ts == 'CHOFER' %}
+                  Chofer
+                {% elif ts == 'DOMESTICA_LIMPIEZA' or not ts %}
+                  Doméstica (limpieza)
+                {% else %}
+                  {{ ts }}
+                {% endif %}
+              </td>
+
+              <td>{{ s.modalidad_trabajo | default('—') }}</td>
+              <td>{{ s.tipo_plan | default('—') }}</td>
+
+              <td>
+                {% set est = s.estado or '' %}
+                {% set badge_class =
+                  'bg-secondary' if est == 'proceso' else
+                  'bg-primary'   if est == 'activa'  else
+                  'bg-warning text-dark' if est == 'espera_pago' else
+                  'bg-success'   if est == 'pagada'  else
+                  'bg-warning'   if est == 'cancelada' else
+                  'bg-info'      if est == 'reemplazo' else
+                  'bg-light'
+                %}
+                <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
+                {% if repl_activo and est_norm == 'reemplazo' %}
+                  <span class="badge bg-warning text-dark ms-1">Reemplazo activo</span>
+                {% endif %}
+              </td>
+
+              <td>
+                {% if contracts_schema_ready is defined and not contracts_schema_ready %}
+                  <span class="text-muted small">Módulo no disponible</span>
+                {% elif contract %}
+                  {% set state_badge =
+                    'bg-secondary' if contract_state == 'borrador' else
+                    'bg-primary' if contract_state in ['enviado', 'visto'] else
+                    'bg-success' if contract_state == 'firmado' else
+                    'bg-warning text-dark' if contract_state == 'expirado' else
+                    'bg-danger' if contract_state == 'anulado' else
+                    'bg-light text-dark'
+                  %}
+                  <div class="small" data-testid="contract-state-{{ s.id }}">
+                    <div class="mb-1">
+                      <span class="badge {{ state_badge }}">{{ contract_state }}</span>
+                      <span class="ms-1">v{{ contract.version or 1 }}</span>
+                    </div>
+                    <div>Enviado: {{ contract.enviado_at and contract.enviado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+                    <div>Firmado: {{ contract.firmado_at and contract.firmado_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+                    <div>PDF final: {{ 'Sí' if contract_info.has_pdf else 'No' }}</div>
+                    <div>Expirado: {{ 'Sí' if contract_is_expired else 'No' }}</div>
+                    <div>Anulado: {{ contract.anulado_at and contract.anulado_at|rd_datetime('%Y-%m-%d %H:%M') or 'No' }}</div>
+                  </div>
+                  <div class="d-flex flex-wrap gap-1 mt-2">
+                    {% if contract_state == 'borrador' %}
+                      <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=s.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-refresh">Refrescar borrador</button>
+                      </form>
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-send">Enviar contrato</button>
+                      </form>
+                    {% elif contract_state in ['enviado', 'visto'] %}
+                      <button type="button" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-copy" {% if not contract_link %}disabled{% endif %}
+                              onclick="if(navigator.clipboard){navigator.clipboard.writeText('{{ contract_link }}');}">
+                        Copiar link
+                      </button>
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-view">Ver contrato</a>
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-reissue">Reemitir</button>
+                      </form>
+                      <form method="post" action="{{ url_for('contratos.anular_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm" data-testid="contract-action-{{ s.id }}-annul">Anular</button>
+                      </form>
+                    {% elif contract_state == 'firmado' %}
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-view">Ver contrato</a>
+                      {% if contract_info.has_pdf %}
+                        <a href="{{ url_for('contratos.descargar_pdf_admin', contrato_id=contract.id) }}" class="btn btn-success btn-sm" data-testid="contract-action-{{ s.id }}-pdf">Descargar PDF</a>
+                      {% endif %}
+                    {% elif contract_state == 'expirado' %}
+                      <form method="post" action="{{ url_for('contratos.enviar_o_reemitir_contrato_ui', contrato_id=contract.id) }}" class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <button type="submit" class="btn btn-primary btn-sm" data-testid="contract-action-{{ s.id }}-reissue">Reemitir</button>
+                      </form>
+                    {% elif contract_state == 'anulado' %}
+                      <a href="{{ url_for('contratos.detalle_contrato_admin_view', contrato_id=contract.id) }}" class="btn btn-outline-secondary btn-sm" data-testid="contract-action-{{ s.id }}-detail">Ver detalle</a>
+                    {% endif %}
+                  </div>
+                {% else %}
+                  <div class="small text-muted mb-2" data-testid="contract-state-{{ s.id }}">Sin contrato</div>
+                  <form method="post" action="{{ url_for('contratos.crear_o_refrescar_borrador_ui', solicitud_id=s.id) }}" class="d-inline"
+                        data-admin-async-form
+                        data-async-target="#clienteSolicitudesAsyncRegion"
+                        data-async-busy-container="#clienteSolicitudesAsyncScope"
+                        data-async-preserve-scroll="true"
+                        data-async-fallback="native">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <button type="submit" class="btn btn-outline-primary btn-sm" data-testid="contract-action-{{ s.id }}-create">Crear contrato</button>
+                  </form>
+                {% endif %}
+              </td>
+
+              <td class="text-center">
+                <div class="actions-grid">
+                  <!-- Ver -->
+                  <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
+                     class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle"
+                     data-admin-nav="true">
+                    👁️ <i class="bi bi-eye-fill ms-1"></i><span class="sr-only">Ver</span>
+                  </a>
+
+                  {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+                  <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+                    {% if csrf_token %}
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    {% endif %}
+                    <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
+                    <input type="hidden" name="solicitud_id" value="{{ s.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Abrir chat de la solicitud" aria-label="Abrir chat">
+                      💬 <i class="bi bi-chat-dots-fill ms-1"></i><span class="sr-only">Chat</span>
+                    </button>
+                  </form>
+                  {% endif %}
+
+                  <!-- ✅ NUEVO: Link público por solicitud (abre el generador y te devuelve el link del cliente) -->
+                  <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
+                     class="btn btn-sm btn-primary"
+                     data-bs-toggle="tooltip"
+                     title="Link público (crear solicitud sin login)"
+                     aria-label="Link público">
+                    🔗 <i class="bi bi-link-45deg ms-1"></i><span class="sr-only">Link público</span>
+                  </a>
+
+                  <!-- Editar -->
+                  <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                     class="btn btn-sm btn-warning" data-bs-toggle="tooltip" title="Editar solicitud" aria-label="Editar">
+                    ✏️ <i class="bi bi-pencil-fill ms-1"></i><span class="sr-only">Editar</span>
+                  </a>
+
+                  <!-- Plan / Abono -->
+                  <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                     class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
+                    💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
+                  </a>
+
+                  <!-- Registrar pago -->
+                  {% if s.estado in ['activa','proceso'] %}
+                  <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                     class="btn btn-sm btn-success" data-bs-toggle="tooltip" title="Registrar pago" aria-label="Registrar pago">
+                    💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago</span>
+                  </a>
+                  {% endif %}
+
+                  {% if s.estado != 'espera_pago' %}
+                  <form method="post"
+                        action="{{ url_for('admin.poner_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
+                        class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                    <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Poner en espera de pago">
+                      ⏸️
+                    </button>
+                  </form>
+                  {% else %}
+                  <form method="post"
+                        action="{{ url_for('admin.quitar_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
+                        class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ back_to }}">
+                    <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                    <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Quitar espera de pago">
+                      ▶️
+                    </button>
+                  </form>
+                  {% endif %}
+
+                  {% set async_target = '#clienteSolicitudReemplazoActionsAsyncRegion-' ~ s.id %}
+                  {% set async_scope = '#clienteSolicitudesAsyncScope' %}
+                  {% set next_url = back_to %}
+                  {% set style = 'cliente' %}
+                  {% set solicitud = s %}
+                  <div id="clienteSolicitudReemplazoActionsAsyncRegion-{{ s.id }}" data-async-preserve-scroll="true" class="d-inline">
+                    {% include 'admin/_reemplazo_actions_region.html' with context %}
+                  </div>
+
+                  {% if s.candidata_id %}
+                    <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
+                       class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)" aria-label="Compatibilidad admin">
+                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad admin</span>
+                    </a>
+
+                    <a href="{{ url_for('compat_candidata', fila=s.candidata_id) }}"
+                       class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)" aria-label="Test Secretarías">
+                      ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test Secretarías</span>
+                    </a>
+                  {% else %}
+                    <button class="btn btn-sm btn-secondary" disabled
+                            data-bs-toggle="tooltip"
+                            title="Asigna una candidata para evaluar compatibilidad"
+                            aria-label="Compatibilidad deshabilitada">
+                      👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
+                    </button>
+                  {% endif %}
+
+                  {% if s.estado in ['activa','proceso','reemplazo'] %}
+                    <form method="post"
+                          action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}?next={{ cliente_detail_url | urlencode }}"
+                          class="d-inline"
+                          onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                      <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                      <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)" aria-label="Cancelar rápido">
+                        ⛔ <i class="bi bi-x-circle-fill ms-1"></i><span class="sr-only">Cancelar rápido</span>
+                      </button>
+                    </form>
+
+                    <a class="btn btn-sm btn-danger"
+                       href="{{ url_for('admin.cancelar_solicitud', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                       data-bs-toggle="tooltip" title="Cancelar con motivo" aria-label="Cancelar con motivo">
+                      🛑 <i class="bi bi-x-octagon ms-1"></i><span class="sr-only">Cancelar con motivo</span>
+                    </a>
+                  {% endif %}
+
+                  {% if current_user.role|default('')|lower == 'owner' %}
+                    {% if s.estado in ['proceso', 'cancelada'] %}
+                      <form method="post"
+                            action="{{ url_for('admin.eliminar_solicitud_admin', cliente_id=cliente.id, id=s.id) }}"
+                            class="d-inline"
+                            data-confirm-message="¿Eliminar DEFINITIVAMENTE la solicitud {{ s.codigo_solicitud if s.codigo_solicitud else '#' ~ s.id }}? Esta acción no se puede deshacer."
+                            onsubmit="return confirm(this.dataset.confirmMessage);">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="next" value="{{ back_to }}">
+                        <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
+                        <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
+                        <button class="btn btn-sm btn-outline-danger" data-bs-toggle="tooltip" title="Eliminar solicitud (solo owner)">
+                          🗑️
+                        </button>
+                      </form>
+                    {% else %}
+                      <button class="btn btn-sm btn-outline-secondary" disabled data-bs-toggle="tooltip" title="Solo se permite eliminar solicitudes en proceso o canceladas.">
+                        🗑️
+                      </button>
+                    {% endif %}
+                  {% endif %}
+                </div>
+
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>

@@ -107,6 +107,14 @@ class _FakePolicy:
         }
 
 
+class _ExplodingCandidateFactsPolicy:
+    version = "policy-exploding"
+
+    def evaluate(self, *, solicitud, candidata, score_row, candidate_facts=None):
+        _ = candidate_facts
+        raise TypeError("bug_interno_policy")
+
+
 def test_generation_persists_run_and_items(monkeypatch):
     flask_app.config["TESTING"] = True
     with flask_app.app_context():
@@ -121,7 +129,7 @@ def test_generation_persists_run_and_items(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, cand: {
+            lambda _s, cand, **_kwargs: {
                 "score": 80 if int(cand.fila) == int(c1.fila) else 55,
                 "operational_score": 70,
                 "risks": [],
@@ -161,7 +169,7 @@ def test_get_active_shortlist_pending_ready_and_stale(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, _c: {
+            lambda _s, _c, **_kwargs: {
                 "score": 88,
                 "operational_score": 80,
                 "risks": [],
@@ -201,6 +209,51 @@ def test_get_active_shortlist_pending_ready_and_stale(monkeypatch):
             rec_mod._AUTO_RETRY_MAX_ATTEMPTS = prev_max_retry
 
 
+def test_get_active_shortlist_marks_stale_when_pool_guard_changes(monkeypatch):
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables(reset=True)
+        _, solicitud = _seed_cliente_solicitud(suffix="02B")
+        c1 = _seed_candidata(fila_hint=10000000031, suffix="31")
+
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service.candidate_query_prefilter",
+            lambda _s: [c1],
+        )
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service._score_candidate",
+            lambda _s, _c, **_kwargs: {
+                "score": 88,
+                "operational_score": 80,
+                "risks": [],
+                "breakdown_snapshot": {"modalidad_match": True, "edad_match": True},
+            },
+        )
+
+        service = SolicitudRecommendationService(policy=_FakePolicy())
+        run = service.request_generation(int(solicitud.id), trigger_source="test_guard_stale", requested_by="pytest")
+        assert run is not None
+        assert str(run.status or "") == "completed"
+
+        from services import solicitud_recommendation_service as rec_mod
+        prev_max_retry = rec_mod._AUTO_RETRY_MAX_ATTEMPTS
+        prev_pool_ttl = rec_mod._POOL_GUARD_CHECK_TTL_SECONDS
+        prev_live_guard = rec_mod.SolicitudRecommendationService._live_pool_guard_snapshot
+        try:
+            rec_mod._AUTO_RETRY_MAX_ATTEMPTS = 0
+            rec_mod._POOL_GUARD_CHECK_TTL_SECONDS = 1
+            expected_count = int((run.meta or {}).get("pool_guard_count") or 1)
+            rec_mod.SolicitudRecommendationService._live_pool_guard_snapshot = staticmethod(
+                lambda *, solicitud: ("hash_drift_forzado", expected_count)
+            )
+            stale_payload = service.get_active_shortlist(int(solicitud.id))
+            assert (stale_payload.get("state") or {}).get("code") == "stale"
+        finally:
+            rec_mod._AUTO_RETRY_MAX_ATTEMPTS = prev_max_retry
+            rec_mod._POOL_GUARD_CHECK_TTL_SECONDS = prev_pool_ttl
+            rec_mod.SolicitudRecommendationService._live_pool_guard_snapshot = prev_live_guard
+
+
 def test_generate_snapshot_error_sets_run_error(monkeypatch):
     flask_app.config["TESTING"] = True
     with flask_app.app_context():
@@ -213,7 +266,7 @@ def test_generate_snapshot_error_sets_run_error(monkeypatch):
             lambda _s: [c1],
         )
 
-        def _boom(_s, _c):
+        def _boom(_s, _c, **_kwargs):
             raise RuntimeError("score_error")
 
         monkeypatch.setattr("services.solicitud_recommendation_service._score_candidate", _boom)
@@ -240,7 +293,7 @@ def test_validate_client_selection_persists_selection(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, _c: {
+            lambda _s, _c, **_kwargs: {
                 "score": 90,
                 "operational_score": 82,
                 "risks": [],
@@ -308,6 +361,207 @@ def test_policy_modalidad_hard_fail_and_confidence_band():
         mod.candidate_blocked_by_other_client = mod_candidate_blocked
         mod.candidate_has_active_assignment = mod_candidate_active
         mod.candidata_is_ready_to_send = mod_ready
+
+
+def test_policy_modalidad_none_is_soft_fail_not_hard_fail():
+    policy = SolicitudRecommendationPolicy()
+
+    class _Solicitud:
+        id = 11
+        cliente_id = 21
+
+    class _Cand:
+        fila = 199
+        estado = "lista_para_trabajar"
+
+    score_row = {
+        "score": 70,
+        "operational_score": 66,
+        "risks": [],
+        "breakdown_snapshot": {"modalidad_match": None, "edad_match": True},
+    }
+
+    from services import solicitud_recommendation_policy as mod
+
+    mod_candidate_blocked = mod.candidate_blocked_by_other_client
+    mod_candidate_active = mod.candidate_has_active_assignment
+    mod_ready = mod.candidata_is_ready_to_send
+    try:
+        mod.candidate_blocked_by_other_client = lambda **kwargs: False
+        mod.candidate_has_active_assignment = lambda **kwargs: False
+        mod.candidata_is_ready_to_send = lambda _cand: (True, [])
+        out = policy.evaluate(solicitud=_Solicitud(), candidata=_Cand(), score_row=score_row)
+        assert out["hard_fail"] is False
+        assert "modalidad_incompatible" not in out["hard_fail_codes"]
+        assert "modalidad_not_evaluable" in out["soft_fail_codes"]
+    finally:
+        mod.candidate_blocked_by_other_client = mod_candidate_blocked
+        mod.candidate_has_active_assignment = mod_candidate_active
+        mod.candidata_is_ready_to_send = mod_ready
+
+
+def test_validate_candidates_bulk_handles_multiple_ids(monkeypatch):
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables(reset=True)
+        _, solicitud = _seed_cliente_solicitud(suffix="11")
+        c1 = _seed_candidata(fila_hint=10000000011, suffix="11")
+        c2 = _seed_candidata(fila_hint=10000000012, suffix="12")
+
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service.candidate_query_prefilter",
+            lambda _s: [c1, c2],
+        )
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service._score_candidate",
+            lambda _s, _c, **_kwargs: {
+                "score": 90,
+                "operational_score": 82,
+                "risks": [],
+                "breakdown_snapshot": {"modalidad_match": True, "edad_match": True},
+            },
+        )
+
+        service = SolicitudRecommendationService(policy=_FakePolicy())
+        run = service.request_generation(int(solicitud.id), trigger_source="test_validate_bulk", requested_by="pytest")
+        assert run is not None
+
+        result = service.validate_candidates_bulk(
+            solicitud=solicitud,
+            candidata_ids=[int(c1.fila), int(c2.fila), 999999],
+            selected_by="cliente:test",
+        )
+        assert int(result.get("requested_count") or 0) == 3
+        assert int(result.get("valid_count") or 0) == 1
+        assert int(result.get("invalid_count") or 0) == 2
+        assert int(c1.fila) in set(result.get("valid_ids") or [])
+
+        selections = (
+            SolicitudRecommendationSelection.query
+            .filter_by(solicitud_id=int(solicitud.id), run_id=int(run.id))
+            .all()
+        )
+        assert len(selections) == 3
+
+
+def test_policy_internal_typeerror_is_not_silenced(monkeypatch):
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables(reset=True)
+        _, solicitud = _seed_cliente_solicitud(suffix="12")
+        c1 = _seed_candidata(fila_hint=10000000013, suffix="13")
+
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service.candidate_query_prefilter",
+            lambda _s: [c1],
+        )
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service._score_candidate",
+            lambda _s, _c, **_kwargs: {
+                "score": 90,
+                "operational_score": 82,
+                "risks": [],
+                "breakdown_snapshot": {"modalidad_match": True, "edad_match": True},
+            },
+        )
+
+        service = SolicitudRecommendationService(policy=_ExplodingCandidateFactsPolicy())
+        run = service.request_generation(int(solicitud.id), trigger_source="test_policy_typeerror", requested_by="pytest")
+        assert run is not None
+        refreshed = SolicitudRecommendationRun.query.filter_by(id=int(run.id)).first()
+        assert refreshed is not None
+        assert str(refreshed.status or "") == "error"
+        assert str(refreshed.error_code or "") == "generation_error"
+
+
+def test_validate_candidates_bulk_rejects_live_state_change(monkeypatch):
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables(reset=True)
+        _, solicitud = _seed_cliente_solicitud(suffix="13")
+        c1 = _seed_candidata(fila_hint=10000000014, suffix="14")
+
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service.candidate_query_prefilter",
+            lambda _s: [c1],
+        )
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service._score_candidate",
+            lambda _s, _c, **_kwargs: {
+                "score": 90,
+                "operational_score": 82,
+                "risks": [],
+                "breakdown_snapshot": {"modalidad_match": True, "edad_match": True},
+            },
+        )
+
+        service = SolicitudRecommendationService(policy=_FakePolicy())
+        run = service.request_generation(int(solicitud.id), trigger_source="test_live_state", requested_by="pytest")
+        assert run is not None
+
+        c1.estado = "trabajando"
+        db.session.commit()
+
+        result = service.validate_candidates_bulk(
+            solicitud=solicitud,
+            candidata_ids=[int(c1.fila)],
+            selected_by="cliente:test",
+        )
+        assert int(result.get("valid_count") or 0) == 0
+        assert int(result.get("invalid_count") or 0) == 1
+        row = (result.get("results") or [{}])[0]
+        assert row.get("ok") is False
+        assert row.get("code") == "candidate_not_operable_live"
+        assert "candidate_not_operable_live" in set(row.get("hard_fail_codes") or [])
+
+
+def test_validate_candidates_bulk_rejects_snapshot_guard_drift(monkeypatch):
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables(reset=True)
+        _, solicitud = _seed_cliente_solicitud(suffix="14")
+        c1 = _seed_candidata(fila_hint=10000000015, suffix="15")
+
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service.candidate_query_prefilter",
+            lambda _s: [c1],
+        )
+        monkeypatch.setattr(
+            "services.solicitud_recommendation_service._score_candidate",
+            lambda _s, _c, **_kwargs: {
+                "score": 90,
+                "operational_score": 82,
+                "risks": [],
+                "breakdown_snapshot": {"modalidad_match": True, "edad_match": True},
+            },
+        )
+
+        service = SolicitudRecommendationService(policy=_FakePolicy())
+        run = service.request_generation(int(solicitud.id), trigger_source="test_guard_drift", requested_by="pytest")
+        assert run is not None
+
+        item = (
+            SolicitudRecommendationItem.query
+            .filter_by(run_id=int(run.id), candidata_id=int(c1.fila))
+            .first()
+        )
+        assert item is not None
+        assert bool((item.policy_snapshot or {}).get("candidate_guard"))
+
+        c1.modalidad_trabajo_preferida = "con dormida"
+        db.session.commit()
+
+        result = service.validate_candidates_bulk(
+            solicitud=solicitud,
+            candidata_ids=[int(c1.fila)],
+            selected_by="cliente:test",
+        )
+        assert int(result.get("valid_count") or 0) == 0
+        assert int(result.get("invalid_count") or 0) == 1
+        row = (result.get("results") or [{}])[0]
+        assert row.get("ok") is False
+        assert row.get("code") == "candidate_snapshot_drift"
+        assert "candidate_snapshot_drift" in set(row.get("hard_fail_codes") or [])
 
 
 def test_presenter_returns_clean_dto_shape():
@@ -439,7 +693,7 @@ def test_get_active_shortlist_auto_retry_after_error_returns_pending_refresh(mon
             lambda _s: [c1],
         )
 
-        def _boom(_s, _c):
+        def _boom(_s, _c, **_kwargs):
             raise RuntimeError("score_error")
 
         monkeypatch.setattr("services.solicitud_recommendation_service._score_candidate", _boom)
@@ -475,7 +729,7 @@ def test_get_active_shortlist_caches_ready_payload(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, _c: {
+            lambda _s, _c, **_kwargs: {
                 "score": 90,
                 "operational_score": 84,
                 "risks": [],
@@ -524,7 +778,7 @@ def test_generation_emits_observability_counters(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, _c: {
+            lambda _s, _c, **_kwargs: {
                 "score": 90,
                 "operational_score": 80,
                 "risks": [],
@@ -566,7 +820,7 @@ def test_superseded_completed_run_without_selection_counts_unused(monkeypatch):
         )
         monkeypatch.setattr(
             "services.solicitud_recommendation_service._score_candidate",
-            lambda _s, _c: {
+            lambda _s, _c, **_kwargs: {
                 "score": 85,
                 "operational_score": 75,
                 "risks": [],

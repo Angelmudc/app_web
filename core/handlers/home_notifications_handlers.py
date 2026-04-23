@@ -157,10 +157,12 @@ def home_public_notifications_list():
     reviewed_items = [_staff_notification_to_item(n, is_read=True) for n in reviewed_rows]
     items = pending_items + reviewed_items
 
-    unread = _staff_notifications_unread_count(reader_key)
+    unread = len(pending_rows)
+    if has_more_pending:
+        unread = _staff_notifications_unread_count(reader_key)
     return jsonify(
         {
-            "unread": unread,
+            "unread": int(unread or 0),
             "items": items,
             "pending_items": pending_items,
             "reviewed_items": reviewed_items,

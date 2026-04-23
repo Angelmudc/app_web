@@ -340,6 +340,36 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     for code in ("SOL-ESPERA", "SOL-STALE", "SOL-OTRA"):
                         self.assertEqual(code in html_sql, code in html_mem)
 
+    def test_triage_sql_usa_count_de_options_y_evita_count_extra(self):
+        rows = [
+            _solicitud_stub(10, "SOL-EP", "espera_pago"),
+            _solicitud_stub(11, "SOL-AC", "activa"),
+        ]
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitudes_query_supports_sql_triage", return_value=True), \
+                 patch("admin.routes._solicitudes_triage_options_sql", return_value=[
+                     {"code": "", "label": "Todas", "count": 2, "active": False},
+                     {"code": "espera_pago", "label": "Espera de pago", "count": 1, "active": True},
+                 ]), \
+                 patch("admin.routes._query_count_distinct_solicitudes", side_effect=AssertionError("count redundante")), \
+                 patch("admin.routes.rd_today", return_value=date(2026, 3, 10)), \
+                 patch("admin.routes.utc_now_naive", return_value=datetime(2026, 3, 10, 10, 0, 0)):
+                resp = self.client.get(
+                    "/admin/solicitudes?triage=espera_pago&page=1&per_page=10",
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json() or {}
+        self.assertTrue(payload.get("success"))
+        self.assertEqual(int(payload.get("total", 0) or 0), 1)
+        html = payload.get("replace_html") or ""
+        self.assertIn("SOL-EP", html)
+        self.assertNotIn("SOL-AC", html)
+
     def test_triage_fallback_construye_vm_solo_para_fila_de_pagina(self):
         rows = [_solicitud_stub(i, f"SOL-{i:03d}", "espera_pago") for i in range(1, 51)]
         for row in rows:
@@ -409,7 +439,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                 )
 
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(active_call_sizes, [50])
+        self.assertEqual(active_call_sizes, [])
         self.assertEqual(page_repl_call_count, 10)
 
     def test_triage_fallback_no_resuelve_anchor_global_antes_de_paginar(self):
@@ -616,6 +646,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         solicitud = _solicitud_stub(10, "SOL-010", "activa")
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch("admin.routes._solicitudes_summary_counts", return_value=(4, 7, "")) as summary_counts_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/poner_espera_pago",
@@ -635,10 +666,13 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(update_targets[1].get("target"), "#solicitudesSummaryAsyncRegion")
         self.assertTrue(update_targets[1].get("invalidate"))
         self.assertIn("/admin/solicitudes/_summary", update_targets[1].get("redirect_url") or "")
+        self.assertIn("En proceso", update_targets[1].get("replace_html") or "")
+        self.assertIn("Copiables", update_targets[1].get("replace_html") or "")
         self.assertIn("/admin/solicitudes?page=1", data["redirect_url"])
         self.assertEqual(data.get("focus_row_id"), 10)
         self.assertTrue(data.get("flash_row"))
         self.assertTrue(data.get("preserve_open_collapses"))
+        summary_counts_mock.assert_called_once()
         self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_fallback_clasico_se_mantiene_en_accion_por_fila(self):
@@ -925,6 +959,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(len(update_targets), 2)
         self.assertEqual(update_targets[0].get("target"), "#clienteSolicitudesAsyncRegion")
         self.assertEqual(update_targets[1].get("target"), "#clienteSummaryAsyncRegion")
+        self.assertIn("/admin/clientes/7/_solicitudes", update_targets[0].get("redirect_url") or "")
+        self.assertIn("/admin/clientes/7/_summary", update_targets[1].get("redirect_url") or "")
         self.assertIn("/admin/clientes/7#sol-10", data["redirect_url"])
         self.assertIsNone(data.get("replace_html"))
         self.assertGreaterEqual(commit_mock.call_count, 1)

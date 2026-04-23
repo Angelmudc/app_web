@@ -1,5 +1,6 @@
 from flask import abort, current_app, flash, redirect, render_template, request, url_for, session, send_file
 from sqlalchemy import or_, and_, func
+from sqlalchemy.orm import load_only
 import re
 import unicodedata
 from flask_login import current_user
@@ -205,6 +206,22 @@ def listar_candidatas_web():
     # BASE: TODAS las candidatas
     query = (
         db.session.query(Candidata, CandidataWeb)
+        .options(
+            load_only(
+                Candidata.fila,
+                Candidata.nombre_completo,
+                Candidata.codigo,
+                Candidata.cedula,
+                Candidata.numero_telefono,
+                Candidata.estado,
+            ),
+            load_only(
+                CandidataWeb.candidata_id,
+                CandidataWeb.nombre_publico,
+                CandidataWeb.estado_publico,
+                CandidataWeb.visible,
+            ),
+        )
         .outerjoin(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
         .filter(
             candidatas_activas_filter(Candidata),

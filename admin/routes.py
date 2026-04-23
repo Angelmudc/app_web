@@ -176,6 +176,7 @@ from services.solicitud_estado import (
     set_solicitud_estado,
 )
 from services.solicitud_recommendation_service import SolicitudRecommendationService
+from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
 from utils.timezone import (
     format_rd_datetime,
     iso_utc_z,
@@ -5618,15 +5619,22 @@ def _activity_ranking(since_dt: datetime, until_dt: datetime | None = None, only
 
 
 def _window_metrics_payload(start_dt: datetime, end_dt: datetime | None = None) -> dict:
-    base = StaffAuditLog.query.filter(StaffAuditLog.created_at >= start_dt)
+    query = db.session.query(
+        func.count(StaffAuditLog.id).label("total_actions"),
+        func.sum(case((StaffAuditLog.action_type == "SOLICITUD_CREATE", 1), else_=0)).label("solicitudes_creadas"),
+        func.sum(case((StaffAuditLog.action_type == "SOLICITUD_PUBLICAR", 1), else_=0)).label("solicitudes_publicadas"),
+        func.sum(case((StaffAuditLog.action_type == "CANDIDATA_EDIT", 1), else_=0)).label("candidatas_editadas"),
+        func.sum(case((StaffAuditLog.action_type == "MATCHING_SEND", 1), else_=0)).label("candidatas_enviadas"),
+    ).filter(StaffAuditLog.created_at >= start_dt)
     if end_dt:
-        base = base.filter(StaffAuditLog.created_at < end_dt)
+        query = query.filter(StaffAuditLog.created_at < end_dt)
+    row = query.one()
     return {
-        "total_actions": base.count(),
-        "solicitudes_creadas": base.filter(StaffAuditLog.action_type == "SOLICITUD_CREATE").count(),
-        "solicitudes_publicadas": base.filter(StaffAuditLog.action_type == "SOLICITUD_PUBLICAR").count(),
-        "candidatas_editadas": base.filter(StaffAuditLog.action_type == "CANDIDATA_EDIT").count(),
-        "candidatas_enviadas": base.filter(StaffAuditLog.action_type == "MATCHING_SEND").count(),
+        "total_actions": int(row.total_actions or 0),
+        "solicitudes_creadas": int(row.solicitudes_creadas or 0),
+        "solicitudes_publicadas": int(row.solicitudes_publicadas or 0),
+        "candidatas_editadas": int(row.candidatas_editadas or 0),
+        "candidatas_enviadas": int(row.candidatas_enviadas or 0),
     }
 
 
@@ -5670,17 +5678,24 @@ def _build_productivity_today_payload() -> dict:
     return {"users": users}
 
 
-def _build_monitoreo_summary_payload() -> dict:
+def _build_monitoreo_summary_payload(
+    *,
+    include_presence: bool = True,
+    include_presence_conflicts: bool = True,
+    include_operations: bool = True,
+    include_activity_stream: bool = True,
+) -> dict:
     now = utc_now_naive()
     day_start, _ = rd_day_range_utc_naive()
     week_start = now - timedelta(days=7)
     month_start = now - timedelta(days=30)
     top = _activity_ranking(month_start, only_secretarias=True)
-    presence = _presence_rows()
-    active_presence = _presence_active_rows(presence)
-    conflicts = _build_presence_conflicts(active_presence)
+    needs_presence_rows = bool(include_presence or include_presence_conflicts or include_operations)
+    presence = _presence_rows() if needs_presence_rows else []
+    active_presence = _presence_active_rows(presence) if needs_presence_rows else []
+    conflicts = _build_presence_conflicts(active_presence) if include_presence_conflicts else []
     alerts = get_alert_items(limit=10, scope="critical", include_resolved=False)
-    return {
+    payload = {
         "generated_at": iso_utc_z(now),
         "today": _window_metrics_payload(day_start),
         "week": _window_metrics_payload(week_start),
@@ -5694,15 +5709,25 @@ def _build_monitoreo_summary_payload() -> dict:
             }
             for r in top[:10]
         ],
-        "presence": presence,
         "presence_active_count": len(active_presence),
         "presence_conflicts": conflicts,
         "productivity": _build_productivity_today_payload(),
-        "operations": _build_operations_metrics_payload(active_presence),
-        "activity_stream": _build_activity_stream_payload(limit=20),
         "alerts": alerts,
         "critical_alerts": alerts,
     }
+    if include_presence:
+        payload["presence"] = presence
+    if include_operations:
+        payload["operations"] = _build_operations_metrics_payload(active_presence)
+    if include_activity_stream:
+        payload["activity_stream"] = _build_activity_stream_payload(limit=20)
+    return payload
+
+
+def _stream_active_presence_for_operations(latest_active_presence: list[dict] | None) -> list[dict]:
+    if latest_active_presence is not None:
+        return latest_active_presence
+    return _presence_active_rows()
 
 
 def _resolve_candidata_from_entity_id(entity_id: str):
@@ -5772,25 +5797,7 @@ def monitoreo_staff():
             redirect_url=url_for("admin.monitoreo_staff"),
         ))
 
-    now = utc_now_naive()
-    day_start, _ = rd_day_range_utc_naive()
-    week_start = now - timedelta(days=7)
-
     summary = _build_monitoreo_summary_payload()
-    total_today = summary["today"]["total_actions"]
-    total_week = summary["week"]["total_actions"]
-    metrics = summary["week"]
-
-    per_day_rows = (
-        db.session.query(
-            func.date(StaffAuditLog.created_at).label("day"),
-            func.count(StaffAuditLog.id).label("total"),
-        )
-        .filter(StaffAuditLog.created_at >= week_start)
-        .group_by(func.date(StaffAuditLog.created_at))
-        .order_by(func.date(StaffAuditLog.created_at).asc())
-        .all()
-    )
 
     latest_logs = (
         _logs_filtered_query()
@@ -5798,33 +5805,22 @@ def monitoreo_staff():
         .limit(30)
         .all()
     )
-    users = StaffUser.query.order_by(StaffUser.username.asc()).all()
-    user_map = {u.id: u for u in users}
-    username_map = {int(u.id): u.username for u in users}
+    actor_ids = sorted({int(l.actor_user_id) for l in latest_logs if l.actor_user_id is not None})
+    username_map = {}
+    if actor_ids:
+        users = StaffUser.query.filter(StaffUser.id.in_(actor_ids)).all()
+        username_map = {int(u.id): u.username for u in users}
     latest_entity_map = _build_entity_display_map(latest_logs)
     latest_logs_items = [
         _serialize_log_item(log, username_map=username_map, entity_display_map=latest_entity_map)
         for log in latest_logs
     ]
 
-    ranking_today = _activity_ranking(day_start)
-    ranking_week = _activity_ranking(now - timedelta(days=7))
-    ranking_month = _activity_ranking(now - timedelta(days=30))
     monitoreo_alerts = list(summary.get("critical_alerts") or summary.get("alerts") or [])
 
     return render_template(
         "admin/monitoreo.html",
-        now=now,
-        total_today=total_today,
-        total_week=total_week,
-        metrics=metrics,
-        per_day_rows=per_day_rows,
         latest_logs=latest_logs_items,
-        users=users,
-        user_map=user_map,
-        ranking_today=ranking_today,
-        ranking_week=ranking_week,
-        ranking_month=ranking_month,
         monitoreo_alerts=monitoreo_alerts,
         summary_payload=summary,
         initial_last_id=int(latest_logs[0].id) if latest_logs else 0,
@@ -6101,7 +6097,13 @@ def monitoreo_logs_json():
     since_id = request.args.get("since_id", type=int) or 0
 
     if since_id > 0:
-        logs = query.order_by(StaffAuditLog.id.asc()).limit(limit).all()
+        logs = (
+            query
+            .filter(StaffAuditLog.id > since_id)
+            .order_by(StaffAuditLog.id.asc())
+            .limit(limit)
+            .all()
+        )
     else:
         logs = query.order_by(StaffAuditLog.id.desc()).limit(limit).all()
         logs = list(reversed(logs))
@@ -6214,6 +6216,7 @@ def monitoreo_stream():
             last_operations_at = 0.0
             last_activity_at = 0.0
             last_heartbeat_at = 0.0
+            latest_active_presence = None
             while True:
                 now_ts = time.time()
 
@@ -6239,6 +6242,7 @@ def monitoreo_stream():
                 if (now_ts - last_presence_at) >= 1.0:
                     presence = _presence_rows()
                     active = _presence_active_rows(presence)
+                    latest_active_presence = active
                     conflicts = _build_presence_conflicts(active)
                     payload = {
                         "items": presence,
@@ -6252,15 +6256,18 @@ def monitoreo_stream():
                     last_presence_at = now_ts
 
                 if (now_ts - last_summary_at) >= 5.0:
-                    summary = _build_monitoreo_summary_payload()
+                    summary = _build_monitoreo_summary_payload(
+                        include_presence=False,
+                        include_activity_stream=False,
+                    )
                     summary.pop("presence", None)
                     summary.pop("activity_stream", None)
                     yield _sse("summary", summary)
                     last_summary_at = now_ts
 
                 if (now_ts - last_operations_at) >= 2.0:
-                    active = _presence_active_rows()
-                    yield _sse("operations", {"metrics": _build_operations_metrics_payload(active)})
+                    active_for_operations = _stream_active_presence_for_operations(latest_active_presence)
+                    yield _sse("operations", {"metrics": _build_operations_metrics_payload(active_for_operations)})
                     last_operations_at = now_ts
 
                 if (now_ts - last_activity_at) >= 2.0:
@@ -7362,6 +7369,25 @@ def listar_clientes():
 
         if filtros:
             query = query.filter(or_(*filtros))
+
+    list_attrs = []
+    for attr in (
+        "id",
+        "codigo",
+        "nombre_completo",
+        "telefono",
+        "total_solicitudes",
+        "fecha_registro",
+    ):
+        if hasattr(Cliente, attr):
+            list_attrs.append(getattr(Cliente, attr))
+
+    if list_attrs and hasattr(query, "options"):
+        try:
+            query = query.options(load_only(*list_attrs))
+        except Exception:
+            # Compatibilidad defensiva con stubs de tests u ORMs parciales.
+            pass
 
     ordered_query = query.order_by(Cliente.fecha_registro.desc())
     if all(hasattr(ordered_query, attr) for attr in ("count", "offset", "limit", "all")):
@@ -9078,6 +9104,168 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 # 🔍 Detalle de cliente
 # ─────────────────────────────────────────────────────────────
+def _cliente_detail_regions_context(
+    cliente_id: int,
+    *,
+    include_kpi: bool = True,
+    include_timeline: bool = True,
+) -> dict:
+    cliente = Cliente.query.get_or_404(cliente_id)
+    solicitud_attrs = []
+    for attr in (
+        "id",
+        "cliente_id",
+        "candidata_id",
+        "codigo_solicitud",
+        "fecha_solicitud",
+        "ciudad_sector",
+        "tipo_servicio",
+        "modalidad_trabajo",
+        "tipo_plan",
+        "estado",
+        "row_version",
+        "monto_pagado",
+        "last_copiado_at",
+        "fecha_ultima_modificacion",
+        "fecha_cancelacion",
+        "motivo_cancelacion",
+    ):
+        if hasattr(Solicitud, attr):
+            solicitud_attrs.append(getattr(Solicitud, attr))
+
+    reemplazo_attrs = []
+    for attr in (
+        "id",
+        "solicitud_id",
+        "candidata_new_id",
+        "fecha_inicio_reemplazo",
+        "fecha_fin_reemplazo",
+        "created_at",
+    ):
+        if hasattr(Reemplazo, attr):
+            reemplazo_attrs.append(getattr(Reemplazo, attr))
+
+    options_list = []
+    if solicitud_attrs:
+        options_list.append(load_only(*solicitud_attrs))
+    try:
+        repl_loader = selectinload(Solicitud.reemplazos)
+        if reemplazo_attrs:
+            repl_loader = repl_loader.load_only(*reemplazo_attrs)
+        if include_timeline:
+            candidata_new_attrs = []
+            for attr in ("fila", "nombre_completo"):
+                if hasattr(Candidata, attr):
+                    candidata_new_attrs.append(getattr(Candidata, attr))
+            if candidata_new_attrs:
+                repl_loader = repl_loader.joinedload(Reemplazo.candidata_new).load_only(*candidata_new_attrs)
+            else:
+                repl_loader = repl_loader.joinedload(Reemplazo.candidata_new)
+        options_list.append(repl_loader)
+    except Exception:
+        pass
+
+    solicitudes = (
+        Solicitud.query
+        .options(*options_list)
+        .filter_by(cliente_id=cliente_id)
+        .order_by(Solicitud.fecha_solicitud.desc())
+        .all()
+    )
+    kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes) if include_kpi else None
+    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    is_admin_role = role in ("owner", "admin")
+    contracts_schema_ready = True
+    latest_contracts_by_solicitud = {}
+    contract_links_by_solicitud = {}
+    solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
+    if solicitud_ids:
+        try:
+            contract_rows = (
+                ContratoDigital.query.options(
+                    load_only(
+                        ContratoDigital.id,
+                        ContratoDigital.solicitud_id,
+                        ContratoDigital.version,
+                        ContratoDigital.estado,
+                        ContratoDigital.enviado_at,
+                        ContratoDigital.firmado_at,
+                        ContratoDigital.token_expira_at,
+                        ContratoDigital.pdf_final_size_bytes,
+                        ContratoDigital.anulado_at,
+                        ContratoDigital.anulado_motivo,
+                    )
+                )
+                .filter(ContratoDigital.solicitud_id.in_(solicitud_ids))
+                .order_by(ContratoDigital.solicitud_id.asc(), ContratoDigital.version.desc(), ContratoDigital.id.desc())
+                .all()
+            )
+            for c in (contract_rows or []):
+                sid = int(getattr(c, "solicitud_id", 0) or 0)
+                if sid <= 0 or sid in latest_contracts_by_solicitud:
+                    continue
+                is_expired = _is_contract_expired(c)
+                latest_contracts_by_solicitud[sid] = {
+                    "contract": c,
+                    "effective_state": _contract_effective_state(c, contrato_expirado=is_expired),
+                    "is_expired": bool(is_expired),
+                    "has_pdf": bool(getattr(c, "pdf_final_size_bytes", 0)),
+                    "is_annulled": bool(getattr(c, "anulado_at", None)),
+                }
+            session_links = session.get("contract_links")
+            if isinstance(session_links, dict):
+                for sid, payload in latest_contracts_by_solicitud.items():
+                    contract_obj = payload.get("contract")
+                    cid = int(getattr(contract_obj, "id", 0) or 0) if contract_obj is not None else 0
+                    if cid > 0:
+                        contract_links_by_solicitud[sid] = str(session_links.get(str(cid)) or "")
+        except OperationalError as exc:
+            db.session.rollback()
+            if _is_missing_contract_table_error(exc):
+                contracts_schema_ready = False
+            else:
+                raise
+
+    return {
+        "cliente": cliente,
+        "solicitudes": solicitudes,
+        "kpi_cliente": kpi_cliente,
+        "reemplazos_activos": reemplazos_activos,
+        "is_admin_role": is_admin_role,
+        "contracts_schema_ready": contracts_schema_ready,
+        "latest_contracts_by_solicitud": latest_contracts_by_solicitud,
+        "contract_links_by_solicitud": contract_links_by_solicitud,
+        "chat_feature_enabled": _chat_enabled(),
+    }
+
+
+def _cliente_detail_summary_context(cliente_id: int) -> dict:
+    cliente = Cliente.query.get_or_404(cliente_id)
+    solicitudes = (
+        Solicitud.query
+        .options(
+            load_only(
+                Solicitud.id,
+                Solicitud.estado,
+                Solicitud.monto_pagado,
+                Solicitud.fecha_solicitud,
+            )
+        )
+        .filter_by(cliente_id=cliente_id)
+        .order_by(Solicitud.fecha_solicitud.desc())
+        .all()
+    )
+    return {
+        "cliente": cliente,
+        "kpi_cliente": _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes),
+        "chat_feature_enabled": _chat_enabled(),
+    }
+
+
 @admin_bp.route('/clientes/<int:cliente_id>')
 @login_required
 @staff_required
@@ -9091,24 +9279,9 @@ def detalle_cliente(cliente_id):
     - Tareas de seguimiento del cliente
     """
 
-    cliente = Cliente.query.get_or_404(cliente_id)
-
-    # Cargar todas las solicitudes del cliente con relaciones básicas
-    solicitudes = (
-        Solicitud.query
-        .options(
-            joinedload(Solicitud.candidata),
-            joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new)
-        )
-        .filter_by(cliente_id=cliente_id)
-        .order_by(Solicitud.fecha_solicitud.desc())
-        .all()
-    )
-
-    # ------------------------------
-    # RESUMEN / KPI POR CLIENTE
-    # ------------------------------
-    kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes)
+    region_ctx = _cliente_detail_regions_context(cliente_id)
+    cliente = region_ctx["cliente"]
+    solicitudes = region_ctx["solicitudes"]
 
     # ------------------------------
     # TIMELINE SIMPLE (HUMANO)
@@ -9196,77 +9369,57 @@ def detalle_cliente(cliente_id):
         )
         .all()
     )
-    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
-    role = (
-        str(getattr(current_user, "role", "") or "").strip().lower()
-        or str(session.get("role", "") or "").strip().lower()
-    )
-    is_admin_role = role in ("owner", "admin")
-    contracts_schema_ready = True
-    latest_contracts_by_solicitud = {}
-    contract_links_by_solicitud = {}
-    solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
-    if solicitud_ids:
-        try:
-            contract_rows = (
-                ContratoDigital.query.options(
-                    load_only(
-                        ContratoDigital.id,
-                        ContratoDigital.solicitud_id,
-                        ContratoDigital.version,
-                        ContratoDigital.estado,
-                        ContratoDigital.enviado_at,
-                        ContratoDigital.firmado_at,
-                        ContratoDigital.token_expira_at,
-                        ContratoDigital.pdf_final_size_bytes,
-                        ContratoDigital.anulado_at,
-                        ContratoDigital.anulado_motivo,
-                    )
-                )
-                .filter(ContratoDigital.solicitud_id.in_(solicitud_ids))
-                .order_by(ContratoDigital.solicitud_id.asc(), ContratoDigital.version.desc(), ContratoDigital.id.desc())
-                .all()
-            )
-            for c in (contract_rows or []):
-                sid = int(getattr(c, "solicitud_id", 0) or 0)
-                if sid <= 0 or sid in latest_contracts_by_solicitud:
-                    continue
-                is_expired = _is_contract_expired(c)
-                latest_contracts_by_solicitud[sid] = {
-                    "contract": c,
-                    "effective_state": _contract_effective_state(c, contrato_expirado=is_expired),
-                    "is_expired": bool(is_expired),
-                    "has_pdf": bool(getattr(c, "pdf_final_size_bytes", 0)),
-                    "is_annulled": bool(getattr(c, "anulado_at", None)),
-                }
-            session_links = session.get("contract_links")
-            if isinstance(session_links, dict):
-                for sid, payload in latest_contracts_by_solicitud.items():
-                    contract_obj = payload.get("contract")
-                    cid = int(getattr(contract_obj, "id", 0) or 0) if contract_obj is not None else 0
-                    if cid > 0:
-                        contract_links_by_solicitud[sid] = str(session_links.get(str(cid)) or "")
-        except OperationalError as exc:
-            db.session.rollback()
-            if _is_missing_contract_table_error(exc):
-                contracts_schema_ready = False
-            else:
-                raise
-
     return render_template(
         'admin/cliente_detail.html',
-        cliente=cliente,
-        solicitudes=solicitudes,
-        kpi_cliente=kpi_cliente,
         timeline=timeline,
         tareas=tareas,
-        reemplazos_activos=reemplazos_activos,
-        is_admin_role=is_admin_role,
-        contracts_schema_ready=contracts_schema_ready,
-        latest_contracts_by_solicitud=latest_contracts_by_solicitud,
-        contract_links_by_solicitud=contract_links_by_solicitud,
-        chat_feature_enabled=_chat_enabled(),
+        **region_ctx,
     )
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/_summary')
+@login_required
+@staff_required
+def cliente_detail_summary_fragment(cliente_id):
+    with _p1c1_perf_scope("cliente_detail_summary_fragment") as perf_done:
+        region_ctx = _cliente_detail_summary_context(cliente_id)
+        html = render_template(
+            'admin/_cliente_detail_summary_region.html',
+            cliente=region_ctx["cliente"],
+            kpi_cliente=region_ctx["kpi_cliente"],
+            chat_feature_enabled=region_ctx["chat_feature_enabled"],
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "clienteSummaryAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_summary"})
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/_solicitudes')
+@login_required
+@staff_required
+def cliente_detail_solicitudes_fragment(cliente_id):
+    with _p1c1_perf_scope("cliente_detail_solicitudes_fragment") as perf_done:
+        region_ctx = _cliente_detail_regions_context(
+            cliente_id,
+            include_kpi=False,
+            include_timeline=False,
+        )
+        html = render_template(
+            'admin/_cliente_detail_solicitudes_region.html',
+            cliente=region_ctx["cliente"],
+            solicitudes=region_ctx["solicitudes"],
+            reemplazos_activos=region_ctx["reemplazos_activos"],
+            is_admin_role=region_ctx["is_admin_role"],
+            contracts_schema_ready=region_ctx["contracts_schema_ready"],
+            latest_contracts_by_solicitud=region_ctx["latest_contracts_by_solicitud"],
+            contract_links_by_solicitud=region_ctx["contract_links_by_solicitud"],
+            chat_feature_enabled=region_ctx["chat_feature_enabled"],
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "clienteSolicitudesAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_solicitudes"})
 
 
 @admin_bp.route('/tareas/pendientes')
@@ -15178,7 +15331,20 @@ def listar_solicitudes():
                     triage_query = base_query
                     if triage_clause is not None:
                         triage_query = triage_query.filter(triage_clause)
-                    total = _query_count_distinct_solicitudes(triage_query)
+                    selected_total = None
+                    for opt in (triage_options or []):
+                        opt_code = str((opt or {}).get("code", "") or "").strip().lower()
+                        if opt_code != triage:
+                            continue
+                        try:
+                            selected_total = max(0, int((opt or {}).get("count", 0) or 0))
+                        except Exception:
+                            selected_total = None
+                        break
+                    if selected_total is None:
+                        total = _query_count_distinct_solicitudes(triage_query)
+                    else:
+                        total = int(selected_total)
                     end = start + per_page
                     has_more = end < total
                     triage_query = (
@@ -15255,7 +15421,19 @@ def listar_solicitudes():
                     if int(getattr(s, "id", 0) or 0) > 0
                 ]
                 last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
-                active_reemplazo_by_solicitud = _active_reemplazo_map_for_solicitudes(triage_ids)
+                triage_reemplazo_ids = [
+                    int(getattr(s, "id", 0) or 0)
+                    for s in (triage_rows or [])
+                    if (
+                        int(getattr(s, "id", 0) or 0) > 0
+                        and str(getattr(s, "estado", "") or "").strip().lower() == "reemplazo"
+                    )
+                ]
+                active_reemplazo_by_solicitud = (
+                    _active_reemplazo_map_for_solicitudes(triage_reemplazo_ids)
+                    if triage_reemplazo_ids
+                    else {}
+                )
                 triage_rows_scan = []
                 for s in (triage_rows or []):
                     sid = int(getattr(s, "id", 0) or 0)
@@ -15880,6 +16058,36 @@ def _lock_candidata_for_update(candidata_id: int) -> Candidata | None:
     return None
 
 
+def _lock_candidatas_for_update(candidata_ids: list[int]) -> dict[int, Candidata]:
+    ids = sorted({int(x) for x in (candidata_ids or []) if int(x or 0) > 0})
+    if not ids:
+        return {}
+
+    query_obj = getattr(Candidata, "query", None)
+    if query_obj is not None and hasattr(query_obj, "filter"):
+        try:
+            query = query_obj.filter(Candidata.fila.in_(ids))
+            query = _with_for_update_if_supported(query)
+            if hasattr(query, "all"):
+                rows = query.all() or []
+                out = {
+                    int(getattr(cand, "fila", 0) or 0): cand
+                    for cand in rows
+                    if int(getattr(cand, "fila", 0) or 0) > 0
+                }
+                if out:
+                    return out
+        except Exception:
+            pass
+
+    out: dict[int, Candidata] = {}
+    for candidata_id in ids:
+        cand = _lock_candidata_for_update(candidata_id)
+        if cand is not None:
+            out[int(cand.fila)] = cand
+    return out
+
+
 def _release_solicitud_candidatas_on_cancel(
     solicitud: Solicitud,
     *,
@@ -16137,11 +16345,140 @@ def _matching_send_result(
     }
 
 
+def _matching_ranking_cache_key(*, solicitud_id: int) -> str:
+    actor = (
+        str(getattr(current_user, "id", "") or "").strip()
+        or str(getattr(current_user, "username", "") or "").strip()
+        or "staff"
+    )
+    return f"admin:matching:ranking:v2:{int(solicitud_id)}:{actor}"
+
+
+def _matching_batch_interview_ids(candidata_ids: list[int]) -> set[int]:
+    ids = sorted({int(x) for x in (candidata_ids or []) if int(x or 0) > 0})
+    if not ids:
+        return set()
+    try:
+        rows = (
+            db.session.query(Entrevista.candidata_id)
+            .filter(Entrevista.candidata_id.in_(ids))
+            .distinct()
+            .all()
+        )
+    except Exception:
+        return set()
+    return {int(row[0]) for row in (rows or []) if row and int(row[0] or 0) > 0}
+
+
+def _matching_build_ranking_map(ranked_candidates: list[dict]) -> dict[int, dict]:
+    cand_ids = []
+    for item in (ranked_candidates or []):
+        cand = item.get("candidate") if isinstance(item, dict) else None
+        cand_id = int(getattr(cand, "fila", 0) or 0)
+        if cand_id > 0:
+            cand_ids.append(cand_id)
+    interview_ids = _matching_batch_interview_ids(cand_ids)
+
+    out: dict[int, dict] = {}
+    for item in (ranked_candidates or []):
+        cand = item.get("candidate") if isinstance(item, dict) else None
+        cand_id = int(getattr(cand, "fila", 0) or 0)
+        if cand_id <= 0:
+            continue
+        out[cand_id] = {
+            "score": int(item.get("score") or 0),
+            "operational_score": int(item.get("operational_score") or 0),
+            "bonus_test": int(item.get("bonus_test") or 0),
+            "breakdown_snapshot": dict(item.get("breakdown_snapshot") or {}),
+            "candidate_guard": build_candidate_guard(cand, has_interview=bool(cand_id in interview_ids)),
+        }
+    return out
+
+
+def _matching_live_candidate_guard_map(*, candidata_ids: list[int]) -> dict[int, str]:
+    ids = sorted({int(x) for x in (candidata_ids or []) if int(x or 0) > 0})
+    if not ids:
+        return {}
+    candidates = (
+        Candidata.query
+        .filter(Candidata.fila.in_(ids))
+        .all()
+    )
+    by_id = {
+        int(getattr(cand, "fila", 0) or 0): cand
+        for cand in (candidates or [])
+        if int(getattr(cand, "fila", 0) or 0) > 0
+    }
+    interview_ids = _matching_batch_interview_ids(ids)
+    out: dict[int, str] = {}
+    for cand_id in ids:
+        cand = by_id.get(cand_id)
+        if cand is None:
+            continue
+        out[cand_id] = build_candidate_guard(cand, has_interview=bool(cand_id in interview_ids))
+    return out
+
+
+def _matching_store_ranking_cache(*, solicitud: Solicitud, ranking_map: dict[int, dict]) -> None:
+    if bool(current_app.config.get("TESTING")):
+        return
+    cache_key = _matching_ranking_cache_key(solicitud_id=int(getattr(solicitud, "id", 0) or 0))
+    payload = {
+        "solicitud_fingerprint": build_solicitud_fingerprint(solicitud),
+        "ranking_map": dict(ranking_map or {}),
+    }
+    try:
+        cache.set(cache_key, payload, timeout=180)
+    except Exception:
+        return
+
+
+def _matching_cached_ranking_map(
+    *,
+    solicitud: Solicitud,
+    candidata_ids: list[int] | None = None,
+) -> dict[int, dict]:
+    if bool(current_app.config.get("TESTING")):
+        return {}
+    cache_key = _matching_ranking_cache_key(solicitud_id=int(getattr(solicitud, "id", 0) or 0))
+    try:
+        cached = cache.get(cache_key)
+    except Exception:
+        cached = None
+    ranking_map = {}
+    cached_fp = ""
+    if isinstance(cached, dict):
+        if isinstance(cached.get("ranking_map"), dict):
+            ranking_map = dict(cached.get("ranking_map") or {})
+            cached_fp = str(cached.get("solicitud_fingerprint") or "").strip().lower()
+        else:
+            ranking_map = dict(cached or {})
+    if not ranking_map:
+        return {}
+
+    current_fp = build_solicitud_fingerprint(solicitud)
+    if cached_fp and cached_fp != str(current_fp or "").strip().lower():
+        return {}
+
+    requested_ids = sorted({int(x) for x in (candidata_ids or []) if int(x or 0) > 0})
+    if requested_ids:
+        live_guards = _matching_live_candidate_guard_map(candidata_ids=requested_ids)
+        for candidata_id in requested_ids:
+            cached_item = ranking_map.get(int(candidata_id)) or {}
+            cached_guard = str(cached_item.get("candidate_guard") or "").strip().lower()
+            live_guard = str(live_guards.get(int(candidata_id)) or "").strip().lower()
+            if not cached_guard or not live_guard or cached_guard != live_guard:
+                return {}
+
+    return ranking_map
+
+
 def _matching_send_candidatas_result(
     *,
     solicitud_id: int,
     candidata_ids: list[int],
     force_send: bool,
+    ranking_map: dict[int, dict] | None = None,
 ) -> dict:
     solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
     if not candidata_ids:
@@ -16195,11 +16532,7 @@ def _matching_send_candidatas_result(
             status_code=409,
         )
 
-    locked_candidates: dict[int, Candidata] = {}
-    for candidata_id in candidata_ids:
-        cand = _lock_candidata_for_update(candidata_id)
-        if cand is not None:
-            locked_candidates[int(cand.fila)] = cand
+    locked_candidates = _lock_candidatas_for_update(candidata_ids)
 
     if not locked_candidates:
         return _matching_send_result(
@@ -16261,7 +16594,13 @@ def _matching_send_candidatas_result(
             error_code="not_ready",
         )
 
-    ranking_map = {item["candidate"].fila: item for item in rank_candidates(solicitud, top_k=30)}
+    ranking_map = dict(ranking_map or {})
+    if not ranking_map:
+        ranking_map = _matching_cached_ranking_map(solicitud=solicitud, candidata_ids=candidata_ids)
+    if not ranking_map:
+        ranked_candidates = rank_candidates(solicitud, top_k=30)
+        ranking_map = _matching_build_ranking_map(ranked_candidates)
+        _matching_store_ranking_cache(solicitud=solicitud, ranking_map=ranking_map)
     created_by = _matching_created_by()
     processed_candidates = []
     state = {"processed": 0, "processed_ids": []}
@@ -16271,16 +16610,44 @@ def _matching_send_candidatas_result(
             state["processed"] = 0
             state["processed_ids"] = []
             processed_candidates.clear()
+            existing_query = getattr(SolicitudCandidata, "query", None)
+            existing_rows = []
+            if existing_query is not None:
+                if hasattr(existing_query, "filter"):
+                    existing_rows = (
+                        existing_query
+                        .filter(
+                            SolicitudCandidata.solicitud_id == int(solicitud.id),
+                            SolicitudCandidata.candidata_id.in_(candidata_ids),
+                        )
+                        .all()
+                    )
+                elif hasattr(existing_query, "filter_by"):
+                    for candidata_id in (candidata_ids or []):
+                        try:
+                            cid = int(candidata_id or 0)
+                        except Exception:
+                            cid = 0
+                        if cid <= 0:
+                            continue
+                        row = (
+                            existing_query
+                            .filter_by(solicitud_id=int(solicitud.id), candidata_id=int(cid))
+                            .first()
+                        )
+                        if row is not None:
+                            existing_rows.append(row)
+            existing_by_candidata = {
+                int(getattr(row, "candidata_id", 0) or 0): row
+                for row in (existing_rows or [])
+                if int(getattr(row, "candidata_id", 0) or 0) > 0
+            }
             for candidata_id in candidata_ids:
                 cand = locked_candidates.get(int(candidata_id))
                 if not cand:
                     continue
 
-                exists = (
-                    SolicitudCandidata.query
-                    .filter_by(solicitud_id=solicitud.id, candidata_id=candidata_id)
-                    .first()
-                )
+                exists = existing_by_candidata.get(int(candidata_id))
                 exists_status = (getattr(exists, "status", "") or "").strip().lower() if exists else ""
                 if exists and exists_status in _ACTIVE_ASSIGNMENT_STATUS:
                     raise ValueError("already_sent")
@@ -16509,6 +16876,7 @@ def matching_detalle_solicitud(solicitud_id: int):
     )
     has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
     ranked_candidates = rank_candidates(solicitud, top_k=30)
+    _matching_store_ranking_cache(solicitud=solicitud, ranking_map=_matching_build_ranking_map(ranked_candidates))
     ranked_candidate_ids = []
     for item in ranked_candidates:
         try:
@@ -16623,6 +16991,7 @@ def matching_enviar_candidatas_ui(solicitud_id: int):
         )
         has_reemplazo_activo = _active_reemplazo_for_solicitud(solicitud) is not None
         ranked_candidates = rank_candidates(solicitud, top_k=30)
+        _matching_store_ranking_cache(solicitud=solicitud, ranking_map=_matching_build_ranking_map(ranked_candidates))
         ranked_candidate_ids = []
         for item in ranked_candidates:
             try:
@@ -18536,6 +18905,26 @@ def _copiar_action_response(
     return redirect(safe_next)
 
 
+def _cliente_detail_id_from_url(url_like: str) -> int:
+    raw = str(url_like or "").strip()
+    if not raw:
+        return 0
+    try:
+        path = str(urlparse(raw).path or "").strip()
+    except Exception:
+        path = raw.split("#", 1)[0].split("?", 1)[0]
+    if not path:
+        return 0
+    normalized_path = path.rstrip("/")
+    match = re.search(r"/clientes/(\d+)$", normalized_path)
+    if not match:
+        return 0
+    try:
+        return int(match.group(1) or 0)
+    except Exception:
+        return 0
+
+
 def _solicitudes_list_action_response(
     *,
     ok: bool,
@@ -18560,6 +18949,26 @@ def _solicitudes_list_action_response(
     resolved_redirect = redirect_url if redirect_url is not None else safe_next
     resolved_update_targets = list(update_targets or [])
     resolved_invalidate_targets = list(invalidate_targets or [])
+
+    def _solicitudes_summary_update_target() -> dict:
+        summary_fragment_url = url_for("admin.solicitudes_summary_fragment")
+        target_payload = {
+            "target": "#solicitudesSummaryAsyncRegion",
+            "invalidate": True,
+            "redirect_url": summary_fragment_url,
+        }
+        try:
+            proc_count, copiable_count, _warning = _solicitudes_summary_counts()
+            target_payload["replace_html"] = render_template(
+                "admin/_solicitudes_summary_region.html",
+                proc_count=proc_count,
+                copiable_count=copiable_count,
+            )
+        except Exception:
+            # Fallback seguro: mantiene invalidación por fragment endpoint.
+            pass
+        return target_payload
+
     if (
         bool(ok)
         and resolved_target == "#solicitudesAsyncRegion"
@@ -18569,11 +18978,7 @@ def _solicitudes_list_action_response(
     ):
         resolved_update_targets = [
             {"target": "#solicitudesAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
-            {
-                "target": "#solicitudesSummaryAsyncRegion",
-                "invalidate": True,
-                "redirect_url": url_for("admin.solicitudes_summary_fragment"),
-            },
+            _solicitudes_summary_update_target(),
         ]
     if (
         bool(ok)
@@ -18582,9 +18987,20 @@ def _solicitudes_list_action_response(
         and resolved_redirect
         and not resolved_update_targets
     ):
+        cliente_id = _cliente_detail_id_from_url(resolved_redirect)
+        solicitudes_fragment_url = (
+            url_for("admin.cliente_detail_solicitudes_fragment", cliente_id=cliente_id)
+            if cliente_id > 0
+            else resolved_redirect
+        )
+        summary_fragment_url = (
+            url_for("admin.cliente_detail_summary_fragment", cliente_id=cliente_id)
+            if cliente_id > 0
+            else resolved_redirect
+        )
         resolved_update_targets = [
-            {"target": "#clienteSolicitudesAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
-            {"target": "#clienteSummaryAsyncRegion", "invalidate": True, "redirect_url": resolved_redirect},
+            {"target": "#clienteSolicitudesAsyncRegion", "invalidate": True, "redirect_url": solicitudes_fragment_url},
+            {"target": "#clienteSummaryAsyncRegion", "invalidate": True, "redirect_url": summary_fragment_url},
         ]
     if _admin_async_wants_json():
         payload = _admin_async_payload(

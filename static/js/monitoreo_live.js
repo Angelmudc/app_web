@@ -633,17 +633,20 @@
   function startPolling() {
     if (!isMonitoringPage()) return;
     stopPolling();
+    const shouldPollSummary = page === 'dashboard' && Boolean(summaryUrl);
+    const shouldPollProductivity = page === 'dashboard' && Boolean(productivityUrl);
+    const shouldPollPresence = page === 'dashboard' && Boolean(presenceUrl);
     setStatus({ phase: 'polling_start', transport: 'polling' });
     console.info('[monitoreo] polling start');
     syncLiveUi();
     pollLogs().catch(() => {});
-    pollSummary().catch(() => {});
-    pollProductivity().catch(() => {});
-    pollPresence().catch(() => {});
+    if (shouldPollSummary) pollSummary().catch(() => {});
+    if (shouldPollProductivity) pollProductivity().catch(() => {});
+    if (shouldPollPresence) pollPresence().catch(() => {});
     logsPollTimer = setInterval(() => pollLogs().catch(() => {}), 4000);
-    summaryPollTimer = setInterval(() => pollSummary().catch(() => {}), 10000);
-    productivityPollTimer = setInterval(() => pollProductivity().catch(() => {}), 15000);
-    presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 2000);
+    if (shouldPollSummary) summaryPollTimer = setInterval(() => pollSummary().catch(() => {}), 10000);
+    if (shouldPollProductivity) productivityPollTimer = setInterval(() => pollProductivity().catch(() => {}), 15000);
+    if (shouldPollPresence) presencePollTimer = setInterval(() => pollPresence().catch(() => {}), 2000);
   }
 
   function startSSE() {

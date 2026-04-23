@@ -127,6 +127,46 @@ class _FakeRecommendationService:
             return {"ok": True, "code": "valid", "message": "ok"}
         return {"ok": False, "code": "candidate_hard_failed", "message": "invalid"}
 
+    def validate_candidates_bulk(self, *, solicitud, candidata_ids, selected_by):
+        state_code = str((self.shortlist_payload.get("state") or {}).get("code") or "").strip().lower()
+        ids = [int(x) for x in (candidata_ids or []) if int(x or 0) > 0]
+        if state_code in {"pending", "pending_refresh", "error", "stale"}:
+            return {
+                "ok": False,
+                "shortlist_blocked": True,
+                "requested_count": len(ids),
+                "valid_count": 0,
+                "invalid_count": len(ids),
+                "valid_ids": [],
+                "results": [],
+            }
+        valid_ids = []
+        results = []
+        for cid in ids:
+            self.validate_calls.append(int(cid))
+            is_ok = bool(self.validate_ok)
+            if is_ok:
+                valid_ids.append(int(cid))
+            results.append(
+                {
+                    "candidata_id": int(cid),
+                    "ok": bool(is_ok),
+                    "code": "valid" if is_ok else "candidate_hard_failed",
+                    "status": "valid" if is_ok else "invalidated",
+                    "message": "ok" if is_ok else "invalid",
+                    "hard_fail_codes": [] if is_ok else ["candidate_hard_failed"],
+                }
+            )
+        return {
+            "ok": len(valid_ids) == len(ids),
+            "shortlist_blocked": False,
+            "requested_count": len(ids),
+            "valid_count": len(valid_ids),
+            "invalid_count": len(ids) - len(valid_ids),
+            "valid_ids": valid_ids,
+            "results": results,
+        }
+
 
 def test_build_shortlist_vm_states_and_visibility():
     ready_vm = clientes_routes._build_shortlist_view_model(
@@ -514,7 +554,7 @@ def test_shortlist_continue_whatsapp_builds_prefilled_message():
         with flask_app.app_context():
             with patch.object(clientes_routes, "current_user", fake_user), \
                  patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
-                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 2, "candidate_ids": [101, 102], "candidate_names": ["Ana", "Luz"], "selection_fingerprint": "fp-1"}):
+                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 2, "candidate_ids": [101, 102], "candidate_names": ["Ana", "Luz"], "candidate_details": [{"codigo": "(sin código)", "nombre": "Ana"}, {"codigo": "(sin código)", "nombre": "Luz"}], "selection_fingerprint": "fp-1"}):
                 with flask_app.test_request_context(
                     "/clientes/solicitudes/10/shortlist/continue/whatsapp",
                     method="POST",
@@ -526,7 +566,8 @@ def test_shortlist_continue_whatsapp_builds_prefilled_message():
         assert "https://wa.me/15551234567?text=" in (resp.location or "")
         decoded = unquote(resp.location or "")
         assert "SOL-010" in decoded
-        assert "Ana, Luz" in decoded
+        assert "Ana" in decoded
+        assert "Luz" in decoded
     finally:
         if prev_phone is None:
             flask_app.config.pop("SUPPORT_WHATSAPP_NUMBER", None)
@@ -552,9 +593,9 @@ def test_shortlist_continue_chat_accepts_selection_in_same_request():
         with patch.object(clientes_routes, "current_user", fake_user), \
              patch.object(clientes_routes, "_chat_enabled", return_value=True), \
              patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
-             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 0, "candidate_ids": [], "candidate_names": [], "selection_fingerprint": ""}), \
-             patch.object(clientes_routes, "_shortlist_validate_and_persist_selection", return_value={"requested_count": 2, "valid_count": 2, "invalid_count": 0, "valid_ids": [101, 102], "shortlist_blocked": False}), \
-             patch.object(clientes_routes, "_shortlist_candidate_names", return_value=["Ana", "Luz"]), \
+             patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 0, "candidate_ids": [], "candidate_names": [], "candidate_details": [], "selection_fingerprint": ""}) as saved_summary_mock, \
+             patch.object(clientes_routes, "_shortlist_validate_and_persist_selection", return_value={"requested_count": 2, "valid_count": 2, "invalid_count": 0, "valid_ids": [101, 102], "valid_candidate_details": [{"codigo": "C-101", "nombre": "Ana"}, {"codigo": "C-102", "nombre": "Luz"}], "shortlist_blocked": False}), \
+             patch.object(clientes_routes, "_shortlist_candidate_details", return_value=[{"codigo": "C-101", "nombre": "Ana"}, {"codigo": "C-102", "nombre": "Luz"}]) as fallback_details_mock, \
              patch.object(clientes_routes, "_chat_get_or_create_conversation_for_cliente", return_value=conv), \
              patch.object(clientes_routes, "_post_shortlist_intent_message_to_chat", side_effect=_capture_chat_intent), \
              patch.object(clientes_routes.db.session, "commit", return_value=None):
@@ -567,6 +608,8 @@ def test_shortlist_continue_chat_accepts_selection_in_same_request():
 
     assert resp.status_code == 302
     assert "conversation_id=333" in (resp.location or "")
+    assert saved_summary_mock.call_count == 0
+    assert fallback_details_mock.call_count == 0
     assert captured["candidate_ids"] == [101, 102]
     assert captured["candidate_names"] == ["Ana", "Luz"]
 
@@ -584,9 +627,9 @@ def test_shortlist_continue_whatsapp_accepts_selection_in_same_request():
         with flask_app.app_context():
             with patch.object(clientes_routes, "current_user", fake_user), \
                  patch.object(clientes_routes, "_get_solicitud_for_shortlist_or_403", return_value=solicitud), \
-                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 0, "candidate_ids": [], "candidate_names": [], "selection_fingerprint": ""}), \
-                 patch.object(clientes_routes, "_shortlist_validate_and_persist_selection", return_value={"requested_count": 1, "valid_count": 1, "invalid_count": 0, "valid_ids": [101], "shortlist_blocked": False}), \
-                 patch.object(clientes_routes, "_shortlist_candidate_names", return_value=["Ana"]):
+                 patch.object(clientes_routes, "_get_saved_shortlist_selection_summary", return_value={"count": 0, "candidate_ids": [], "candidate_names": [], "candidate_details": [], "selection_fingerprint": ""}) as saved_summary_mock, \
+                 patch.object(clientes_routes, "_shortlist_validate_and_persist_selection", return_value={"requested_count": 1, "valid_count": 1, "invalid_count": 0, "valid_ids": [101], "valid_candidate_details": [{"codigo": "C-101", "nombre": "Ana"}], "shortlist_blocked": False}), \
+                 patch.object(clientes_routes, "_shortlist_candidate_details", return_value=[{"codigo": "C-101", "nombre": "Ana"}]) as fallback_details_mock:
                 with flask_app.test_request_context(
                     "/clientes/solicitudes/10/shortlist/continue/whatsapp",
                     method="POST",
@@ -595,6 +638,8 @@ def test_shortlist_continue_whatsapp_accepts_selection_in_same_request():
                     resp = continue_target(10)
 
         assert resp.status_code == 302
+        assert saved_summary_mock.call_count == 0
+        assert fallback_details_mock.call_count == 0
         decoded = unquote(resp.location or "")
         assert "https://wa.me/15551234567?text=" in (resp.location or "")
         assert "SOL-010" in decoded
@@ -702,6 +747,57 @@ def test_shortlist_submit_selection_pending_is_blocked():
 
     assert resp.status_code == 302
     assert calls == []
+
+
+def test_shortlist_validate_and_persist_selection_avoids_redundant_shortlist_fetch():
+    flask_app.config["TESTING"] = True
+    fake_user = SimpleNamespace(id=7, is_authenticated=True, role="cliente")
+    solicitud = _make_solicitud()
+    observed = {"get_active_shortlist_calls": 0, "bulk_calls": 0}
+
+    class _Svc:
+        def get_active_shortlist(self, solicitud_id, include_ineligible=False):
+            observed["get_active_shortlist_calls"] += 1
+            return {"state": {"code": "ready", "message": "ok"}, "items": []}
+
+        def validate_candidates_bulk(self, *, solicitud, candidata_ids, selected_by):
+            observed["bulk_calls"] += 1
+            return {
+                "shortlist_blocked": False,
+                "valid_ids": [101],
+                "invalid_count": 1,
+                "results": [
+                    {
+                        "candidata_id": 101,
+                        "ok": True,
+                        "candidate_code": "C-101",
+                        "candidate_name": "Ana",
+                    },
+                    {
+                        "candidata_id": 102,
+                        "ok": False,
+                        "candidate_code": "C-102",
+                        "candidate_name": "Luz",
+                    },
+                ],
+            }
+
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=_Svc()):
+            out = clientes_routes._shortlist_validate_and_persist_selection(
+                solicitud=solicitud,
+                candidate_ids=[101, 102],
+            )
+
+    assert observed["get_active_shortlist_calls"] == 0
+    assert observed["bulk_calls"] == 1
+    assert out["requested_count"] == 2
+    assert out["valid_count"] == 1
+    assert out["invalid_count"] == 1
+    assert out["valid_ids"] == [101]
+    assert out["valid_candidate_details"] == [{"codigo": "C-101", "nombre": "Ana"}]
+    assert out["shortlist_blocked"] is False
 
 
 def test_trigger_recommendation_generation_safe_uses_async_request():

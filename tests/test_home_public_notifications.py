@@ -4,6 +4,7 @@ from app import app as flask_app
 from config_app import db
 from flask import url_for
 from models import StaffNotificacion, StaffNotificacionLectura
+from unittest.mock import patch
 
 
 def _login(client, usuario: str, clave: str):
@@ -61,6 +62,7 @@ def test_home_public_notifications_count_list_and_mark_read():
     assert len(items) == 2
     assert len(pending_items) == 2
     assert len(reviewed_items) == 0
+    assert int(payload.get("unread") or 0) == 2
     assert payload.get("has_more_pending") is False
     assert payload.get("has_more_reviewed") is False
     assert any((it.get("entity_type") == "candidata" and "/buscar?candidata_id=101" in (it.get("review_url") or "")) for it in items)
@@ -118,6 +120,7 @@ def test_home_public_notifications_list_limits_pending_and_reviewed():
     # Límite de escalabilidad: máximo 10 por grupo.
     assert len(pending_items) == 10
     assert len(reviewed_items) == 10
+    assert int(payload.get("unread") or 0) == 12
     assert payload.get("has_more_pending") is True
     assert payload.get("has_more_reviewed") is True
 
@@ -125,6 +128,71 @@ def test_home_public_notifications_list_limits_pending_and_reviewed():
     assert len(items) == 20
     assert all(it.get("is_read") is False for it in pending_items)
     assert all(it.get("is_read") is True for it in reviewed_items)
+
+
+def test_home_public_notifications_list_derives_unread_without_count_when_no_overflow():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_notification_tables()
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    with flask_app.app_context():
+        for idx in range(2):
+            db.session.add(
+                StaffNotificacion(
+                    tipo=f"publico_no_overflow_{idx}",
+                    entity_type="candidata",
+                    entity_id=2000 + idx,
+                    titulo=f"Notif no overflow {idx}",
+                    mensaje=f"Mensaje {idx}",
+                )
+            )
+        db.session.commit()
+
+    with patch(
+        "core.handlers.home_notifications_handlers._staff_notifications_unread_count",
+        side_effect=AssertionError("No debe consultarse unread_count cuando has_more_pending=False"),
+    ):
+        list_resp = client.get("/home/notificaciones-publicas/list.json?limit=10")
+
+    assert list_resp.status_code == 200
+    payload = list_resp.get_json() or {}
+    assert payload.get("has_more_pending") is False
+    assert int(payload.get("unread") or 0) == 2
+
+
+def test_home_public_notifications_list_uses_count_when_pending_overflow():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_notification_tables()
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    with flask_app.app_context():
+        for idx in range(11):
+            db.session.add(
+                StaffNotificacion(
+                    tipo=f"publico_overflow_{idx}",
+                    entity_type="candidata",
+                    entity_id=3000 + idx,
+                    titulo=f"Notif overflow {idx}",
+                    mensaje=f"Mensaje {idx}",
+                )
+            )
+        db.session.commit()
+
+    with patch(
+        "core.handlers.home_notifications_handlers._staff_notifications_unread_count",
+        return_value=11,
+    ) as unread_mock:
+        list_resp = client.get("/home/notificaciones-publicas/list.json?limit=10")
+
+    assert list_resp.status_code == 200
+    payload = list_resp.get_json() or {}
+    assert payload.get("has_more_pending") is True
+    assert int(payload.get("unread") or 0) == 11
+    unread_mock.assert_called_once()
 
 
 def test_home_public_notifications_endpoint_names_and_routes_stay_compatible():

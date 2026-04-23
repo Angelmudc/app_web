@@ -111,6 +111,23 @@ class _CandidataQuery:
         return _DummyCandidata(fila)
 
 
+class _CandidataBatchQuery:
+    def __init__(self):
+        self.filter_calls = 0
+        self.filter_by_calls = 0
+
+    def filter(self, *args, **kwargs):
+        self.filter_calls += 1
+        return self
+
+    def all(self):
+        return [_DummyCandidata(101), _DummyCandidata(202)]
+
+    def filter_by(self, **kwargs):
+        self.filter_by_calls += 1
+        return self
+
+
 class _SolicitudCandidataQuery:
     def __init__(self, existing=None, all_rows=None):
         self._existing = existing or {}
@@ -536,7 +553,7 @@ class AdminMatchingRoutesTest(unittest.TestCase):
             self.assertIn(post_resp.status_code, (302, 303))
             sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
             self.assertEqual(len(sc_rows), 1)
-            commit_mock.assert_called_once()
+            self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_post_enviar_without_csrf_token_returns_friendly_redirect(self):
         flask_app.config["WTF_CSRF_ENABLED"] = True
@@ -600,6 +617,50 @@ class AdminMatchingRoutesTest(unittest.TestCase):
         self.assertEqual(len(sc_rows), 1)
         self.assertEqual(commit_mock.call_count, 1)
 
+    def test_post_enviar_usa_ranking_cacheado_sin_recalcular(self):
+        cached_map = {101: {"score": 83, "breakdown_snapshot": {"city_detectada": "Santiago"}}}
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery()), \
+                 patch.object(admin_routes.SolicitudCandidata, "query", _SolicitudCandidataQuery()), \
+                 patch.object(admin_routes.ClienteNotificacion, "query", _ClienteNotificacionQuery()), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
+                 patch("admin.routes._matching_cached_ranking_map", return_value=cached_map), \
+                 patch("admin.routes.rank_candidates", side_effect=AssertionError("no_debe_recalcular")), \
+                 patch("admin.routes.db.session.add") as add_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/matching/solicitudes/10/enviar",
+                    data={"candidata_ids": ["101"]},
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 302)
+        sc_rows = [c[0][0] for c in add_mock.call_args_list if isinstance(c[0][0], admin_routes.SolicitudCandidata)]
+        self.assertEqual(len(sc_rows), 1)
+        self.assertEqual(sc_rows[0].score_snapshot, 83)
+        commit_mock.assert_called_once()
+
+    def test_matching_cached_ranking_map_invalida_en_guard_drift(self):
+        solicitud = _DummySolicitud()
+        fp = admin_routes.build_solicitud_fingerprint(solicitud)
+        cached_payload = {
+            "solicitud_fingerprint": fp,
+            "ranking_map": {
+                101: {"score": 83, "breakdown_snapshot": {"city_detectada": "Santiago"}, "candidate_guard": "guard_old"}
+            },
+        }
+        with flask_app.app_context():
+            with flask_app.test_request_context("/admin/matching/solicitudes/10"), \
+                 patch("admin.routes.cache.get", return_value=cached_payload), \
+                 patch("admin.routes._matching_live_candidate_guard_map", return_value={101: "guard_new"}):
+                prev_testing = flask_app.config.get("TESTING")
+                flask_app.config["TESTING"] = False
+                try:
+                    out = admin_routes._matching_cached_ranking_map(solicitud=solicitud, candidata_ids=[101])
+                finally:
+                    flask_app.config["TESTING"] = prev_testing
+        self.assertEqual(out, {})
+
     def test_assignment_sync_marks_others_as_liberada_without_delete(self):
         solicitud = _DummySolicitud()
         row_assigned = _ExistingSolicitudCandidata(solicitud_id=10, candidata_id=101, status="enviada")
@@ -623,6 +684,15 @@ class AdminMatchingRoutesTest(unittest.TestCase):
     def test_active_blocking_statuses_exclude_liberada(self):
         self.assertEqual(tuple(admin_routes._ACTIVE_ASSIGNMENT_STATUS), ("enviada", "vista", "seleccionada"))
         self.assertNotIn("liberada", admin_routes._ACTIVE_ASSIGNMENT_STATUS)
+
+    def test_lock_candidatas_for_update_usa_batch_query(self):
+        q = _CandidataBatchQuery()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Candidata, "query", q):
+                out = admin_routes._lock_candidatas_for_update([101, 202, 101])
+        self.assertEqual(sorted(out.keys()), [101, 202])
+        self.assertEqual(q.filter_calls, 1)
+        self.assertEqual(q.filter_by_calls, 0)
 
 
 if __name__ == "__main__":

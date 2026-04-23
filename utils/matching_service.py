@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from sqlalchemy import or_
 from sqlalchemy.orm import load_only
 
-from models import Candidata
+from config_app import db
+from models import Candidata, Entrevista, Solicitud, SolicitudCandidata
 from utils.age_normalizer import parse_candidata_age_int, parse_solicitud_age_rules
 from utils.compat_engine import compute_match, normalize_horarios_tokens
 from utils.candidata_readiness import (
@@ -18,7 +19,7 @@ from utils.candidata_readiness import (
     candidata_is_ready_to_send,
     candidata_referencias_complete,
 )
-from utils.guards import candidatas_activas_filter
+from utils.guards import candidata_esta_descalificada, candidatas_activas_filter
 from utils.modality_normalizer import evaluate_modalidad_match
 from utils.text_normalizer import infer_city, location_tokens, normalize_text, skill_tokens, tokens
 
@@ -26,6 +27,8 @@ DEFAULT_PREFILTER_LIMIT = 250
 DEFAULT_TOP_K = 30
 logger = logging.getLogger(__name__)
 _ACTIVE_ASSIGNMENT_STATUS = ("enviada", "vista", "seleccionada")
+_READY_BASE_STATES = {"lista_para_trabajar", "inscrita"}
+_NOT_READY_STATES = {"en_proceso", "proceso_inscripcion", "inscrita_incompleta"}
 
 
 def _to_set(value: Any) -> Set[str]:
@@ -166,9 +169,16 @@ def _build_base_query(base_query=None):
             Candidata.perfil,
             Candidata.cedula1,
             Candidata.cedula2,
+            Candidata.contactos_referencias_laborales,
+            Candidata.referencias_familiares_detalle,
+            Candidata.referencias_laboral,
+            Candidata.referencias_familiares,
             Candidata.direccion_completa,
             Candidata.rutas_cercanas,
             Candidata.modalidad_trabajo_preferida,
+            Candidata.trabaja_con_ninos,
+            Candidata.trabaja_con_mascotas,
+            Candidata.puede_dormir_fuera,
             Candidata.compat_disponibilidad_horario,
             Candidata.compat_disponibilidad_dias,
             Candidata.compat_fortalezas,
@@ -469,12 +479,203 @@ def _candidate_history_flags(solicitud, cand) -> tuple[bool, bool]:
     return blocked, rejected_same_client
 
 
-def _score_candidate(solicitud, cand) -> Dict[str, Any]:
-    sol_profile = build_solicitud_profile(solicitud)
-    ready_ok, ready_reasons = candidata_is_ready_to_send(cand)
+def _batch_interview_ids(candidata_ids: list[int]) -> set[int]:
+    if not candidata_ids:
+        return set()
+    try:
+        rows = (
+            db.session.query(Entrevista.candidata_id)
+            .filter(Entrevista.candidata_id.in_(candidata_ids))
+            .distinct()
+            .all()
+        )
+        return {int(row[0]) for row in rows if row and row[0] is not None}
+    except Exception:
+        return set()
+
+
+def _batch_history_flags(solicitud, candidata_ids: list[int]) -> tuple[set[int], set[int], set[int]]:
+    blocked_ids: set[int] = set()
+    rejected_same_client_ids: set[int] = set()
+    active_assignment_ids: set[int] = set()
+    if not solicitud or not candidata_ids:
+        return blocked_ids, rejected_same_client_ids, active_assignment_ids
+
+    try:
+        blocked_rows = (
+            db.session.query(SolicitudCandidata.candidata_id)
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id.in_(candidata_ids),
+                SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+                SolicitudCandidata.solicitud_id != int(getattr(solicitud, "id", 0) or 0),
+                Solicitud.cliente_id != int(getattr(solicitud, "cliente_id", 0) or 0),
+            )
+            .all()
+        )
+        blocked_ids = {int(row[0]) for row in blocked_rows if row and row[0] is not None}
+    except Exception:
+        blocked_ids = set()
+
+    try:
+        rejected_rows = (
+            db.session.query(SolicitudCandidata.candidata_id)
+            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+            .filter(
+                SolicitudCandidata.candidata_id.in_(candidata_ids),
+                SolicitudCandidata.status == "descartada",
+                Solicitud.cliente_id == int(getattr(solicitud, "cliente_id", 0) or 0),
+            )
+            .all()
+        )
+        rejected_same_client_ids = {int(row[0]) for row in rejected_rows if row and row[0] is not None}
+    except Exception:
+        rejected_same_client_ids = set()
+
+    try:
+        active_rows = (
+            db.session.query(SolicitudCandidata.candidata_id)
+            .filter(
+                SolicitudCandidata.candidata_id.in_(candidata_ids),
+                SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+                SolicitudCandidata.solicitud_id != int(getattr(solicitud, "id", 0) or 0),
+            )
+            .all()
+        )
+        active_assignment_ids = {int(row[0]) for row in active_rows if row and row[0] is not None}
+    except Exception:
+        active_assignment_ids = set()
+
+    return blocked_ids, rejected_same_client_ids, active_assignment_ids
+
+
+def _evaluate_readiness_with_overrides(cand, *, has_interview: bool | None = None) -> dict[str, Any]:
+    if has_interview is None:
+        ready_ok, ready_reasons = candidata_is_ready_to_send(cand)
+        docs = candidata_docs_complete(cand)
+        refs = candidata_referencias_complete(cand)
+        interview_ok = candidata_has_interview(cand)
+        return {
+            "ready": bool(ready_ok),
+            "reasons": list(ready_reasons or []),
+            "docs": docs,
+            "referencias": refs,
+            "has_interview": bool(interview_ok),
+            "has_code": bool((getattr(cand, "codigo", None) or "").strip()),
+        }
+
+    ready_reasons: list[str] = []
+    estado = (getattr(cand, "estado", None) or "").strip().lower()
+    codigo = (getattr(cand, "codigo", None) or "").strip()
+    if candidata_esta_descalificada(cand):
+        ready_reasons.append("Estado descalificada.")
+    if estado == "trabajando":
+        ready_reasons.append("Estado trabajando.")
+    if not codigo:
+        ready_reasons.append("Falta código interno.")
+    if estado not in _READY_BASE_STATES:
+        if estado in _NOT_READY_STATES:
+            ready_reasons.append(f"Estado no listo: {estado}.")
+        elif not estado:
+            ready_reasons.append("Estado no definido.")
+        else:
+            ready_reasons.append(f"Estado no permitido para envío: {estado}.")
+
     docs = candidata_docs_complete(cand)
-    has_interview = candidata_has_interview(cand)
     refs = candidata_referencias_complete(cand)
+    legacy_interview = bool((getattr(cand, "entrevista", None) or "").strip())
+    interview_ok = bool(has_interview) or legacy_interview
+    if not interview_ok:
+        ready_reasons.append("Falta entrevista (legacy o nueva).")
+    if not refs.get("referencias_laboral"):
+        ready_reasons.append("Falta referencias_laboral válida.")
+    if not refs.get("referencias_familiares"):
+        ready_reasons.append("Falta referencias_familiares válida.")
+    for key in docs.get("missing_required", []):
+        ready_reasons.append(f"Falta documento requerido: {key}.")
+    for key in docs.get("warnings", []):
+        ready_reasons.append(f"Advertencia: falta {key} (no bloqueante).")
+
+    ready_ok = not any(not str(x or "").lower().startswith("advertencia:") for x in ready_reasons)
+    return {
+        "ready": bool(ready_ok),
+        "reasons": list(ready_reasons or []),
+        "docs": docs,
+        "referencias": refs,
+        "has_interview": bool(interview_ok),
+        "has_code": bool((getattr(cand, "codigo", None) or "").strip()),
+    }
+
+
+def build_scoring_context(solicitud, candidates: Sequence[Candidata]) -> dict[str, Any]:
+    pool = [
+        cand for cand in (candidates or [])
+        if int(getattr(cand, "fila", 0) or 0) > 0
+    ]
+    candidata_ids = [
+        int(getattr(cand, "fila", 0) or 0)
+        for cand in pool
+        if int(getattr(cand, "fila", 0) or 0) > 0
+    ]
+    interview_ids = _batch_interview_ids(candidata_ids)
+    blocked_ids, rejected_same_client_ids, active_assignment_ids = _batch_history_flags(solicitud, candidata_ids)
+
+    readiness_by_id: dict[int, dict[str, Any]] = {}
+    history_by_id: dict[int, dict[str, bool]] = {}
+    policy_facts_by_id: dict[int, dict[str, Any]] = {}
+    for cand in pool:
+        cand_id = int(getattr(cand, "fila", 0) or 0)
+        if cand_id <= 0:
+            continue
+        readiness = _evaluate_readiness_with_overrides(cand, has_interview=(cand_id in interview_ids))
+        readiness_by_id[cand_id] = readiness
+        history_row = {
+            "blocked_other_client": bool(cand_id in blocked_ids),
+            "rejected_same_client": bool(cand_id in rejected_same_client_ids),
+            "active_assignment": bool(cand_id in active_assignment_ids),
+        }
+        history_by_id[cand_id] = history_row
+        policy_facts_by_id[cand_id] = {
+            "readiness_ok": bool(readiness.get("ready")),
+            "readiness_reasons": list(readiness.get("reasons") or []),
+            "blocked_other_client": bool(history_row["blocked_other_client"]),
+            "active_assignment": bool(history_row["active_assignment"]),
+        }
+
+    return {
+        "readiness_by_id": readiness_by_id,
+        "history_by_id": history_by_id,
+        "policy_facts_by_id": policy_facts_by_id,
+    }
+
+
+def _score_candidate(
+    solicitud,
+    cand,
+    *,
+    sol_profile: Dict[str, Any] | None = None,
+    scoring_context: dict[str, Any] | None = None,
+) -> Dict[str, Any]:
+    sol_profile = sol_profile or build_solicitud_profile(solicitud)
+    cand_id = int(getattr(cand, "fila", 0) or 0)
+
+    cached_readiness = {}
+    cached_history = {}
+    if isinstance(scoring_context, dict):
+        cached_readiness = (scoring_context.get("readiness_by_id") or {}).get(cand_id) or {}
+        cached_history = (scoring_context.get("history_by_id") or {}).get(cand_id) or {}
+
+    if cached_readiness:
+        ready_ok = bool(cached_readiness.get("ready"))
+        ready_reasons = list(cached_readiness.get("reasons") or [])
+        docs = dict(cached_readiness.get("docs") or {})
+        has_interview = bool(cached_readiness.get("has_interview"))
+        refs = dict(cached_readiness.get("referencias") or {})
+    else:
+        ready_ok, ready_reasons = candidata_is_ready_to_send(cand)
+        docs = candidata_docs_complete(cand)
+        has_interview = candidata_has_interview(cand)
+        refs = candidata_referencias_complete(cand)
 
     ubicacion_pts, loc_info = _location_component(sol_profile, cand)
     modalidad_eval = _modalidad_component(sol_profile, cand)
@@ -494,7 +695,11 @@ def _score_candidate(solicitud, cand) -> Dict[str, Any]:
 
     penalties_dict, penalty_reasons = _penalties(sol_profile, cand)
     penalties_total = sum(penalties_dict.values())
-    blocked_other_client, rejected_same_client = _candidate_history_flags(solicitud, cand)
+    if cached_history:
+        blocked_other_client = bool(cached_history.get("blocked_other_client"))
+        rejected_same_client = bool(cached_history.get("rejected_same_client"))
+    else:
+        blocked_other_client, rejected_same_client = _candidate_history_flags(solicitud, cand)
 
     base_score = ubicacion_pts + modalidad_pts + horario_pts + funciones_pts + experiencia_pts + edad_pts
     operational_score = max(0, min(100, base_score + penalties_total))
@@ -617,10 +822,16 @@ def rank_candidates(
     if prefilter_limit:
         pool = list(pool)[: max(1, min(int(prefilter_limit), DEFAULT_PREFILTER_LIMIT))]
 
+    scoring_context = build_scoring_context(solicitud, pool)
+    readiness_by_id = scoring_context.get("readiness_by_id") or {}
+
     excluded_not_ready: List[Dict[str, Any]] = []
     ready_pool: List[Candidata] = []
     for cand in pool:
-        ready_ok, reasons = candidata_is_ready_to_send(cand)
+        cand_id = int(getattr(cand, "fila", 0) or 0)
+        readiness = readiness_by_id.get(cand_id) or {}
+        ready_ok = bool(readiness.get("ready"))
+        reasons = list(readiness.get("reasons") or [])
         if ready_ok:
             ready_pool.append(cand)
             continue
@@ -634,7 +845,16 @@ def rank_candidates(
             }
         )
 
-    ranked = [_score_candidate(solicitud, cand) for cand in ready_pool]
+    sol_profile = build_solicitud_profile(solicitud)
+    ranked = [
+        _score_candidate(
+            solicitud,
+            cand,
+            sol_profile=sol_profile,
+            scoring_context=scoring_context,
+        )
+        for cand in ready_pool
+    ]
     ranked.sort(
         key=lambda item: (
             int(item.get("score") or 0),

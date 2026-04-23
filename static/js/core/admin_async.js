@@ -491,7 +491,14 @@
       headers: wantsJsonHeaders({ "Accept": "text/html,application/xhtml+xml" }),
     });
     if (!resp.ok) return false;
+    const contentType = String(resp.headers.get("content-type") || "").toLowerCase();
     const text = await resp.text();
+    if (contentType.includes("application/json")) {
+      const payload = parseJsonSafe(text) || {};
+      const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, targetSelector);
+      if (typeof jsonHtml !== "string") return false;
+      return replaceTargetHtml(targetSelector, jsonHtml, options || {});
+    }
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/html");
     const next = doc.querySelector(targetSelector);
@@ -508,7 +515,26 @@
       headers: wantsJsonHeaders({ "Accept": "text/html,application/xhtml+xml" }),
     });
     if (!resp.ok) return false;
+    const contentType = String(resp.headers.get("content-type") || "").toLowerCase();
     const text = await resp.text();
+    if (contentType.includes("application/json")) {
+      const payload = parseJsonSafe(text) || {};
+      let anyAppliedFromJson = false;
+      ops.forEach((op) => {
+        const selector = normalizeSelector(op && op.target);
+        if (!selector) return;
+        const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, selector);
+        if (typeof jsonHtml !== "string") return;
+        const replaced = replaceTargetHtml(selector, jsonHtml, {
+          preserveScroll: !!op.preserveScroll,
+          preserveOpenCollapses: !!(options && options.preserveOpenCollapses),
+          focusRowId: options && options.focusRowId,
+          flashRow: options ? options.flashRow !== false : true,
+        });
+        anyAppliedFromJson = anyAppliedFromJson || replaced;
+      });
+      return anyAppliedFromJson;
+    }
     const parser = new DOMParser();
     const doc = parser.parseFromString(text, "text/html");
 
@@ -527,6 +553,27 @@
       anyApplied = anyApplied || replaced;
     });
     return anyApplied;
+  }
+
+  function resolveTargetHtmlFromAsyncPayload(payload, targetSelector) {
+    if (!payload || !targetSelector) return null;
+    const target = normalizeSelector(targetSelector);
+    if (!target) return null;
+
+    const legacyTarget = normalizeSelector(payload.update_target);
+    if (legacyTarget && legacyTarget === target && typeof payload.replace_html === "string") {
+      return payload.replace_html;
+    }
+
+    const entries = Array.isArray(payload.update_targets) ? payload.update_targets : [];
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object") continue;
+      const entryTarget = normalizeSelector(entry.target || entry.update_target);
+      if (!entryTarget || entryTarget !== target) continue;
+      if (typeof entry.replace_html === "string") return entry.replace_html;
+    }
+
+    return null;
   }
 
   function closeEnclosingModal(sourceEl) {

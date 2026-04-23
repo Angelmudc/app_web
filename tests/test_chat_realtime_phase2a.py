@@ -598,6 +598,47 @@ def test_client_chat_messages_json_includes_staff_presence_in_this_chat():
         assert bool(conversation.get("staff_in_this_chat")) is True
 
 
+def test_client_chat_messages_json_staff_sender_name_uses_staff_username():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_tables()
+        _reset_tables()
+        cliente = _new_cliente(idx=93)
+        staff = _new_staff(idx=93)
+        conv = _new_conversation(cliente_id=int(cliente.id))
+        db.session.add(
+            ChatMessage(
+                conversation_id=int(conv.id),
+                sender_type="staff",
+                sender_staff_user_id=int(staff.id),
+                sender_cliente_id=None,
+                body="Respuesta soporte",
+                meta={},
+            )
+        )
+        db.session.commit()
+
+        target = clientes_routes.chat_cliente_messages_json
+        for _ in range(2):
+            target = target.__wrapped__
+
+        with pytest.MonkeyPatch.context() as m:
+            m.setattr(clientes_routes, "current_user", _cliente_user(int(cliente.id)))
+            with flask_app.test_request_context(
+                f"/clientes/chat/conversations/{int(conv.id)}/messages.json?limit=5",
+                method="GET",
+                headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            ):
+                payload = target(int(conv.id)).get_json() or {}
+
+        items = payload.get("items") or []
+        assert len(items) == 1
+        msg = items[0] or {}
+        assert str(msg.get("sender_type") or "") == "staff"
+        assert str(msg.get("sender_name") or "") == str(staff.username)
+        assert str(msg.get("body") or "") == "Respuesta soporte"
+
+
 def test_admin_chat_messages_json_includes_cliente_presence_in_this_chat():
     flask_app.config["TESTING"] = True
     with flask_app.app_context():

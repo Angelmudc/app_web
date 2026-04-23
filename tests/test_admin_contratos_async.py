@@ -303,3 +303,46 @@ def test_enviar_ui_fallback_clasico_desde_cliente_detail_se_mantiene_redirect():
 
     assert resp.status_code in (302, 303)
     assert "/admin/clientes/7#sol-93" in (resp.location or "")
+
+
+def test_contratos_list_sync_parametros_invalidos_no_rompen_y_aplican_defaults():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+
+    captured = {}
+
+    def _fake_region(*, estado, q, page, per_page):
+        captured["estado"] = estado
+        captured["q"] = q
+        captured["page"] = page
+        captured["per_page"] = per_page
+        return "<div>ok</div>", 0, False, True
+
+    with patch("contratos.routes._render_contratos_list_region", side_effect=_fake_region):
+        resp = client.get("/admin/contratos?page=nope&per_page=9999", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert captured["page"] == 1
+    assert captured["per_page"] == 100
+
+
+def test_contratos_list_async_parametros_invalidos_no_rompen_y_aplican_defaults():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+
+    with patch("contratos.routes._render_contratos_list_region", return_value=("<div>ok</div>", 0, False, True)):
+        resp = client.get(
+            "/admin/contratos?page=nan&per_page=-10",
+            headers=_async_headers(),
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 200
+    data = resp.get_json() or {}
+    assert data.get("success") is True
+    assert data.get("page") == 1
+    assert data.get("per_page") == 10

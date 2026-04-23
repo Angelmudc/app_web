@@ -164,16 +164,18 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self._login("Cruz", "8998")
         old = _DummyCandidata(fila=1, estado="trabajando")
         sol = _DummySolicitud(estado="activa", candidata=old)
-        captured = {}
+        captured = []
 
         def _capture_add(obj):
-            captured["r"] = obj
+            captured.append(obj)
 
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
                  patch("admin.routes.AdminReemplazoForm", _FakeReemplazoForm), \
                  patch("admin.routes.Reemplazo", _DummyReemplazo), \
                  patch("admin.routes.candidata_is_ready_to_send", return_value=(True, [])), \
+                 patch("admin.routes._emit_domain_outbox_event"), \
+                 patch("admin.routes._notify_cliente_reemplazo_activado"), \
                  patch("admin.routes.db.session.add", side_effect=_capture_add), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
@@ -181,7 +183,7 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
                     data={"next": "/admin/clientes/7#sol-10", "motivo_fallo": "No se presentó"},
                     follow_redirects=False,
                 )
-        r = captured.get("r")
+        r = next((obj for obj in captured if isinstance(obj, _DummyReemplazo)), None)
         self.assertIn(resp.status_code, (302, 303))
         self.assertIsNotNone(r)
         self.assertTrue(r.oportunidad_nueva)
@@ -197,6 +199,8 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
                  patch("admin.routes.AdminReemplazoForm", _FakeReemplazoForm), \
                  patch("admin.routes.Reemplazo", _DummyReemplazo), \
+                 patch("admin.routes._emit_domain_outbox_event"), \
+                 patch("admin.routes._notify_cliente_reemplazo_activado"), \
                  patch("admin.routes.db.session.add"), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
@@ -253,11 +257,19 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         repl = _DummyReemplazo(id=99, solicitud_id=10, estado_previo_solicitud="activa")
         repl.iniciar_reemplazo()
         new = _DummyCandidata(fila=2, estado="lista_para_trabajar")
+
+        def _mark_estado_stub(cand, nuevo_estado, *, nota_descalificacion=None):
+            cand.estado = nuevo_estado
+            if nota_descalificacion is not None:
+                cand.nota_descalificacion = nota_descalificacion
+
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
                  patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)), \
                  patch.object(admin_routes.Candidata, "query", _CandidataQuery(new)), \
                  patch("admin.routes._sync_solicitud_candidatas_after_assignment"), \
+                 patch("admin.routes._mark_candidata_estado", side_effect=_mark_estado_stub), \
+                 patch("admin.routes._emit_domain_outbox_event"), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/reemplazos/99/cerrar_asignando",
@@ -307,7 +319,10 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertIn('id="clienteSummaryAsyncRegion"', txt)
         self.assertIn('id="clienteSolicitudesAsyncScope"', txt)
         self.assertIn('id="clienteSolicitudesAsyncRegion"', txt)
-        self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', txt)
+        solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_cliente_detail_solicitudes_region.html")
+        with open(solicitudes_tpl, "r", encoding="utf-8") as fh:
+            solicitudes_txt = fh.read()
+        self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
 
 
 if __name__ == "__main__":

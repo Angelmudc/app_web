@@ -346,3 +346,13 @@ def test_solicitud_detail_template_declares_live_fragment_urls():
     assert 'data-live-invalidation-view="solicitud_detail"' in txt
     assert "data-live-region-summary-url=\"{{ url_for('admin.solicitud_detail_summary_fragment'" in txt
     assert "data-live-region-operativa-url=\"{{ url_for('admin.solicitud_detail_operativa_core_fragment'" in txt
+
+
+def test_cliente_detail_template_declares_live_fragment_urls():
+    tpl_path = os.path.join(os.getcwd(), "templates", "admin", "cliente_detail.html")
+    with open(tpl_path, "r", encoding="utf-8") as f:
+        txt = f.read()
+
+    assert 'data-live-invalidation-view="cliente_detail"' in txt
+    assert "data-live-region-summary-url=\"{{ url_for('admin.cliente_detail_summary_fragment'" in txt
+    assert "data-live-region-solicitudes-url=\"{{ url_for('admin.cliente_detail_solicitudes_fragment'" in txt

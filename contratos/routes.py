@@ -38,6 +38,11 @@ from .services import (
 _SOLICITUD_DETAIL_NEXT_RE = re.compile(r"^/admin/clientes/(?P<cliente_id>\d+)/solicitudes/(?P<solicitud_id>\d+)/?$")
 _CONTRATO_DETAIL_NEXT_RE = re.compile(r"^/admin/contratos/(?P<contrato_id>\d+)/detalle/?$")
 _CLIENTE_DETAIL_NEXT_RE = re.compile(r"^/admin/clientes/(?P<cliente_id>\d+)/?$")
+_CONTRATOS_PAGE_DEFAULT = 1
+_CONTRATOS_PAGE_MIN = 1
+_CONTRATOS_PER_PAGE_DEFAULT = 25
+_CONTRATOS_PER_PAGE_MIN = 10
+_CONTRATOS_PER_PAGE_MAX = 100
 
 
 def _request_ip() -> str:
@@ -61,6 +66,18 @@ def _safe_next_url(default_endpoint: str = "contratos.listado_contratos_admin") 
     if nxt.startswith("/") and not nxt.startswith("//"):
         return nxt
     return url_for(default_endpoint)
+
+
+def _safe_bounded_int(raw_value, *, default: int, min_value: int, max_value: int | None = None) -> int:
+    try:
+        value = int(str(raw_value).strip())
+    except Exception:
+        value = int(default)
+    if value < int(min_value):
+        value = int(min_value)
+    if max_value is not None and value > int(max_value):
+        value = int(max_value)
+    return int(value)
 
 
 def _admin_async_wants_json() -> bool:
@@ -378,8 +395,17 @@ def _contract_ui_async_response(
     else:
         estado = (request.args.get("estado") or request.form.get("estado") or "").strip().lower()
         q = (request.args.get("q") or request.form.get("q") or "").strip()
-        page = max(1, int(request.args.get("page") or request.form.get("page") or 1))
-        per_page = min(100, max(10, int(request.args.get("per_page") or request.form.get("per_page") or 25)))
+        page = _safe_bounded_int(
+            request.args.get("page") or request.form.get("page"),
+            default=_CONTRATOS_PAGE_DEFAULT,
+            min_value=_CONTRATOS_PAGE_MIN,
+        )
+        per_page = _safe_bounded_int(
+            request.args.get("per_page") or request.form.get("per_page"),
+            default=_CONTRATOS_PER_PAGE_DEFAULT,
+            min_value=_CONTRATOS_PER_PAGE_MIN,
+            max_value=_CONTRATOS_PER_PAGE_MAX,
+        )
         replace_html, total, has_more, _schema_ready = _render_contratos_list_region(
             estado=estado,
             q=q,
@@ -598,8 +624,17 @@ def _contract_payload(c: ContratoDigital, *, include_pdf: bool = False) -> dict:
 def listado_contratos_admin():
     estado = (request.args.get("estado") or "").strip().lower()
     q = (request.args.get("q") or "").strip()
-    page = max(1, int(request.args.get("page", 1) or 1))
-    per_page = min(100, max(10, int(request.args.get("per_page", 25) or 25)))
+    page = _safe_bounded_int(
+        request.args.get("page"),
+        default=_CONTRATOS_PAGE_DEFAULT,
+        min_value=_CONTRATOS_PAGE_MIN,
+    )
+    per_page = _safe_bounded_int(
+        request.args.get("per_page"),
+        default=_CONTRATOS_PER_PAGE_DEFAULT,
+        min_value=_CONTRATOS_PER_PAGE_MIN,
+        max_value=_CONTRATOS_PER_PAGE_MAX,
+    )
     region_html, total, has_more, schema_ready = _render_contratos_list_region(
         estado=estado,
         q=q,

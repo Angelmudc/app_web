@@ -96,3 +96,12 @@ def test_chat_and_async_use_dynamic_csrf_token_from_current_dom():
     assert "function getCSRFToken(form)" in admin_async
     assert "headers: { \"X-CSRFToken\": getCSRFToken(form) }" in admin_async
     assert "headers: { \"X-CSRFToken\": getCSRFToken(null) }" in admin_async
+
+
+def test_admin_async_refetch_supports_json_replace_html_payloads():
+    admin_async = _read("static/js/core/admin_async.js")
+
+    assert "function resolveTargetHtmlFromAsyncPayload(payload, targetSelector)" in admin_async
+    assert "if (contentType.includes(\"application/json\")) {" in admin_async
+    assert "const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, targetSelector);" in admin_async
+    assert "const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, selector);" in admin_async

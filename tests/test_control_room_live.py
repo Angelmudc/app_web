@@ -118,6 +118,9 @@ def test_control_room_live_bundle_exposes_boot_status_and_sse_fallback():
     assert "[monitoreo] init file loaded" in text
     assert "[monitoreo] shell found" in text
     assert "[monitoreo] ready" in text
+    assert "const shouldPollSummary = page === 'dashboard' && Boolean(summaryUrl);" in text
+    assert "const shouldPollProductivity = page === 'dashboard' && Boolean(productivityUrl);" in text
+    assert "const shouldPollPresence = page === 'dashboard' && Boolean(presenceUrl);" in text
 
 
 def test_home_does_not_include_control_room_presence_bundle():

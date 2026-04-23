@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 
+import admin.routes as admin_routes
+from unittest.mock import patch
+
 from app import app as flask_app
 
 
@@ -22,3 +25,19 @@ def test_monitoreo_sse_stream_once_mode():
     assert 'event: active_snapshot' in body
     assert 'event: presence' in body
     assert 'event: heartbeat' in body
+
+
+def test_stream_active_presence_for_operations_prefers_cached_snapshot():
+    sentinel = [{"status": "active", "username": "Karla"}]
+    with patch('admin.routes._presence_active_rows', return_value=[{"status": "idle"}]) as fallback_mock:
+        out = admin_routes._stream_active_presence_for_operations(sentinel)
+    fallback_mock.assert_not_called()
+    assert out == sentinel
+
+
+def test_stream_active_presence_for_operations_falls_back_to_presence_lookup():
+    sentinel = [{"status": "active", "username": "Cruz"}]
+    with patch('admin.routes._presence_active_rows', return_value=sentinel) as fallback_mock:
+        out = admin_routes._stream_active_presence_for_operations(None)
+    fallback_mock.assert_called_once_with()
+    assert out == sentinel

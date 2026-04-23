@@ -13,11 +13,19 @@ from utils.candidata_readiness import candidata_is_ready_to_send
 class SolicitudRecommendationPolicy:
     version = "policy-v1"
 
-    def evaluate(self, *, solicitud, candidata, score_row: dict[str, Any]) -> dict[str, Any]:
+    def evaluate(
+        self,
+        *,
+        solicitud,
+        candidata,
+        score_row: dict[str, Any],
+        candidate_facts: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         hard_fail_codes: list[str] = []
         hard_fail_reasons: list[str] = []
         soft_fail_codes: list[str] = []
         soft_fail_reasons: list[str] = []
+        facts = dict(candidate_facts or {})
 
         estado = str(getattr(candidata, "estado", "") or "").strip().lower()
         if estado in {"descalificada", "en_proceso", "proceso_inscripcion", "trabajando"}:
@@ -27,29 +35,44 @@ class SolicitudRecommendationPolicy:
             hard_fail_codes.append("candidate_not_ready_list")
             hard_fail_reasons.append("Candidata no está en estado lista_para_trabajar.")
 
-        ready_ok, ready_reasons = candidata_is_ready_to_send(candidata)
+        if "readiness_ok" in facts:
+            ready_ok = bool(facts.get("readiness_ok"))
+            ready_reasons = list(facts.get("readiness_reasons") or [])
+        else:
+            ready_ok, ready_reasons = candidata_is_ready_to_send(candidata)
         if not ready_ok:
             hard_fail_codes.append("insufficient_readiness")
             reason_txt = "; ".join([str(x) for x in (ready_reasons or [])][:3]) or "Readiness insuficiente"
             hard_fail_reasons.append(f"Readiness insuficiente: {reason_txt}")
 
-        if candidate_blocked_by_other_client(candidata_id=int(candidata.fila), solicitud=solicitud):
+        if "blocked_other_client" in facts:
+            blocked_other_client = bool(facts.get("blocked_other_client"))
+        else:
+            blocked_other_client = candidate_blocked_by_other_client(candidata_id=int(candidata.fila), solicitud=solicitud)
+        if blocked_other_client:
             hard_fail_codes.append("blocked_other_client")
             hard_fail_reasons.append("Candidata bloqueada por otra solicitud activa de otro cliente.")
 
         # Conflicto operativo real: solo asignaciones activas en estados vigentes.
-        if candidate_has_active_assignment(
-            candidata_id=int(candidata.fila),
-            exclude_solicitud_id=int(getattr(solicitud, "id", 0) or 0),
-        ):
+        if "active_assignment" in facts:
+            has_active_assignment = bool(facts.get("active_assignment"))
+        else:
+            has_active_assignment = candidate_has_active_assignment(
+                candidata_id=int(candidata.fila),
+                exclude_solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+            )
+        if has_active_assignment:
             hard_fail_codes.append("active_operational_conflict")
             hard_fail_reasons.append("Conflicto operativo activo: candidata ya comprometida en otra solicitud vigente.")
 
         breakdown_snapshot = dict(score_row.get("breakdown_snapshot") or {})
-        modalidad_match = bool(breakdown_snapshot.get("modalidad_match"))
-        if not modalidad_match:
+        modalidad_match = breakdown_snapshot.get("modalidad_match")
+        if modalidad_match is False:
             hard_fail_codes.append("modalidad_incompatible")
             hard_fail_reasons.append("Modalidad incompatible con la solicitud.")
+        elif modalidad_match is None:
+            soft_fail_codes.append("modalidad_not_evaluable")
+            soft_fail_reasons.append("Modalidad no evaluable para esta candidata.")
 
         edad_match = breakdown_snapshot.get("edad_match")
         if edad_match is False:

@@ -110,8 +110,12 @@ class AdminPjaxPilotTest(unittest.TestCase):
         cliente_detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "cliente_detail.html")
         with open(cliente_detail_tpl, "r", encoding="utf-8") as f:
             cliente_detail_txt = f.read()
-        self.assertIn("url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id)", cliente_detail_txt)
         self.assertIn('data-admin-nav="true"', cliente_detail_txt)
+        cliente_detail_solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_cliente_detail_solicitudes_region.html")
+        with open(cliente_detail_solicitudes_tpl, "r", encoding="utf-8") as f:
+            cliente_detail_solicitudes_txt = f.read()
+        self.assertIn("url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id)", cliente_detail_solicitudes_txt)
+        self.assertIn('data-admin-nav="true"', cliente_detail_solicitudes_txt)
 
         solicitud_summary_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_detail_summary_region.html")
         with open(solicitud_summary_tpl, "r", encoding="utf-8") as f:

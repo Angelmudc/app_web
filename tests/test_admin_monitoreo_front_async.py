@@ -71,6 +71,26 @@ def test_monitoreo_dashboard_alertas_region_no_regresion_obvia():
     assert 'data-async-target="#monitoreoAlertsAsyncRegion"' in html
 
 
+def test_monitoreo_dashboard_reduce_activity_ranking_recomputation():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login(client).status_code in (302, 303)
+
+    calls = []
+
+    def _fake_activity_ranking(since_dt, until_dt=None, only_secretarias=False):
+        calls.append({"only_secretarias": bool(only_secretarias), "until_dt": until_dt})
+        return []
+
+    with patch.object(admin_routes, "_activity_ranking", side_effect=_fake_activity_ranking):
+        resp = client.get("/admin/monitoreo", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert len(calls) == 1
+    assert calls[0]["only_secretarias"] is True
+
+
 def test_monitoreo_candidatas_search_get_async_devuelve_region():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

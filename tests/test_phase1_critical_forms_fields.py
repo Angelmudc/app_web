@@ -12,11 +12,13 @@ def _read_template(rel_path: str) -> str:
 
 def test_cliente_detail_acciones_criticas_incluyen_row_version_e_idempotency_key():
     tpl = _read_template("templates/admin/cliente_detail.html")
-    assert "poner_espera_pago_solicitud_cliente" in tpl
-    assert "quitar_espera_pago_solicitud_cliente" in tpl
-    assert "cancelar_solicitud_directa" in tpl
-    assert 'name="row_version"' in tpl
-    assert 'name="idempotency_key"' in tpl
+    solicitudes_tpl = _read_template("templates/admin/_cliente_detail_solicitudes_region.html")
+    merged = tpl + "\n" + solicitudes_tpl
+    assert "poner_espera_pago_solicitud_cliente" in merged
+    assert "quitar_espera_pago_solicitud_cliente" in merged
+    assert "cancelar_solicitud_directa" in merged
+    assert 'name="row_version"' in merged
+    assert 'name="idempotency_key"' in merged
 
 
 def test_solicitudes_proceso_acciones_incluye_row_version_e_idempotency_key():

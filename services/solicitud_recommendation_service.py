@@ -6,6 +6,7 @@ import os
 import threading
 import time
 import json
+import inspect
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any
@@ -16,6 +17,7 @@ from sqlalchemy.orm import joinedload
 from config_app import cache, db
 from models import (
     Candidata,
+    Entrevista,
     Solicitud,
     SolicitudRecommendationItem,
     SolicitudRecommendationRun,
@@ -26,11 +28,19 @@ from services.solicitud_recommendation_presenter import present_shortlist_payloa
 from services.solicitud_recommendation_snapshot import (
     MODEL_VERSION,
     POLICY_VERSION,
+    build_candidate_guard,
+    build_pool_guard_hash,
     build_solicitud_fingerprint,
     run_is_stale,
 )
 from utils.enterprise_layer import bump_operational_counter
-from utils.matching_service import DEFAULT_PREFILTER_LIMIT, _score_candidate, candidate_query_prefilter
+from utils.matching_service import (
+    DEFAULT_PREFILTER_LIMIT,
+    _score_candidate,
+    build_solicitud_profile,
+    build_scoring_context,
+    candidate_query_prefilter,
+)
 from utils.timezone import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -59,6 +69,7 @@ _RECOVERY_TIMEOUT_SECONDS = _env_int("SOL_REC_RECOVERY_TIMEOUT_SECONDS", 120, mi
 _RECOVERY_COOLDOWN_SECONDS = _env_int("SOL_REC_RECOVERY_COOLDOWN_SECONDS", 30, min_value=10, max_value=300)
 _AUTO_RETRY_COOLDOWN_SECONDS = _env_int("SOL_REC_AUTO_RETRY_COOLDOWN_SECONDS", 120, min_value=30, max_value=1800)
 _AUTO_RETRY_MAX_ATTEMPTS = _env_int("SOL_REC_AUTO_RETRY_MAX_ATTEMPTS", 2, min_value=0, max_value=8)
+_POOL_GUARD_CHECK_TTL_SECONDS = _env_int("SOL_REC_POOL_GUARD_CHECK_TTL_SECONDS", 20, min_value=5, max_value=120)
 _PREFILTER_LIMIT = _env_int(
     "SOL_REC_PREFILTER_LIMIT",
     DEFAULT_PREFILTER_LIMIT,
@@ -70,6 +81,7 @@ _PREFILTER_LIMIT = _env_int(
 class SolicitudRecommendationService:
     def __init__(self, *, policy: SolicitudRecommendationPolicy | None = None):
         self.policy = policy or SolicitudRecommendationPolicy()
+        self._policy_supports_candidate_facts = self._policy_accepts_candidate_facts(self.policy)
 
     def request_generation(
         self,
@@ -191,18 +203,49 @@ class SolicitudRecommendationService:
             if len(pool) > _PREFILTER_LIMIT:
                 pool = pool[:_PREFILTER_LIMIT]
             run.pool_size = int(len(pool))
+            scoring_context = build_scoring_context(solicitud, pool)
+            policy_facts_by_id = dict(scoring_context.get("policy_facts_by_id") or {})
+            sol_profile = build_solicitud_profile(solicitud)
 
             evaluated: list[dict[str, Any]] = []
+            pool_guard_by_id: dict[int, str] = {}
             for cand in pool:
                 if not isinstance(cand, Candidata):
                     continue
-                score_row = _score_candidate(solicitud, cand)
-                policy_row = self.policy.evaluate(solicitud=solicitud, candidata=cand, score_row=score_row)
+                cand_id = int(getattr(cand, "fila", 0) or 0)
+                score_row = _score_candidate(
+                    solicitud,
+                    cand,
+                    sol_profile=sol_profile,
+                    scoring_context=scoring_context,
+                )
+                if self._policy_supports_candidate_facts:
+                    policy_row = self.policy.evaluate(
+                        solicitud=solicitud,
+                        candidata=cand,
+                        score_row=score_row,
+                        candidate_facts=policy_facts_by_id.get(cand_id) or {},
+                    )
+                else:
+                    policy_row = self.policy.evaluate(
+                        solicitud=solicitud,
+                        candidata=cand,
+                        score_row=score_row,
+                    )
+                policy_snapshot = dict(policy_row or {})
+                cand_readiness = (scoring_context.get("readiness_by_id") or {}).get(cand_id) or {}
+                policy_snapshot["candidate_guard"] = build_candidate_guard(
+                    cand,
+                    has_interview=bool(cand_readiness.get("has_interview")),
+                )
+                guard = str(policy_snapshot.get("candidate_guard") or "").strip().lower()
+                if cand_id > 0 and guard:
+                    pool_guard_by_id[cand_id] = guard
                 evaluated.append(
                     {
                         "candidata": cand,
                         "score_row": score_row,
-                        "policy": policy_row,
+                        "policy": policy_snapshot,
                     }
                 )
 
@@ -273,6 +316,8 @@ class SolicitudRecommendationService:
                 "evaluated_count": int(len(evaluated)),
                 "eligible_count": int(len(eligible_rows)),
                 "prefilter_limit": int(_PREFILTER_LIMIT),
+                "pool_guard_hash": build_pool_guard_hash(pool_guard_by_id),
+                "pool_guard_count": int(len(pool_guard_by_id)),
             }
             latency_ms = self._latency_ms(
                 requested_at=getattr(run, "requested_at", None),
@@ -388,6 +433,8 @@ class SolicitudRecommendationService:
             return payload
 
         stale = run_is_stale(run_fingerprint=str(getattr(run, "fingerprint_hash", "") or ""), solicitud=solicitud)
+        if not stale:
+            stale = self._run_pool_guard_is_stale(run=run, solicitud=solicitud)
         if stale:
             self._obs_counter_once(
                 name="rec:quality:stale_count",
@@ -458,6 +505,429 @@ class SolicitudRecommendationService:
         return payload
 
     def validate_client_selection(
+        self,
+        *,
+        solicitud_id: int,
+        candidata_id: int,
+        selected_by: str = "cliente",
+    ) -> dict[str, Any]:
+        bulk = self.validate_candidates_bulk(
+            solicitud=int(solicitud_id),
+            candidata_ids=[int(candidata_id)],
+            selected_by=selected_by,
+        )
+        if bool(bulk.get("shortlist_blocked")):
+            code = str(bulk.get("code") or "shortlist_unavailable")
+            return {
+                "ok": False,
+                "code": code,
+                "message": str(bulk.get("message") or "Shortlist no disponible para validación."),
+            }
+        row = (bulk.get("results") or [{}])[0] if (bulk.get("results") or []) else {}
+        return {
+            "ok": bool(row.get("ok")),
+            "code": str(row.get("code") or "candidate_not_in_snapshot"),
+            "message": str(row.get("message") or ""),
+            "run_id": int(bulk.get("run_id") or 0),
+            "item_id": int(row.get("item_id") or 0),
+            "hard_fail_codes": list(row.get("hard_fail_codes") or []),
+        }
+
+    def validate_candidates_bulk(
+        self,
+        *,
+        solicitud: int | Solicitud,
+        candidata_ids: list[int],
+        selected_by: str = "cliente",
+    ) -> dict[str, Any]:
+        try:
+            parsed_ids = sorted({int(x) for x in (candidata_ids or []) if int(x or 0) > 0})
+        except Exception:
+            parsed_ids = []
+        if not parsed_ids:
+            return {
+                "ok": False,
+                "shortlist_blocked": False,
+                "requested_count": 0,
+                "valid_count": 0,
+                "invalid_count": 0,
+                "valid_ids": [],
+                "results": [],
+            }
+
+        if isinstance(solicitud, Solicitud):
+            solicitud_obj = solicitud
+        else:
+            solicitud_obj = Solicitud.query.filter_by(id=int(solicitud or 0)).first()
+        if solicitud_obj is None:
+            return {
+                "ok": False,
+                "shortlist_blocked": True,
+                "code": "solicitud_not_found",
+                "message": "Solicitud no encontrada.",
+                "requested_count": len(parsed_ids),
+                "valid_count": 0,
+                "invalid_count": len(parsed_ids),
+                "valid_ids": [],
+                "results": [],
+            }
+
+        shortlist = self.get_active_shortlist(int(solicitud_obj.id), include_ineligible=True)
+        run_payload = shortlist.get("run") or {}
+        run_id = int(run_payload.get("run_id") or 0)
+        state_code = str((shortlist.get("state") or {}).get("code") or "pending").strip().lower()
+        if run_id <= 0 or state_code in {"pending", "pending_refresh", "error", "stale"}:
+            code = "shortlist_stale" if state_code == "stale" else "shortlist_unavailable"
+            message = (
+                "Shortlist desactualizado; regenera antes de validar selección."
+                if code == "shortlist_stale"
+                else "Shortlist no disponible para validación."
+            )
+            self._obs_counter("rec:quality:selection_revalidation_fail_count")
+            self._obs_event(
+                "selection_revalidation_failed",
+                solicitud_id=int(solicitud_obj.id),
+                code=code,
+                state_code=state_code,
+                requested_count=len(parsed_ids),
+            )
+            return {
+                "ok": False,
+                "shortlist_blocked": True,
+                "code": code,
+                "message": message,
+                "run_id": run_id,
+                "requested_count": len(parsed_ids),
+                "valid_count": 0,
+                "invalid_count": len(parsed_ids),
+                "valid_ids": [],
+                "results": [],
+            }
+
+        items = (
+            SolicitudRecommendationItem.query
+            .filter(
+                SolicitudRecommendationItem.run_id == int(run_id),
+                SolicitudRecommendationItem.solicitud_id == int(solicitud_obj.id),
+                SolicitudRecommendationItem.candidata_id.in_(parsed_ids),
+            )
+            .all()
+        )
+        items_by_candidata = {
+            int(getattr(item, "candidata_id", 0) or 0): item
+            for item in (items or [])
+            if int(getattr(item, "candidata_id", 0) or 0) > 0
+        }
+        live_candidates = (
+            Candidata.query
+            .filter(Candidata.fila.in_(parsed_ids))
+            .all()
+        )
+        live_candidates_by_id = {
+            int(getattr(cand, "fila", 0) or 0): cand
+            for cand in (live_candidates or [])
+            if int(getattr(cand, "fila", 0) or 0) > 0
+        }
+        live_context = build_scoring_context(solicitud_obj, list(live_candidates_by_id.values()))
+        live_policy_facts = dict(live_context.get("policy_facts_by_id") or {})
+        live_readiness = dict(live_context.get("readiness_by_id") or {})
+
+        validations: list[dict[str, Any]] = []
+        valid_ids: list[int] = []
+        invalid_count = 0
+        for candidata_id in parsed_ids:
+            cand = live_candidates_by_id.get(int(candidata_id))
+            if cand is None:
+                validations.append(
+                    {
+                        "candidata_id": int(candidata_id),
+                        "item_id": None,
+                        "ok": False,
+                        "code": "candidate_not_found_live",
+                        "message": "La candidata no existe en estado live.",
+                        "status": "invalidated",
+                        "hard_fail_codes": ["candidate_not_found_live"],
+                    }
+                )
+                invalid_count += 1
+                continue
+            item = items_by_candidata.get(int(candidata_id))
+            if item is None:
+                validations.append(
+                    {
+                        "candidata_id": int(candidata_id),
+                        "item_id": None,
+                        "ok": False,
+                        "code": "candidate_not_in_snapshot",
+                        "message": "La candidata no está en el snapshot activo.",
+                        "status": "invalidated",
+                        "hard_fail_codes": [],
+                    }
+                )
+                invalid_count += 1
+                continue
+
+            live_hard_fail_codes: list[str] = []
+            live_estado = str(getattr(cand, "estado", "") or "").strip().lower()
+            if live_estado in {"descalificada", "trabajando", "en_proceso", "proceso_inscripcion"}:
+                live_hard_fail_codes.append("candidate_not_operable_live")
+
+            policy_facts = dict(live_policy_facts.get(int(candidata_id)) or {})
+            if not bool(policy_facts.get("readiness_ok")):
+                live_hard_fail_codes.append("insufficient_readiness_live")
+            if bool(policy_facts.get("blocked_other_client")):
+                live_hard_fail_codes.append("blocked_other_client_live")
+            if bool(policy_facts.get("active_assignment")):
+                live_hard_fail_codes.append("active_operational_conflict_live")
+
+            snapshot_policy = dict(getattr(item, "policy_snapshot", None) or {})
+            snapshot_guard = str(snapshot_policy.get("candidate_guard") or "").strip().lower()
+            live_guard = build_candidate_guard(
+                cand,
+                has_interview=bool((live_readiness.get(int(candidata_id)) or {}).get("has_interview")),
+            )
+            guard_drift = bool(snapshot_guard) and snapshot_guard != live_guard
+            if guard_drift:
+                live_hard_fail_codes.append("candidate_snapshot_drift")
+
+            is_valid = bool(getattr(item, "is_eligible", False)) and not bool(getattr(item, "hard_fail", False))
+            if live_hard_fail_codes:
+                is_valid = False
+            if is_valid:
+                code = "valid"
+                message = "Selección válida contra snapshot activo y estado live."
+            elif live_hard_fail_codes:
+                code = str(live_hard_fail_codes[0])
+                message = "Selección inválida por cambios críticos en estado live."
+            else:
+                code = "candidate_hard_failed"
+                message = "Selección inválida por hard fail vigente."
+            if is_valid:
+                valid_ids.append(int(candidata_id))
+            else:
+                invalid_count += 1
+            validations.append(
+                {
+                    "candidata_id": int(candidata_id),
+                    "item_id": int(getattr(item, "id", 0) or 0),
+                    "ok": bool(is_valid),
+                    "candidate_code": str(getattr(cand, "codigo", "") or ""),
+                    "candidate_name": str(
+                        getattr(cand, "nombre", "")
+                        or getattr(cand, "nombre_completo", "")
+                        or ""
+                    ),
+                    "code": code,
+                    "message": message,
+                    "status": "valid" if is_valid else "invalidated",
+                    "hard_fail_codes": sorted(
+                        set(list(getattr(item, "hard_fail_codes", None) or []) + list(live_hard_fail_codes or []))
+                    ),
+                }
+            )
+
+        self._persist_selections_bulk(
+            solicitud_id=int(solicitud_obj.id),
+            run_id=int(run_id),
+            selected_by=selected_by,
+            validations=validations,
+        )
+
+        if invalid_count > 0:
+            self._obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(invalid_count))
+            self._obs_event(
+                "selection_revalidation_failed",
+                solicitud_id=int(solicitud_obj.id),
+                run_id=int(run_id),
+                invalid_count=int(invalid_count),
+                requested_count=len(parsed_ids),
+            )
+
+        return {
+            "ok": invalid_count == 0,
+            "shortlist_blocked": False,
+            "run_id": int(run_id),
+            "requested_count": len(parsed_ids),
+            "valid_count": len(valid_ids),
+            "invalid_count": int(invalid_count),
+            "valid_ids": valid_ids,
+            "results": validations,
+        }
+
+    @staticmethod
+    def _policy_accepts_candidate_facts(policy: Any) -> bool:
+        evaluate = getattr(policy, "evaluate", None)
+        if evaluate is None:
+            return False
+        try:
+            sig = inspect.signature(evaluate)
+        except Exception:
+            return False
+        for param in sig.parameters.values():
+            if param.kind == inspect.Parameter.VAR_KEYWORD:
+                return True
+        return "candidate_facts" in sig.parameters
+
+    def _run_pool_guard_is_stale(self, *, run, solicitud) -> bool:
+        meta = dict(getattr(run, "meta", None) or {})
+        expected_hash = str(meta.get("pool_guard_hash") or "").strip().lower()
+        expected_count = int(meta.get("pool_guard_count") or 0)
+        if not expected_hash or expected_count <= 0:
+            expected_guard_by_id: dict[int, str] = {}
+            rows = (
+                SolicitudRecommendationItem.query
+                .filter(
+                    SolicitudRecommendationItem.run_id == int(getattr(run, "id", 0) or 0),
+                    SolicitudRecommendationItem.solicitud_id == int(getattr(solicitud, "id", 0) or 0),
+                )
+                .all()
+            )
+            for row in (rows or []):
+                cand_id = int(getattr(row, "candidata_id", 0) or 0)
+                if cand_id <= 0:
+                    continue
+                snap = dict(getattr(row, "policy_snapshot", None) or {})
+                guard = str(snap.get("candidate_guard") or "").strip().lower()
+                if guard:
+                    expected_guard_by_id[cand_id] = guard
+            if expected_guard_by_id:
+                expected_hash = build_pool_guard_hash(expected_guard_by_id)
+                expected_count = int(len(expected_guard_by_id))
+        if not expected_hash or expected_count <= 0:
+            return False
+
+        check_key = (
+            f"solrec:poolguard:v1:run:{int(getattr(run, 'id', 0) or 0)}"
+            f":sol:{int(getattr(solicitud, 'id', 0) or 0)}"
+            f":exp:{expected_hash[:16]}"
+        )
+        use_cache = not bool(current_app.config.get("TESTING"))
+        if use_cache:
+            cached = self._cache_get(check_key)
+            if isinstance(cached, dict):
+                try:
+                    return bool(cached.get("stale"))
+                except Exception:
+                    return False
+
+        try:
+            live_hash, live_count = self._live_pool_guard_snapshot(solicitud=solicitud)
+        except Exception:
+            return False
+        stale = (
+            not live_hash
+            or int(live_count or 0) != int(expected_count)
+            or str(live_hash).strip().lower() != expected_hash
+        )
+        if use_cache:
+            self._cache_set(
+                check_key,
+                {"stale": bool(stale), "count": int(live_count or 0), "hash": str(live_hash or "")},
+                timeout=_POOL_GUARD_CHECK_TTL_SECONDS,
+            )
+        return bool(stale)
+
+    @staticmethod
+    def _live_pool_guard_snapshot(*, solicitud) -> tuple[str, int]:
+        pool = list(candidate_query_prefilter(solicitud))
+        if len(pool) > _PREFILTER_LIMIT:
+            pool = pool[:_PREFILTER_LIMIT]
+        candidata_ids = sorted({
+            int(getattr(cand, "fila", 0) or 0)
+            for cand in (pool or [])
+            if int(getattr(cand, "fila", 0) or 0) > 0
+        })
+        if not candidata_ids:
+            return "", 0
+        try:
+            interview_rows = (
+                db.session.query(Entrevista.candidata_id)
+                .filter(Entrevista.candidata_id.in_(candidata_ids))
+                .distinct()
+                .all()
+            )
+            interview_ids = {
+                int(row[0])
+                for row in (interview_rows or [])
+                if row and int(row[0] or 0) > 0
+            }
+        except Exception:
+            interview_ids = set()
+        guard_by_id: dict[int, str] = {}
+        for cand in (pool or []):
+            cand_id = int(getattr(cand, "fila", 0) or 0)
+            if cand_id <= 0:
+                continue
+            legacy_interview = bool(str(getattr(cand, "entrevista", "") or "").strip())
+            has_interview = bool(cand_id in interview_ids) or legacy_interview
+            guard_by_id[cand_id] = build_candidate_guard(cand, has_interview=has_interview)
+        return build_pool_guard_hash(guard_by_id), int(len(guard_by_id))
+
+    def _persist_selections_bulk(
+        self,
+        *,
+        solicitud_id: int,
+        run_id: int,
+        selected_by: str,
+        validations: list[dict[str, Any]],
+    ) -> None:
+        candidata_ids = sorted({
+            int(row.get("candidata_id") or 0)
+            for row in (validations or [])
+            if int(row.get("candidata_id") or 0) > 0
+        })
+        if not candidata_ids:
+            return
+        existing_rows = (
+            SolicitudRecommendationSelection.query
+            .filter(
+                SolicitudRecommendationSelection.solicitud_id == int(solicitud_id),
+                SolicitudRecommendationSelection.run_id == int(run_id),
+                SolicitudRecommendationSelection.candidata_id.in_(candidata_ids),
+            )
+            .all()
+        )
+        existing_by_id = {
+            int(getattr(row, "candidata_id", 0) or 0): row
+            for row in (existing_rows or [])
+            if int(getattr(row, "candidata_id", 0) or 0) > 0
+        }
+        now_value = utc_now_naive()
+        for row in (validations or []):
+            candidata_id = int(row.get("candidata_id") or 0)
+            if candidata_id <= 0:
+                continue
+            item_id = int(row.get("item_id") or 0)
+            status = str(row.get("status") or "pending_validation")[:30]
+            validation_code = str(row.get("code") or "")[:80]
+            validation_message = str(row.get("message") or "")[:300]
+            existing = existing_by_id.get(candidata_id)
+            if existing is None:
+                db.session.add(
+                    SolicitudRecommendationSelection(
+                        solicitud_id=int(solicitud_id),
+                        run_id=int(run_id),
+                        recommendation_item_id=(item_id if item_id > 0 else None),
+                        candidata_id=int(candidata_id),
+                        status=status,
+                        validation_code=validation_code,
+                        validation_message=validation_message,
+                        validated_at=now_value,
+                        selected_by=str(selected_by or "system")[:120],
+                        created_at=now_value,
+                        meta={},
+                    )
+                )
+                continue
+            existing.recommendation_item_id = item_id if item_id > 0 else None
+            existing.status = status
+            existing.validation_code = validation_code
+            existing.validation_message = validation_message
+            existing.validated_at = now_value
+            existing.selected_by = str(selected_by or "system")[:120]
+        db.session.commit()
+
+    def _validate_client_selection_legacy(
         self,
         *,
         solicitud_id: int,

@@ -21,6 +21,7 @@ from flask_login import (
 )
 from werkzeug.security import check_password_hash
 from sqlalchemy import literal
+from sqlalchemy.orm import load_only, selectinload, joinedload, noload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError, OperationalError
 
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -1615,21 +1616,22 @@ def reset_password():
     )
 
 
-def _build_cliente_guia_inteligente(cliente_id: int, recientes=None) -> dict:
+def _build_cliente_guia_inteligente(cliente_id: int, recientes=None, total_solicitudes: Optional[int] = None) -> dict:
     recientes = recientes if isinstance(recientes, list) else []
-    total_solicitudes = 0
+    total = int(total_solicitudes or 0) if total_solicitudes is not None else 0
     ultima = None
 
-    try:
-        total_solicitudes = int(
-            Solicitud.query.filter_by(cliente_id=cliente_id).count()
-        )
-    except Exception:
-        total_solicitudes = 0
+    if total_solicitudes is None:
+        try:
+            total = int(
+                Solicitud.query.filter_by(cliente_id=cliente_id).count()
+            )
+        except Exception:
+            total = 0
 
     if recientes:
         ultima = recientes[0]
-    elif total_solicitudes > 0:
+    elif total > 0:
         q = Solicitud.query.filter_by(cliente_id=cliente_id)
         if hasattr(Solicitud, "fecha_solicitud"):
             q = q.order_by(Solicitud.fecha_solicitud.desc())
@@ -1637,7 +1639,7 @@ def _build_cliente_guia_inteligente(cliente_id: int, recientes=None) -> dict:
             q = q.order_by(Solicitud.id.desc())
         ultima = q.first()
 
-    if total_solicitudes <= 0:
+    if total <= 0:
         return {
             "stage_key": "sin_solicitudes",
             "variant": "info",
@@ -1811,7 +1813,6 @@ def _build_dashboard_resumen_ejecutivo(por_estado_dict: dict, guia_inteligente: 
 @login_required
 @cliente_required
 def dashboard():
-    total = Solicitud.query.filter_by(cliente_id=current_user.id).count()
     por_estado = (
         db.session.query(Solicitud.estado, db.func.count(Solicitud.id))
         .filter(Solicitud.cliente_id == current_user.id)
@@ -1819,6 +1820,7 @@ def dashboard():
         .all()
     )
     por_estado_dict = {estado or 'sin_definir': cnt for estado, cnt in por_estado}
+    total = int(sum(int(cnt or 0) for cnt in por_estado_dict.values()))
 
     # OJO: fecha_solicitud puede no existir en algunos modelos viejos
     q_rec = Solicitud.query.filter_by(cliente_id=current_user.id)
@@ -1828,7 +1830,11 @@ def dashboard():
         q_rec = q_rec.order_by(Solicitud.id.desc())
 
     recientes = q_rec.limit(5).all()
-    guia_inteligente = _build_cliente_guia_inteligente(current_user.id, recientes=recientes)
+    guia_inteligente = _build_cliente_guia_inteligente(
+        current_user.id,
+        recientes=recientes,
+        total_solicitudes=total,
+    )
     ayuda_contextual_dashboard = _build_dashboard_ayuda_contextual(
         (guia_inteligente or {}).get("stage_key")
     )
@@ -2193,9 +2199,45 @@ def _publish_cliente_fast_path_stream_event(
         return False
 
 
-def _cliente_live_resolve_target(row) -> tuple[int, int]:
+def _cliente_live_request_cache() -> dict:
+    if not has_request_context():
+        return {}
+    cache_obj = getattr(g, "_cliente_live_cache", None)
+    if isinstance(cache_obj, dict):
+        return cache_obj
+    cache_obj = {
+        "solicitud_owner_by_id": {},
+        "conversation_target_by_id": {},
+    }
+    setattr(g, "_cliente_live_cache", cache_obj)
+    return cache_obj
+
+
+def _cliente_live_owner_cliente_id_for_solicitud(solicitud_id: int, *, cache: Optional[dict] = None) -> int:
+    sid = _safe_int(solicitud_id, default=0)
+    if sid <= 0:
+        return 0
+    cache_obj = cache if isinstance(cache, dict) else _cliente_live_request_cache()
+    owner_cache = cache_obj.get("solicitud_owner_by_id") if isinstance(cache_obj, dict) else None
+    if isinstance(owner_cache, dict) and sid in owner_cache:
+        return _safe_int(owner_cache.get(sid), default=0)
+    try:
+        owner_cliente_id = _safe_int(
+            db.session.query(Solicitud.cliente_id).filter(Solicitud.id == int(sid)).scalar(),
+            default=0,
+        )
+    except Exception:
+        owner_cliente_id = 0
+    if isinstance(owner_cache, dict):
+        owner_cache[sid] = int(owner_cliente_id)
+    return int(owner_cliente_id)
+
+
+def _cliente_live_resolve_target(row, *, cache: Optional[dict] = None) -> tuple[int, int]:
     payload = dict(getattr(row, "payload", None) or {})
     aggregate_type = str(getattr(row, "aggregate_type", "") or "").strip().lower()
+    cache_obj = cache if isinstance(cache, dict) else _cliente_live_request_cache()
+    conv_cache = cache_obj.get("conversation_target_by_id") if isinstance(cache_obj, dict) else None
     if aggregate_type == "chatconversation":
         solicitud_id = _safe_int(payload.get("solicitud_id"), default=0)
     else:
@@ -2206,46 +2248,46 @@ def _cliente_live_resolve_target(row) -> tuple[int, int]:
     else:
         conversation_id = _safe_int(payload.get("conversation_id"), default=0)
     if (cliente_id <= 0 or solicitud_id <= 0) and conversation_id > 0 and ChatConversation is not None:
-        try:
-            conv_row = (
-                ChatConversation.query
-                .with_entities(ChatConversation.cliente_id, ChatConversation.solicitud_id)
-                .filter(ChatConversation.id == int(conversation_id))
-                .first()
-            )
-            if conv_row:
-                if cliente_id <= 0:
-                    cliente_id = _safe_int(getattr(conv_row, "cliente_id", 0), default=0)
-                if solicitud_id <= 0:
-                    solicitud_id = _safe_int(getattr(conv_row, "solicitud_id", 0), default=0)
-        except Exception:
-            pass
+        conv_cliente_id = 0
+        conv_solicitud_id = 0
+        if isinstance(conv_cache, dict) and int(conversation_id) in conv_cache:
+            cached_pair = conv_cache.get(int(conversation_id)) or (0, 0)
+            conv_cliente_id = _safe_int(cached_pair[0], default=0)
+            conv_solicitud_id = _safe_int(cached_pair[1], default=0)
+        else:
+            try:
+                conv_row = (
+                    ChatConversation.query
+                    .with_entities(ChatConversation.cliente_id, ChatConversation.solicitud_id)
+                    .filter(ChatConversation.id == int(conversation_id))
+                    .first()
+                )
+                if conv_row:
+                    conv_cliente_id = _safe_int(getattr(conv_row, "cliente_id", 0), default=0)
+                    conv_solicitud_id = _safe_int(getattr(conv_row, "solicitud_id", 0), default=0)
+            except Exception:
+                conv_cliente_id = 0
+                conv_solicitud_id = 0
+            if isinstance(conv_cache, dict):
+                conv_cache[int(conversation_id)] = (int(conv_cliente_id), int(conv_solicitud_id))
+        if cliente_id <= 0:
+            cliente_id = int(conv_cliente_id)
+        if solicitud_id <= 0:
+            solicitud_id = int(conv_solicitud_id)
     if cliente_id > 0:
         return cliente_id, solicitud_id
     if solicitud_id <= 0:
         return 0, 0
-    try:
-        cliente_id = _safe_int(
-            db.session.query(Solicitud.cliente_id).filter(Solicitud.id == int(solicitud_id)).scalar(),
-            default=0,
-        )
-    except Exception:
-        cliente_id = 0
+    cliente_id = _cliente_live_owner_cliente_id_for_solicitud(int(solicitud_id), cache=cache_obj)
     return cliente_id, solicitud_id
 
 
-def _cliente_live_target_matches_solicitud(cliente_id: int, solicitud_id: int) -> bool:
+def _cliente_live_target_matches_solicitud(cliente_id: int, solicitud_id: int, *, cache: Optional[dict] = None) -> bool:
     cid = _safe_int(cliente_id, default=0)
     sid = _safe_int(solicitud_id, default=0)
     if cid <= 0 or sid <= 0:
         return True
-    try:
-        owner_cliente_id = _safe_int(
-            db.session.query(Solicitud.cliente_id).filter(Solicitud.id == int(sid)).scalar(),
-            default=0,
-        )
-    except Exception:
-        return False
+    owner_cliente_id = _cliente_live_owner_cliente_id_for_solicitud(int(sid), cache=cache)
     return owner_cliente_id > 0 and owner_cliente_id == cid
 
 
@@ -2267,20 +2309,31 @@ def _normalize_cliente_live_event_from_outbox(row, *, current_cliente_id: int):
     raw_type = str(getattr(row, "event_type", "") or "").strip().upper()
     if not raw_type or raw_type not in _CLIENTE_LIVE_EVENT_TYPES:
         return None
+    cache_obj = _cliente_live_request_cache()
     payload = dict(getattr(row, "payload", None) or {})
     payload_cliente_id = _safe_int(payload.get("cliente_id"), default=0)
     payload_solicitud_id = _safe_int(payload.get("solicitud_id"), default=0)
-    if payload_cliente_id > 0 and payload_solicitud_id > 0:
-        if not _cliente_live_target_matches_solicitud(payload_cliente_id, payload_solicitud_id):
-            return None
 
-    cliente_id, solicitud_id = _cliente_live_resolve_target(row)
+    cliente_id, solicitud_id = _cliente_live_resolve_target(row, cache=cache_obj)
     if int(cliente_id or 0) <= 0 or int(current_cliente_id or 0) <= 0:
         return None
     if int(cliente_id) != int(current_cliente_id):
         return None
-    if int(solicitud_id or 0) > 0 and not _cliente_live_target_matches_solicitud(int(cliente_id), int(solicitud_id)):
-        return None
+
+    ownership_checks = []
+    if payload_cliente_id > 0 and payload_solicitud_id > 0:
+        ownership_checks.append((int(payload_cliente_id), int(payload_solicitud_id)))
+    if int(cliente_id or 0) > 0 and int(solicitud_id or 0) > 0:
+        ownership_checks.append((int(cliente_id), int(solicitud_id)))
+    seen_pairs = set()
+    for cid, sid in ownership_checks:
+        pair = (int(cid), int(sid))
+        if pair in seen_pairs:
+            continue
+        seen_pairs.add(pair)
+        if not _cliente_live_target_matches_solicitud(int(cid), int(sid), cache=cache_obj):
+            return None
+
     canonical_type = _CLIENTE_EVENT_CANONICAL_TYPE.get(raw_type) or "cliente.actualizado"
     views = _cliente_live_views_for_type(canonical_type, solicitud_id)
     return {
@@ -2430,6 +2483,18 @@ def _cliente_live_outbox_rows(after_id: int, limit: int):
     try:
         return (
             DomainOutbox.query
+            .options(
+                load_only(
+                    DomainOutbox.id,
+                    DomainOutbox.event_id,
+                    DomainOutbox.event_type,
+                    DomainOutbox.aggregate_type,
+                    DomainOutbox.aggregate_id,
+                    DomainOutbox.occurred_at,
+                    DomainOutbox.created_at,
+                    DomainOutbox.payload,
+                )
+            )
             .filter(DomainOutbox.id > cursor)
             .filter(DomainOutbox.event_type.in_(sorted(_CLIENTE_LIVE_EVENT_TYPES)))
             .order_by(DomainOutbox.id.asc())
@@ -2560,7 +2625,22 @@ def listar_solicitudes():
     page     = max(page, 1)
     per_page = max(1, min(per_page, 50))
 
-    query = Solicitud.query.filter(Solicitud.cliente_id == current_user.id)
+    query = (
+        Solicitud.query
+        .options(
+            load_only(
+                Solicitud.id,
+                Solicitud.codigo_solicitud,
+                Solicitud.estado,
+                Solicitud.tipo_plan,
+                Solicitud.last_copiado_at,
+                Solicitud.fecha_solicitud,
+                Solicitud.ciudad_sector,
+                Solicitud.modalidad_trabajo,
+            )
+        )
+        .filter(Solicitud.cliente_id == current_user.id)
+    )
 
     if estado:
         query = query.filter(Solicitud.estado == estado)
@@ -4347,7 +4427,6 @@ def detalle_solicitud(id):
             .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
             .all()
         )
-        candidatas_enviadas = [sc for sc in candidatas_enviadas if getattr(sc, "status", None) in visible_status]
         candidatas_enviadas_cards = [_candidate_public_payload(sc) for sc in candidatas_enviadas]
     timeline_simple = _build_solicitud_timeline_simple(s, candidatas_enviadas)
     que_sigue = _build_solicitud_que_sigue(s, candidatas_enviadas)
@@ -4932,6 +5011,21 @@ def chat_cliente_conversations_json():
             rows_query = rows_query.filter(ChatConversation.scope_key.like(f"{prefix}%"))
     rows = (
         rows_query
+        .options(
+            load_only(
+                ChatConversation.id,
+                ChatConversation.conversation_type,
+                ChatConversation.status,
+                ChatConversation.solicitud_id,
+                ChatConversation.subject,
+                ChatConversation.last_message_at,
+                ChatConversation.last_message_preview,
+                ChatConversation.last_message_sender_type,
+                ChatConversation.cliente_unread_count,
+                ChatConversation.staff_unread_count,
+            ),
+            selectinload(ChatConversation.solicitud).load_only(Solicitud.codigo_solicitud),
+        )
         .order_by(ChatConversation.last_message_at.desc().nullslast(), ChatConversation.id.desc())
         .limit(_CHAT_CONV_PAGE_LIMIT)
         .all()
@@ -4965,6 +5059,24 @@ def chat_cliente_messages_json(conversation_id):
 
     q = (
         ChatMessage.query
+        .options(
+            load_only(
+                ChatMessage.id,
+                ChatMessage.conversation_id,
+                ChatMessage.sender_type,
+                ChatMessage.sender_staff_user_id,
+                ChatMessage.body,
+                ChatMessage.created_at,
+            ),
+            # Avoid implicit joined payload not used by the client message JSON.
+            noload(ChatMessage.conversation),
+            noload(ChatMessage.sender_cliente),
+            # Keep only staff username for sender_name when sender_type == "staff".
+            joinedload(ChatMessage.sender_staff_user).load_only(
+                StaffUser.id,
+                StaffUser.username,
+            ),
+        )
         .filter_by(conversation_id=int(conv.id), is_deleted=False)
         .order_by(ChatMessage.id.desc())
     )
@@ -5388,8 +5500,23 @@ def notificaciones_json():
     limit = request.args.get("limit", 10, type=int)
     limit = max(1, min(int(limit or 10), 15))
 
+    items_query = _cliente_notif_query_base()
+    if hasattr(items_query, "enable_eagerloads"):
+        items_query = items_query.enable_eagerloads(False)
+    if hasattr(items_query, "options"):
+        items_query = items_query.options(
+            load_only(
+                ClienteNotificacion.id,
+                ClienteNotificacion.solicitud_id,
+                ClienteNotificacion.tipo,
+                ClienteNotificacion.titulo,
+                ClienteNotificacion.cuerpo,
+                ClienteNotificacion.is_read,
+                ClienteNotificacion.created_at,
+            )
+        )
     items = (
-        _cliente_notif_query_base()
+        items_query
         .order_by(ClienteNotificacion.created_at.desc(), ClienteNotificacion.id.desc())
         .limit(limit)
         .all()
@@ -5769,39 +5896,49 @@ def _shortlist_validate_and_persist_selection(
         "valid_count": 0,
         "invalid_count": 0,
         "valid_ids": [],
+        "valid_candidate_details": [],
         "shortlist_blocked": False,
     }
     if not candidate_ids:
         return out
 
     service = SolicitudRecommendationService()
-    shortlist = service.get_active_shortlist(int(solicitud.id), include_ineligible=False)
-    shortlist_state = str(((shortlist.get("state") or {}).get("code") or "pending")).strip().lower()
-    if shortlist_state in {"pending", "error", "stale", "pending_refresh"}:
-        out["shortlist_blocked"] = True
-        return out
 
     selected_by = (
         f"cliente:{int(getattr(current_user, 'id', 0) or 0)}"
         if _current_user_is_cliente()
         else f"public_session:{int(solicitud.id)}"
     )
-    valid_ids = []
-    invalid_count = 0
-    for cid in candidate_ids:
-        result = service.validate_client_selection(
-            solicitud_id=int(solicitud.id),
-            candidata_id=int(cid),
-            selected_by=selected_by,
-        )
-        if bool(result.get("ok")):
-            valid_ids.append(int(cid))
-        else:
-            invalid_count += 1
+    bulk_result = service.validate_candidates_bulk(
+        solicitud=solicitud,
+        candidata_ids=[int(x) for x in (candidate_ids or []) if int(x or 0) > 0],
+        selected_by=selected_by,
+    )
+    if bool(bulk_result.get("shortlist_blocked")):
+        out["shortlist_blocked"] = True
+        return out
+    valid_ids = [int(x) for x in (bulk_result.get("valid_ids") or []) if int(x or 0) > 0]
+    invalid_count = int(bulk_result.get("invalid_count") or 0)
+    valid_id_set = set(valid_ids)
+    valid_details_by_id: dict[int, dict] = {}
+    for row in (bulk_result.get("results") or []):
+        if not bool((row or {}).get("ok")):
+            continue
+        cid = int((row or {}).get("candidata_id") or 0)
+        if cid <= 0 or cid not in valid_id_set or cid in valid_details_by_id:
+            continue
+        codigo = re.sub(r"\s+", " ", str((row or {}).get("candidate_code") or "")).strip()[:40] or "(sin código)"
+        nombre = re.sub(r"\s+", " ", str((row or {}).get("candidate_name") or "")).strip()[:80] or f"Candidata {cid}"
+        valid_details_by_id[cid] = {
+            "codigo": codigo,
+            "nombre": nombre,
+        }
+    valid_candidate_details = [valid_details_by_id[cid] for cid in valid_ids if cid in valid_details_by_id]
 
     out["valid_count"] = int(len(valid_ids))
     out["invalid_count"] = int(invalid_count)
     out["valid_ids"] = valid_ids
+    out["valid_candidate_details"] = valid_candidate_details
     return out
 
 
@@ -6134,7 +6271,7 @@ def solicitud_shortlist_continue_chat(solicitud_id):
         return redirect(redirect_url)
 
     dedup_ids = _shortlist_candidate_ids_from_request()
-    selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    selection = None
     if dedup_ids:
         selection_result = _shortlist_validate_and_persist_selection(
             solicitud=solicitud,
@@ -6145,7 +6282,9 @@ def solicitud_shortlist_continue_chat(solicitud_id):
             return redirect(redirect_url)
         valid_ids = [int(x) for x in (selection_result.get("valid_ids") or []) if int(x or 0) > 0]
         if valid_ids:
-            candidate_details = _shortlist_candidate_details(valid_ids)
+            candidate_details = list(selection_result.get("valid_candidate_details") or [])
+            if len(candidate_details) != len(valid_ids):
+                candidate_details = _shortlist_candidate_details(valid_ids)
             candidate_names = [str(item.get("nombre") or "").strip() for item in candidate_details if str(item.get("nombre") or "").strip()]
             selection = {
                 "count": len(valid_ids),
@@ -6154,12 +6293,16 @@ def solicitud_shortlist_continue_chat(solicitud_id):
                 "candidate_details": candidate_details,
                 "selection_fingerprint": _shortlist_selection_fingerprint(valid_ids),
             }
+        else:
+            selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
         if int(selection_result.get("invalid_count") or 0) > 0:
             _rec_obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(selection_result.get("invalid_count") or 0))
             flash(
                 f"No pudimos validar {int(selection_result.get('invalid_count') or 0)} selección{'es' if int(selection_result.get('invalid_count') or 0) != 1 else ''} porque la shortlist cambió.",
                 "warning",
             )
+    else:
+        selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
 
     if int(selection.get("count") or 0) <= 0:
         flash("Selecciona al menos una candidata antes de continuar por chat.", "warning")
@@ -6234,7 +6377,7 @@ def solicitud_shortlist_continue_whatsapp(solicitud_id):
     solicitud = _get_solicitud_for_shortlist_or_403(solicitud_id)
     redirect_url = url_for("clientes.solicitud_recomendaciones", id=solicitud.id) + "#shortlist-recomendaciones"
     dedup_ids = _shortlist_candidate_ids_from_request()
-    selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
+    selection = None
     if dedup_ids:
         selection_result = _shortlist_validate_and_persist_selection(
             solicitud=solicitud,
@@ -6245,7 +6388,9 @@ def solicitud_shortlist_continue_whatsapp(solicitud_id):
             return redirect(redirect_url)
         valid_ids = [int(x) for x in (selection_result.get("valid_ids") or []) if int(x or 0) > 0]
         if valid_ids:
-            candidate_details = _shortlist_candidate_details(valid_ids)
+            candidate_details = list(selection_result.get("valid_candidate_details") or [])
+            if len(candidate_details) != len(valid_ids):
+                candidate_details = _shortlist_candidate_details(valid_ids)
             candidate_names = [str(item.get("nombre") or "").strip() for item in candidate_details if str(item.get("nombre") or "").strip()]
             selection = {
                 "count": len(valid_ids),
@@ -6254,12 +6399,16 @@ def solicitud_shortlist_continue_whatsapp(solicitud_id):
                 "candidate_details": candidate_details,
                 "selection_fingerprint": _shortlist_selection_fingerprint(valid_ids),
             }
+        else:
+            selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
         if int(selection_result.get("invalid_count") or 0) > 0:
             _rec_obs_counter("rec:quality:selection_revalidation_fail_count", delta=int(selection_result.get("invalid_count") or 0))
             flash(
                 f"No pudimos validar {int(selection_result.get('invalid_count') or 0)} selección{'es' if int(selection_result.get('invalid_count') or 0) != 1 else ''} porque la shortlist cambió.",
                 "warning",
             )
+    else:
+        selection = _get_saved_shortlist_selection_summary(solicitud_id=int(solicitud.id))
 
     if int(selection.get("count") or 0) <= 0:
         flash("Selecciona al menos una candidata antes de continuar por WhatsApp.", "warning")
