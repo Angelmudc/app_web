@@ -1,108 +1,108 @@
 <div id="prioridadSummaryAsyncRegion" data-async-preserve-scroll="true">
   <div class="row g-2 mb-3">
     <div class="col-6 col-md">
-      <div class="card border-0 shadow-sm h-100">
+      <div class="card border-0 shadow-sm h-100 prioridad-kpi-card prioridad-kpi-card--neutral">
         <div class="card-body py-2 px-3">
-          <div class="small text-muted">Total</div>
-          <div class="h5 mb-0" data-testid="metric-total">{{ total_count if total_count is defined else (total or 0) }}</div>
+          <div class="small prioridad-kpi-label">Total</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-total">{{ total_count if total_count is defined else (total or 0) }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-primary-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--primary">
         <div class="card-body py-2 px-3">
-          <div class="small text-primary">Activas</div>
-          <div class="h5 mb-0 text-primary" data-testid="metric-activa">{{ count_activa if count_activa is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Activas</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-activa">{{ count_activa if count_activa is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-secondary-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--secondary">
         <div class="card-body py-2 px-3">
-          <div class="small text-secondary">Reemplazo</div>
-          <div class="h5 mb-0 text-secondary" data-testid="metric-reemplazo">{{ count_reemplazo if count_reemplazo is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Reemplazo</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-reemplazo">{{ count_reemplazo if count_reemplazo is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-danger-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--danger">
         <div class="card-body py-2 px-3">
-          <div class="small text-danger">Críticas</div>
-          <div class="h5 mb-0 text-danger" data-testid="metric-critica">{{ count_critica if count_critica is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Críticas</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-critica">{{ count_critica if count_critica is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-warning-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--warning">
         <div class="card-body py-2 px-3">
-          <div class="small text-warning-emphasis">Urgentes</div>
-          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-urgente">{{ count_urgente if count_urgente is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Urgentes</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-urgente">{{ count_urgente if count_urgente is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-info-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--info">
         <div class="card-body py-2 px-3">
-          <div class="small text-info-emphasis">Atención</div>
-          <div class="h5 mb-0 text-info-emphasis" data-testid="metric-atencion">{{ count_atencion if count_atencion is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Atención</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-atencion">{{ count_atencion if count_atencion is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-success-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--success">
         <div class="card-body py-2 px-3">
-          <div class="small text-success">Normales</div>
-          <div class="h5 mb-0 text-success" data-testid="metric-normal">{{ count_normal if count_normal is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Normales</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-normal">{{ count_normal if count_normal is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-warning-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--warning">
         <div class="card-body py-2 px-3">
-          <div class="small text-warning-emphasis">Sin movimiento</div>
-          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-sin-movimiento">{{ count_sin_movimiento if count_sin_movimiento is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Sin movimiento</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-sin-movimiento">{{ count_sin_movimiento if count_sin_movimiento is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-danger-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--danger">
         <div class="card-body py-2 px-3">
-          <div class="small text-danger">Pago prolongado</div>
-          <div class="h5 mb-0 text-danger" data-testid="metric-espera-pago-prolongada">{{ count_espera_pago_prolongada if count_espera_pago_prolongada is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Pago prolongado</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-espera-pago-prolongada">{{ count_espera_pago_prolongada if count_espera_pago_prolongada is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-danger-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--danger">
         <div class="card-body py-2 px-3">
-          <div class="small text-danger">Reemplazo sin seguimiento</div>
-          <div class="h5 mb-0 text-danger" data-testid="metric-reemplazo-sin-seguimiento">{{ count_reemplazo_sin_seguimiento if count_reemplazo_sin_seguimiento is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Reemplazo sin seguimiento</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-reemplazo-sin-seguimiento">{{ count_reemplazo_sin_seguimiento if count_reemplazo_sin_seguimiento is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-dark-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--neutral">
         <div class="card-body py-2 px-3">
-          <div class="small text-muted">Sin responsable</div>
-          <div class="h5 mb-0" data-testid="metric-sin-responsable">{{ count_sin_responsable if count_sin_responsable is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Sin responsable</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-sin-responsable">{{ count_sin_responsable if count_sin_responsable is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-warning-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--warning">
         <div class="card-body py-2 px-3">
-          <div class="small text-warning-emphasis">Mayor carga</div>
-          <div class="small mb-1">{{ top_load_label or 'N/A' }}</div>
-          <div class="h5 mb-0 text-warning-emphasis" data-testid="metric-top-load">{{ top_load_value if top_load_value is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Mayor carga</div>
+          <div class="small mb-1 prioridad-kpi-meta">{{ top_load_label or 'N/A' }}</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-top-load">{{ top_load_value if top_load_value is defined else 0 }}</div>
         </div>
       </div>
     </div>
     <div class="col-6 col-md">
-      <div class="card border-danger-subtle h-100">
+      <div class="card h-100 prioridad-kpi-card prioridad-kpi-card--danger">
         <div class="card-body py-2 px-3">
-          <div class="small text-danger">Mayor riesgo</div>
-          <div class="small mb-1">{{ top_risk_label or 'N/A' }}</div>
-          <div class="h5 mb-0 text-danger" data-testid="metric-top-risk">{{ top_risk_value if top_risk_value is defined else 0 }}</div>
+          <div class="small prioridad-kpi-label">Mayor riesgo</div>
+          <div class="small mb-1 prioridad-kpi-meta">{{ top_risk_label or 'N/A' }}</div>
+          <div class="h5 mb-0 prioridad-kpi-value" data-testid="metric-top-risk">{{ top_risk_value if top_risk_value is defined else 0 }}</div>
         </div>
       </div>
     </div>
