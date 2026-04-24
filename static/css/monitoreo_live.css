@@ -39,13 +39,18 @@
 }
 
 .presence-session-row td {
-  background: #fafbfc;
+  background: rgba(16, 22, 31, 0.82) !important;
+  border-top-color: rgba(255, 255, 255, 0.08);
 }
 
 .presence-session-row details > summary {
   cursor: pointer;
   font-size: 0.86rem;
-  color: #4b5563;
+  color: #dce5f1;
+}
+
+.presence-session-row details[open] > summary {
+  color: #f5f8fc;
 }
 
 .presence-session-list {
@@ -55,8 +60,15 @@
 }
 
 .presence-session-item {
-  border: 1px solid #e5e7eb;
+  border: 1px solid rgba(129, 165, 203, 0.34);
   border-radius: 0.45rem;
   padding: 0.5rem 0.6rem;
-  background: #ffffff;
+  background: rgba(24, 34, 48, 0.72);
+  color: #ecf1f8;
+}
+
+.presence-badge-neutral {
+  background: rgba(69, 83, 102, 0.52);
+  color: #edf3fb;
+  border: 1px solid rgba(168, 188, 211, 0.42);
 }

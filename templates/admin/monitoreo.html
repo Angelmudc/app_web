@@ -96,11 +96,11 @@
                 <div><strong>{{ p.username }}</strong> <small class="text-muted">({{ p.role }})</small></div>
                 <small class="text-muted">{{ p.route_label or p.route_human or '-' }}</small>
                 {% if (p.session_count or 0) > 1 %}
-                <div><small class="badge bg-light text-dark border">{{ p.session_count }} pestañas</small></div>
+                <div><small class="badge presence-badge-neutral">{{ p.session_count }} pestañas</small></div>
                 {% endif %}
               </td>
               <td>
-                <span class="badge {% if p.status == 'active' %}bg-success{% elif p.status == 'idle' %}bg-warning text-dark{% elif p.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">{{ p.status_human or p.status|upper }}</span>
+                <span class="badge {% if p.status == 'active' %}bg-success{% elif p.status == 'idle' %}bg-warning text-dark{% elif p.status == 'hidden' %}bg-secondary{% else %}presence-badge-neutral{% endif %}">{{ p.status_human or p.status|upper }}</span>
                 {% if p.is_typing %}
                 <span class="badge bg-info text-dark">Escribiendo</span>
                 {% endif %}
@@ -129,13 +129,14 @@
             {% if (p.sessions or [])|length > 1 %}
             <tr class="presence-session-row">
               <td colspan="6">
-                <details>
+                {% set _presence_key = (p.user_id if p.user_id is defined and p.user_id is not none else (p.username or '')) %}
+                <details data-presence-key="{{ _presence_key }}">
                   <summary>Ver sesiones activas ({{ p.session_count or (p.sessions|length) }})</summary>
                   <div class="presence-session-list mt-2">
                     {% for s in p.sessions %}
                     <div class="presence-session-item">
                       <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
-                        <span class="badge {% if s.status == 'active' %}bg-success{% elif s.status == 'idle' %}bg-warning text-dark{% elif s.status == 'hidden' %}bg-secondary{% else %}bg-light text-dark border{% endif %}">{{ s.status_human or s.status|upper }}</span>
+                        <span class="badge {% if s.status == 'active' %}bg-success{% elif s.status == 'idle' %}bg-warning text-dark{% elif s.status == 'hidden' %}bg-secondary{% else %}presence-badge-neutral{% endif %}">{{ s.status_human or s.status|upper }}</span>
                         <small class="text-muted">sesión: {{ s.session_id }}</small>
                         <small class="text-muted">{{ s.route_label or '-' }}</small>
                       </div>

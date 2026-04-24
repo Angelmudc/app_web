@@ -288,6 +288,11 @@
   function updatePresenceTable(presence) {
     const tbody = document.querySelector('#presenceTable tbody');
     if (!tbody) return;
+    const openSessionKeys = new Set(
+      Array.from(tbody.querySelectorAll('details[data-presence-key][open]'))
+        .map((el) => String(el.getAttribute('data-presence-key') || '').trim())
+        .filter(Boolean)
+    );
     tbody.textContent = '';
     if (!Array.isArray(presence) || !presence.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Sin presencia reciente.</td></tr>';
@@ -299,10 +304,19 @@
       if (val === 'active') return 'bg-success';
       if (val === 'idle') return 'bg-warning text-dark';
       if (val === 'hidden') return 'bg-secondary';
-      return 'bg-light text-dark border';
+      return 'presence-badge-neutral';
     };
 
     const statusText = (p) => String(p.status_human || p.status || '-');
+    const presenceKey = (p) => {
+      if (!p) return '';
+      const uid = p.user_id !== undefined && p.user_id !== null && String(p.user_id).trim()
+        ? p.user_id
+        : ((p.actor_user_id !== undefined && p.actor_user_id !== null && String(p.actor_user_id).trim())
+          ? p.actor_user_id
+          : (p.username || ''));
+      return String(uid || '').trim();
+    };
 
     const buildFlagsHtml = (p) => {
       const out = [];
@@ -318,8 +332,10 @@
       return out.join('');
     };
 
-    const buildSessionDetailsHtml = (sessions) => {
+    const buildSessionDetailsHtml = (sessions, key) => {
       if (!Array.isArray(sessions) || sessions.length <= 1) return '';
+      const normalizedKey = String(key || '').trim();
+      const openAttr = normalizedKey && openSessionKeys.has(normalizedKey) ? ' open' : '';
       const items = sessions.map((s) => {
         return [
           '<div class="presence-session-item">',
@@ -336,7 +352,7 @@
       return [
         '<tr class="presence-session-row">',
         '<td colspan="6">',
-        '<details>',
+        '<details data-presence-key="' + escapeHtml(normalizedKey) + '"' + openAttr + '>',
         '<summary>Ver sesiones activas (' + String(sessions.length) + ')</summary>',
         '<div class="presence-session-list mt-2">' + items + '</div>',
         '</details>',
@@ -348,10 +364,11 @@
     presence.forEach((p) => {
       const sessions = Array.isArray(p.sessions) ? p.sessions : [];
       const countTabs = Number(p.session_count || sessions.length || 0);
+      const pKey = presenceKey(p);
       const userBlock = [
         '<div><strong>' + escapeHtml(String(p.username || '-')) + '</strong> <small class="text-muted">(' + escapeHtml(String(p.role || '-')) + ')</small></div>',
         '<small class="text-muted">' + escapeHtml(String(p.route_label || p.route_human || '-')) + '</small>',
-        (countTabs > 1 ? '<div><small class="badge bg-light text-dark border">' + String(countTabs) + ' pestañas</small></div>' : '')
+        (countTabs > 1 ? '<div><small class="badge presence-badge-neutral">' + String(countTabs) + ' pestañas</small></div>' : '')
       ].join('');
 
       const statusBlock = [
@@ -378,7 +395,7 @@
         '<td>' + buildFlagsHtml(p) + '</td>',
         '<td>' + interactionBlock + '</td>',
         '</tr>',
-        buildSessionDetailsHtml(sessions)
+        buildSessionDetailsHtml(sessions, pKey)
       ].join('');
       tbody.insertAdjacentHTML('beforeend', rowHtml);
     });
