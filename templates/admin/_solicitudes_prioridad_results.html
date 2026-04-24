@@ -36,8 +36,8 @@
   {% for block_code, block_title, block_tone, block_hint in blocks %}
     {% set block_rows = solicitudes|selectattr('priority_label', 'equalto', block_code)|list %}
     {% if block_rows %}
-      <section class="card prioridad-block border-{{ block_tone }}-subtle shadow-sm" data-testid="priority-block-{{ block_code }}">
-        <div class="card-header bg-{{ block_tone }}-subtle d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <section class="card prioridad-block border-{{ block_tone }} shadow-sm" data-testid="priority-block-{{ block_code }}">
+        <div class="card-header bg-{{ block_tone }}-subtle text-{{ block_tone }}-emphasis d-flex justify-content-between align-items-center flex-wrap gap-2">
           <div>
             <span class="prioridad-block-title">{{ block_title }} — {{ block_hint }}</span>
           </div>
