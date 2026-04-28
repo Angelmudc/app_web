@@ -177,3 +177,32 @@ def test_buscar_candidata_post_cedula_invalida_keeps_render_and_overrides():
     assert captured["ctx"]["edit_form_overrides"]["cedula"] == "---"
     assert cand.numero_telefono == "8095551212"
     assert cand.cedula == "001-0000000-1"
+
+
+def test_buscar_candidata_post_edit_success_con_next_redirige_al_contexto():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    cand = _build_candidata_stub(fila=91)
+    ok_result = SimpleNamespace(ok=True, attempts=1, error_message="")
+
+    with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
+         patch("core.handlers.buscar_candidata_handlers.legacy_h.execute_robust_save", return_value=ok_result), \
+         patch("core.handlers.buscar_candidata_handlers.legacy_h.snapshot_model_fields", side_effect=lambda _obj, _f: {}), \
+         patch("core.handlers.buscar_candidata_handlers.legacy_h.diff_snapshots", return_value={}), \
+         patch("core.handlers.buscar_candidata_handlers.legacy_h.log_candidata_action"):
+        resp = client.post(
+            "/buscar?next=/finalizar_proceso?fila=91",
+            data={
+                "guardar_edicion": "1",
+                "candidata_id": "91",
+                "telefono": "8099991111",
+                "next": "/finalizar_proceso?fila=91",
+            },
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    assert (resp.headers.get("Location") or "").endswith("/finalizar_proceso?fila=91")

@@ -14,13 +14,16 @@
         Escribe <strong>nombre</strong>, <strong>cédula</strong> o <strong>código</strong>. Máximo 300 resultados.
       </small>
     </div>
-    <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn btn-outline-secondary btn-sm">
+    <a href="{{ url_for('finalizar_proceso_buscar', next=next_url or None) }}" class="btn btn-outline-secondary btn-sm">
       <i class="fa-solid fa-rotate-left me-1"></i> Reiniciar búsqueda
     </a>
   </div>
 
   <!-- FORMULARIO -->
   <form class="row g-2 mb-3" method="get" action="{{ url_for('finalizar_proceso_buscar') }}" id="frm-buscar">
+    {% if next_url %}
+    <input type="hidden" name="next" value="{{ next_url }}">
+    {% endif %}
     <div class="col-sm-8 col-md-6">
       <div class="input-group input-group-lg">
         <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
@@ -41,7 +44,7 @@
     </div>
     {% if q %}
     <div class="col-md-3">
-      <a class="btn btn-outline-secondary w-100" href="{{ url_for('finalizar_proceso_buscar') }}">
+      <a class="btn btn-outline-secondary w-100" href="{{ url_for('finalizar_proceso_buscar', next=next_url or None) }}">
         <i class="fa-solid fa-eraser me-1"></i> Limpiar
       </a>
     </div>
@@ -104,7 +107,7 @@
                     <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('candidata_ver_perfil', fila=c.fila) }}">
                       <i class="fa-regular fa-eye me-1"></i> Ver perfil
                     </a>
-                    <a class="btn btn-sm btn-success" href="{{ url_for('finalizar_proceso', fila=c.fila) }}">
+                    <a class="btn btn-sm btn-success" href="{{ url_for('finalizar_proceso', fila=c.fila, next=next_url or None) }}">
                       <i class="fa-solid fa-check me-1"></i> Finalizar proceso
                     </a>
                   </div>

@@ -17,6 +17,7 @@ from utils.robust_save import binary_has_content, execute_robust_save, safe_byte
 from utils.upload_limits import MAX_FILE_BYTES, file_too_large, get_filestorage_size, human_size
 from utils.upload_security import validate_upload_file
 
+from core import legacy_handlers as legacy_h
 from core.services.search import apply_search_to_candidata_query
 
 
@@ -141,6 +142,9 @@ def _detect_mimetype_and_ext(data: bytes):
 def subir_fotos():
     accion = (request.args.get("accion") or "buscar").strip()
     fila_id = request.args.get("fila", type=int)
+    next_url = (request.values.get("next") or "").strip()
+    if not legacy_h._is_safe_next(next_url):
+        next_url = ""
     resultados = []
 
     if accion == "buscar":
@@ -148,7 +152,7 @@ def subir_fotos():
             q = (request.form.get("busqueda") or "").strip()[:128]
             if not q:
                 flash("⚠️ Ingresa algo para buscar.", "warning")
-                return redirect(url_for("subir_fotos.subir_fotos", accion="buscar"))
+                return redirect(url_for("subir_fotos.subir_fotos", accion="buscar", next=next_url or None))
 
             try:
                 filas = (
@@ -174,17 +178,23 @@ def subir_fotos():
                     for c in filas
                 ]
 
-        return render_template("subir_fotos.html", accion="buscar", resultados=resultados, **_upload_limits_view_context())
+        return render_template(
+            "subir_fotos.html",
+            accion="buscar",
+            resultados=resultados,
+            next_url=next_url,
+            **_upload_limits_view_context(),
+        )
 
     if accion == "subir":
         if not fila_id:
             flash("❌ Debes seleccionar primero una candidata.", "danger")
-            return redirect(url_for("subir_fotos.subir_fotos", accion="buscar"))
+            return redirect(url_for("subir_fotos.subir_fotos", accion="buscar", next=next_url or None))
 
         candidata = _get_candidata_by_fila_or_pk(fila_id)
         if not candidata:
             flash("⚠️ Candidata no encontrada.", "warning")
-            return redirect(url_for("subir_fotos.subir_fotos", accion="buscar"))
+            return redirect(url_for("subir_fotos.subir_fotos", accion="buscar", next=next_url or None))
 
         if request.method == "GET":
             tiene = _build_docs_flags(candidata)
@@ -193,6 +203,7 @@ def subir_fotos():
                 accion="subir",
                 fila=fila_id,
                 tiene=tiene,
+                next_url=next_url,
                 **_upload_limits_view_context(),
             )
 
@@ -216,6 +227,7 @@ def subir_fotos():
                 accion="subir",
                 fila=fila_id,
                 tiene=tiene,
+                next_url=next_url,
                 **_upload_limits_view_context(),
             )
 
@@ -245,7 +257,7 @@ def subir_fotos():
                         error="Archivo supera límite por campo.",
                     )
                     flash(f"Archivo demasiado pesado para {campo}. Máximo: {max_txt}. Tu archivo: {size_txt}.", "danger")
-                    return redirect(url_for("subir_fotos.subir_fotos", accion="subir", fila=fila_id))
+                    return redirect(url_for("subir_fotos.subir_fotos", accion="subir", fila=fila_id, next=next_url or None))
 
             for campo, archivo in archivos_validos.items():
                 _safe_seek_upload(archivo)
@@ -259,17 +271,38 @@ def subir_fotos():
                     )
                     flash(f"❌ Archivo inválido en {campo}: {err}", "danger")
                     tiene = _build_docs_flags(candidata)
-                    return render_template("subir_fotos.html", accion="subir", fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+                    return render_template(
+                        "subir_fotos.html",
+                        accion="subir",
+                        fila=fila_id,
+                        tiene=tiene,
+                        next_url=next_url,
+                        **_upload_limits_view_context(),
+                    )
                 if safe_bytes_length(data) <= 0:
                     flash(f"❌ Archivo inválido en {campo}: el archivo está vacío.", "danger")
                     tiene = _build_docs_flags(candidata)
-                    return render_template("subir_fotos.html", accion="subir", fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+                    return render_template(
+                        "subir_fotos.html",
+                        accion="subir",
+                        fila=fila_id,
+                        tiene=tiene,
+                        next_url=next_url,
+                        **_upload_limits_view_context(),
+                    )
                 payload_bytes[campo] = data
 
             if not payload_bytes:
                 flash("⚠️ Debes seleccionar al menos una imagen para subir.", "warning")
                 tiene = _build_docs_flags(candidata)
-                return render_template("subir_fotos.html", accion="subir", fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+                return render_template(
+                    "subir_fotos.html",
+                    accion="subir",
+                    fila=fila_id,
+                    tiene=tiene,
+                    next_url=next_url,
+                    **_upload_limits_view_context(),
+                )
 
             def _persist_docs(_attempt: int):
                 for campo, data in payload_bytes.items():
@@ -318,7 +351,14 @@ def subir_fotos():
                 )
                 flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
                 tiene = _build_docs_flags(candidata)
-                return render_template("subir_fotos.html", accion="subir", fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+                return render_template(
+                    "subir_fotos.html",
+                    accion="subir",
+                    fila=fila_id,
+                    tiene=tiene,
+                    next_url=next_url,
+                    **_upload_limits_view_context(),
+                )
 
             log_candidata_action(
                 action_type="CANDIDATA_UPLOAD_DOCS_SAVE_OK",
@@ -338,6 +378,8 @@ def subir_fotos():
                 success=True,
             )
             flash("✅ Imágenes subidas/actualizadas correctamente.", "success")
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for("subir_fotos.subir_fotos", accion="buscar"))
 
         except Exception:
@@ -359,9 +401,16 @@ def subir_fotos():
             )
             flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
             tiene = _build_docs_flags(candidata)
-            return render_template("subir_fotos.html", accion="subir", fila=fila_id, tiene=tiene, **_upload_limits_view_context())
+            return render_template(
+                "subir_fotos.html",
+                accion="subir",
+                fila=fila_id,
+                tiene=tiene,
+                next_url=next_url,
+                **_upload_limits_view_context(),
+            )
 
-    return redirect(url_for("subir_fotos.subir_fotos", accion="buscar"))
+    return redirect(url_for("subir_fotos.subir_fotos", accion="buscar", next=next_url or None))
 
 
 @roles_required("admin", "secretaria")
@@ -448,4 +497,3 @@ def descargar_uno_db():
         as_attachment=True,
         download_name=filename,
     )
-

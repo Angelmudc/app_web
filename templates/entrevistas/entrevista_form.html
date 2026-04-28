@@ -16,6 +16,7 @@
 
     <form method="POST">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
 
       <div class="grid" style="display:grid; gap:14px;">
 
@@ -67,7 +68,7 @@
           {% if modo == "editar" %}Guardar cambios{% else %}Guardar entrevista{% endif %}
         </button>
 
-        <a class="btn btn-outline" href="{{ url_for('entrevistas_de_candidata', fila=candidata.fila) }}">
+        <a class="btn btn-outline" href="{{ next_url or url_for('entrevistas_de_candidata', fila=candidata.fila, next=next_url or None) }}">
           Volver
         </a>
       </div>

@@ -53,6 +53,10 @@ def dashboard_procesos():
     entradas_hoy = 0
     counts_por_estado = {}
     paginado = None
+    pending_page_ids = []
+    dashboard_return_url = (request.full_path or request.path or "").strip()
+    if dashboard_return_url.endswith("?"):
+        dashboard_return_url = dashboard_return_url[:-1]
 
     try:
         total = legacy_h.Candidata.query.count()
@@ -78,6 +82,13 @@ def dashboard_procesos():
             paginado = q.paginate(page=page, per_page=per_page, error_out=False)
         except AttributeError:
             paginado = db.paginate(q, page=page, per_page=per_page, error_out=False)
+        pending_states = {"en_proceso", "proceso_inscripcion", "inscrita", "inscrita_incompleta"}
+        pending_page_ids = [
+            int(getattr(c, "fila", 0) or 0)
+            for c in (getattr(paginado, "items", None) or [])
+            if int(getattr(c, "fila", 0) or 0) > 0
+            and str(getattr(c, "estado", "") or "").strip().lower() in pending_states
+        ]
 
     except OperationalError:
         flash("⚠️ No se pudo conectar a la base de datos. Reintenta en unos segundos.", "warning")
@@ -133,4 +144,7 @@ def dashboard_procesos():
         desde_str=desde_str,
         hasta_str=hasta_str,
         candidatas=paginado,
+        siguiente_pendiente_id=(pending_page_ids[0] if pending_page_ids else None),
+        pendientes_queue=",".join(str(x) for x in pending_page_ids),
+        dashboard_return_url=dashboard_return_url,
     )

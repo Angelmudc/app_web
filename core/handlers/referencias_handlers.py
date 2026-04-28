@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from flask import current_app, render_template, request, session
+from flask import current_app, flash, redirect, render_template, request, session, url_for
 
 from decorators import roles_required
 from core.services.candidatas_shared import get_candidata_by_id
@@ -14,6 +14,9 @@ from core import legacy_handlers as legacy_h
 def referencias():
     mensaje = None
     accion = (request.args.get('accion') or 'buscar').strip()
+    next_url = (request.values.get("next") or "").strip()
+    if not legacy_h._is_safe_next(next_url):
+        next_url = ""
     resultados = []
     candidata = None
 
@@ -60,6 +63,7 @@ def referencias():
             accion='buscar',
             resultados=resultados,
             mensaje=mensaje,
+            next_url=next_url,
         )
 
     candidata_id = request.args.get('candidata', type=int)
@@ -72,12 +76,14 @@ def referencias():
                 accion='buscar',
                 resultados=[],
                 mensaje=mensaje,
+                next_url=next_url,
             )
         return render_template(
             'referencias.html',
             accion='ver',
             candidata=candidata,
             mensaje=mensaje,
+            next_url=next_url,
         )
 
     if request.method == 'POST' and 'candidata_id' in request.form:
@@ -96,6 +102,7 @@ def referencias():
                     accion='ver',
                     candidata=candidata,
                     mensaje=mensaje,
+                    next_url=next_url,
                 )
 
             candidata.referencias_laboral = cand_ref_lab
@@ -117,6 +124,9 @@ def referencias():
             )
             if result.ok:
                 mensaje = "✅ Referencias actualizadas."
+                flash(mensaje, "success")
+                if next_url:
+                    return redirect(next_url)
             else:
                 legacy_h.db.session.rollback()
                 current_app.logger.error(
@@ -132,6 +142,7 @@ def referencias():
             accion='ver',
             candidata=candidata,
             mensaje=mensaje,
+            next_url=next_url,
         )
 
     return render_template(
@@ -139,4 +150,5 @@ def referencias():
         accion=accion if accion in ('buscar', 'ver') else 'buscar',
         resultados=[],
         mensaje=mensaje,
+        next_url=next_url,
     )

@@ -197,3 +197,34 @@ def test_finalizar_proceso_post_exitoso_redirect_y_persistencia():
     assert cand.cedula1 == b"ced1-nueva"
     assert cand.cedula2 == b"ced2-nueva"
     log_mock.assert_called_once()
+
+
+def test_finalizar_proceso_post_respeta_next_y_no_exige_docs_ya_existentes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    cand = _DummyCandidata(fila=45)
+
+    class _Query:
+        def get(self, _fila):
+            return cand
+
+    def _fake_execute_robust_save(session, persist_fn, verify_fn):  # noqa: ARG001
+        persist_fn(1)
+        return SimpleNamespace(ok=True, attempts=1, error_message="")
+
+    with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
+         patch("core.handlers.finalizar_proceso_handlers.legacy_h._cfg_grupos_empleo", return_value=[]), \
+         patch("core.handlers.finalizar_proceso_handlers.execute_robust_save", side_effect=_fake_execute_robust_save), \
+         patch("core.handlers.finalizar_proceso_handlers.log_candidata_action"):
+        resp = client.post(
+            "/finalizar_proceso?fila=45&next=/dashboard_procesos",
+            data={},
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    assert (resp.headers.get("Location") or "").endswith("/dashboard_procesos")

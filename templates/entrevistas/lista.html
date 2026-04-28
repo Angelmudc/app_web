@@ -13,7 +13,7 @@
       </div>
 
       <div class="card-actions">
-        <a class="btn btn-primary" href="{{ url_for('entrevistas_buscar') }}">Buscar candidata</a>
+        <a class="btn btn-primary" href="{{ url_for('entrevistas_buscar', next=next_url or None) }}">Buscar candidata</a>
         <a class="btn btn-outline" href="{{ url_for('home') }}">Inicio</a>
       </div>
     </div>
@@ -67,10 +67,10 @@
                 <td>
                   <div class="btn-row">
                     {% if fila %}
-                      <a class="btn btn-outline btn-sm" href="{{ url_for('entrevistas_de_candidata', fila=fila) }}">Ver candidata</a>
+                      <a class="btn btn-outline btn-sm" href="{{ url_for('entrevistas_de_candidata', fila=fila, next=next_url or None) }}">Ver candidata</a>
                     {% endif %}
 
-                    <a class="btn btn-primary btn-sm" href="{{ url_for('entrevista_editar_db', entrevista_id=e.id) }}">Editar</a>
+                    <a class="btn btn-primary btn-sm" href="{{ url_for('entrevista_editar_db', entrevista_id=e.id, next=next_url or None) }}">Editar</a>
 
                     {# PDF opcional: solo muestra el botón si la ruta existe #}
                     {% if current_app and 'generar_pdf_entrevista_db' in current_app.view_functions %}

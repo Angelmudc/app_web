@@ -17,6 +17,9 @@ def buscar_candidata():
     ).strip()[:128]
 
     resultados, candidata, mensaje = [], None, None
+    next_url = (request.values.get("next") or "").strip()
+    if not legacy_h._is_safe_next(next_url):
+        next_url = ""
     edit_form_overrides = {}
     legacy_h._legacy_buscar_db_trace(
         "request_start",
@@ -324,6 +327,8 @@ def buscar_candidata():
                     )
                     if mensaje:
                         flash("✅ Datos actualizados (cédula no actualizada).", "warning")
+                        if next_url:
+                            return redirect(next_url)
                         candidata = obj
                         return render_template(
                             "buscar.html",
@@ -332,8 +337,11 @@ def buscar_candidata():
                             candidata=candidata,
                             mensaje=mensaje,
                             edit_form_overrides=edit_form_overrides,
+                            next_url=next_url,
                         )
                     flash("✅ Datos actualizados correctamente.", "success")
+                    if next_url:
+                        return redirect(next_url)
                     return redirect(url_for("buscar_candidata", candidata_id=cid))
 
                 error_message = (result.error_message or "").lower()
@@ -444,4 +452,5 @@ def buscar_candidata():
         candidata=candidata,
         mensaje=mensaje,
         edit_form_overrides=edit_form_overrides,
+        next_url=next_url,
     )

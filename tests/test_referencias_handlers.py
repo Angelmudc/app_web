@@ -128,3 +128,32 @@ def test_referencias_placeholders_no_disparan_robust_save():
     assert resp.status_code == 200
     assert 'Referencias inv' in body
     robust_mock.assert_not_called()
+
+
+def test_referencias_post_con_next_redirige_al_contexto():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    cand = _build_candidata_stub(fila=51)
+
+    def _ok_result(**_kwargs):
+        return SimpleNamespace(ok=True, attempts=1, error_message='')
+
+    with flask_app.app_context():
+        with patch('core.handlers.referencias_handlers.get_candidata_by_id', return_value=cand), \
+             patch('core.legacy_handlers.execute_robust_save', side_effect=_ok_result):
+            resp = client.post(
+                '/referencias?next=/finalizar_proceso?fila=51',
+                data={
+                    'next': '/finalizar_proceso?fila=51',
+                    'candidata_id': '51',
+                    'referencias_laboral': 'Laboral ok',
+                    'referencias_familiares': 'Familiar ok',
+                },
+                follow_redirects=False,
+            )
+
+    assert resp.status_code in (302, 303)
+    assert (resp.headers.get('Location') or '').endswith('/finalizar_proceso?fila=51')

@@ -133,3 +133,26 @@ def test_entrevista_editar_redirect_compat_id_query_param():
 
     assert resp.status_code in (302, 303)
     assert '/entrevistas/editar/123' in (resp.location or '')
+
+
+def test_entrevista_nueva_con_next_redirige_al_contexto():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    cand = SimpleNamespace(fila=2, estado='en_proceso', entrevista='')
+    preguntas = [SimpleNamespace(id=1, enunciado='Pregunta 1')]
+    ok_result = SimpleNamespace(ok=True, attempts=1, error_message='')
+
+    with patch('core.handlers.entrevistas_handlers.legacy_h._get_candidata_safe_by_pk', return_value=cand), \
+         patch('core.handlers.entrevistas_handlers._get_preguntas_db_por_tipo', return_value=preguntas), \
+         patch('core.handlers.entrevistas_handlers.execute_robust_save', return_value=ok_result):
+        resp = client.post(
+            '/entrevistas/nueva/2/domestica?next=/finalizar_proceso?fila=2',
+            data={'q_1': 'respuesta util', 'next': '/finalizar_proceso?fila=2'},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    assert (resp.location or '').endswith('/finalizar_proceso?fila=2')

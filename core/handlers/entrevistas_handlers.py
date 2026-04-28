@@ -22,6 +22,11 @@ from core import legacy_handlers as legacy_h
 from core.services.search import apply_search_to_candidata_query
 
 
+def _safe_next_url() -> str:
+    nxt = (request.values.get("next") or "").strip()
+    return nxt if legacy_h._is_safe_next(nxt) else ""
+
+
 @cache.memoize(timeout=int(os.getenv("CACHE_PREGUNTAS_SECONDS", "300")))
 def _get_preguntas_db_por_tipo_cached(tipo_cached: str):
     return (
@@ -110,6 +115,7 @@ def entrevistas_index():
 def entrevistas_buscar():
     """Busca una candidata y te manda a la lista de entrevistas de esa candidata."""
     q = (request.form.get('busqueda') or request.args.get('q') or '').strip()[:128]
+    next_url = _safe_next_url()
     resultados = []
     mensaje = None
 
@@ -137,7 +143,7 @@ def entrevistas_buscar():
             mensaje = '❌ Error al buscar. Intenta de nuevo.'
 
     try:
-        return render_template('entrevistas/buscar.html', q=q, resultados=resultados, mensaje=mensaje)
+        return render_template('entrevistas/buscar.html', q=q, resultados=resultados, mensaje=mensaje, next_url=next_url)
     except TemplateNotFound:
         token = generate_csrf()
         html = [
@@ -168,6 +174,7 @@ def entrevistas_buscar():
 @roles_required('admin', 'secretaria')
 def entrevistas_lista():
     """Lista rápida de las últimas entrevistas NUEVAS guardadas (debug/QA)."""
+    next_url = _safe_next_url()
     try:
         q = Entrevista.query
         if hasattr(Entrevista, 'id'):
@@ -179,7 +186,7 @@ def entrevistas_lista():
 
     try:
         current_app.logger.info('✅ Render entrevistas/lista.html (entrevistas_lista)')
-        return render_template('entrevistas/lista.html', entrevistas=entrevistas)
+        return render_template('entrevistas/lista.html', entrevistas=entrevistas, next_url=next_url)
     except TemplateNotFound:
         current_app.logger.exception('❌ TemplateNotFound: entrevistas/lista.html')
         html = ['<h2>Entrevistas (NUEVAS - DB) · Últimas 50</h2>']
@@ -205,6 +212,7 @@ def entrevistas_lista():
 
 @roles_required('admin', 'secretaria')
 def entrevistas_de_candidata(fila):
+    next_url = _safe_next_url()
     candidata = legacy_h._get_candidata_safe_by_pk(fila)
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
@@ -220,12 +228,14 @@ def entrevistas_de_candidata(fila):
     return render_template(
         "entrevistas/entrevistas_lista.html",
         candidata=candidata,
-        entrevistas=entrevistas
+        entrevistas=entrevistas,
+        next_url=next_url,
     )
 
 
 @roles_required('admin', 'secretaria')
 def entrevista_nueva_db(fila, tipo):
+    next_url = _safe_next_url()
     candidata = legacy_h._get_candidata_safe_by_pk(fila)
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
@@ -314,6 +324,8 @@ def entrevista_nueva_db(fila, tipo):
                 success=True,
             )
             flash("✅ Entrevista guardada.", "success")
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
         current_app.logger.error(
@@ -355,7 +367,8 @@ def entrevista_nueva_db(fila, tipo):
         candidata=candidata,
         preguntas=preguntas,
         respuestas_por_pregunta={},
-        entrevista=None
+        entrevista=None,
+        next_url=next_url,
     )
 
 
@@ -371,6 +384,7 @@ def entrevista_editar_redirect():
 
 @roles_required('admin', 'secretaria')
 def entrevista_editar_db(entrevista_id):
+    next_url = _safe_next_url()
     entrevista = Entrevista.query.get_or_404(entrevista_id)
     fila = getattr(entrevista, 'candidata_id', None)
 
@@ -482,6 +496,8 @@ def entrevista_editar_db(entrevista_id):
                 success=True,
             )
             flash("✅ Entrevista actualizada.", "success")
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for('entrevistas_de_candidata', fila=fila))
 
         current_app.logger.error(
@@ -524,5 +540,6 @@ def entrevista_editar_db(entrevista_id):
         candidata=candidata,
         preguntas=preguntas,
         respuestas_por_pregunta=respuestas_por_pregunta,
-        entrevista=entrevista
+        entrevista=entrevista,
+        next_url=next_url,
     )
