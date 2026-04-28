@@ -154,6 +154,8 @@
 {% endif %}
 {% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
 {% set _chat_badge_enabled = _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
+{% set _candidatas_finalizar_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_por_finalizar') %}
+{% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_badge_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -282,6 +284,18 @@
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
                href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.candidatas_por_finalizar') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint == 'admin.candidatas_por_finalizar' %}active{% endif %}"
+               href="{{ url_for('admin.candidatas_por_finalizar') }}">
+              Por finalizar
+              {% if _candidatas_finalizar_badge_count|int > 0 %}
+              <span class="badge rounded-pill text-bg-danger ms-1">{{ _candidatas_finalizar_badge_count }}</span>
+              {% endif %}
+            </a>
           </li>
           {% endif %}
 

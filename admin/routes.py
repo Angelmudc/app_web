@@ -8,6 +8,7 @@ import json
 import hashlib
 import secrets
 import ipaddress
+from types import SimpleNamespace
 from contextlib import contextmanager
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime, date, timedelta
@@ -17156,6 +17157,405 @@ def _links_completar_por_faltantes(candidata_id: int, faltantes: list[str]) -> l
         }
     )
     return links
+
+
+_CANDIDATAS_FINALIZAR_BADGE_CACHE_KEY = "admin:candidatas:por_finalizar:badge:v1"
+_CANDIDATAS_FINALIZAR_BADGE_TTL_SEC_DEFAULT = 60
+_CANDIDATAS_FINALIZAR_URGENCIA_RANK = {"critica": 4, "alta": 3, "media": 2, "baja": 1}
+_CANDIDATAS_FINALIZAR_URGENCIA_BADGE = {
+    "critica": "text-bg-danger",
+    "alta": "text-bg-warning",
+    "media": "text-bg-info",
+    "baja": "text-bg-secondary",
+}
+_CANDIDATAS_FINALIZAR_LABELS = {
+    "entrevista": "Entrevista",
+    "referencias_laboral": "Ref laboral",
+    "referencias_familiares": "Ref familiar",
+    "depuracion": "Depuración",
+    "perfil": "Perfil",
+    "cedula1": "Cédula 1",
+    "cedula2": "Cédula 2",
+    "codigo": "Código interno",
+}
+
+
+def _candidatas_finalizar_badge_ttl_sec() -> int:
+    try:
+        raw = int(
+            (
+                os.getenv("ADMIN_CANDIDATAS_FINALIZAR_BADGE_TTL_SEC")
+                or str(_CANDIDATAS_FINALIZAR_BADGE_TTL_SEC_DEFAULT)
+            ).strip()
+        )
+    except Exception:
+        raw = _CANDIDATAS_FINALIZAR_BADGE_TTL_SEC_DEFAULT
+    return max(20, min(raw, 300))
+
+
+def _candidatas_finalizar_badge_cache_get() -> int | None:
+    if not _cache_ok():
+        return None
+    try:
+        raw = cache.get(_CANDIDATAS_FINALIZAR_BADGE_CACHE_KEY)
+        if raw is None:
+            return None
+        value = int(raw)
+        return value if value >= 0 else 0
+    except Exception:
+        return None
+
+
+def _candidatas_finalizar_badge_cache_set(value: int) -> None:
+    if not _cache_ok():
+        return
+    try:
+        cache.set(
+            _CANDIDATAS_FINALIZAR_BADGE_CACHE_KEY,
+            max(0, int(value or 0)),
+            timeout=_candidatas_finalizar_badge_ttl_sec(),
+        )
+    except Exception:
+        return
+
+
+def _dias_sin_avance(candidata, now_dt: datetime) -> int:
+    anchor = getattr(candidata, "fecha_cambio_estado", None) or getattr(candidata, "marca_temporal", None)
+    if not isinstance(anchor, datetime):
+        return 0
+    delta = now_dt - anchor
+    return max(0, int(delta.days))
+
+
+def _urgencia_finalizacion(*, faltantes: list[str], estado_inconsistente: bool, dias_sin_avance: int) -> str:
+    score = 0
+    faltantes_set = set(faltantes or [])
+    if estado_inconsistente:
+        score += 5
+    if "codigo" in faltantes_set:
+        score += 4
+    if "entrevista" in faltantes_set:
+        score += 3
+    if "referencias_laboral" in faltantes_set:
+        score += 2
+    if "referencias_familiares" in faltantes_set:
+        score += 2
+    if "cedula1" in faltantes_set:
+        score += 2
+    if "cedula2" in faltantes_set:
+        score += 2
+    if "depuracion" in faltantes_set:
+        score += 1
+    if "perfil" in faltantes_set:
+        score += 1
+
+    if dias_sin_avance >= 21:
+        score += 4
+    elif dias_sin_avance >= 14:
+        score += 3
+    elif dias_sin_avance >= 7:
+        score += 2
+    elif dias_sin_avance >= 3:
+        score += 1
+
+    # Escala actual: 0..26 puntos.
+    # Conserva la intención original (70/45/20) reescalada a esta base:
+    # crítica >= 18, alta >= 12, media >= 5.
+    if score >= 18:
+        return "critica"
+    if score >= 12:
+        return "alta"
+    if score >= 5:
+        return "media"
+    return "baja"
+
+
+def _siguiente_paso_finalizacion(
+    *,
+    candidata_id: int,
+    estado_actual: str,
+    faltantes: list[str],
+    ready_real: bool,
+    estado_inconsistente: bool,
+) -> dict:
+    faltantes_set = set(faltantes or [])
+    if estado_inconsistente or "codigo" in faltantes_set:
+        return {
+            "label": "revisar estado",
+            "accion_label": "Revisar estado",
+            "url": url_for("buscar_candidata", candidata_id=candidata_id),
+            "method": "get",
+        }
+    if "entrevista" in faltantes_set:
+        return {
+            "label": "completar entrevista",
+            "accion_label": "Completar entrevista",
+            "url": url_for("entrevistas_de_candidata", fila=candidata_id),
+            "method": "get",
+        }
+    if faltantes_set.intersection({"referencias_laboral", "referencias_familiares"}):
+        return {
+            "label": "verificar referencias",
+            "accion_label": "Verificar referencias",
+            "url": url_for("referencias", candidata=candidata_id),
+            "method": "get",
+        }
+    if "depuracion" in faltantes_set:
+        return {
+            "label": "subir depuración",
+            "accion_label": "Subir depuración",
+            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "method": "get",
+        }
+    if "perfil" in faltantes_set:
+        return {
+            "label": "subir perfil",
+            "accion_label": "Subir perfil",
+            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "method": "get",
+        }
+    if faltantes_set.intersection({"cedula1", "cedula2"}):
+        return {
+            "label": "subir cédulas",
+            "accion_label": "Subir cédulas",
+            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "method": "get",
+        }
+    if ready_real and estado_actual != "lista_para_trabajar":
+        return {
+            "label": "marcar lista para trabajar si ya cumple",
+            "accion_label": "Marcar lista",
+            "url": url_for("admin.marcar_candidata_lista_para_trabajar", candidata_id=candidata_id),
+            "method": "post",
+        }
+    return {
+        "label": "revisar estado",
+        "accion_label": "Revisar estado",
+        "url": url_for("buscar_candidata", candidata_id=candidata_id),
+        "method": "get",
+    }
+
+
+def _build_candidatas_por_finalizar_rows(q: str = "", *, count_only: bool = False) -> list[dict] | int:
+    q = (q or "").strip()[:128]
+    base = Candidata.query.options(
+        load_only(
+            Candidata.fila,
+            Candidata.nombre_completo,
+            Candidata.cedula,
+            Candidata.codigo,
+            Candidata.estado,
+            Candidata.entrevista,
+            Candidata.referencias_laboral,
+            Candidata.referencias_familiares,
+            Candidata.contactos_referencias_laborales,
+            Candidata.referencias_familiares_detalle,
+            Candidata.fecha_cambio_estado,
+            Candidata.marca_temporal,
+        )
+    ).filter(
+        Candidata.estado.notin_(["descalificada", "trabajando"]),
+    )
+    if q:
+        like = f"%{q}%"
+        base = base.filter(
+            or_(
+                Candidata.nombre_completo.ilike(like),
+                Candidata.cedula.ilike(like),
+                Candidata.codigo.ilike(like),
+            )
+        )
+
+    entrevistas_subq = (
+        db.session.query(
+            Entrevista.candidata_id.label("candidata_id"),
+            func.count(Entrevista.id).label("entrevistas_count"),
+        )
+        .group_by(Entrevista.candidata_id)
+        .subquery()
+    )
+
+    rows_query = (
+        base.outerjoin(entrevistas_subq, entrevistas_subq.c.candidata_id == Candidata.fila)
+        .add_columns(
+            func.coalesce(entrevistas_subq.c.entrevistas_count, 0).label("entrevistas_count"),
+            _blob_len_expr(Candidata.depuracion).label("depuracion_len"),
+            _blob_len_expr(Candidata.perfil).label("perfil_len"),
+            _blob_len_expr(Candidata.cedula1).label("cedula1_len"),
+            _blob_len_expr(Candidata.cedula2).label("cedula2_len"),
+        )
+    )
+    if not count_only:
+        rows_query = rows_query.order_by(Candidata.fila.desc())
+    rows_iter = rows_query.yield_per(200) if count_only else rows_query.all()
+
+    now_dt = utc_now_naive()
+    result: list[dict] = []
+    count_result = 0
+    for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows_iter:
+        falta_entrevista = not entrevista_ok(getattr(cand, "entrevista", None), entrevistas_count)
+        ref_lab_txt = getattr(cand, "contactos_referencias_laborales", None) or getattr(cand, "referencias_laboral", None)
+        ref_fam_txt = getattr(cand, "referencias_familiares_detalle", None) or getattr(cand, "referencias_familiares", None)
+        falta_ref_lab = not referencias_ok(ref_lab_txt)
+        falta_ref_fam = not referencias_ok(ref_fam_txt)
+        falta_depuracion = not binario_ok(dep_len)
+        falta_perfil = not binario_ok(perfil_len)
+        falta_cedula1 = not binario_ok(ced1_len)
+        falta_cedula2 = not binario_ok(ced2_len)
+        falta_codigo = not candidata_tiene_codigo_valido(getattr(cand, "codigo", None))
+
+        faltantes = []
+        if falta_entrevista:
+            faltantes.append("entrevista")
+        if falta_ref_lab:
+            faltantes.append("referencias_laboral")
+        if falta_ref_fam:
+            faltantes.append("referencias_familiares")
+        if falta_depuracion:
+            faltantes.append("depuracion")
+        if falta_perfil:
+            faltantes.append("perfil")
+        if falta_cedula1:
+            faltantes.append("cedula1")
+        if falta_cedula2:
+            faltantes.append("cedula2")
+        if falta_codigo:
+            faltantes.append("codigo")
+
+        ready_snapshot = SimpleNamespace(
+            estado=getattr(cand, "estado", None),
+            codigo=getattr(cand, "codigo", None),
+            entrevista=getattr(cand, "entrevista", None),
+            referencias_laboral=getattr(cand, "referencias_laboral", None),
+            referencias_familiares=getattr(cand, "referencias_familiares", None),
+            contactos_referencias_laborales=getattr(cand, "contactos_referencias_laborales", None),
+            referencias_familiares_detalle=getattr(cand, "referencias_familiares_detalle", None),
+            depuracion=int(dep_len or 0),
+            perfil=int(perfil_len or 0),
+            cedula1=int(ced1_len or 0),
+            cedula2=int(ced2_len or 0),
+            entrevistas_nuevas=SimpleNamespace(count=(lambda n=int(entrevistas_count or 0): n)),
+        )
+        ready_real, ready_reasons = candidata_is_ready_to_send(ready_snapshot)
+        estado_actual = (getattr(cand, "estado", None) or "").strip().lower()
+        estado_inconsistente = (
+            (ready_real and estado_actual != "lista_para_trabajar")
+            or ((not ready_real) and estado_actual == "lista_para_trabajar")
+        )
+        needs_action = bool(faltantes) or estado_inconsistente or (estado_actual != "lista_para_trabajar")
+        if not needs_action:
+            continue
+        if count_only:
+            count_result += 1
+            continue
+
+        dias = _dias_sin_avance(cand, now_dt)
+        urgencia = _urgencia_finalizacion(
+            faltantes=faltantes,
+            estado_inconsistente=estado_inconsistente,
+            dias_sin_avance=dias,
+        )
+        siguiente = _siguiente_paso_finalizacion(
+            candidata_id=int(cand.fila),
+            estado_actual=estado_actual,
+            faltantes=faltantes,
+            ready_real=ready_real,
+            estado_inconsistente=estado_inconsistente,
+        )
+        links = _links_completar_por_faltantes(int(cand.fila), faltantes)
+        if estado_actual != "lista_para_trabajar":
+            links.append(
+                {
+                    "label": "Revisar estado",
+                    "url": url_for("buscar_candidata", candidata_id=int(cand.fila)),
+                }
+            )
+
+        result.append(
+            {
+                "candidata": cand,
+                "estado_actual": estado_actual or "sin_estado",
+                "dias_sin_avance": dias,
+                "faltantes": faltantes,
+                "faltantes_labels": [_CANDIDATAS_FINALIZAR_LABELS.get(k, k) for k in faltantes],
+                "urgencia": urgencia,
+                "urgencia_badge": _CANDIDATAS_FINALIZAR_URGENCIA_BADGE.get(urgencia, "text-bg-secondary"),
+                "siguiente_paso": siguiente,
+                "links": links,
+                "ready_real": bool(ready_real),
+                "ready_reasons": list(ready_reasons or []),
+                "estado_inconsistente": bool(estado_inconsistente),
+            }
+        )
+
+    result.sort(
+        key=lambda r: (
+            -int(_CANDIDATAS_FINALIZAR_URGENCIA_RANK.get(r.get("urgencia"), 1)),
+            -int(r.get("dias_sin_avance") or 0),
+            -int(getattr(r.get("candidata"), "fila", 0) or 0),
+        )
+    )
+    if count_only:
+        return int(count_result)
+    return result
+
+
+def _candidatas_por_finalizar_badge_count() -> int:
+    cached = _candidatas_finalizar_badge_cache_get()
+    if cached is not None:
+        return max(0, int(cached))
+    try:
+        value = int(_build_candidatas_por_finalizar_rows(q="", count_only=True))
+    except Exception:
+        value = 0
+    _candidatas_finalizar_badge_cache_set(value)
+    return max(0, int(value))
+
+
+@admin_bp.app_template_global("candidatas_por_finalizar_badge_count")
+def candidatas_por_finalizar_badge_count() -> int:
+    if not has_request_context():
+        return 0
+    if not bool(getattr(current_user, "is_authenticated", False)):
+        return 0
+    role = (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+    if role not in {"owner", "admin", "secretaria"}:
+        return 0
+    return _candidatas_por_finalizar_badge_count()
+
+
+@admin_bp.route('/candidatas/por-finalizar', methods=['GET'])
+@login_required
+@staff_required
+def candidatas_por_finalizar():
+    q = (request.args.get("q") or "").strip()[:128]
+    urgencia = (request.args.get("urgencia") or "").strip().lower()
+    rows = _build_candidatas_por_finalizar_rows(q=q)
+    if urgencia in {"critica", "alta", "media", "baja"}:
+        rows = [r for r in rows if r.get("urgencia") == urgencia]
+
+    if not q and urgencia not in {"critica", "alta", "media", "baja"}:
+        _candidatas_finalizar_badge_cache_set(len(rows))
+
+    resumen = {
+        "total": len(rows),
+        "critica": sum(1 for r in rows if r.get("urgencia") == "critica"),
+        "alta": sum(1 for r in rows if r.get("urgencia") == "alta"),
+        "media": sum(1 for r in rows if r.get("urgencia") == "media"),
+        "baja": sum(1 for r in rows if r.get("urgencia") == "baja"),
+    }
+    return render_template(
+        "admin/candidatas_por_finalizar.html",
+        q=q,
+        urgencia=urgencia,
+        resumen=resumen,
+        rows=rows,
+        labels=_CANDIDATAS_FINALIZAR_LABELS,
+        next_url=request.full_path if request.query_string else request.path,
+    )
 
 
 @admin_bp.route('/candidatas/auditoria-completitud', methods=['GET'])
