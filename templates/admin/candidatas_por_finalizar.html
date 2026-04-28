@@ -2,58 +2,58 @@
 {% block title %}Candidatas por finalizar{% endblock %}
 
 {% block content %}
-<div class="container py-4">
-  <div class="d-flex justify-content-between align-items-start mb-3">
+<div class="container py-4 page-candidatas-finalizar">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
     <div>
       <h1 class="h4 mb-1">Candidatas por finalizar</h1>
-      <div class="text-muted small">
+      <div class="cpf-subtitle small">
         Tablero operativo calculado en tiempo real. No cambia estados automáticamente.
       </div>
     </div>
-    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary">Volver</a>
+    <a href="{{ url_for('home') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
   </div>
 
-  <div class="alert alert-light border py-2">
+  <div class="alert cpf-note py-2">
     <strong>Nota:</strong> Finalización administrativa no equivale a <code>lista_para_trabajar</code>.
     El paso a lista depende del readiness real.
   </div>
 
-  <div class="row g-2 mb-3">
-    <div class="col-md-3">
-      <div class="card card-body">
-        <div class="small text-muted">Total pendientes</div>
-        <div class="h4 mb-0">{{ resumen.total }}</div>
+  <div class="row g-2 mb-3 cpf-summary-grid">
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card card-body cpf-summary-card cpf-summary-total">
+        <div class="small cpf-summary-label">Total pendientes</div>
+        <div class="h3 mb-0 cpf-summary-value">{{ resumen.total }}</div>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card card-body border-danger">
-        <div class="small text-muted">Crítica</div>
-        <div class="h4 mb-0 text-danger-emphasis">{{ resumen.critica }}</div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card card-body cpf-summary-card cpf-summary-critica">
+        <div class="small cpf-summary-label">Crítica</div>
+        <div class="h3 mb-0 cpf-summary-value">{{ resumen.critica }}</div>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card card-body border-warning">
-        <div class="small text-muted">Alta</div>
-        <div class="h4 mb-0 text-warning-emphasis">{{ resumen.alta }}</div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card card-body cpf-summary-card cpf-summary-alta">
+        <div class="small cpf-summary-label">Alta</div>
+        <div class="h3 mb-0 cpf-summary-value">{{ resumen.alta }}</div>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card card-body border-info">
-        <div class="small text-muted">Media</div>
-        <div class="h4 mb-0 text-info-emphasis">{{ resumen.media }}</div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card card-body cpf-summary-card cpf-summary-media">
+        <div class="small cpf-summary-label">Media</div>
+        <div class="h3 mb-0 cpf-summary-value">{{ resumen.media }}</div>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card card-body border-secondary">
-        <div class="small text-muted">Baja</div>
-        <div class="h4 mb-0 text-secondary-emphasis">{{ resumen.baja }}</div>
+    <div class="col-6 col-md-4 col-xl">
+      <div class="card card-body cpf-summary-card cpf-summary-baja">
+        <div class="small cpf-summary-label">Baja</div>
+        <div class="h3 mb-0 cpf-summary-value">{{ resumen.baja }}</div>
       </div>
     </div>
   </div>
 
-  <form method="get" class="card card-body mb-3">
+  <form method="get" class="card card-body mb-3 cpf-filter-card">
     <div class="row g-2">
-      <div class="col-md-8">
+      <div class="col-lg-8">
         <label class="form-label mb-1">Buscar</label>
         <input
           type="text"
@@ -63,7 +63,7 @@
           placeholder="Nombre, cédula o código"
         >
       </div>
-      <div class="col-md-2">
+      <div class="col-sm-6 col-lg-2">
         <label class="form-label mb-1">Urgencia</label>
         <select name="urgencia" class="form-select">
           <option value="">Todas</option>
@@ -73,15 +73,15 @@
           <option value="baja" {% if urgencia == 'baja' %}selected{% endif %}>Baja</option>
         </select>
       </div>
-      <div class="col-md-2 d-flex align-items-end">
+      <div class="col-sm-6 col-lg-2 d-flex align-items-end">
         <button class="btn btn-primary w-100" type="submit">Aplicar</button>
       </div>
     </div>
   </form>
 
   {% if rows %}
-  <div class="table-responsive">
-    <table class="table table-hover align-middle">
+  <div class="table-responsive cpf-table-shell">
+    <table class="table table-hover align-middle cpf-table">
       <thead>
         <tr>
           <th>Candidata</th>
@@ -96,14 +96,15 @@
       <tbody>
         {% for row in rows %}
         {% set c = row.candidata %}
+        {% set _urg = (row.urgencia or 'baja')|lower %}
         <tr>
           <td>
-            <div><strong>{{ c.nombre_completo or ('Candidata #' ~ c.fila) }}</strong></div>
-            <div class="small text-muted">ID {{ c.fila }} · {{ c.cedula or 'sin cédula' }} · {{ c.codigo or 'sin código' }}</div>
+            <div><strong class="cpf-name">{{ c.nombre_completo or ('Candidata #' ~ c.fila) }}</strong></div>
+            <div class="small cpf-meta">ID {{ c.fila }} · {{ c.cedula or 'sin cédula' }} · {{ c.codigo or 'sin código' }}</div>
           </td>
           <td>
-            <span class="badge bg-secondary">{{ row.estado_actual|replace('_', ' ') }}</span>
-            <div class="small mt-1">
+            <span class="badge cpf-pill">{{ row.estado_actual|replace('_', ' ') }}</span>
+            <div class="small mt-1 cpf-ready">
               {% if row.ready_real %}
                 <span class="text-success">ready_real: sí</span>
               {% else %}
@@ -117,15 +118,15 @@
           <td>{{ row.dias_sin_avance }}</td>
           <td>
             {% if row.faltantes_labels %}
-              <div class="small text-danger-emphasis">{{ row.faltantes_labels|join(', ') }}</div>
+              <div class="small cpf-missing">{{ row.faltantes_labels|join(', ') }}</div>
             {% else %}
-              <span class="text-muted">Sin faltantes</span>
+              <span class="cpf-subtitle">Sin faltantes</span>
             {% endif %}
           </td>
-          <td><span class="badge {{ row.urgencia_badge }}">{{ row.urgencia|capitalize }}</span></td>
-          <td class="small">{{ row.siguiente_paso.label|capitalize }}</td>
+          <td><span class="badge cpf-urgency-badge cpf-urgency-{{ _urg }}">{{ row.urgencia|capitalize }}</span></td>
+          <td class="small cpf-step">{{ row.siguiente_paso.label|capitalize }}</td>
           <td>
-            <div class="d-flex flex-wrap gap-1">
+            <div class="d-flex flex-wrap gap-1 cpf-actions">
               {% if row.siguiente_paso.method == 'post' %}
               <form method="post" action="{{ row.siguiente_paso.url }}" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -136,7 +137,7 @@
               <a class="btn btn-sm btn-primary" href="{{ row.siguiente_paso.url }}">{{ row.siguiente_paso.accion_label }}</a>
               {% endif %}
               {% for link in row.links %}
-              <a class="btn btn-sm btn-outline-secondary" href="{{ link.url }}">{{ link.label }}</a>
+              <a class="btn btn-sm btn-outline-secondary cpf-btn-subtle" href="{{ link.url }}">{{ link.label }}</a>
               {% endfor %}
             </div>
           </td>
@@ -146,7 +147,7 @@
     </table>
   </div>
   {% else %}
-  <div class="alert alert-light border mb-0">
+  <div class="alert cpf-note mb-0">
     No hay candidatas pendientes por finalizar con los filtros actuales.
   </div>
   {% endif %}

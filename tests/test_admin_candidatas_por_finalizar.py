@@ -50,16 +50,21 @@ def test_admin_candidatas_por_finalizar_view_renders_operational_rows():
     assert "/entrevistas/candidata/101" in html
 
 
-def test_admin_home_shows_por_finalizar_badge_when_count_positive():
+def test_por_finalizar_island_hidden_on_home_and_visible_on_internal_staff_view():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
     assert _login(client, "Cruz", "8998").status_code in (302, 303)
 
     with patch("admin.routes._candidatas_por_finalizar_badge_count", return_value=5):
-        resp = client.get("/home", follow_redirects=False)
+        home = client.get("/home", follow_redirects=False)
+        internal = client.get("/registro_interno/", follow_redirects=False)
 
-    assert resp.status_code == 200
-    html = resp.get_data(as_text=True)
-    assert "Por finalizar" in html
-    assert ">5<" in html
+    assert home.status_code == 200
+    home_html = home.get_data(as_text=True)
+    assert "candidatas-finalizar-island" not in home_html
+
+    assert internal.status_code == 200
+    internal_html = internal.get_data(as_text=True)
+    assert "candidatas-finalizar-island" in internal_html
+    assert ">5<" in internal_html

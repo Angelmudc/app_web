@@ -187,6 +187,80 @@ footer{
 }
 .scroll-top.show{ display: inline-flex; align-items:center; justify-content:center; }
 
+/* Floating island — Candidatas por finalizar (staff only, render guarded in template) */
+.candidatas-finalizar-island{
+  position: fixed;
+  right: 16px;
+  bottom: 74px;
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 190, 232, .38);
+  background: linear-gradient(145deg, rgba(8, 14, 30, .88), rgba(14, 24, 48, .74));
+  backdrop-filter: blur(10px);
+  color: #eaf3ff;
+  box-shadow: 0 12px 30px rgba(3, 8, 20, .45);
+  text-decoration: none;
+}
+
+.candidatas-finalizar-island:hover{
+  color: #ffffff;
+  border-color: rgba(136, 201, 255, .65);
+  background: linear-gradient(145deg, rgba(11, 21, 42, .95), rgba(16, 30, 58, .82));
+}
+
+.candidatas-finalizar-island .cfi-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(110, 187, 255, .22);
+  color: #cde9ff;
+  border: 1px solid rgba(153, 214, 255, .42);
+}
+
+.candidatas-finalizar-island .cfi-label{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .92rem;
+}
+
+.candidatas-finalizar-island .cfi-count{
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 900;
+  background: rgba(255, 98, 134, .24);
+  color: #ffabc0;
+  border: 1px solid rgba(255, 151, 176, .46);
+}
+
+.candidatas-finalizar-island.is-active{
+  border-color: rgba(255, 151, 176, .52);
+}
+
+@media (max-width: 768px){
+  .candidatas-finalizar-island{
+    right: 12px;
+    left: 12px;
+    bottom: 70px;
+    justify-content: space-between;
+  }
+}
+
+:where(body.clientes, [data-portal="clientes"]) .candidatas-finalizar-island{
+  display: none !important;
+}
+
 /* Toast better */
 .toast{
   border: 1px solid var(--border) !important;

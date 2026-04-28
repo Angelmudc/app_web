@@ -263,3 +263,194 @@ html[data-theme="dark"] .page-login .form-control.auth{
   color: var(--text) !important;
   border-color: var(--border) !important;
 }
+
+/* ----------------------------------------------------------
+   PAGE — CANDIDATAS POR FINALIZAR
+   Contraste alto sobre fondo dark/glass
+   ---------------------------------------------------------- */
+
+.page-candidatas-finalizar{
+  --cpf-card-bg: rgba(8, 14, 30, .72);
+  --cpf-card-border: rgba(165, 183, 224, .22);
+  --cpf-text-main: #f5f9ff;
+  --cpf-text-soft: #b8c5e5;
+}
+
+.page-candidatas-finalizar .cpf-subtitle{
+  color: var(--cpf-text-soft);
+}
+
+.page-candidatas-finalizar .cpf-note{
+  border: 1px solid var(--cpf-card-border);
+  background: linear-gradient(140deg, rgba(12, 20, 42, .76), rgba(10, 18, 36, .58));
+  color: #d9e6ff;
+}
+
+.page-candidatas-finalizar .cpf-summary-card{
+  border: 1px solid var(--cpf-card-border);
+  background: linear-gradient(145deg, var(--cpf-card-bg), rgba(11, 18, 36, .55));
+  backdrop-filter: blur(10px);
+  position: relative;
+  overflow: hidden;
+}
+
+.page-candidatas-finalizar .cpf-summary-card::before{
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(170deg, rgba(255,255,255,.10), transparent 42%);
+}
+
+.page-candidatas-finalizar .cpf-summary-label{
+  color: #d7e2ff;
+  font-weight: 700;
+  letter-spacing: .2px;
+}
+
+.page-candidatas-finalizar .cpf-summary-value{
+  color: var(--cpf-text-main);
+  font-weight: 900;
+  text-shadow: 0 2px 12px rgba(0,0,0,.35);
+}
+
+.page-candidatas-finalizar .cpf-summary-total{
+  border-color: rgba(126, 196, 255, .45);
+  box-shadow: inset 0 0 0 1px rgba(126, 196, 255, .24);
+}
+.page-candidatas-finalizar .cpf-summary-total .cpf-summary-value{ color: #e9f3ff; }
+
+.page-candidatas-finalizar .cpf-summary-critica{
+  border-color: rgba(255, 103, 132, .52);
+  box-shadow: inset 0 0 0 1px rgba(255, 103, 132, .22);
+}
+.page-candidatas-finalizar .cpf-summary-critica .cpf-summary-value{ color: #ff8ea8; }
+
+.page-candidatas-finalizar .cpf-summary-alta{
+  border-color: rgba(255, 196, 77, .52);
+  box-shadow: inset 0 0 0 1px rgba(255, 196, 77, .20);
+}
+.page-candidatas-finalizar .cpf-summary-alta .cpf-summary-value{ color: #ffd780; }
+
+.page-candidatas-finalizar .cpf-summary-media{
+  border-color: rgba(99, 221, 255, .52);
+  box-shadow: inset 0 0 0 1px rgba(99, 221, 255, .20);
+}
+.page-candidatas-finalizar .cpf-summary-media .cpf-summary-value{ color: #8ce9ff; }
+
+.page-candidatas-finalizar .cpf-summary-baja{
+  border-color: rgba(96, 224, 153, .52);
+  box-shadow: inset 0 0 0 1px rgba(96, 224, 153, .20);
+}
+.page-candidatas-finalizar .cpf-summary-baja .cpf-summary-value{ color: #9bf0bd; }
+
+.page-candidatas-finalizar .cpf-filter-card{
+  border: 1px solid var(--cpf-card-border);
+  background: linear-gradient(145deg, rgba(10, 16, 34, .74), rgba(12, 22, 44, .56));
+}
+
+.page-candidatas-finalizar .cpf-table-shell{
+  border: 1px solid var(--cpf-card-border);
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(8, 14, 30, .75), rgba(10, 18, 36, .56));
+}
+
+.page-candidatas-finalizar .cpf-table{
+  margin-bottom: 0;
+}
+
+.page-candidatas-finalizar .cpf-table thead th{
+  background: rgba(12, 20, 42, .86);
+  color: #deebff !important;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.page-candidatas-finalizar .cpf-table tbody tr{
+  background: rgba(6, 11, 24, .35);
+}
+
+.page-candidatas-finalizar .cpf-table tbody tr:hover{
+  background: rgba(27, 44, 83, .38);
+}
+
+.page-candidatas-finalizar .cpf-name{
+  color: #f3f8ff;
+}
+
+.page-candidatas-finalizar .cpf-meta{
+  color: #a9b9dc;
+}
+
+.page-candidatas-finalizar .cpf-ready{
+  color: #b8c7e9;
+}
+
+.page-candidatas-finalizar .cpf-step{
+  color: #d8e7ff;
+}
+
+.page-candidatas-finalizar .cpf-pill{
+  background: rgba(97, 124, 177, .28) !important;
+  border: 1px solid rgba(152, 176, 224, .34);
+  color: #e7f0ff !important;
+}
+
+.page-candidatas-finalizar .cpf-missing{
+  color: #ffc8d4;
+}
+
+.page-candidatas-finalizar .cpf-urgency-badge{
+  border: 1px solid transparent;
+  font-weight: 800;
+  letter-spacing: .2px;
+}
+
+.page-candidatas-finalizar .cpf-urgency-critica{
+  background: rgba(186, 28, 70, .28) !important;
+  border-color: rgba(255, 120, 152, .52);
+  color: #ff9cb7 !important;
+}
+
+.page-candidatas-finalizar .cpf-urgency-alta{
+  background: rgba(168, 104, 0, .28) !important;
+  border-color: rgba(255, 201, 106, .52);
+  color: #ffd88b !important;
+}
+
+.page-candidatas-finalizar .cpf-urgency-media{
+  background: rgba(0, 117, 150, .28) !important;
+  border-color: rgba(122, 234, 255, .52);
+  color: #a2f0ff !important;
+}
+
+.page-candidatas-finalizar .cpf-urgency-baja{
+  background: rgba(16, 112, 66, .26) !important;
+  border-color: rgba(124, 235, 171, .50);
+  color: #aaf2ca !important;
+}
+
+.page-candidatas-finalizar .cpf-btn-subtle{
+  border-color: rgba(158, 179, 221, .42) !important;
+  color: #dbe8ff !important;
+  background: rgba(10, 18, 34, .38) !important;
+}
+
+.page-candidatas-finalizar .cpf-btn-subtle:hover{
+  background: rgba(36, 56, 102, .44) !important;
+}
+
+@media (max-width: 992px){
+  .page-candidatas-finalizar .cpf-table{
+    min-width: 1080px;
+  }
+}
+
+@media (max-width: 768px){
+  .page-candidatas-finalizar .cpf-summary-value{
+    font-size: 1.5rem;
+  }
+  .page-candidatas-finalizar .cpf-actions{
+    min-width: 280px;
+  }
+}

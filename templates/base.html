@@ -154,8 +154,29 @@
 {% endif %}
 {% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
 {% set _chat_badge_enabled = _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
-{% set _candidatas_finalizar_badge_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_por_finalizar') %}
-{% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_badge_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
+{% set _candidatas_finalizar_internal_surface = (
+  _presence_path.startswith('/admin/')
+  or _presence_path.startswith('/buscar')
+  or _presence_path.startswith('/inscripcion')
+  or _presence_path.startswith('/porciento')
+  or _presence_path.startswith('/pagos')
+  or _presence_path.startswith('/referencias')
+  or _presence_path.startswith('/entrevista')
+  or _presence_path.startswith('/subir_fotos')
+  or _presence_path.startswith('/registro_interno')
+) %}
+{% set _candidatas_finalizar_excluded_surface = (
+  _presence_path.startswith('/clientes/')
+  or _presence_path == '/clientes'
+  or _presence_path.startswith('/cliente/')
+  or _presence_path.startswith('/admin/login')
+  or _presence_path.startswith('/admin/mfa/')
+  or _presence_path == '/'
+  or _presence_path.startswith('/home')
+  or request.endpoint in ['home', 'admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel']
+) %}
+{% set _candidatas_finalizar_island_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_por_finalizar') and _candidatas_finalizar_internal_surface and (not _candidatas_finalizar_excluded_surface) %}
+{% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -284,18 +305,6 @@
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
                href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.candidatas_por_finalizar') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint == 'admin.candidatas_por_finalizar' %}active{% endif %}"
-               href="{{ url_for('admin.candidatas_por_finalizar') }}">
-              Por finalizar
-              {% if _candidatas_finalizar_badge_count|int > 0 %}
-              <span class="badge rounded-pill text-bg-danger ms-1">{{ _candidatas_finalizar_badge_count }}</span>
-              {% endif %}
-            </a>
           </li>
           {% endif %}
 
@@ -453,6 +462,16 @@
       {% block content %}{% endblock %}
     </div>
   </main>
+
+  {% if _candidatas_finalizar_island_enabled %}
+  <a class="candidatas-finalizar-island {% if request.endpoint == 'admin.candidatas_por_finalizar' %}is-active{% endif %}"
+     href="{{ url_for('admin.candidatas_por_finalizar') }}"
+     aria-label="Abrir candidatas por finalizar">
+    <span class="cfi-icon" aria-hidden="true"><i class="fa-solid fa-clipboard-list"></i></span>
+    <span class="cfi-label">Por finalizar</span>
+    <span class="cfi-count">{{ _candidatas_finalizar_badge_count|int }}</span>
+  </a>
+  {% endif %}
 
   <footer class="text-center">
     <div class="container d-flex justify-content-between flex-wrap gap-2">
