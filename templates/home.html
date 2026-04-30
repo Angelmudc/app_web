@@ -50,8 +50,49 @@
     <i class="fa-solid fa-clipboard-list me-2 text-primary"></i> Panel Principal
   </h1>
 
-  {% set _role = (current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) %}
-  {% if _role in ['owner', 'admin', 'secretaria'] %}
+  {% set _role = ((current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) or '')|string|lower %}
+  {% if _role in ['secretary', 'secre', 'secretaría'] %}
+    {% set _role = 'secretaria' %}
+  {% endif %}
+  {% set _home_internal_staff = current_user.is_authenticated and (_role in ['owner', 'admin', 'secretaria']) %}
+  {% if _home_internal_staff %}
+  <div class="mb-5">
+    <h2 class="section-title">
+      <i class="fa-solid fa-bolt me-2 text-primary"></i> Trabajo operativo
+    </h2>
+    <div class="row row-cols-1 row-cols-md-2 g-4">
+      {% set _por_finalizar_url = (url_for_safe('admin.candidatas_por_finalizar') or '/admin/candidatas/por-finalizar') %}
+      {% set _seg_cola_url = (url_for_safe('admin.seguimiento_candidatas_cola') or '/admin/seguimiento-candidatas/cola') %}
+      {% set _finalizar_count = (candidatas_por_finalizar_badge_count() if (candidatas_por_finalizar_badge_count is defined) else 0) %}
+      {% set _seg_count = (seguimiento_candidatas_badge_count() if (seguimiento_candidatas_badge_count is defined) else 0) %}
+
+      <div class="col">
+        <div class="dashboard-card dashboard-card-operativa h-100">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 class="mb-1">Candidatas por finalizar</h5>
+            <span class="badge text-bg-danger fs-6">{{ _finalizar_count|int }}</span>
+          </div>
+          <p class="mb-3">Candidatas con pasos pendientes para quedar listas.</p>
+          <a href="{{ _por_finalizar_url }}" class="btn btn-primary w-100">Ver por finalizar</a>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="dashboard-card dashboard-card-operativa h-100">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 class="mb-1">Seguimiento candidatas</h5>
+            <span class="badge text-bg-danger fs-6">{{ _seg_count|int }}</span>
+          </div>
+          <p class="mb-3">Casos abiertos de candidatas interesadas en empleo.</p>
+          <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ _seg_cola_url }}" class="btn btn-primary flex-fill">Abrir seguimiento</a>
+            <button type="button" class="btn btn-outline-light flex-fill" id="homeSegOpenPanelBtn">Abrir panel rápido</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="mb-5">
     <h2 class="section-title">
       <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
@@ -162,7 +203,7 @@
     </div>
   {% endfor %}
 
-  {% if _role in ['owner', 'admin', 'secretaria'] %}
+  {% if _home_internal_staff %}
     <div class="mb-5">
       <h2 class="section-title">
         <i class="fa-solid fa-clipboard-check me-2 text-primary"></i> Auditoría Staff
@@ -334,6 +375,22 @@
     box-shadow:0 4px 18px rgba(0,0,0,.07);
     transition:.35s;
   }
+  .dashboard-card-operativa{
+    background:linear-gradient(145deg, rgba(10, 23, 42, .96), rgba(18, 37, 64, .92));
+    border:1px solid rgba(140, 202, 255, .3);
+    color:#eaf4ff;
+    box-shadow:0 10px 26px rgba(4, 10, 21, .28);
+  }
+  .dashboard-card-operativa h5{ color:#f5f9ff; }
+  .dashboard-card-operativa p{ color:#c5d9ee; }
+  .dashboard-card-operativa .btn-outline-light{
+    border-color:rgba(184, 222, 255, .55);
+    color:#ecf6ff;
+  }
+  .dashboard-card-operativa .btn-outline-light:hover{
+    background:rgba(170, 220, 255, .15);
+    color:#fff;
+  }
 
   .dashboard-card:hover {
     transform:translateY(-6px);
@@ -414,6 +471,19 @@
     to {opacity:1; transform:translateY(0)}
   }
 </style>
+
+{% if _home_internal_staff %}
+<script>
+  (function () {
+    const btn = document.getElementById("homeSegOpenPanelBtn");
+    const island = document.getElementById("segCandidatasIslandBtn");
+    if (!btn || !island) return;
+    btn.addEventListener("click", function () {
+      island.click();
+    });
+  })();
+</script>
+{% endif %}
 {% endblock %}
 {% block scripts %}
   {{ super() }}
