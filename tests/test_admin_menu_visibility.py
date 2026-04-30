@@ -88,6 +88,11 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
         assert 'property="og:image"' in link_html
         assert 'name="twitter:card"' in link_html
         assert 'domestica-preview.png' in link_html
+        assert "Este es el formulario de Doméstica del Cibao" in link_html
+        assert "para registrar tu solicitud." in link_html
+        assert "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor." in link_html
+        assert "Cuando lo completes, envíame tu nombre y dime que ya terminaste." in link_html
+        assert "Hola, gracias por comunicarte con Doméstica del Cibao A&D." not in link_html
 
 
 def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_matches():
@@ -110,6 +115,11 @@ def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_ma
     assert "Enlace legado (compatibilidad)" not in html
     assert 'id="linkPublico"' in html
     assert "navigator.clipboard.writeText(value)" in html
+    assert "Este es el formulario de Doméstica del Cibao" in html
+    assert "para registrar tu solicitud." in html
+    assert "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor." in html
+    assert "Cuando lo completes, envíame tu nombre y dime que ya terminaste." in html
+    assert "Hola, gracias por comunicarte con Doméstica del Cibao A&D." not in html
 
 
 def test_admin_owner_json_link_publico_usa_public_base_url_y_no_localhost():

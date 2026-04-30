@@ -517,14 +517,17 @@ def test_isla_copiar_formulario_cliente_visible_solo_owner_admin():
 
     html_owner = _render_base_as("/admin/solicitudes", role="owner", authenticated=True)
     assert 'id="clientPublicMessageIslandBtn"' in html_owner
+    assert "js/core/client_public_form_message.js" in html_owner
     assert "js/core/client_public_message_island.js" in html_owner
 
     html_admin = _render_base_as("/admin/solicitudes", role="admin", authenticated=True)
     assert 'id="clientPublicMessageIslandBtn"' in html_admin
+    assert "js/core/client_public_form_message.js" in html_admin
     assert "js/core/client_public_message_island.js" in html_admin
 
     html_secretaria = _render_base_as("/admin/solicitudes", role="secretaria", authenticated=True)
     assert 'id="clientPublicMessageIslandBtn"' not in html_secretaria
+    assert "js/core/client_public_form_message.js" not in html_secretaria
     assert "js/core/client_public_message_island.js" not in html_secretaria
 
 
@@ -537,3 +540,8 @@ def test_js_isla_copiar_formulario_cliente_tiene_bloqueo_anti_doble_click():
     assert "Generando enlace..." in js
     assert "Mensaje copiado" in js
     assert "No se pudo copiar" in js
+    helper_js = Path("static/js/core/client_public_form_message.js").read_text(encoding="utf-8", errors="ignore")
+    assert "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud." in helper_js
+    assert "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor." in helper_js
+    assert "Cuando lo completes, envíame tu nombre y dime que ya terminaste." in helper_js
+    assert "Hola, gracias por comunicarte con Doméstica del Cibao A&D." not in helper_js

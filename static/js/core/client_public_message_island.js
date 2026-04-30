@@ -65,18 +65,6 @@
     return !!ok;
   }
 
-  function buildProfessionalMessage(link) {
-    return [
-      "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud.",
-      "",
-      "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.",
-      "",
-      link,
-      "",
-      "Cuando lo completes, envíame tu nombre y dime que ya terminaste."
-    ].join("\n");
-  }
-
   async function handleCopyClick() {
     if (inFlight) return;
     if (Date.now() < cooldownUntilMs) return;
@@ -104,7 +92,19 @@
         throw new Error("link-generation-failed");
       }
 
-      var message = buildProfessionalMessage(String(payload.link_publico));
+      var messageBuilder = window.buildClientPublicFormMessage;
+      var linkPublico = String(payload.link_publico || "");
+      var message = typeof messageBuilder === "function"
+        ? messageBuilder(linkPublico)
+        : [
+            "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud.",
+            "",
+            "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.",
+            "",
+            linkPublico,
+            "",
+            "Cuando lo completes, envíame tu nombre y dime que ya terminaste."
+          ].join("\n");
       var copied = await copyTextSafe(message);
       if (!copied) {
         throw new Error("copy-failed");
