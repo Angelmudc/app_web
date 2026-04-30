@@ -1,0 +1,17 @@
+<div class="card mt-3">
+  <div class="card-header">Timeline</div>
+  <div class="card-body">
+    {% if eventos %}
+      <div class="d-flex flex-column gap-2">
+        {% for ev in eventos %}
+          <div class="border rounded p-2">
+            <div class="small text-muted">{{ ev.created_at|rd_datetime('%Y-%m-%d %H:%M') }} · {{ ev.event_type }}</div>
+            {% if ev.note %}<div>{{ ev.note }}</div>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-muted">Sin eventos todavía.</div>
+    {% endif %}
+  </div>
+</div>

@@ -118,6 +118,7 @@
 {% if _staff_role in ['secretary', 'secre', 'secretaría'] %}
   {% set _staff_role = 'secretaria' %}
 {% endif %}
+{% set _staff_username = (current_user.username if current_user.is_authenticated and current_user.username is defined else '')|string %}
 {% set _presence_auth_endpoints = ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel'] %}
 {% set _presence_path = request.path or '' %}
 {% set _ui_path = _presence_path %}
@@ -154,29 +155,23 @@
 {% endif %}
 {% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
 {% set _chat_badge_enabled = _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
-{% set _candidatas_finalizar_internal_surface = (
-  _presence_path.startswith('/admin/')
-  or _presence_path.startswith('/buscar')
-  or _presence_path.startswith('/inscripcion')
-  or _presence_path.startswith('/porciento')
-  or _presence_path.startswith('/pagos')
-  or _presence_path.startswith('/referencias')
-  or _presence_path.startswith('/entrevista')
-  or _presence_path.startswith('/subir_fotos')
-  or _presence_path.startswith('/registro_interno')
-) %}
-{% set _candidatas_finalizar_excluded_surface = (
+{% set is_internal_surface = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and not (
   _presence_path.startswith('/clientes/')
   or _presence_path == '/clientes'
   or _presence_path.startswith('/cliente/')
+  or _presence_path == '/cliente'
+  or _presence_path.startswith('/login')
   or _presence_path.startswith('/admin/login')
+  or _presence_path.startswith('/mfa')
   or _presence_path.startswith('/admin/mfa/')
   or _presence_path == '/'
   or _presence_path.startswith('/home')
   or request.endpoint in ['home', 'admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel']
 ) %}
-{% set _candidatas_finalizar_island_enabled = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_por_finalizar') and _candidatas_finalizar_internal_surface and (not _candidatas_finalizar_excluded_surface) %}
+{% set _candidatas_finalizar_island_enabled = is_internal_surface and has_endpoint('admin.candidatas_por_finalizar') %}
 {% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
+{% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
+{% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -193,6 +188,11 @@
       data-chat-global-inbox-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_inbox') }}{% endif %}"
       data-chat-global-stream-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_stream') %}{{ url_for('admin.live_invalidation_stream') }}{% endif %}"
       data-chat-global-poll-url="{% if _chat_badge_enabled and has_endpoint('admin.live_invalidation_poll') %}{{ url_for('admin.live_invalidation_poll') }}{% endif %}"
+      data-seg-candidatas-island-enabled="{% if _seg_candidatas_island_enabled %}1{% else %}0{% endif %}"
+      data-seg-candidatas-badge-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_badge_json') %}{{ url_for('admin.seguimiento_candidatas_badge_json') }}{% endif %}"
+      data-seg-candidatas-queue-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola_json') %}{{ url_for('admin.seguimiento_candidatas_cola_json') }}{% endif %}"
+      data-seg-candidatas-full-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola') %}{{ url_for('admin.seguimiento_candidatas_cola') }}{% endif %}"
+      data-staff-username="{{ _staff_username }}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
       data-lazy-script-live-refresh="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/core/live-refresh.js') }}{% endif %}"
       data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
@@ -318,6 +318,18 @@
                     class="badge rounded-pill text-bg-danger ms-1 d-none"
                     aria-live="polite"
                     aria-label="Conversaciones pendientes de staff">0</span>
+            </a>
+          </li>
+          {% endif %}
+
+          {% if has_endpoint('admin.seguimiento_candidatas_cola') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}active{% endif %}"
+               href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
+              Seguimiento
+              {% if _seg_candidatas_badge_count|int > 0 %}
+                <span class="badge rounded-pill text-bg-danger ms-1">{{ _seg_candidatas_badge_count|int }}</span>
+              {% endif %}
             </a>
           </li>
           {% endif %}
@@ -472,6 +484,53 @@
     <span class="cfi-count">{{ _candidatas_finalizar_badge_count|int }}</span>
   </a>
   {% endif %}
+  {% if _seg_candidatas_island_enabled %}
+  <button class="seg-candidatas-island {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}is-active{% endif %}"
+          type="button"
+          id="segCandidatasIslandBtn"
+          aria-label="Abrir seguimiento de candidatas"
+          aria-controls="segCandidatasDrawer"
+          aria-expanded="false">
+    <span class="sci-icon" aria-hidden="true"><i class="fa-solid fa-user-clock"></i></span>
+    <span class="sci-label">Seguimiento</span>
+    <span class="sci-count" id="segCandidatasIslandCount">{{ _seg_candidatas_badge_count|int }}</span>
+  </button>
+
+  <div class="seg-candidatas-backdrop" id="segCandidatasBackdrop" hidden></div>
+  <aside class="seg-candidatas-drawer"
+         id="segCandidatasDrawer"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="segCandidatasDrawerTitle"
+         hidden>
+    <div class="seg-drawer-head">
+      <h2 class="seg-drawer-title" id="segCandidatasDrawerTitle">Seguimiento candidatas</h2>
+      <button type="button" class="btn btn-outline-secondary btn-sm" id="segCandidatasCloseBtn" aria-label="Cerrar panel">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="seg-drawer-body" id="segCandidatasDrawerBody">
+      <div class="seg-loading" id="segCandidatasLoading">
+        <div class="seg-skeleton seg-skeleton-lg"></div>
+        <div class="seg-skeleton"></div>
+        <div class="seg-skeleton"></div>
+        <div class="seg-skeleton"></div>
+      </div>
+      <div id="segCandidatasError" class="alert alert-danger d-none" role="alert"></div>
+      <div id="segCandidatasContent" class="d-none">
+        <div class="seg-kpis" id="segCandidatasKpis"></div>
+        <div class="seg-list-wrap">
+          <div class="seg-list-title">Casos críticos</div>
+          <div id="segCandidatasCriticalList"></div>
+        </div>
+      </div>
+    </div>
+    <div class="seg-drawer-foot">
+      <a class="btn btn-primary btn-sm" id="segCandidatasFullBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Ver cola completa</a>
+      <a class="btn btn-outline-secondary btn-sm" id="segCandidatasQuickCreateBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Crear caso rapido</a>
+    </div>
+  </aside>
+  {% endif %}
 
   <footer class="text-center">
     <div class="container d-flex justify-content-between flex-wrap gap-2">
@@ -538,6 +597,9 @@
   {% endif %}
   {% if _presence_enabled %}
   <script src="{{ url_for('static', filename='js/core/control_room_presence.js') }}" defer></script>
+  {% endif %}
+  {% if _seg_candidatas_island_enabled %}
+  <script src="{{ url_for('static', filename='js/core/seguimiento_candidatas_island.js') }}" defer></script>
   {% endif %}
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>

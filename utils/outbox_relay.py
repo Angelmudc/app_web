@@ -34,6 +34,10 @@ OUTBOX_RELAY_ALLOWED_EVENT_TYPES = {
     "CHAT_CONVERSATION_STATUS_CHANGED",
     "CHAT_CONVERSATION_ASSIGNED",
     "CHAT_CONVERSATION_TYPING",
+    "staff.case_tracking.created",
+    "staff.case_tracking.updated",
+    "staff.case_tracking.taken",
+    "staff.case_tracking.closed",
 }
 
 _INTERNAL_CONSUMER_NAME = "internal_operational_notifications_v1"

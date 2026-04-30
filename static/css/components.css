@@ -191,7 +191,7 @@ footer{
 .candidatas-finalizar-island{
   position: fixed;
   right: 16px;
-  bottom: 74px;
+  bottom: 132px;
   z-index: 1100;
   display: inline-flex;
   align-items: center;
@@ -252,12 +252,211 @@ footer{
   .candidatas-finalizar-island{
     right: 12px;
     left: 12px;
-    bottom: 70px;
+    bottom: 122px;
     justify-content: space-between;
   }
 }
 
 :where(body.clientes, [data-portal="clientes"]) .candidatas-finalizar-island{
+  display: none !important;
+}
+
+/* Floating island + drawer — Seguimiento candidatas */
+.seg-candidatas-island{
+  position: fixed;
+  right: 16px;
+  bottom: 74px;
+  z-index: 1110;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 201, 255, .44);
+  background: linear-gradient(145deg, rgba(8, 14, 30, .88), rgba(12, 28, 52, .76));
+  backdrop-filter: blur(10px);
+  color: #eaf3ff;
+  box-shadow: 0 12px 30px rgba(3, 8, 20, .45);
+}
+.seg-candidatas-island:hover{
+  color: #fff;
+  border-color: rgba(124, 220, 255, .7);
+}
+.seg-candidatas-island .sci-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(93, 200, 255, .24);
+  color: #cbebff;
+  border: 1px solid rgba(152, 227, 255, .5);
+}
+.seg-candidatas-island .sci-label{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .92rem;
+}
+.seg-candidatas-island .sci-count{
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 900;
+  background: rgba(255, 106, 106, .24);
+  color: #ffb5b5;
+  border: 1px solid rgba(255, 158, 158, .42);
+}
+.seg-candidatas-island.is-active{
+  border-color: rgba(124, 220, 255, .7);
+}
+
+.seg-candidatas-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 7, 16, .48);
+  z-index: 1188;
+}
+.seg-drawer-open{
+  overflow: hidden;
+}
+
+.seg-candidatas-drawer{
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(460px, 96vw);
+  height: 100vh;
+  z-index: 1189;
+  border-left: 1px solid rgba(144, 201, 255, .3);
+  background: linear-gradient(180deg, rgba(10, 19, 36, .96), rgba(9, 21, 37, .96));
+  color: #e7f3ff;
+  box-shadow: -12px 0 34px rgba(3, 9, 19, .5);
+  display: flex;
+  flex-direction: column;
+}
+.seg-drawer-head,
+.seg-drawer-foot{
+  padding: 12px 14px;
+  border-color: rgba(142, 181, 226, .24);
+}
+.seg-drawer-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(142, 181, 226, .24);
+}
+.seg-drawer-title{
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.seg-drawer-body{
+  padding: 12px 14px;
+  overflow: auto;
+  flex: 1;
+}
+.seg-drawer-foot{
+  border-top: 1px solid rgba(142, 181, 226, .24);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.seg-kpis{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.seg-kpi{
+  border: 1px solid rgba(144, 201, 255, .24);
+  background: rgba(16, 33, 58, .6);
+  border-radius: 12px;
+  padding: 10px;
+}
+.seg-kpi-label{
+  color: #b6cfe8;
+  font-size: .78rem;
+}
+.seg-kpi-value{
+  font-size: 1.08rem;
+  font-weight: 900;
+  color: #fff;
+}
+.seg-list-wrap{
+  margin-top: 12px;
+}
+.seg-list-title{
+  font-size: .86rem;
+  color: #b6cfe8;
+  margin-bottom: 8px;
+}
+.seg-case{
+  border: 1px solid rgba(144, 201, 255, .2);
+  background: rgba(18, 33, 57, .56);
+  border-radius: 12px;
+  padding: 9px;
+  margin-bottom: 8px;
+}
+.seg-case-top{
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.seg-case-name{
+  font-weight: 700;
+  color: #f3f9ff;
+}
+.seg-case-due{
+  color: #ffc8c8;
+  font-size: .8rem;
+}
+.seg-case-meta{
+  font-size: .82rem;
+  color: #b7cde3;
+}
+.seg-loading{
+  display: grid;
+  gap: 8px;
+}
+.seg-skeleton{
+  height: 16px;
+  border-radius: 10px;
+  background: linear-gradient(100deg, rgba(133, 169, 209, .2) 30%, rgba(185, 213, 240, .34) 45%, rgba(133, 169, 209, .2) 60%);
+  background-size: 220% 100%;
+  animation: segSkeleton 1.2s linear infinite;
+}
+.seg-skeleton-lg{ height: 56px; }
+@keyframes segSkeleton{
+  to { background-position-x: -220%; }
+}
+
+@media (max-width: 768px){
+  .seg-candidatas-island{
+    right: 12px;
+    left: 12px;
+    bottom: 68px;
+    justify-content: space-between;
+  }
+  .seg-candidatas-drawer{
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100vw;
+    height: 82vh;
+    border-left: none;
+    border-top: 1px solid rgba(144, 201, 255, .3);
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-island,
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-drawer,
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-backdrop{
   display: none !important;
 }
 

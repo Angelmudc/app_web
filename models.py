@@ -1494,6 +1494,120 @@ class LlamadaCandidata(db.Model):
     candidata = db.relationship('Candidata', back_populates='llamadas')
 
 
+class SeguimientoCandidataCaso(db.Model):
+    __tablename__ = "seguimiento_candidatas_casos"
+    __table_args__ = (
+        db.UniqueConstraint("public_id", name="uq_seg_caso_public_id"),
+        db.Index("ix_seg_caso_estado_due_at", "estado", "due_at"),
+        db.Index("ix_seg_caso_owner_estado", "owner_staff_user_id", "estado"),
+        db.Index("ix_seg_caso_last_movement_at_desc", "last_movement_at"),
+        CheckConstraint(
+            "estado IN ('nuevo','en_gestion','esperando_candidata','esperando_staff','programado','listo_para_enviar','enviado','cerrado_exitoso','cerrado_no_exitoso','duplicado')",
+            name="ck_seg_caso_estado",
+        ),
+        CheckConstraint(
+            "prioridad IN ('baja','normal','alta','urgente')",
+            name="ck_seg_caso_prioridad",
+        ),
+        CheckConstraint(
+            "canal_origen IN ('llamada','whatsapp','chat','presencial','referida','otro')",
+            name="ck_seg_caso_canal_origen",
+        ),
+        CheckConstraint(
+            "NOT (candidata_id IS NULL AND contacto_id IS NULL)",
+            name="ck_seg_caso_identity_present",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    public_id = db.Column(db.String(40), nullable=False, unique=True, index=True)
+
+    candidata_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila", ondelete="SET NULL"), nullable=True, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id", ondelete="SET NULL"), nullable=True, index=True)
+    contacto_id = db.Column(db.Integer, db.ForeignKey("seguimiento_candidatas_contactos.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    nombre_contacto = db.Column(db.String(200), nullable=True)
+    telefono_norm = db.Column(db.String(32), nullable=True, index=True)
+    canal_origen = db.Column(db.String(20), nullable=False, default="otro", server_default=text("'otro'"), index=True)
+    estado = db.Column(db.String(30), nullable=False, default="nuevo", server_default=text("'nuevo'"), index=True)
+    prioridad = db.Column(db.String(20), nullable=False, default="normal", server_default=text("'normal'"), index=True)
+
+    owner_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=False, index=True)
+    taken_at = db.Column(db.DateTime, nullable=True)
+
+    proxima_accion_tipo = db.Column(db.String(40), nullable=True)
+    proxima_accion_detalle = db.Column(db.String(300), nullable=True)
+    due_at = db.Column(db.DateTime, nullable=True, index=True)
+    waiting_since_at = db.Column(db.DateTime, nullable=True, index=True)
+    status_changed_at = db.Column(db.DateTime, nullable=True)
+    last_inbound_at = db.Column(db.DateTime, nullable=True)
+    last_outbound_at = db.Column(db.DateTime, nullable=True)
+    last_movement_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    closed_at = db.Column(db.DateTime, nullable=True, index=True)
+    closed_by_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    close_reason = db.Column(db.String(255), nullable=True)
+
+    merge_into_case_id = db.Column(db.Integer, db.ForeignKey("seguimiento_candidatas_casos.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_merged = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+
+    row_version = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    candidata = db.relationship("Candidata", lazy="select")
+    solicitud = db.relationship("Solicitud", lazy="select")
+    contacto = db.relationship("SeguimientoCandidataContacto", lazy="select")
+    owner_staff_user = db.relationship("StaffUser", foreign_keys=[owner_staff_user_id], lazy="select")
+    created_by_staff_user = db.relationship("StaffUser", foreign_keys=[created_by_staff_user_id], lazy="select")
+    closed_by_staff_user = db.relationship("StaffUser", foreign_keys=[closed_by_staff_user_id], lazy="select")
+    merged_into_case = db.relationship("SeguimientoCandidataCaso", remote_side=[id], lazy="select")
+    eventos = db.relationship(
+        "SeguimientoCandidataEvento",
+        back_populates="caso",
+        lazy="dynamic",
+        cascade="all, delete-orphan",
+    )
+
+    __mapper_args__ = {"version_id_col": row_version}
+
+
+class SeguimientoCandidataContacto(db.Model):
+    __tablename__ = "seguimiento_candidatas_contactos"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    telefono_norm = db.Column(db.String(32), nullable=True, index=True)
+    nombre_reportado = db.Column(db.String(200), nullable=True)
+    canal_preferido = db.Column(db.String(20), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+
+class SeguimientoCandidataEvento(db.Model):
+    __tablename__ = "seguimiento_candidatas_eventos"
+    __table_args__ = (
+        db.Index("ix_seg_evento_caso_created", "caso_id", "created_at"),
+    )
+
+    id = db.Column(db.BigInteger, primary_key=True, autoincrement=True)
+    caso_id = db.Column(
+        db.Integer,
+        db.ForeignKey("seguimiento_candidatas_casos.id"),
+        nullable=False,
+        index=True,
+    )
+    event_type = db.Column(db.String(60), nullable=False, index=True)
+    actor_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    old_value = db.Column(db.JSON, nullable=True)
+    new_value = db.Column(db.JSON, nullable=True)
+    note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    caso = db.relationship("SeguimientoCandidataCaso", back_populates="eventos", lazy="joined")
+    actor_staff_user = db.relationship("StaffUser", lazy="joined")
+
+
 class CandidataWeb(db.Model):
     """
     Ficha pública de la candidata para la web (landing Domésticas disponibles).

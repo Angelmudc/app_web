@@ -50,6 +50,9 @@ from models import (
     SolicitudRecommendationSelection,
     RequestIdempotencyKey,
     DomainOutbox,
+    SeguimientoCandidataCaso,
+    SeguimientoCandidataContacto,
+    SeguimientoCandidataEvento,
 )
 try:
     from models import ChatConversation, ChatMessage
@@ -1229,6 +1232,34 @@ def _normalize_live_invalidation_event(event: dict, *, stream_id: str | None = N
                 "typing_expires_in": payload.get("typing_expires_in"),
                 "typing_expires_at": payload.get("typing_expires_at"),
                 "message": payload.get("message") if isinstance(payload.get("message"), dict) else None,
+            },
+        }
+
+    if event_type.startswith("STAFF.CASE_TRACKING."):
+        case_id = _safe_int(payload.get("case_id") or aggregate.get("id"), default=0)
+        if case_id <= 0:
+            return None
+        return {
+            "event_id": str((event or {}).get("event_id") or ""),
+            "event_type": event_type,
+            "occurred_at": (event or {}).get("occurred_at"),
+            "recorded_at": (event or {}).get("recorded_at"),
+            "stream_id": str(stream_id or "") or None,
+            "aggregate": {
+                "type": "SeguimientoCandidataCaso",
+                "id": str(case_id),
+                "version": aggregate.get("version"),
+            },
+            "target": {
+                "entity_type": "seguimiento_candidata_caso",
+                "case_id": int(case_id),
+            },
+            "payload": {
+                "case_id": int(case_id),
+                "public_id": payload.get("public_id"),
+                "estado": payload.get("estado"),
+                "owner_staff_user_id": payload.get("owner_staff_user_id"),
+                "due_at": payload.get("due_at"),
             },
         }
 
@@ -23290,3 +23321,514 @@ def chat_staff_mark_closed(conversation_id):
 @staff_required
 def chat_staff_reopen(conversation_id):
     return _chat_staff_change_status(int(conversation_id), to_status=_CHAT_STATUS_OPEN)
+
+
+_SEG_CASO_ESTADOS_CERRADOS = {"cerrado_exitoso", "cerrado_no_exitoso", "duplicado"}
+_SEG_CASO_ESTADOS = {
+    "nuevo",
+    "en_gestion",
+    "esperando_candidata",
+    "esperando_staff",
+    "programado",
+    "listo_para_enviar",
+    "enviado",
+    "cerrado_exitoso",
+    "cerrado_no_exitoso",
+    "duplicado",
+}
+_SEG_CASO_PRIORIDADES = {"baja", "normal", "alta", "urgente"}
+_SEG_CASO_CANALES = {"llamada", "whatsapp", "chat", "presencial", "referida", "otro"}
+_SEG_CASO_WAITING_STATES = {"esperando_candidata", "esperando_staff"}
+
+
+def _seg_tables_ready() -> bool:
+    names = {
+        "seguimiento_candidatas_casos",
+        "seguimiento_candidatas_contactos",
+        "seguimiento_candidatas_eventos",
+    }
+    try:
+        bind = db.session.get_bind()
+        insp = sa_inspect(bind)
+        existing = {str(t) for t in insp.get_table_names()}
+        missing = names - existing
+        if not missing:
+            return True
+        if bool(current_app.config.get("TESTING")):
+            SeguimientoCandidataContacto.__table__.create(bind=bind, checkfirst=True)
+            SeguimientoCandidataCaso.__table__.create(bind=bind, checkfirst=True)
+            SeguimientoCandidataEvento.__table__.create(bind=bind, checkfirst=True)
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _seg_staff_user_id() -> int:
+    return int(getattr(current_user, "id", 0) or 0)
+
+
+def _seg_now():
+    return utc_now_naive()
+
+
+def _seg_normalize_phone(raw_value: str) -> str:
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return ""
+    return re.sub(r"\D+", "", raw)[:32]
+
+
+def _seg_public_id() -> str:
+    now = _seg_now()
+    token = secrets.token_hex(3).upper()
+    return f"SC-{now.strftime('%Y%m%d')}-{token}"
+
+
+def _seg_is_open_state(estado: str) -> bool:
+    return str(estado or "").strip().lower() not in _SEG_CASO_ESTADOS_CERRADOS
+
+
+def _seg_add_event(caso: SeguimientoCandidataCaso, *, event_type: str, old_value=None, new_value=None, note: str = ""):
+    ev = SeguimientoCandidataEvento(
+        caso_id=int(caso.id),
+        event_type=str(event_type or "")[:60],
+        actor_staff_user_id=_seg_staff_user_id() or None,
+        old_value=old_value if isinstance(old_value, dict) else None,
+        new_value=new_value if isinstance(new_value, dict) else None,
+        note=(note or "").strip()[:4000] or None,
+        created_at=_seg_now(),
+    )
+    _maybe_assign_sqlite_pk(ev, SeguimientoCandidataEvento)
+    db.session.add(ev)
+
+
+def _seg_emit_event(caso: SeguimientoCandidataCaso, event_type: str):
+    payload = {
+        "case_id": int(caso.id),
+        "public_id": str(caso.public_id or ""),
+        "estado": str(caso.estado or ""),
+        "owner_staff_user_id": int(caso.owner_staff_user_id) if caso.owner_staff_user_id else None,
+        "due_at": iso_utc_z(caso.due_at) if getattr(caso, "due_at", None) else None,
+    }
+    _emit_domain_outbox_event(
+        event_type=event_type,
+        aggregate_type="SeguimientoCandidataCaso",
+        aggregate_id=int(caso.id),
+        aggregate_version=int(getattr(caso, "row_version", 0) or 0) + 1,
+        payload=payload,
+    )
+
+
+def _seg_serialize_case(caso: SeguimientoCandidataCaso) -> dict:
+    return {
+        "id": int(caso.id),
+        "public_id": str(caso.public_id or ""),
+        "candidata_id": int(caso.candidata_id) if caso.candidata_id else None,
+        "solicitud_id": int(caso.solicitud_id) if caso.solicitud_id else None,
+        "contacto_id": int(caso.contacto_id) if caso.contacto_id else None,
+        "nombre_contacto": str(caso.nombre_contacto or ""),
+        "telefono_norm": str(caso.telefono_norm or ""),
+        "canal_origen": str(caso.canal_origen or ""),
+        "estado": str(caso.estado or ""),
+        "prioridad": str(caso.prioridad or ""),
+        "owner_staff_user_id": int(caso.owner_staff_user_id) if caso.owner_staff_user_id else None,
+        "owner_staff_username": str(getattr(getattr(caso, "owner_staff_user", None), "username", "") or ""),
+        "proxima_accion_tipo": str(caso.proxima_accion_tipo or ""),
+        "proxima_accion_detalle": str(caso.proxima_accion_detalle or ""),
+        "due_at": iso_utc_z(caso.due_at) if caso.due_at else None,
+        "last_movement_at": iso_utc_z(caso.last_movement_at) if caso.last_movement_at else None,
+        "is_open": _seg_is_open_state(str(caso.estado or "")),
+    }
+
+
+@admin_bp.app_template_global("seguimiento_candidatas_badge_count")
+def seguimiento_candidatas_badge_count() -> int:
+    if not _seg_tables_ready():
+        return 0
+    if not has_request_context():
+        return 0
+    if not bool(getattr(current_user, "is_authenticated", False)):
+        return 0
+    role = str(role_for_user(current_user) or "").strip().lower()
+    if role not in {"owner", "admin", "secretaria"}:
+        return 0
+    now = _seg_now()
+    return int(
+        db.session.query(func.count(SeguimientoCandidataCaso.id))
+        .filter(
+            SeguimientoCandidataCaso.closed_at.is_(None),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+            SeguimientoCandidataCaso.due_at.isnot(None),
+            SeguimientoCandidataCaso.due_at < now,
+        )
+        .scalar()
+        or 0
+    )
+
+
+@admin_bp.route("/seguimiento-candidatas/cola", methods=["GET"])
+@login_required
+@staff_required
+def seguimiento_candidatas_cola():
+    if not _seg_tables_ready():
+        abort(503)
+    return render_template("admin/seguimiento_candidatas_cola.html")
+
+
+@admin_bp.route("/seguimiento-candidatas/cola.json", methods=["GET"])
+@login_required
+@staff_required
+def seguimiento_candidatas_cola_json():
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    now = _seg_now()
+    q = (request.args.get("q") or "").strip()[:120]
+    base = SeguimientoCandidataCaso.query.filter(SeguimientoCandidataCaso.is_merged.is_(False))
+    if q:
+        il = f"%{q}%"
+        base = base.filter(
+            or_(
+                SeguimientoCandidataCaso.nombre_contacto.ilike(il),
+                SeguimientoCandidataCaso.telefono_norm.ilike(il),
+                SeguimientoCandidataCaso.public_id.ilike(il),
+            )
+        )
+    rows = (
+        base.order_by(SeguimientoCandidataCaso.last_movement_at.desc().nullslast())
+        .limit(250)
+        .all()
+    )
+    data = [_seg_serialize_case(r) for r in rows]
+    def _parse_due_naive_utc(raw_due: str | None):
+        dt = parse_iso_utc(raw_due) if raw_due else None
+        if dt is None:
+            return None
+        if getattr(dt, "tzinfo", None) is not None:
+            try:
+                return dt.astimezone().replace(tzinfo=None)
+            except Exception:
+                return dt.replace(tzinfo=None)
+        return dt
+
+    buckets = {
+        "vencidos": [r for r in data if r["is_open"] and r.get("due_at") and _parse_due_naive_utc(r["due_at"]) and _parse_due_naive_utc(r["due_at"]) < now],
+        "hoy": [r for r in data if r["is_open"] and r.get("due_at") and _parse_due_naive_utc(r["due_at"]) and to_rd(_parse_due_naive_utc(r["due_at"])).date() == to_rd(now).date()],
+        "sin_responsable": [r for r in data if r["is_open"] and not r.get("owner_staff_user_id")],
+        "en_gestion": [r for r in data if r["is_open"] and r.get("estado") == "en_gestion"],
+    }
+    return jsonify({"ok": True, "items": data, "buckets": buckets, "ts": iso_utc_z(now)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_crear_caso():
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    payload = request.get_json(silent=True) or {}
+    telefono_norm = _seg_normalize_phone(request.form.get("telefono_norm") or payload.get("telefono_norm") or "")
+    nombre_contacto = (request.form.get("nombre_contacto") or payload.get("nombre_contacto") or "").strip()[:200]
+    canal_origen = str(request.form.get("canal_origen") or payload.get("canal_origen") or "otro").strip().lower()
+    candidata_id = _safe_int(request.form.get("candidata_id") or payload.get("candidata_id"), default=0)
+    solicitud_id = _safe_int(request.form.get("solicitud_id") or payload.get("solicitud_id"), default=0)
+    proxima_accion_tipo = (request.form.get("proxima_accion_tipo") or payload.get("proxima_accion_tipo") or "").strip()[:40]
+    proxima_accion_detalle = (request.form.get("proxima_accion_detalle") or payload.get("proxima_accion_detalle") or "").strip()[:300]
+    due_at = parse_iso_utc((request.form.get("due_at") or payload.get("due_at") or "").strip()) if (request.form.get("due_at") or payload.get("due_at")) else None
+
+    if not (candidata_id > 0 or telefono_norm):
+        return jsonify({"ok": False, "error": "identity_required"}), 400
+    if canal_origen not in _SEG_CASO_CANALES:
+        return jsonify({"ok": False, "error": "invalid_canal_origen"}), 400
+    if not proxima_accion_tipo or not due_at:
+        return jsonify({"ok": False, "error": "proxima_accion_due_required"}), 400
+
+    contacto_id = None
+    if telefono_norm:
+        contacto = SeguimientoCandidataContacto.query.filter_by(telefono_norm=telefono_norm).first()
+        if contacto is None:
+            contacto = SeguimientoCandidataContacto(
+                telefono_norm=telefono_norm,
+                nombre_reportado=nombre_contacto or None,
+                canal_preferido=canal_origen,
+                created_at=_seg_now(),
+                updated_at=_seg_now(),
+            )
+            _maybe_assign_sqlite_pk(contacto, SeguimientoCandidataContacto)
+            db.session.add(contacto)
+            db.session.flush()
+        contacto_id = int(contacto.id)
+
+    dup_q = SeguimientoCandidataCaso.query.filter(
+        SeguimientoCandidataCaso.is_merged.is_(False),
+        SeguimientoCandidataCaso.closed_at.is_(None),
+    )
+    dup_filters = []
+    if telefono_norm:
+        dup_filters.append(SeguimientoCandidataCaso.telefono_norm == telefono_norm)
+    if candidata_id > 0:
+        dup_filters.append(SeguimientoCandidataCaso.candidata_id == int(candidata_id))
+    if dup_filters:
+        dup_q = dup_q.filter(or_(*dup_filters))
+    existing = dup_q.order_by(SeguimientoCandidataCaso.last_movement_at.desc().nullslast()).first()
+
+    now = _seg_now()
+    caso = SeguimientoCandidataCaso(
+        public_id=_seg_public_id(),
+        candidata_id=int(candidata_id) if candidata_id > 0 else None,
+        solicitud_id=int(solicitud_id) if solicitud_id > 0 else None,
+        contacto_id=int(contacto_id) if contacto_id else None,
+        nombre_contacto=nombre_contacto or None,
+        telefono_norm=telefono_norm or None,
+        canal_origen=canal_origen,
+        estado="nuevo",
+        prioridad="normal",
+        owner_staff_user_id=_seg_staff_user_id(),
+        created_by_staff_user_id=_seg_staff_user_id(),
+        taken_at=now,
+        proxima_accion_tipo=proxima_accion_tipo or None,
+        proxima_accion_detalle=proxima_accion_detalle or None,
+        due_at=due_at,
+        status_changed_at=now,
+        last_movement_at=now,
+        created_at=now,
+        updated_at=now,
+    )
+    _maybe_assign_sqlite_pk(caso, SeguimientoCandidataCaso)
+    db.session.add(caso)
+    db.session.flush()
+    _seg_add_event(caso, event_type="case_created", new_value=_seg_serialize_case(caso))
+    _seg_emit_event(caso, "staff.case_tracking.created")
+    db.session.commit()
+    return jsonify(
+        {
+            "ok": True,
+            "case": _seg_serialize_case(caso),
+            "duplicate_detected": bool(existing is not None),
+            "existing_case_id": int(existing.id) if existing else None,
+        }
+    )
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>", methods=["GET"])
+@login_required
+@staff_required
+def seguimiento_candidatas_caso_detail(caso_id):
+    if not _seg_tables_ready():
+        abort(503)
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    eventos = (
+        SeguimientoCandidataEvento.query.filter_by(caso_id=int(caso.id))
+        .order_by(SeguimientoCandidataEvento.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return render_template("admin/seguimiento_candidatas_caso_detail.html", caso=caso, eventos=eventos)
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/", methods=["GET"])
+@login_required
+@staff_required
+def seguimiento_candidatas_casos_index():
+    if not _seg_tables_ready():
+        abort(503)
+    return redirect(url_for("admin.seguimiento_candidatas_cola"))
+
+
+def _seg_require_open_case(caso_id: int) -> SeguimientoCandidataCaso:
+    if not _seg_tables_ready():
+        abort(503)
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    if not _seg_is_open_state(str(caso.estado or "")):
+        abort(409)
+    return caso
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/tomar", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_tomar(caso_id):
+    caso = _seg_require_open_case(int(caso_id))
+    prev_owner = int(caso.owner_staff_user_id or 0)
+    now = _seg_now()
+    caso.owner_staff_user_id = _seg_staff_user_id()
+    caso.taken_at = now
+    caso.last_movement_at = now
+    _seg_add_event(
+        caso,
+        event_type="case_taken",
+        old_value={"owner_staff_user_id": prev_owner or None},
+        new_value={"owner_staff_user_id": _seg_staff_user_id()},
+        note="takeover" if prev_owner and prev_owner != _seg_staff_user_id() else "take",
+    )
+    if prev_owner and prev_owner != _seg_staff_user_id():
+        log_admin_action(
+            event="SEGUIMIENTO_CASO_TAKEOVER",
+            status="ok",
+            entity_type="seguimiento_candidatas_casos",
+            entity_id=int(caso.id),
+            summary=f"Takeover seguimiento candidata caso {caso.id}",
+            metadata={"from_owner": prev_owner, "to_owner": _seg_staff_user_id()},
+        )
+    _seg_emit_event(caso, "staff.case_tracking.taken")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/reasignar", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_reasignar(caso_id):
+    caso = _seg_require_open_case(int(caso_id))
+    role = str(role_for_user(current_user) or "").strip().lower()
+    if role not in {"owner", "admin"}:
+        return jsonify({"ok": False, "error": "forbidden"}), 403
+    payload = request.get_json(silent=True) or {}
+    owner_id = _safe_int(request.form.get("owner_staff_user_id") or payload.get("owner_staff_user_id"), default=0)
+    if owner_id <= 0:
+        return jsonify({"ok": False, "error": "owner_required"}), 400
+    prev_owner = int(caso.owner_staff_user_id or 0)
+    caso.owner_staff_user_id = int(owner_id)
+    caso.last_movement_at = _seg_now()
+    _seg_add_event(caso, event_type="case_reassigned", old_value={"owner_staff_user_id": prev_owner or None}, new_value={"owner_staff_user_id": owner_id})
+    _seg_emit_event(caso, "staff.case_tracking.updated")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/estado", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_estado(caso_id):
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    payload = request.get_json(silent=True) or {}
+    estado = str(request.form.get("estado") or payload.get("estado") or "").strip().lower()
+    if estado not in _SEG_CASO_ESTADOS:
+        return jsonify({"ok": False, "error": "invalid_estado"}), 400
+    if estado in _SEG_CASO_ESTADOS_CERRADOS:
+        return jsonify({"ok": False, "error": "use_close_endpoint"}), 400
+    prev = str(caso.estado or "")
+    if _seg_is_open_state(estado):
+        if not caso.owner_staff_user_id or not (caso.proxima_accion_tipo and caso.due_at):
+            return jsonify({"ok": False, "error": "open_case_requires_owner_action_due"}), 400
+    now = _seg_now()
+    caso.estado = estado
+    caso.status_changed_at = now
+    caso.waiting_since_at = now if estado in _SEG_CASO_WAITING_STATES else None
+    caso.last_movement_at = now
+    _seg_add_event(caso, event_type="state_changed", old_value={"estado": prev}, new_value={"estado": estado})
+    _seg_emit_event(caso, "staff.case_tracking.updated")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/nota", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_nota(caso_id):
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    payload = request.get_json(silent=True) or {}
+    note = (request.form.get("note") or payload.get("note") or "").strip()[:4000]
+    if not note:
+        return jsonify({"ok": False, "error": "note_required"}), 400
+    caso.last_movement_at = _seg_now()
+    _seg_add_event(caso, event_type="note_added", note=note)
+    _seg_emit_event(caso, "staff.case_tracking.updated")
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/proxima-accion", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_proxima_accion(caso_id):
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    caso = _seg_require_open_case(int(caso_id))
+    payload = request.get_json(silent=True) or {}
+    action_type = (request.form.get("proxima_accion_tipo") or payload.get("proxima_accion_tipo") or "").strip()[:40]
+    action_detail = (request.form.get("proxima_accion_detalle") or payload.get("proxima_accion_detalle") or "").strip()[:300]
+    due_at_raw = (request.form.get("due_at") or payload.get("due_at") or "").strip()
+    due_at = parse_iso_utc(due_at_raw) if due_at_raw else None
+    if not action_type or not due_at:
+        return jsonify({"ok": False, "error": "action_and_due_required"}), 400
+    caso.proxima_accion_tipo = action_type
+    caso.proxima_accion_detalle = action_detail or None
+    caso.due_at = due_at
+    caso.last_movement_at = _seg_now()
+    _seg_add_event(caso, event_type="next_action_updated", new_value={"proxima_accion_tipo": action_type, "due_at": iso_utc_z(due_at)})
+    _seg_emit_event(caso, "staff.case_tracking.updated")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/cerrar", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_cerrar(caso_id):
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    payload = request.get_json(silent=True) or {}
+    estado = str(request.form.get("estado") or payload.get("estado") or "cerrado_no_exitoso").strip().lower()
+    close_reason = (request.form.get("close_reason") or payload.get("close_reason") or "").strip()[:255]
+    if estado not in _SEG_CASO_ESTADOS_CERRADOS:
+        return jsonify({"ok": False, "error": "invalid_closed_state"}), 400
+    if not close_reason:
+        return jsonify({"ok": False, "error": "close_reason_required"}), 400
+    now = _seg_now()
+    prev = str(caso.estado or "")
+    caso.estado = estado
+    caso.closed_at = now
+    caso.closed_by_staff_user_id = _seg_staff_user_id()
+    caso.close_reason = close_reason
+    caso.status_changed_at = now
+    caso.waiting_since_at = None
+    caso.last_movement_at = now
+    _seg_add_event(caso, event_type="case_closed", old_value={"estado": prev}, new_value={"estado": estado}, note=close_reason)
+    log_admin_action(
+        event="SEGUIMIENTO_CASO_CIERRE",
+        status="ok",
+        entity_type="seguimiento_candidatas_casos",
+        entity_id=int(caso.id),
+        summary=f"Cierre seguimiento candidata caso {caso.id}",
+        metadata={"close_reason": close_reason, "to_estado": estado},
+    )
+    _seg_emit_event(caso, "staff.case_tracking.closed")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/casos/<int:caso_id>/reabrir", methods=["POST"])
+@login_required
+@staff_required
+def seguimiento_candidatas_reabrir(caso_id):
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
+    if not caso.owner_staff_user_id or not (caso.proxima_accion_tipo and caso.due_at):
+        return jsonify({"ok": False, "error": "open_case_requires_owner_action_due"}), 400
+    now = _seg_now()
+    caso.estado = "en_gestion"
+    caso.closed_at = None
+    caso.closed_by_staff_user_id = None
+    caso.close_reason = None
+    caso.status_changed_at = now
+    caso.last_movement_at = now
+    _seg_add_event(caso, event_type="case_reopened", new_value={"estado": "en_gestion"})
+    _seg_emit_event(caso, "staff.case_tracking.updated")
+    db.session.commit()
+    return jsonify({"ok": True, "case": _seg_serialize_case(caso)})
+
+
+@admin_bp.route("/seguimiento-candidatas/badge.json", methods=["GET"])
+@login_required
+@staff_required
+def seguimiento_candidatas_badge_json():
+    if not _seg_tables_ready():
+        return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
+    return jsonify({"ok": True, "overdue_count": seguimiento_candidatas_badge_count(), "ts": iso_utc_z()})

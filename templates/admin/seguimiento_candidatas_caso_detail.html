@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+{% block title %}Caso {{ caso.public_id }}{% endblock %}
+{% block content %}
+<div class="container py-4"
+     data-live-invalidation-scope="1"
+     data-live-invalidation-view="seguimiento_candidatas_case_detail"
+     data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') if has_endpoint('admin.live_invalidation_stream') else '' }}"
+     data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') if has_endpoint('admin.live_invalidation_poll') else '' }}">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">{{ caso.public_id }} · {{ caso.nombre_contacto or 'Sin nombre' }}</h1>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Volver a cola</a>
+  </div>
+  <div class="card">
+    <div class="card-body">
+      <div><strong>Estado:</strong> {{ caso.estado }}</div>
+      <div><strong>Responsable:</strong> {{ caso.owner_staff_user.username if caso.owner_staff_user else 'Sin responsable' }}</div>
+      <div><strong>Próxima acción:</strong> {{ caso.proxima_accion_tipo or '—' }}{% if caso.proxima_accion_detalle %} · {{ caso.proxima_accion_detalle }}{% endif %}</div>
+      <div><strong>Vence:</strong> {{ caso.due_at|rd_datetime('%Y-%m-%d %H:%M') if caso.due_at else '—' }}</div>
+    </div>
+  </div>
+  {% include 'admin/seguimiento_candidatas_timeline.html' %}
+</div>
+{% endblock %}

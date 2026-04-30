@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block title %}Seguimiento de Candidatas{% endblock %}
+{% block content %}
+<div class="container py-4"
+     data-live-invalidation-scope="1"
+     data-live-invalidation-view="seguimiento_candidatas_queue"
+     data-live-invalidation-stream-url="{{ url_for('admin.live_invalidation_stream') if has_endpoint('admin.live_invalidation_stream') else '' }}"
+     data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') if has_endpoint('admin.live_invalidation_poll') else '' }}">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Seguimiento de candidatas interesadas</h1>
+  </div>
+  <div id="segCols" class="row g-3"></div>
+</div>
+<script>
+(function () {
+  const cols = document.getElementById("segCols");
+  if (!cols) return;
+  const endpoint = {{ url_for('admin.seguimiento_candidatas_cola_json')|tojson }};
+  const names = [
+    ["vencidos", "Vencidos"],
+    ["hoy", "Hoy"],
+    ["sin_responsable", "Sin responsable"],
+    ["en_gestion", "En gestión"],
+  ];
+
+  function card(item) {
+    const title = item.nombre_contacto || item.public_id || ("Caso #" + item.id);
+    const action = item.proxima_accion_tipo || "sin acción";
+    const owner = item.owner_staff_username || "Sin responsable";
+    return (
+      '<div class="card mb-2"><div class="card-body p-2">' +
+      '<div class="fw-semibold">' + title + "</div>" +
+      '<div class="small text-muted">' + item.estado + " · " + action + "</div>" +
+      '<div class="small">Resp: ' + owner + "</div>" +
+      '<a class="btn btn-sm btn-primary mt-2" href="/admin/seguimiento-candidatas/casos/' + item.id + '">Abrir</a>' +
+      "</div></div>"
+    );
+  }
+
+  async function load() {
+    const r = await fetch(endpoint, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    });
+    const p = await r.json();
+    cols.innerHTML = names
+      .map(function (pair) {
+        const key = pair[0];
+        const label = pair[1];
+        const arr = (p.buckets && p.buckets[key]) || [];
+        return (
+          '<div class="col-12 col-lg-3"><div class="border rounded p-2 h-100">' +
+          '<div class="d-flex justify-content-between"><strong>' + label + '</strong><span class="badge text-bg-secondary">' + arr.length + "</span></div>" +
+          '<div class="mt-2">' + arr.map(card).join("") + "</div></div></div>"
+        );
+      })
+      .join("");
+  }
+
+  document.addEventListener("admin:live-invalidation-event", function () { load().catch(function () {}); });
+  load().catch(function () {});
+})();
+</script>
+{% endblock %}
