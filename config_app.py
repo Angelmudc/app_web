@@ -142,6 +142,21 @@ def create_app():
             return ""
         return f"{scheme}://{netloc}"
 
+    def _public_base_url() -> str:
+        """
+        Origen público canónico para links compartibles.
+        En producción exige HTTPS para reducir riesgo de phishing/spoofing.
+        """
+        fallback = "https://www.domesticadelcibao.com"
+        raw = _env_str("PUBLIC_BASE_URL", fallback)
+        normalized = _normalize_origin(raw)
+        if not normalized:
+            return fallback
+        parsed = urlsplit(normalized)
+        if prod and (parsed.scheme or "").lower() != "https":
+            return fallback
+        return normalized
+
     def _default_cors_origins() -> set[str]:
         out = set()
         public_origin = _normalize_origin(_env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"))
@@ -223,7 +238,7 @@ def create_app():
             "REMEMBER_COOKIE_SAMESITE": _env_str("REMEMBER_COOKIE_SAMESITE", "Lax"),
             "REMEMBER_COOKIE_SECURE": _cookie_secure(),
             # Dominio público canónico para metadatos compartibles (OG/Twitter/links públicos).
-            "PUBLIC_BASE_URL": _env_str("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com"),
+            "PUBLIC_BASE_URL": _public_base_url(),
             # Canal de soporte por WhatsApp (sin hardcode en rutas/templates).
             "SUPPORT_WHATSAPP_NUMBER": _env_str("SUPPORT_WHATSAPP_NUMBER", "18094296892"),
             "SUPPORT_WHATSAPP_DISPLAY": _env_str("SUPPORT_WHATSAPP_DISPLAY", "+1 809 429 6892"),

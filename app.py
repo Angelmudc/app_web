@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 import os
+import csv
+from pathlib import Path
 from datetime import timedelta
+import click
 
 from flask import session, request, redirect, url_for, render_template, jsonify, flash
 from flask_login import current_user
@@ -8,6 +11,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_wtf.csrf import CSRFError
 
 from config_app import create_app, db, csrf, cache
+from models import Cliente
+from utils.client_contact_norm import norm_email, nullable_norm_phone_rd
 from core.routes import candidatas_bp, procesos_bp, entrevistas_bp, archivos_bp
 
 
@@ -22,6 +27,163 @@ def url_for_safe(endpoint: str, **values):
 
 
 app.jinja_env.globals['url_for_safe'] = url_for_safe
+
+
+def _effective_phone_norm(telefono_norm_row, telefono_raw) -> str:
+    # Si telefono_norm ya viene poblado pero es placeholder inválido, se ignora (None).
+    ph = nullable_norm_phone_rd(telefono_norm_row)
+    if ph:
+        return ph
+    # Fallback al teléfono original cuando telefono_norm no existe o quedó sucio.
+    return nullable_norm_phone_rd(telefono_raw) or ""
+
+
+@app.cli.command("audit-clientes-duplicados")
+def audit_clientes_duplicados():
+    """
+    Auditoría de duplicados históricos por email_norm/telefono_norm.
+    No modifica datos.
+    """
+    rows = Cliente.query.with_entities(
+        Cliente.id,
+        Cliente.nombre_completo,
+        Cliente.email,
+        Cliente.email_norm,
+        Cliente.telefono,
+        Cliente.telefono_norm,
+        Cliente.fecha_registro,
+    ).order_by(Cliente.id.asc()).all()
+
+    by_email = {}
+    by_phone = {}
+    for rid, nombre, email, email_norm_row, telefono, telefono_norm_row, fecha_registro in rows:
+        em = (email_norm_row or norm_email(email or "")).strip()
+        ph = _effective_phone_norm(telefono_norm_row, telefono)
+        row = {
+            "id": int(rid or 0),
+            "nombre": str(nombre or ""),
+            "email": str(email or ""),
+            "email_norm": em,
+            "telefono": str(telefono or ""),
+            "telefono_norm": ph,
+            "fecha_registro": str(fecha_registro or ""),
+        }
+        if em:
+            by_email.setdefault(em, []).append(row)
+        if ph:
+            by_phone.setdefault(ph, []).append(row)
+
+    dup_email = {k: v for k, v in by_email.items() if len(v) > 1}
+    dup_phone = {k: v for k, v in by_phone.items() if len(v) > 1}
+
+    print("=== AUDITORIA DUPLICADOS CLIENTES ===")
+    print(f"Total clientes: {len(rows)}")
+    print(f"Duplicados por email_norm (grupos): {len(dup_email)}")
+    print(f"Duplicados por telefono_norm (grupos): {len(dup_phone)}")
+
+    if dup_email:
+        print("\n--- DUPLICADOS POR EMAIL_NORM ---")
+        for key in sorted(dup_email.keys()):
+            print(f"\nemail_norm={key}")
+            for item in sorted(dup_email[key], key=lambda x: x["id"]):
+                print(
+                    f"  id={item['id']} nombre={item['nombre']} "
+                    f"email={item['email']} telefono={item['telefono']} fecha={item['fecha_registro']}"
+                )
+
+    if dup_phone:
+        print("\n--- DUPLICADOS POR TELEFONO_NORM ---")
+        for key in sorted(dup_phone.keys()):
+            print(f"\ntelefono_norm={key}")
+            for item in sorted(dup_phone[key], key=lambda x: x["id"]):
+                print(
+                    f"  id={item['id']} nombre={item['nombre']} "
+                    f"email={item['email']} telefono={item['telefono']} fecha={item['fecha_registro']}"
+                )
+
+    if not dup_email and not dup_phone:
+        print("\nSin duplicados historicos detectados por campos normalizados.")
+
+
+def _collect_clientes_duplicados_rows():
+    rows = Cliente.query.with_entities(
+        Cliente.id,
+        Cliente.nombre_completo,
+        Cliente.email,
+        Cliente.email_norm,
+        Cliente.telefono,
+        Cliente.telefono_norm,
+        Cliente.fecha_registro,
+    ).order_by(Cliente.id.asc()).all()
+
+    by_email = {}
+    by_phone = {}
+    for rid, nombre, email, email_norm_row, telefono, telefono_norm_row, fecha_registro in rows:
+        em = (email_norm_row or norm_email(email or "")).strip()
+        ph = _effective_phone_norm(telefono_norm_row, telefono)
+        base = {
+            "cliente_id": int(rid or 0),
+            "nombre": str(nombre or ""),
+            "email": str(email or ""),
+            "email_norm": em,
+            "telefono": str(telefono or ""),
+            "telefono_norm": ph,
+            "fecha_creacion": str(fecha_registro or ""),
+        }
+        if em:
+            by_email.setdefault(em, []).append(base)
+        if ph:
+            by_phone.setdefault(ph, []).append(base)
+
+    out = []
+    for key, items in by_email.items():
+        if len(items) <= 1:
+            continue
+        for item in sorted(items, key=lambda x: x["cliente_id"]):
+            row = dict(item)
+            row["campo_duplicado"] = "email_norm"
+            row["valor_duplicado"] = key
+            out.append(row)
+    for key, items in by_phone.items():
+        if len(items) <= 1:
+            continue
+        for item in sorted(items, key=lambda x: x["cliente_id"]):
+            row = dict(item)
+            row["campo_duplicado"] = "telefono_norm"
+            row["valor_duplicado"] = key
+            out.append(row)
+    return out
+
+
+@app.cli.command("export-clientes-duplicados")
+@click.option("--output", "output_path", default="instance/exports/clientes_duplicados.csv", show_default=True)
+def export_clientes_duplicados(output_path: str):
+    """
+    Exporta duplicados históricos de clientes a CSV (solo lectura).
+    """
+    headers = [
+        "cliente_id",
+        "nombre",
+        "email",
+        "email_norm",
+        "telefono",
+        "telefono_norm",
+        "fecha_creacion",
+        "campo_duplicado",
+        "valor_duplicado",
+    ]
+    output = Path(str(output_path or "").strip() or "instance/exports/clientes_duplicados.csv")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    dup_rows = _collect_clientes_duplicados_rows()
+    with output.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=headers)
+        writer.writeheader()
+        for row in dup_rows:
+            writer.writerow(row)
+    print(f"CSV generado: {output}")
+    print(f"Filas exportadas: {len(dup_rows)}")
+    if not dup_rows:
+        print("No se detectaron duplicados; CSV contiene solo encabezados.")
 
 
 @app.errorhandler(CSRFError)

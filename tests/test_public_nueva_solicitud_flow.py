@@ -299,11 +299,73 @@ def test_new_public_form_duplicate_email_or_phone_is_controlled():
          patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
-         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")):
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")), \
+         patch("clientes.routes._consume_public_new_token_on_duplicate") as consume_mock:
         resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
 
-    assert resp.status_code == 200
-    assert "ya está registrado" in resp.get_data(as_text=True)
+    assert resp.status_code == 409
+    assert "Ya existe un registro asociado" in resp.get_data(as_text=True)
+    assert consume_mock.called
+
+
+def test_new_public_duplicate_email_case_insensitive_blocks_and_consumes_token():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fake_form = _FakeNewPublicForm()
+    fake_form.email_contacto.data = "NUEVO@EXAMPLE.COM  "
+    dup = SimpleNamespace(id=91, email="nuevo@example.com", telefono="8091234567")
+    used_row = SimpleNamespace(cliente_id=91, solicitud_id=None, used_at=None, solicitud=None)
+    used_state = {"used": False}
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _consume_side_effect(**_kwargs):
+        used_state["used"] = True
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")), \
+         patch("clientes.routes._consume_public_new_token_on_duplicate", side_effect=_consume_side_effect):
+        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        second = client.get("/clientes/solicitudes/nueva-publica/tok123")
+
+    assert first.status_code == 409
+    assert second.status_code == 410
+    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+
+
+def test_new_public_duplicate_phone_with_format_variants_blocks_and_consumes_token():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fake_form = _FakeNewPublicForm()
+    fake_form.telefono_contacto.data = "+1 (809) 123-4567"
+    dup = SimpleNamespace(id=91, email="nuevo@example.com", telefono="8091234567")
+    used_row = SimpleNamespace(cliente_id=91, solicitud_id=None, used_at=None, solicitud=None)
+    used_state = {"used": False}
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _consume_side_effect(**_kwargs):
+        used_state["used"] = True
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "telefono")), \
+         patch("clientes.routes._consume_public_new_token_on_duplicate", side_effect=_consume_side_effect):
+        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        second = client.get("/clientes/solicitudes/nueva-publica/tok123")
+
+    assert first.status_code == 409
+    assert second.status_code == 410
+    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
 
 
 def test_existing_token_public_flow_still_available():

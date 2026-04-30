@@ -5,8 +5,8 @@
 {% set og_type = "website" %}
 
 {% block title %}Doméstica del Cibao A&D — Enlace Ya Utilizado{% endblock %}
-{% set wa_number = "18094296892" %}
-{% set wa_display = "+1 809 429 6892" %}
+{% set wa_number = (config.get("SUPPORT_WHATSAPP_NUMBER") or "18094296892") %}
+{% set wa_display = (config.get("SUPPORT_WHATSAPP_DISPLAY") or "+1 809 429 6892") %}
 {% set wa_text = "Hola, necesito ayuda para continuar con mi solicitud." %}
 {% set wa_url = "https://wa.me/" ~ wa_number ~ "?text=" ~ (wa_text|urlencode) %}
 

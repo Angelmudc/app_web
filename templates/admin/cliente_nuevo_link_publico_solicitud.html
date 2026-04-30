@@ -13,6 +13,64 @@
   <meta name="twitter:title" content="Generar Link de Cliente Nuevo | Doméstica del Cibao A&D">
   <meta name="twitter:description" content="Vista administrativa para generar enlaces públicos de un solo uso para cliente nuevo y solicitud.">
   <meta name="twitter:image" content="{{ url_for('static', filename='img/domestica-preview.png', _external=True) }}">
+  <style>
+    .public-link-copy-island {
+      position: fixed;
+      right: 18px;
+      bottom: 20px;
+      z-index: 1040;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 46px;
+      border: 1px solid #0d6efd;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #0d6efd;
+      font-weight: 700;
+      box-shadow: 0 10px 28px rgba(2, 38, 89, 0.18);
+      padding: 0 14px;
+      cursor: pointer;
+    }
+
+    .public-link-copy-island:hover,
+    .public-link-copy-island:focus {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 32px rgba(2, 38, 89, 0.24);
+    }
+
+    .public-link-copy-feedback {
+      position: fixed;
+      right: 20px;
+      bottom: 76px;
+      z-index: 1041;
+      background: #0f172a;
+      color: #fff;
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: .86rem;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(6px);
+      transition: opacity .2s ease, transform .2s ease;
+    }
+
+    .public-link-copy-feedback.is-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @media (max-width: 575.98px) {
+      .public-link-copy-island {
+        right: 12px;
+        bottom: 14px;
+      }
+      .public-link-copy-feedback {
+        right: 12px;
+        bottom: 68px;
+      }
+    }
+  </style>
 {% endblock %}
 {% block content %}
 
@@ -42,8 +100,19 @@
         Enlace seguro para formulario de un solo uso. Comparte este enlace únicamente con el cliente que llenará la solicitud.
       </div>
 
+      <div class="mt-3">
+        <label class="form-label fw-semibold" for="waMensajeClienteNuevo">Mensaje empresarial sugerido para WhatsApp</label>
+        <textarea
+          id="waMensajeClienteNuevo"
+          class="form-control"
+          rows="4"
+          readonly
+        >Hola, gracias por comunicarte con Doméstica del Cibao A&D. Para completar tu registro como cliente, accede al siguiente formulario seguro: {{ link_publico }}. Este enlace es personal y tiene validez limitada.</textarea>
+      </div>
+
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button class="btn btn-primary" type="button" onclick="copyLinkNuevo()">Copiar enlace</button>
+        <button class="btn btn-outline-primary" type="button" onclick="copyWaMessageNuevo()">Copiar mensaje WhatsApp</button>
         <a class="btn btn-outline-secondary" href="{{ url_for('admin.listar_clientes') }}">Volver a clientes</a>
       </div>
 
@@ -53,31 +122,96 @@
   </div>
 </div>
 
+<button
+  type="button"
+  class="public-link-copy-island"
+  id="copyIslandNuevo"
+  aria-label="Copiar enlace público"
+  onclick="copyLinkNuevo()"
+>
+  <i class="bi bi-link-45deg" aria-hidden="true"></i>
+  Copiar link
+</button>
+<div class="public-link-copy-feedback" id="copyIslandNuevoFeedback" role="status" aria-live="polite">Link copiado</div>
+
 <script>
+  let _copyIslandTimer = null;
+
+  function showCopyIslandFeedback(text) {
+    const node = document.getElementById('copyIslandNuevoFeedback');
+    if (!node) return;
+    node.textContent = text || 'Link copiado';
+    node.classList.add('is-visible');
+    if (_copyIslandTimer) {
+      clearTimeout(_copyIslandTimer);
+    }
+    _copyIslandTimer = setTimeout(() => {
+      node.classList.remove('is-visible');
+      _copyIslandTimer = null;
+    }, 1700);
+  }
+
+  async function copyTextSafe(text) {
+    const value = String(text || '').trim();
+    if (!value) return false;
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+    const tmp = document.createElement('textarea');
+    tmp.value = value;
+    tmp.setAttribute('readonly', '');
+    tmp.style.position = 'absolute';
+    tmp.style.left = '-9999px';
+    document.body.appendChild(tmp);
+    tmp.select();
+    tmp.setSelectionRange(0, value.length);
+    const ok = document.execCommand('copy');
+    document.body.removeChild(tmp);
+    return !!ok;
+  }
+
   async function copyLinkNuevo() {
     const input = document.getElementById('linkPublicoNuevo');
     const copyMsg = document.getElementById('copyMsgNuevo');
     const text = (input && input.value ? String(input.value) : '').trim();
     if (!text) {
       copyMsg.innerText = 'No se encontró un enlace para copiar.';
+      showCopyIslandFeedback('Sin link');
       return;
     }
 
     try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        input.focus();
-        input.select();
-        input.setSelectionRange(0, text.length);
-        const ok = document.execCommand('copy');
-        if (!ok) {
-          throw new Error('execCommand copy failed');
-        }
+      const ok = await copyTextSafe(text);
+      if (!ok) {
+        throw new Error('copy failed');
       }
       copyMsg.innerText = 'Enlace copiado correctamente.';
+      showCopyIslandFeedback('Link copiado');
     } catch (_err) {
       copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente la URL visible.';
+      showCopyIslandFeedback('Error al copiar');
+    }
+  }
+
+  async function copyWaMessageNuevo() {
+    const field = document.getElementById('waMensajeClienteNuevo');
+    const copyMsg = document.getElementById('copyMsgNuevo');
+    const text = (field && field.value ? String(field.value) : '').trim();
+    if (!text) {
+      copyMsg.innerText = 'No se encontró mensaje para copiar.';
+      return;
+    }
+    try {
+      const ok = await copyTextSafe(text);
+      if (!ok) {
+        throw new Error('copy message failed');
+      }
+      copyMsg.innerText = 'Mensaje de WhatsApp copiado.';
+      showCopyIslandFeedback('Mensaje copiado');
+    } catch (_err) {
+      copyMsg.innerText = 'No se pudo copiar el mensaje automáticamente.';
+      showCopyIslandFeedback('Error al copiar');
     }
   }
 </script>

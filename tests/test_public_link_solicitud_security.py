@@ -70,6 +70,10 @@ def _extract_csrf(html: str) -> str:
     return m.group(1) if m else ""
 
 
+def _mock_active_count_zero(_cliente_id: int):
+    return 0
+
+
 def test_public_link_valid_token_get_200_no_cache_and_no_sensitive_exposure():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -341,7 +345,8 @@ def test_public_link_token_of_one_client_cannot_be_used_with_other_identity():
 
     with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
-         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero):
         resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"})
 
     assert resp.status_code == 403
@@ -359,6 +364,7 @@ def test_public_link_post_does_not_show_false_success_when_save_fails():
     with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=1, error_message="forced")):
         resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=False)
         retry_get = client.get("/clientes/solicitudes/publica/tok123")
@@ -395,6 +401,7 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
     with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
         resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/publica/tok123")
@@ -455,6 +462,7 @@ def test_public_link_successful_save_shows_professional_success_page_once():
     with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
         success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=True)
         later = client.get("/clientes/solicitudes/publica/tok123")
@@ -744,6 +752,7 @@ def test_public_link_pasaje_otro_mode_maps_without_breaking_legacy_storage():
     with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_robust_save_capture):
         resp = client.post(
             "/clientes/solicitudes/publica/tok123",

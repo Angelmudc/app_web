@@ -111,6 +111,10 @@ from utils.chat_e2e_guard import (
     enforce_e2e_solicitud_id,
     e2e_message_meta,
 )
+from utils.client_contact_norm import (
+    norm_email as _shared_norm_email,
+    nullable_norm_phone_rd as _shared_nullable_norm_phone_rd,
+)
 from utils.sqlite_pk import maybe_assign_sqlite_pk as _shared_maybe_assign_sqlite_pk
 
 # ✅ IMPORTANTE: traemos también AREAS_COMUNES_CHOICES desde forms
@@ -863,7 +867,7 @@ def _clientes_no_cache_headers(response):
 # ─────────────────────────────────────────────────────────────
 
 def _norm_email(v: str) -> str:
-    return (v or "").strip().lower()
+    return _shared_norm_email(v)
 
 
 def _norm_text(v: str) -> str:
@@ -874,6 +878,10 @@ def _norm_text(v: str) -> str:
 
 def _norm_phone_digits(v: str) -> str:
     return re.sub(r"\D", "", (v or "").strip())
+
+
+def _norm_phone_rd(v: str) -> str:
+    return _shared_nullable_norm_phone_rd(v) or ""
 
 
 def _cliente_codigo_to_int(codigo: str) -> Optional[int]:
@@ -913,24 +921,65 @@ def _next_cliente_codigo_publico() -> str:
 def _find_cliente_contact_duplicate(email_norm: str, phone_raw: str):
     email_norm = _norm_email(email_norm)
     if email_norm:
-        row = Cliente.query.filter(db.func.lower(Cliente.email) == email_norm).first()
+        row = Cliente.query.filter(Cliente.email_norm == email_norm).first()
+        if row is None:
+            row = Cliente.query.filter(db.func.lower(Cliente.email) == email_norm).first()
         if row is not None:
             return row, "email"
 
-    phone_digits = _norm_phone_digits(phone_raw)
+    phone_digits = _norm_phone_rd(phone_raw)
     if not phone_digits:
         return None, ""
+    row = Cliente.query.filter(Cliente.telefono_norm == phone_digits).first()
+    if row is not None:
+        return row, "telefono"
 
     try:
         phone_rows = Cliente.query.with_entities(Cliente.id, Cliente.telefono).all()
     except Exception:
         phone_rows = []
     for rid, tel in phone_rows:
-        if _norm_phone_digits(tel or "") == phone_digits:
+        if _norm_phone_rd(tel or "") == phone_digits:
             row = Cliente.query.filter_by(id=int(rid)).first()
             if row is not None:
                 return row, "telefono"
     return None, ""
+
+
+def _consume_public_new_token_on_duplicate(
+    *,
+    token_hash_storage: str,
+    token: str,
+    dup_row,
+    dup_field: str,
+    actor_ip: str,
+):
+    now_ref = utc_now_naive()
+    usage_row = _public_new_link_usage_by_hash(token_hash_storage)
+    if usage_row is None:
+        db.session.add(
+            PublicSolicitudClienteNuevoTokenUso(
+                token_hash=token_hash_storage,
+                cliente_id=int(getattr(dup_row, "id", 0) or 0) or None,
+                solicitud_id=None,
+                used_at=now_ref,
+            )
+        )
+        db.session.commit()
+    _log_public_new_link_event(
+        "PUBLIC_NEW_LINK_VIEW_FAIL",
+        token,
+        success=False,
+        reason="duplicate_client",
+        metadata_extra={
+            "method": request.method,
+            "status_code": 409,
+            "duplicate_field": str(dup_field or "")[:40],
+            "existing_cliente_id": int(getattr(dup_row, "id", 0) or 0) or None,
+            "ip": str(actor_ip or "")[:64],
+            "ua": str(request.user_agent.string or "")[:255],
+        },
+    )
 
 
 def _public_link_serializer() -> URLSafeTimedSerializer:
@@ -1174,7 +1223,7 @@ def generar_token_publico_cliente_nuevo(*, created_by: str = "") -> str:
     payload = {
         "v": 1,
         "purpose": "solicitud_publica_nueva",
-        "nonce": secrets.token_urlsafe(18),
+        "nonce": secrets.token_urlsafe(32),
         "by": str(created_by or "")[:80],
     }
     return ser.dumps(payload)
@@ -1207,6 +1256,35 @@ def _resolve_public_new_link_token(token: str):
         return False, "invalid_nonce", metadata
     metadata["issued_by"] = str(payload.get("by") or "")[:80]
     return True, "", metadata
+
+
+def _log_public_new_link_event(
+    action_type: str,
+    token: str,
+    *,
+    success: bool,
+    reason: str = "",
+    metadata_extra: Optional[dict] = None,
+) -> None:
+    metadata = {
+        "scope": "clientes_public_new_link",
+        "token_hash": _public_link_token_hash(token),
+        "reason": str(reason or "")[:120],
+    }
+    if metadata_extra:
+        metadata.update(metadata_extra)
+    try:
+        log_action(
+            action_type=action_type,
+            entity_type="cliente_public_new_link",
+            entity_id=None,
+            summary=(action_type or "PUBLIC_NEW_LINK")[:255],
+            metadata=metadata,
+            success=bool(success),
+            error=None if success else (str(reason or "public_new_link_fail")[:255]),
+        )
+    except Exception:
+        return
 
 
 def _cliente_public_link_fingerprint(cliente: Cliente) -> str:
@@ -1321,7 +1399,7 @@ def generar_token_publico_cliente(cliente: Cliente) -> str:
         "cliente_id": int(cliente.id),
         "codigo": str(cliente.codigo).strip(),
         "fp": _cliente_public_link_fingerprint(cliente),
-        "nonce": secrets.token_urlsafe(18),
+        "nonce": secrets.token_urlsafe(32),
     }
     return ser.dumps(payload)
 
@@ -7034,6 +7112,13 @@ def solicitud_publica_nueva_token(token):
     share_code = (getattr(g, "public_share_code", "") or "").strip().upper()
     short_share_url = share_url_override or _public_new_short_external_url(token)
     if not _ensure_public_new_token_usage_table():
+        _log_public_new_link_event(
+            "PUBLIC_NEW_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason="usage_table_unavailable",
+            metadata_extra={"method": request.method, "status_code": 503},
+        )
         flash("Este enlace no está disponible temporalmente. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
             'clientes/public_link_invalid.html',
@@ -7054,6 +7139,12 @@ def solicitud_publica_nueva_token(token):
             and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
         )
         if show_success:
+            _log_public_new_link_event(
+                "PUBLIC_NEW_LINK_VIEW_OK",
+                token,
+                success=True,
+                metadata_extra={"method": request.method, "action": "success_once_after_submit", "status_code": 200},
+            )
             solicitud_id = int(success_state.get("solicitud_id") or 0)
             session.pop("public_new_solicitud_success", None)
             if solicitud_id > 0:
@@ -7068,6 +7159,13 @@ def solicitud_publica_nueva_token(token):
                 og_url=short_share_url,
                 canonical_url=short_share_url,
             ), 200
+        _log_public_new_link_event(
+            "PUBLIC_NEW_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason="token_already_used",
+            metadata_extra={"method": request.method, "status_code": 410},
+        )
         return render_template(
             'clientes/public_link_used.html',
             used_at=getattr(used_row, "used_at", None),
@@ -7085,6 +7183,13 @@ def solicitud_publica_nueva_token(token):
         if fail_reason == "expired":
             reason_key = "expired"
             status_code = 410
+        _log_public_new_link_event(
+            "PUBLIC_NEW_LINK_VIEW_FAIL",
+            token,
+            success=False,
+            reason=fail_reason or "invalid_token",
+            metadata_extra={"method": request.method, "status_code": status_code},
+        )
         flash("Este enlace no es válido o expiró. Solicita uno nuevo a la agencia.", "warning")
         return render_template(
             'clientes/public_link_invalid.html',
@@ -7198,14 +7303,30 @@ def solicitud_publica_nueva_token(token):
                 canonical_url=short_share_url,
             ), 429
 
-        email_norm = (form.email_contacto.data or '').strip().lower()
+        email_norm = _norm_email(form.email_contacto.data or "")
         tel_raw = (form.telefono_contacto.data or '').strip()
+        tel_norm = _norm_phone_rd(tel_raw)
         dup_row, dup_field = _find_cliente_contact_duplicate(email_norm, tel_raw)
         if dup_row is not None:
-            if dup_field == "email":
-                form.email_contacto.errors.append("Este correo ya está registrado.")
-            if dup_field == "telefono":
-                form.telefono_contacto.errors.append("Este teléfono ya está registrado.")
+            try:
+                _consume_public_new_token_on_duplicate(
+                    token_hash_storage=token_hash_storage,
+                    token=token,
+                    dup_row=dup_row,
+                    dup_field=dup_field,
+                    actor_ip=actor_ip,
+                )
+            except IntegrityError:
+                db.session.rollback()
+            except Exception:
+                db.session.rollback()
+            return render_template(
+                'clientes/public_duplicate_client.html',
+                status_code=409,
+                duplicate_field=dup_field,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 409
         else:
             now_ref = utc_now_naive()
             state = {
@@ -7224,7 +7345,9 @@ def solicitud_publica_nueva_token(token):
                     codigo=codigo_cliente,
                     nombre_completo=(form.nombre_completo.data or '').strip(),
                     email=email_norm,
-                    telefono=tel_raw,
+                    email_norm=email_norm or None,
+                    telefono=tel_norm or tel_raw,
+                    telefono_norm=tel_norm or None,
                     ciudad=(form.ciudad_cliente.data or '').strip(),
                     sector=(form.sector_cliente.data or '').strip(),
                     role='cliente',
@@ -7378,6 +7501,18 @@ def solicitud_publica_nueva_token(token):
             )
 
             if result.ok:
+                _log_public_new_link_event(
+                    "PUBLIC_NEW_LINK_VIEW_OK",
+                    token,
+                    success=True,
+                    metadata_extra={
+                        "method": request.method,
+                        "action": "create_cliente_y_solicitud",
+                        "cliente_codigo": str(state.get("cliente_codigo") or ""),
+                        "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
+                        "attempts": int(result.attempts),
+                    },
+                )
                 solicitud_id = int(state.get("solicitud_id") or 0)
                 _trigger_recommendation_generation_safe(
                     solicitud_id=solicitud_id,
@@ -7402,6 +7537,13 @@ def solicitud_publica_nueva_token(token):
 
             usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
             if usage_after_fail is not None:
+                _log_public_new_link_event(
+                    "PUBLIC_NEW_LINK_VIEW_FAIL",
+                    token,
+                    success=False,
+                    reason="token_already_used",
+                    metadata_extra={"method": request.method, "status_code": 410},
+                )
                 return render_template(
                     'clientes/public_link_used.html',
                     used_at=getattr(usage_after_fail, "used_at", None),
@@ -7413,6 +7555,13 @@ def solicitud_publica_nueva_token(token):
                 ), 410
 
             err = (result.error_message or '').lower()
+            _log_public_new_link_event(
+                "PUBLIC_NEW_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason=result.error_message or "save_failed",
+                metadata_extra={"method": request.method, "status_code": 400, "attempts": int(result.attempts)},
+            )
             if "email" in err:
                 form.email_contacto.errors.append("Este correo ya está registrado.")
             elif "telefono" in err:

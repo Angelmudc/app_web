@@ -139,6 +139,12 @@ from utils.enterprise_layer import (
     ingest_live_observability_event,
     bump_operational_counter,
 )
+from utils.client_contact_norm import (
+    norm_email as _shared_norm_email,
+    norm_phone_rd as _shared_norm_phone_rd,
+    nullable_norm_email as _shared_nullable_norm_email,
+    nullable_norm_phone_rd as _shared_nullable_norm_phone_rd,
+)
 from utils.audit_entity import (
     candidata_entity_meta,
     log_candidata_action,
@@ -7528,15 +7534,14 @@ def _norm_numeric_str(value) -> str | None:
 
 def _normalize_email(value: str) -> str:
     """Email normalizado (lower + strip)."""
-    return (value or '').strip().lower()
+    return _shared_norm_email(value)
 
 def _normalize_phone(value: str) -> str:
     """
     Normaliza teléfono manteniendo dígitos. Si quieres guardar con formato,
     hazlo en la vista; persiste solo dígitos en la BD si tu modelo lo permite.
     """
-    digits = _only_digits(value)
-    return digits
+    return _shared_norm_phone_rd(value)
 
 def _strip_if_str(x):
     return x.strip() if isinstance(x, str) else x
@@ -7937,10 +7942,15 @@ def nuevo_cliente():
 
         # --- Validación de email único (case-insensitive) ---
         email_norm = (form.email.data or "").lower().strip()
+        phone_norm = _shared_norm_phone_rd(form.telefono.data or "")
         try:
-            if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+            if Cliente.query.filter(Cliente.email_norm == email_norm).first():
                 form.email.errors.append("Este email ya está registrado.")
                 flash("El email ya está registrado.", "danger")
+                return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
+            if phone_norm and Cliente.query.filter(Cliente.telefono_norm == phone_norm).first():
+                form.telefono.errors.append("Este teléfono ya está registrado.")
+                flash("El teléfono ya está registrado.", "danger")
                 return render_template('admin/cliente_form.html', cliente_form=form, nuevo=True)
         except Exception:
             flash("No se pudo validar el email del cliente.", "danger")
@@ -7979,6 +7989,10 @@ def nuevo_cliente():
 
             # Normalizamos email y fechas clave
             c.email = email_norm
+            if hasattr(c, "email_norm"):
+                c.email_norm = _shared_nullable_norm_email(email_norm)
+            if hasattr(c, "telefono_norm"):
+                c.telefono_norm = _shared_nullable_norm_phone_rd(getattr(c, "telefono", ""))
 
             # Username (si existe en el modelo)
             if hasattr(c, 'username'):
@@ -8184,10 +8198,11 @@ def editar_cliente(cliente_id):
 
         # --- Validar email si se modifica ---
         email_norm = (getattr(form, 'email', type('x', (), {'data': ''})) .data or '').lower().strip()
+        phone_norm = _shared_norm_phone_rd(getattr(form, 'telefono', type('x', (), {'data': ''})).data or '')
         email_actual = (getattr(c, 'email', '') or '').lower().strip()
         if email_norm != email_actual:
             try:
-                if Cliente.query.filter(func.lower(Cliente.email) == email_norm).first():
+                if Cliente.query.filter(Cliente.email_norm == email_norm).first():
                     if hasattr(form, 'email'):
                         form.email.errors.append("Este email ya está registrado.")
                     if wants_async:
@@ -8203,6 +8218,39 @@ def editar_cliente(cliente_id):
                     return _render_edit_page()
             except Exception:
                 msg = "No se pudo validar el email del cliente."
+                if wants_async:
+                    return _async_edit_response(
+                        ok=False,
+                        message=msg,
+                        category='danger',
+                        http_status=500,
+                        error_code='server_error',
+                        include_region=False,
+                    )
+                    flash(msg, "danger")
+                    return _render_edit_page()
+        if phone_norm and phone_norm != (_shared_norm_phone_rd(getattr(c, "telefono", "") or "")):
+            try:
+                dup_phone = Cliente.query.filter(
+                    Cliente.telefono_norm == phone_norm,
+                    Cliente.id != c.id,
+                ).first()
+                if dup_phone:
+                    if hasattr(form, 'telefono'):
+                        form.telefono.errors.append("Este teléfono ya está registrado.")
+                    if wants_async:
+                        return _async_edit_response(
+                            ok=False,
+                            message='Este teléfono ya está registrado.',
+                            category='danger',
+                            http_status=200,
+                            error_code='conflict',
+                            async_feedback={"message": "Este teléfono ya está registrado.", "category": "danger"},
+                        )
+                    flash("Este teléfono ya está registrado.", "danger")
+                    return _render_edit_page()
+            except Exception:
+                msg = "No se pudo validar el teléfono del cliente."
                 if wants_async:
                     return _async_edit_response(
                         ok=False,
@@ -8304,9 +8352,13 @@ def editar_cliente(cliente_id):
 
             if hasattr(c, 'email'):
                 c.email = email_norm
+                if hasattr(c, "email_norm"):
+                    c.email_norm = _shared_nullable_norm_email(email_norm)
 
             if hasattr(c, 'telefono') and hasattr(form, 'telefono'):
                 c.telefono = _normalize_phone(form.telefono.data or '')
+                if hasattr(c, "telefono_norm"):
+                    c.telefono_norm = _shared_nullable_norm_phone_rd(c.telefono)
 
             if hasattr(c, 'ciudad') and hasattr(form, 'ciudad'):
                 c.ciudad = (form.ciudad.data or '').strip()

@@ -13,6 +13,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from config_app import db
 from utils.secrets_manager import get_secret
 from utils.timezone import utc_now_naive
+from utils.client_contact_norm import nullable_norm_email, nullable_norm_phone_rd
 
 
 
@@ -810,7 +811,9 @@ class Cliente(UserMixin, db.Model):
 
     # Contacto
     email                      = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    email_norm                 = db.Column(db.String(100), nullable=True, index=True)
     telefono                   = db.Column(db.String(20),  nullable=False)
+    telefono_norm              = db.Column(db.String(32), nullable=True, index=True)
 
     # ----- Credenciales (portal de clientes) -----
     # Username opcional: si no se define, podemos usar el código como identificador.
@@ -921,6 +924,18 @@ class Cliente(UserMixin, db.Model):
 
     def __repr__(self):
         return f"<Cliente {self.nombre_completo} ({self.codigo})>"
+
+
+@event.listens_for(Cliente, "before_insert")
+def _cliente_before_insert(mapper, connection, target):  # pragma: no cover
+    target.email_norm = nullable_norm_email(getattr(target, "email", None))
+    target.telefono_norm = nullable_norm_phone_rd(getattr(target, "telefono", None))
+
+
+@event.listens_for(Cliente, "before_update")
+def _cliente_before_update(mapper, connection, target):  # pragma: no cover
+    target.email_norm = nullable_norm_email(getattr(target, "email", None))
+    target.telefono_norm = nullable_norm_phone_rd(getattr(target, "telefono", None))
 
 
 class TareaCliente(db.Model):
