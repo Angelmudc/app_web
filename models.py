@@ -981,6 +981,30 @@ class Solicitud(db.Model):
     # Fecha original de creación (no se toca, es histórica)
     fecha_solicitud        = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
     codigo_solicitud       = db.Column(db.String(50), nullable=False, unique=True)
+    # Flujo de intake público y revisión operativa del staff.
+    public_form_source     = db.Column(
+                                db.String(30),
+                                nullable=True,
+                                index=True,
+                                comment="Origen del formulario público: cliente_nuevo, cliente_existente, solicitud_publica."
+                             )
+    review_status          = db.Column(
+                                db.String(20),
+                                nullable=True,
+                                index=True,
+                                comment="Estado de revisión del intake: nuevo, en_gestion, revisado, descartado."
+                             )
+    reviewed_at            = db.Column(
+                                db.DateTime,
+                                nullable=True,
+                                index=True,
+                                comment="Fecha en que staff marcó el intake como revisado/gestionado."
+                             )
+    reviewed_by            = db.Column(
+                                db.String(100),
+                                nullable=True,
+                                comment="Usuario staff que aplicó el último cambio de revisión."
+                             )
 
     # ─────────────────────────────────────────────
     # SEGUIMIENTO / PRIORIDAD (NUEVO)

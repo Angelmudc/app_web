@@ -15823,6 +15823,163 @@ def _solicitudes_summary_counts() -> tuple[int, int, str]:
     return proc_count, copiable_count, warning
 
 
+_PUBLIC_INTAKE_REVIEW_ALLOWED = {"nuevo", "en_gestion", "revisado", "descartado"}
+_PUBLIC_INTAKE_PENDING_STATUSES = {"nuevo", "en_gestion"}
+
+
+def _normalize_public_intake_review_status(value: str) -> str:
+    status = str(value or "").strip().lower()
+    return status if status in _PUBLIC_INTAKE_REVIEW_ALLOWED else "nuevo"
+
+
+def _public_intake_badge_count() -> int:
+    if not hasattr(Solicitud, "review_status"):
+        return 0
+    try:
+        return int(
+            Solicitud.query
+            .filter(Solicitud.review_status.in_(tuple(_PUBLIC_INTAKE_PENDING_STATUSES)))
+            .count()
+            or 0
+        )
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return 0
+
+
+@admin_bp.app_template_global("public_intake_badge_count")
+def public_intake_badge_count() -> int:
+    if not has_request_context():
+        return 0
+    if not bool(getattr(current_user, "is_authenticated", False)):
+        return 0
+    role = str(role_for_user(current_user) or "").strip().lower()
+    if role not in {"owner", "admin"}:
+        return 0
+    return _public_intake_badge_count()
+
+
+@admin_bp.route("/solicitudes/publicas/nuevas", methods=["GET"])
+@login_required
+@admin_required
+def bandeja_formularios_publicos_nuevos():
+    if not hasattr(Solicitud, "review_status"):
+        flash("La bandeja de intake público requiere migración de base de datos.", "warning")
+        return redirect(url_for("admin.listar_solicitudes"))
+
+    status_filter = _normalize_public_intake_review_status(request.args.get("status"))
+    if status_filter not in {"nuevo", "en_gestion", "revisado", "descartado"}:
+        status_filter = "nuevo"
+
+    try:
+        page = int(request.args.get("page", 1) or 1)
+    except Exception:
+        page = 1
+    page = max(1, page)
+    try:
+        per_page = int(request.args.get("per_page", 25) or 25)
+    except Exception:
+        per_page = 25
+    per_page = max(10, min(per_page, 100))
+
+    base_query = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente))
+        .filter(Solicitud.review_status.isnot(None))
+    )
+    if status_filter == "nuevo":
+        base_query = base_query.filter(Solicitud.review_status.in_(tuple(_PUBLIC_INTAKE_PENDING_STATUSES)))
+    else:
+        base_query = base_query.filter(Solicitud.review_status == status_filter)
+
+    try:
+        pagination = (
+            base_query
+            .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+            .paginate(page=page, per_page=per_page, error_out=False)
+        )
+        counts = {
+            "nuevo": int(
+                Solicitud.query.filter(Solicitud.review_status == "nuevo").count() or 0
+            ),
+            "en_gestion": int(
+                Solicitud.query.filter(Solicitud.review_status == "en_gestion").count() or 0
+            ),
+            "revisado": int(
+                Solicitud.query.filter(Solicitud.review_status == "revisado").count() or 0
+            ),
+            "descartado": int(
+                Solicitud.query.filter(Solicitud.review_status == "descartado").count() or 0
+            ),
+        }
+    except SQLAlchemyError:
+        db.session.rollback()
+        pagination = SimpleNamespace(items=[], page=1, pages=1, has_prev=False, has_next=False, prev_num=1, next_num=1)
+        counts = {"nuevo": 0, "en_gestion": 0, "revisado": 0, "descartado": 0}
+
+    return render_template(
+        "admin/solicitudes_publicas_bandeja.html",
+        solicitudes=pagination.items,
+        pagination=pagination,
+        per_page=per_page,
+        status_filter=status_filter,
+        counts=counts,
+    )
+
+
+@admin_bp.route("/solicitudes/<int:solicitud_id>/review-status", methods=["POST"])
+@login_required
+@admin_required
+def actualizar_review_status_solicitud(solicitud_id: int):
+    if not hasattr(Solicitud, "review_status"):
+        abort(404)
+    solicitud = Solicitud.query.get_or_404(int(solicitud_id))
+    new_status = _normalize_public_intake_review_status(request.form.get("review_status"))
+    prev_status = str(getattr(solicitud, "review_status", "") or "").strip().lower()
+
+    now = utc_now_naive()
+    actor = str(getattr(current_user, "username", "") or "").strip() or f"staff#{int(getattr(current_user, 'id', 0) or 0)}"
+    solicitud.review_status = new_status
+    if hasattr(solicitud, "reviewed_by"):
+        solicitud.reviewed_by = actor
+    if hasattr(solicitud, "reviewed_at"):
+        if new_status in {"revisado", "descartado"}:
+            solicitud.reviewed_at = now
+        elif new_status == "en_gestion":
+            solicitud.reviewed_at = solicitud.reviewed_at or now
+        else:
+            solicitud.reviewed_at = None
+    db.session.commit()
+
+    log_admin_action(
+        event="PUBLIC_INTAKE_REVIEW_STATUS_UPDATED",
+        status="ok",
+        entity_type="solicitud",
+        entity_id=int(solicitud.id),
+        summary=f"Solicitud {int(solicitud.id)} review_status {prev_status or 'none'} -> {new_status}",
+        metadata={
+            "prev_status": prev_status or None,
+            "new_status": new_status,
+            "reviewed_by": actor,
+        },
+    )
+
+    next_url = (request.form.get("next") or "").strip()
+    if next_url.startswith("/"):
+        return redirect(next_url)
+    return redirect(url_for("admin.bandeja_formularios_publicos_nuevos"))
+
+
+@admin_bp.route("/solicitudes/publicas/nuevas/badge.json", methods=["GET"])
+@login_required
+@admin_required
+def bandeja_formularios_publicos_nuevos_badge_json():
+    return jsonify({"ok": True, "count": _public_intake_badge_count(), "ts": iso_utc_z()})
+
+
 def _matching_created_by() -> str:
     try:
         if getattr(current_user, "is_authenticated", False):

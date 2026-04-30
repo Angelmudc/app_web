@@ -172,6 +172,8 @@
 {% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
 {% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
 {% set _client_public_message_island_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.generar_link_publico_cliente_nuevo_json') %}
+{% set _public_intake_badge_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.bandeja_formularios_publicos_nuevos') %}
+{% set _public_intake_badge_count = (public_intake_badge_count() if _public_intake_badge_enabled and (public_intake_badge_count is defined) else 0) %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -333,6 +335,18 @@
               Seguimiento
               {% if _seg_candidatas_badge_count|int > 0 %}
                 <span class="badge rounded-pill text-bg-danger ms-1">{{ _seg_candidatas_badge_count|int }}</span>
+              {% endif %}
+            </a>
+          </li>
+          {% endif %}
+
+          {% if _public_intake_badge_enabled %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.bandeja_formularios_publicos_nuevos'] %}active{% endif %}"
+               href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}">
+              Formularios nuevos
+              {% if _public_intake_badge_count|int > 0 %}
+                <span class="badge rounded-pill text-bg-danger ms-1">{{ _public_intake_badge_count|int }}</span>
               {% endif %}
             </a>
           </li>

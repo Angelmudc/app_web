@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+{% block title %}Formularios públicos nuevos{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 1200px;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Bandeja de formularios públicos</h1>
+      <div class="text-muted small">Intake pendiente de revisión y seguimiento comercial.</div>
+    </div>
+    <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">Volver a solicitudes</a>
+  </div>
+
+  <div class="glass-card p-3 mb-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-4">
+        <label class="form-label mb-1 small">Estado</label>
+        <select class="form-select" name="status">
+          <option value="nuevo" {% if status_filter == 'nuevo' %}selected{% endif %}>Pendientes (nuevo + en gestión)</option>
+          <option value="en_gestion" {% if status_filter == 'en_gestion' %}selected{% endif %}>En gestión</option>
+          <option value="revisado" {% if status_filter == 'revisado' %}selected{% endif %}>Revisados</option>
+          <option value="descartado" {% if status_filter == 'descartado' %}selected{% endif %}>Descartados</option>
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label mb-1 small">Por página</label>
+        <select class="form-select" name="per_page">
+          {% for size in [10, 25, 50, 100] %}
+          <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+      </div>
+      <div class="col-md-3">
+        <div class="small text-muted">Nuevo: <strong>{{ counts.nuevo }}</strong> · En gestión: <strong>{{ counts.en_gestion }}</strong></div>
+        <div class="small text-muted">Revisado: <strong>{{ counts.revisado }}</strong> · Descartado: <strong>{{ counts.descartado }}</strong></div>
+      </div>
+    </form>
+  </div>
+
+  {% if not solicitudes %}
+    <div class="alert alert-light border">No hay formularios nuevos por revisar.</div>
+  {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Email</th>
+            <th>Tipo</th>
+            <th>Fecha recibida</th>
+            <th>Estado revisión</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in solicitudes %}
+          <tr>
+            <td>{{ s.cliente.nombre_completo if s.cliente else 'Sin cliente' }}</td>
+            <td>{{ s.cliente.telefono if s.cliente else '—' }}</td>
+            <td>{{ s.cliente.email if s.cliente else '—' }}</td>
+            <td>
+              {% set source = (s.public_form_source or 'solicitud_publica') %}
+              {% if source == 'cliente_nuevo' %}Cliente nuevo{% elif source == 'cliente_existente' %}Cliente existente{% else %}Solicitud pública{% endif %}
+            </td>
+            <td>{{ format_rd_datetime(s.fecha_solicitud, fallback='—') if format_rd_datetime is defined else (s.fecha_solicitud or '—') }}</td>
+            <td>
+              {% set rs = (s.review_status or 'nuevo') %}
+              {% if rs == 'nuevo' %}
+              <span class="badge text-bg-danger">Nuevo</span>
+              {% elif rs == 'en_gestion' %}
+              <span class="badge text-bg-warning">En gestión</span>
+              {% elif rs == 'revisado' %}
+              <span class="badge text-bg-success">Revisado</span>
+              {% else %}
+              <span class="badge text-bg-secondary">Descartado</span>
+              {% endif %}
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Ver detalle</a>
+                <form method="post" action="{{ url_for('admin.actualizar_review_status_solicitud', solicitud_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="review_status" value="en_gestion">
+                  <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                  <button type="submit" class="btn btn-outline-warning btn-sm">En gestión</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.actualizar_review_status_solicitud', solicitud_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="review_status" value="revisado">
+                  <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                  <button type="submit" class="btn btn-outline-success btn-sm">Revisado</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.actualizar_review_status_solicitud', solicitud_id=s.id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="review_status" value="descartado">
+                  <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                  <button type="submit" class="btn btn-outline-secondary btn-sm">Descartar</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if pagination.pages > 1 %}
+    <nav aria-label="Paginación formularios públicos" class="mt-2">
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', status=status_filter, per_page=per_page, page=pagination.prev_num) if pagination.has_prev else '#' }}">Anterior</a>
+        </li>
+        <li class="page-item disabled"><span class="page-link">Página {{ pagination.page }} de {{ pagination.pages }}</span></li>
+        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', status=status_filter, per_page=per_page, page=pagination.next_num) if pagination.has_next else '#' }}">Siguiente</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}

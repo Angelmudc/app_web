@@ -7377,6 +7377,14 @@ def solicitud_publica_nueva_token(token):
                     fecha_solicitud=now_ref,
                     codigo_solicitud=codigo_solicitud
                 )
+                if hasattr(s, "public_form_source"):
+                    s.public_form_source = "cliente_nuevo"
+                if hasattr(s, "review_status"):
+                    s.review_status = "nuevo"
+                if hasattr(s, "reviewed_at"):
+                    s.reviewed_at = None
+                if hasattr(s, "reviewed_by"):
+                    s.reviewed_by = None
                 form.populate_obj(s)
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
@@ -7959,6 +7967,14 @@ def solicitud_publica(token):
                 fecha_solicitud=now_ref,
                 codigo_solicitud=codigo
             )
+            if hasattr(s, "public_form_source"):
+                s.public_form_source = "cliente_existente"
+            if hasattr(s, "review_status"):
+                s.review_status = "nuevo"
+            if hasattr(s, "reviewed_at"):
+                s.reviewed_at = None
+            if hasattr(s, "reviewed_by"):
+                s.reviewed_by = None
 
             form.populate_obj(s)
             _apply_banos_from_request(s, form)
