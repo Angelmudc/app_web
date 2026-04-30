@@ -389,6 +389,32 @@ footer{
 .seg-list-wrap{
   margin-top: 12px;
 }
+.seg-tabs{
+  margin-top: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.seg-tab{
+  border: 1px solid rgba(144, 201, 255, .28);
+  background: rgba(13, 26, 46, .7);
+  color: #cfe5fb;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.seg-tab.is-active{
+  background: rgba(74, 181, 255, .24);
+  border-color: rgba(141, 220, 255, .62);
+  color: #fff;
+}
+.seg-tab-pane{
+  display: none;
+}
+.seg-tab-pane.is-active{
+  display: block;
+}
 .seg-list-title{
   font-size: .86rem;
   color: #b6cfe8;
@@ -417,6 +443,38 @@ footer{
 .seg-case-meta{
   font-size: .82rem;
   color: #b7cde3;
+}
+.seg-actions{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.seg-actions .btn{
+  border-color: rgba(148, 201, 248, .38);
+  color: #e9f4ff;
+}
+.seg-inline-form{
+  margin-top: 12px;
+}
+.seg-inline-form .form-control,
+.seg-inline-form .form-select{
+  background: rgba(8, 19, 34, .68);
+  border-color: rgba(156, 201, 238, .28);
+  color: #eef7ff;
+}
+.seg-inline-form .form-label{
+  color: #b7cee4;
+}
+.seg-case-feedback{
+  margin-top: 8px;
+  margin-bottom: 0;
+  padding: 6px 8px;
+  font-size: .8rem;
+}
+.seg-inline-action{
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 201, 248, .22);
 }
 .seg-loading{
   display: grid;

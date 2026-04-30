@@ -23534,6 +23534,7 @@ def seguimiento_candidatas_crear_caso():
     solicitud_id = _safe_int(request.form.get("solicitud_id") or payload.get("solicitud_id"), default=0)
     proxima_accion_tipo = (request.form.get("proxima_accion_tipo") or payload.get("proxima_accion_tipo") or "").strip()[:40]
     proxima_accion_detalle = (request.form.get("proxima_accion_detalle") or payload.get("proxima_accion_detalle") or "").strip()[:300]
+    prioridad = str(request.form.get("prioridad") or payload.get("prioridad") or "normal").strip().lower()
     due_at = parse_iso_utc((request.form.get("due_at") or payload.get("due_at") or "").strip()) if (request.form.get("due_at") or payload.get("due_at")) else None
 
     if not (candidata_id > 0 or telefono_norm):
@@ -23542,6 +23543,8 @@ def seguimiento_candidatas_crear_caso():
         return jsonify({"ok": False, "error": "invalid_canal_origen"}), 400
     if not proxima_accion_tipo or not due_at:
         return jsonify({"ok": False, "error": "proxima_accion_due_required"}), 400
+    if prioridad not in _SEG_CASO_PRIORIDADES:
+        return jsonify({"ok": False, "error": "invalid_prioridad"}), 400
 
     contacto_id = None
     if telefono_norm:
@@ -23582,7 +23585,7 @@ def seguimiento_candidatas_crear_caso():
         telefono_norm=telefono_norm or None,
         canal_origen=canal_origen,
         estado="nuevo",
-        prioridad="normal",
+        prioridad=prioridad,
         owner_staff_user_id=_seg_staff_user_id(),
         created_by_staff_user_id=_seg_staff_user_id(),
         taken_at=now,

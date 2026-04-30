@@ -192,6 +192,7 @@
       data-seg-candidatas-badge-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_badge_json') %}{{ url_for('admin.seguimiento_candidatas_badge_json') }}{% endif %}"
       data-seg-candidatas-queue-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola_json') %}{{ url_for('admin.seguimiento_candidatas_cola_json') }}{% endif %}"
       data-seg-candidatas-full-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola') %}{{ url_for('admin.seguimiento_candidatas_cola') }}{% endif %}"
+      data-seg-candidatas-create-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_crear_caso') %}{{ url_for('admin.seguimiento_candidatas_crear_caso') }}{% endif %}"
       data-staff-username="{{ _staff_username }}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
       data-lazy-script-live-refresh="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/core/live-refresh.js') }}{% endif %}"
@@ -519,15 +520,73 @@
       <div id="segCandidatasError" class="alert alert-danger d-none" role="alert"></div>
       <div id="segCandidatasContent" class="d-none">
         <div class="seg-kpis" id="segCandidatasKpis"></div>
-        <div class="seg-list-wrap">
-          <div class="seg-list-title">Casos críticos</div>
-          <div id="segCandidatasCriticalList"></div>
+        <div class="seg-tabs" role="tablist" aria-label="Seguimiento candidatas secciones">
+          <button type="button" class="seg-tab is-active" data-seg-tab-btn="pendientes" aria-controls="segCandidatasTabPendientes">Pendientes</button>
+          <button type="button" class="seg-tab" data-seg-tab-btn="mine" aria-controls="segCandidatasTabMine">Mis casos</button>
+          <button type="button" class="seg-tab" data-seg-tab-btn="create" aria-controls="segCandidatasTabCreate">Crear caso</button>
+        </div>
+        <div class="seg-tab-pane is-active" id="segCandidatasTabPendientes" data-seg-tab-pane="pendientes">
+          <div class="seg-list-wrap">
+            <div class="seg-list-title">Pendientes críticos</div>
+            <div id="segCandidatasCriticalList"></div>
+          </div>
+        </div>
+        <div class="seg-tab-pane" id="segCandidatasTabMine" data-seg-tab-pane="mine">
+          <div class="seg-list-wrap">
+            <div class="seg-list-title">Mis casos activos</div>
+            <div id="segCandidatasMineList"></div>
+          </div>
+        </div>
+        <div class="seg-tab-pane" id="segCandidatasTabCreate" data-seg-tab-pane="create">
+          <form id="segCandidatasQuickCreateForm" class="seg-inline-form" novalidate>
+            <div id="segQuickCreateFeedback" class="alert d-none" role="alert"></div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateNombre">Nombre contacto</label>
+              <input class="form-control form-control-sm" id="segCreateNombre" name="nombre_contacto" maxlength="200">
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateTelefono">Telefono</label>
+              <input class="form-control form-control-sm" id="segCreateTelefono" name="telefono_norm" maxlength="40" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateQuePidio">Que pidio</label>
+              <input class="form-control form-control-sm" id="segCreateQuePidio" name="que_pidio" maxlength="120" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateNota">Que se le pregunto / nota inicial</label>
+              <textarea class="form-control form-control-sm" id="segCreateNota" name="proxima_accion_detalle" rows="3" maxlength="300"></textarea>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateNextAction">Proxima accion</label>
+              <input class="form-control form-control-sm" id="segCreateNextAction" name="proxima_accion_tipo" maxlength="40" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreateDueAt">Vencimiento</label>
+              <input class="form-control form-control-sm" id="segCreateDueAt" name="due_at" type="datetime-local" required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label form-label-sm mb-1" for="segCreatePriority">Prioridad</label>
+              <select class="form-select form-select-sm" id="segCreatePriority" name="prioridad">
+                <option value="normal" selected>Normal</option>
+                <option value="alta">Alta</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label form-label-sm mb-1" for="segCreateOwner">Responsable</label>
+              <input class="form-control form-control-sm" id="segCreateOwner" value="{{ _staff_username or 'Actual' }}" disabled>
+              <div class="form-text">Se asigna al usuario actual al crear.</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-sm btn-primary" id="segQuickCreateSubmitBtn">Guardar caso</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary" id="segQuickCreateResetBtn">Limpiar</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>
     <div class="seg-drawer-foot">
       <a class="btn btn-primary btn-sm" id="segCandidatasFullBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Ver cola completa</a>
-      <a class="btn btn-outline-secondary btn-sm" id="segCandidatasQuickCreateBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Crear caso rapido</a>
+      <button class="btn btn-outline-secondary btn-sm" id="segCandidatasQuickCreateBtn" type="button">Crear caso rapido</button>
     </div>
   </aside>
   {% endif %}
