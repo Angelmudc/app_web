@@ -58,43 +58,6 @@
   {% if _home_internal_staff %}
   <div class="mb-5">
     <h2 class="section-title">
-      <i class="fa-solid fa-bolt me-2 text-primary"></i> Trabajo operativo
-    </h2>
-    <div class="row row-cols-1 row-cols-md-2 g-4">
-      {% set _por_finalizar_url = (url_for_safe('admin.candidatas_por_finalizar') or '/admin/candidatas/por-finalizar') %}
-      {% set _seg_cola_url = (url_for_safe('admin.seguimiento_candidatas_cola') or '/admin/seguimiento-candidatas/cola') %}
-      {% set _finalizar_count = (candidatas_por_finalizar_badge_count() if (candidatas_por_finalizar_badge_count is defined) else 0) %}
-      {% set _seg_count = (seguimiento_candidatas_badge_count() if (seguimiento_candidatas_badge_count is defined) else 0) %}
-
-      <div class="col">
-        <div class="dashboard-card dashboard-card-operativa h-100">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <h5 class="mb-1">Candidatas por finalizar</h5>
-            <span class="badge text-bg-danger fs-6">{{ _finalizar_count|int }}</span>
-          </div>
-          <p class="mb-3">Candidatas con pasos pendientes para quedar listas.</p>
-          <a href="{{ _por_finalizar_url }}" class="btn btn-primary w-100">Ver por finalizar</a>
-        </div>
-      </div>
-
-      <div class="col">
-        <div class="dashboard-card dashboard-card-operativa h-100">
-          <div class="d-flex justify-content-between align-items-start mb-2">
-            <h5 class="mb-1">Seguimiento candidatas</h5>
-            <span class="badge text-bg-danger fs-6">{{ _seg_count|int }}</span>
-          </div>
-          <p class="mb-3">Casos abiertos de candidatas interesadas en empleo.</p>
-          <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ _seg_cola_url }}" class="btn btn-primary flex-fill">Abrir seguimiento</a>
-            <button type="button" class="btn btn-outline-light flex-fill" id="homeSegOpenPanelBtn">Abrir panel rápido</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="mb-5">
-    <h2 class="section-title">
       <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
     </h2>
     <div class="dashboard-card home-notif-wrap"
@@ -359,6 +322,33 @@
     </div>
   </div>
 </div>
+{% if _home_internal_staff %}
+{% set _por_finalizar_url = (url_for_safe('admin.candidatas_por_finalizar') or '/admin/candidatas/por-finalizar') %}
+{% set _seg_cola_url = (url_for_safe('admin.seguimiento_candidatas_cola') or '/admin/seguimiento-candidatas/cola') %}
+{% set _finalizar_count = (candidatas_por_finalizar_badge_count() if (candidatas_por_finalizar_badge_count is defined) else 0) %}
+{% set _seg_count = (seguimiento_candidatas_badge_count() if (seguimiento_candidatas_badge_count is defined) else 0) %}
+<aside class="home-op-islands" aria-label="Accesos operativos rápidos">
+  <a href="{{ _por_finalizar_url }}" class="home-op-island">
+    <span class="home-op-icon"><i class="fa-solid fa-clipboard-check"></i></span>
+    <span class="home-op-copy">
+      <strong>Por finalizar</strong>
+      <small>Candidatas pendientes</small>
+    </span>
+    <span class="home-op-count">{{ _finalizar_count|int }}</span>
+  </a>
+  <div class="home-op-island">
+    <button type="button" class="home-op-inline-btn" id="homeSegOpenPanelBtn">
+      <span class="home-op-icon"><i class="fa-solid fa-user-clock"></i></span>
+      <span class="home-op-copy">
+        <strong>Seguimiento</strong>
+        <small>Abrir panel rápido</small>
+      </span>
+      <span class="home-op-count">{{ _seg_count|int }}</span>
+    </button>
+    <a href="{{ _seg_cola_url }}" class="home-op-mini-link">Ver cola completa</a>
+  </div>
+</aside>
+{% endif %}
 
 <style>
   body { background-color:#f2f5fa; transition:.4s; }
@@ -375,23 +365,6 @@
     box-shadow:0 4px 18px rgba(0,0,0,.07);
     transition:.35s;
   }
-  .dashboard-card-operativa{
-    background:linear-gradient(145deg, rgba(10, 23, 42, .96), rgba(18, 37, 64, .92));
-    border:1px solid rgba(140, 202, 255, .3);
-    color:#eaf4ff;
-    box-shadow:0 10px 26px rgba(4, 10, 21, .28);
-  }
-  .dashboard-card-operativa h5{ color:#f5f9ff; }
-  .dashboard-card-operativa p{ color:#c5d9ee; }
-  .dashboard-card-operativa .btn-outline-light{
-    border-color:rgba(184, 222, 255, .55);
-    color:#ecf6ff;
-  }
-  .dashboard-card-operativa .btn-outline-light:hover{
-    background:rgba(170, 220, 255, .15);
-    color:#fff;
-  }
-
   .dashboard-card:hover {
     transform:translateY(-6px);
     box-shadow:0 8px 22px rgba(74,105,189,.2);
@@ -456,6 +429,78 @@
     padding:10px;
     background:#fff;
     color:#546277;
+  }
+  .home-op-islands{
+    position:fixed;
+    left:14px;
+    bottom:76px;
+    z-index:1105;
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+    width:min(320px, calc(100vw - 28px));
+  }
+  .home-op-island{
+    border:1px solid rgba(135, 200, 255, .42);
+    border-radius:16px;
+    background:linear-gradient(145deg, rgba(8, 16, 31, .92), rgba(10, 25, 47, .88));
+    backdrop-filter: blur(10px);
+    box-shadow:0 14px 34px rgba(4, 10, 22, .36);
+    color:#e9f3ff;
+    padding:10px 12px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    text-decoration:none;
+  }
+  .home-op-inline-btn{
+    all:unset;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    width:100%;
+    cursor:pointer;
+  }
+  .home-op-copy{
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+  }
+  .home-op-copy strong{ font-size:.9rem; line-height:1.15; color:#f8fbff; }
+  .home-op-copy small{ color:#bfd4eb; font-size:.78rem; }
+  .home-op-icon{
+    width:30px; height:30px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid rgba(165, 228, 255, .52);
+    background:rgba(90, 195, 255, .22);
+    color:#d8f1ff;
+    flex:0 0 30px;
+  }
+  .home-op-count{
+    margin-left:auto;
+    min-width:28px; height:28px; border-radius:999px;
+    display:inline-flex; align-items:center; justify-content:center;
+    padding:0 8px;
+    font-weight:900; font-size:.86rem;
+    background:rgba(255, 99, 122, .24);
+    border:1px solid rgba(255, 153, 172, .46);
+    color:#ffd0d8;
+  }
+  .home-op-mini-link{
+    display:block;
+    margin:6px 0 0 40px;
+    color:#cae8ff;
+    font-size:.78rem;
+    text-decoration:underline;
+  }
+  .home-op-island:hover{ color:#fff; border-color:rgba(122, 224, 255, .72); }
+  @media (max-width: 768px){
+    .home-op-islands{
+      left:10px;
+      right:10px;
+      width:auto;
+      bottom:126px;
+    }
   }
 
   .animate-fade { animation: fadeIn 1.4s ease forwards; }
