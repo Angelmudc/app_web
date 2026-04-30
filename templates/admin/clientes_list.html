@@ -52,6 +52,21 @@
           <small>Panel general de solicitudes</small>
         </span>
       </a>
+      {% if can_manage_public_intake %}
+      <a href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-inbox"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Bandeja de solicitudes nuevas</strong>
+          <small>
+            {% if public_intake_new_count > 0 %}
+              {{ public_intake_new_count }} nuevas
+            {% else %}
+              Sin nuevas pendientes
+            {% endif %}
+          </small>
+        </span>
+      </a>
+      {% endif %}
       <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="clientes-quick-card">
         <span class="clientes-quick-icon"><i class="fa-solid fa-bolt"></i></span>
         <span class="clientes-quick-copy">

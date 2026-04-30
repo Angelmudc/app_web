@@ -13,15 +13,6 @@
 
   <div class="glass-card p-3 mb-3">
     <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-4">
-        <label class="form-label mb-1 small">Estado</label>
-        <select class="form-select" name="status">
-          <option value="nuevo" {% if status_filter == 'nuevo' %}selected{% endif %}>Pendientes (nuevo + en gestión)</option>
-          <option value="en_gestion" {% if status_filter == 'en_gestion' %}selected{% endif %}>En gestión</option>
-          <option value="revisado" {% if status_filter == 'revisado' %}selected{% endif %}>Revisados</option>
-          <option value="descartado" {% if status_filter == 'descartado' %}selected{% endif %}>Descartados</option>
-        </select>
-      </div>
       <div class="col-md-3">
         <label class="form-label mb-1 small">Por página</label>
         <select class="form-select" name="per_page">
@@ -33,15 +24,18 @@
       <div class="col-md-2 d-grid">
         <button class="btn btn-primary" type="submit">Filtrar</button>
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <div class="small text-muted">Nuevo: <strong>{{ counts.nuevo }}</strong> · En gestión: <strong>{{ counts.en_gestion }}</strong></div>
         <div class="small text-muted">Revisado: <strong>{{ counts.revisado }}</strong> · Descartado: <strong>{{ counts.descartado }}</strong></div>
       </div>
     </form>
   </div>
 
-  {% if not solicitudes %}
-    <div class="alert alert-light border">No hay formularios nuevos por revisar.</div>
+  <div class="mb-4">
+    <h2 class="h5 mb-2">Solicitudes nuevas por revisar</h2>
+    <p class="text-muted small mb-2">Esta bandeja muestra solo formularios con estado <strong>nuevo</strong>.</p>
+  {% if not solicitudes_nuevas %}
+    <div class="alert alert-light border">No hay solicitudes nuevas por revisar.</div>
   {% else %}
     <div class="table-responsive">
       <table class="table table-sm align-middle">
@@ -57,7 +51,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for s in solicitudes %}
+          {% for s in solicitudes_nuevas %}
           <tr>
             <td>{{ s.cliente.nombre_completo if s.cliente else 'Sin cliente' }}</td>
             <td>{{ s.cliente.telefono if s.cliente else '—' }}</td>
@@ -81,7 +75,7 @@
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
-                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Ver detalle</a>
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Revisar</a>
                 <form method="post" action="{{ url_for('admin.actualizar_review_status_solicitud', solicitud_id=s.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="review_status" value="en_gestion">
@@ -108,19 +102,82 @@
       </table>
     </div>
 
-    {% if pagination.pages > 1 %}
+    {% if pagination_nuevas.pages > 1 %}
     <nav aria-label="Paginación formularios públicos" class="mt-2">
       <ul class="pagination pagination-sm mb-0">
-        <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', status=status_filter, per_page=per_page, page=pagination.prev_num) if pagination.has_prev else '#' }}">Anterior</a>
+        <li class="page-item {% if not pagination_nuevas.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', per_page=per_page, page=pagination_nuevas.prev_num, today_page=pagination_hoy.page) if pagination_nuevas.has_prev else '#' }}">Anterior</a>
         </li>
-        <li class="page-item disabled"><span class="page-link">Página {{ pagination.page }} de {{ pagination.pages }}</span></li>
-        <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
-          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', status=status_filter, per_page=per_page, page=pagination.next_num) if pagination.has_next else '#' }}">Siguiente</a>
+        <li class="page-item disabled"><span class="page-link">Página {{ pagination_nuevas.page }} de {{ pagination_nuevas.pages }}</span></li>
+        <li class="page-item {% if not pagination_nuevas.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', per_page=per_page, page=pagination_nuevas.next_num, today_page=pagination_hoy.page) if pagination_nuevas.has_next else '#' }}">Siguiente</a>
         </li>
       </ul>
     </nav>
     {% endif %}
   {% endif %}
+  </div>
+
+  <div>
+    <h2 class="h5 mb-2">Solicitudes de hoy</h2>
+    <p class="text-muted small mb-2">Incluye nuevas, en gestión, revisadas y descartadas recibidas hoy.</p>
+    {% if not solicitudes_hoy %}
+      <div class="alert alert-light border">No hay solicitudes recibidas hoy.</div>
+    {% else %}
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Cliente</th>
+            <th>Teléfono</th>
+            <th>Tipo</th>
+            <th>Hora</th>
+            <th>Estado revisión</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in solicitudes_hoy %}
+          <tr>
+            <td>{{ s.cliente.nombre_completo if s.cliente else 'Sin cliente' }}</td>
+            <td>{{ s.cliente.telefono if s.cliente else '—' }}</td>
+            <td>
+              {% set source = (s.public_form_source or 'solicitud_publica') %}
+              {% if source == 'cliente_nuevo' %}Cliente nuevo{% elif source == 'cliente_existente' %}Cliente existente{% else %}Solicitud pública{% endif %}
+            </td>
+            <td>{{ format_rd_datetime(s.fecha_solicitud, fallback='—') if format_rd_datetime is defined else (s.fecha_solicitud or '—') }}</td>
+            <td>
+              {% set rs = (s.review_status or 'nuevo') %}
+              {% if rs == 'nuevo' %}
+              <span class="badge text-bg-danger">Nuevo</span>
+              {% elif rs == 'en_gestion' %}
+              <span class="badge text-bg-warning">En gestión</span>
+              {% elif rs == 'revisado' %}
+              <span class="badge text-bg-success">Revisado</span>
+              {% else %}
+              <span class="badge text-bg-secondary">Descartado</span>
+              {% endif %}
+            </td>
+            <td><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Revisar</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if pagination_hoy.pages > 1 %}
+    <nav aria-label="Paginación solicitudes de hoy" class="mt-2">
+      <ul class="pagination pagination-sm mb-0">
+        <li class="page-item {% if not pagination_hoy.has_prev %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', per_page=per_page, page=pagination_nuevas.page, today_page=pagination_hoy.prev_num) if pagination_hoy.has_prev else '#' }}">Anterior</a>
+        </li>
+        <li class="page-item disabled"><span class="page-link">Página {{ pagination_hoy.page }} de {{ pagination_hoy.pages }}</span></li>
+        <li class="page-item {% if not pagination_hoy.has_next %}disabled{% endif %}">
+          <a class="page-link" href="{{ url_for('admin.bandeja_formularios_publicos_nuevos', per_page=per_page, page=pagination_nuevas.page, today_page=pagination_hoy.next_num) if pagination_hoy.has_next else '#' }}">Siguiente</a>
+        </li>
+      </ul>
+    </nav>
+    {% endif %}
+    {% endif %}
+  </div>
 </div>
 {% endblock %}

@@ -7472,6 +7472,10 @@ def listar_clientes():
             clientes = all_rows[(page - 1) * per_page: page * per_page]
         last_page = ((total - 1) // per_page) + 1 if total > 0 else 1
 
+    role = str(role_for_user(current_user) or "").strip().lower()
+    can_manage_public_intake = role in {"owner", "admin"}
+    public_intake_new_count = _public_intake_badge_count() if can_manage_public_intake else 0
+
     if _admin_async_wants_json():
         html = render_template(
             'admin/_clientes_list_results.html',
@@ -7510,6 +7514,8 @@ def listar_clientes():
         total=total,
         last_page=last_page,
         server_paginated=True,
+        can_manage_public_intake=can_manage_public_intake,
+        public_intake_new_count=public_intake_new_count,
     )
 
 
@@ -15870,15 +15876,16 @@ def bandeja_formularios_publicos_nuevos():
         flash("La bandeja de intake público requiere migración de base de datos.", "warning")
         return redirect(url_for("admin.listar_solicitudes"))
 
-    status_filter = _normalize_public_intake_review_status(request.args.get("status"))
-    if status_filter not in {"nuevo", "en_gestion", "revisado", "descartado"}:
-        status_filter = "nuevo"
-
     try:
         page = int(request.args.get("page", 1) or 1)
     except Exception:
         page = 1
     page = max(1, page)
+    try:
+        today_page = int(request.args.get("today_page", 1) or 1)
+    except Exception:
+        today_page = 1
+    today_page = max(1, today_page)
     try:
         per_page = int(request.args.get("per_page", 25) or 25)
     except Exception:
@@ -15887,19 +15894,55 @@ def bandeja_formularios_publicos_nuevos():
 
     base_query = (
         Solicitud.query
-        .options(joinedload(Solicitud.cliente))
+        .options(
+            load_only(
+                Solicitud.id,
+                Solicitud.cliente_id,
+                Solicitud.codigo_solicitud,
+                Solicitud.fecha_solicitud,
+                Solicitud.review_status,
+                Solicitud.public_form_source,
+            ),
+            joinedload(Solicitud.cliente).load_only(
+                Cliente.id,
+                Cliente.nombre_completo,
+                Cliente.telefono,
+                Cliente.email,
+            ),
+        )
         .filter(Solicitud.review_status.isnot(None))
+        .filter(Solicitud.review_status == "nuevo")
     )
-    if status_filter == "nuevo":
-        base_query = base_query.filter(Solicitud.review_status.in_(tuple(_PUBLIC_INTAKE_PENDING_STATUSES)))
-    else:
-        base_query = base_query.filter(Solicitud.review_status == status_filter)
 
     try:
         pagination = (
             base_query
             .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
             .paginate(page=page, per_page=per_page, error_out=False)
+        )
+        today_start_utc, today_end_utc = rd_day_range_utc_naive()
+        today_pagination = (
+            Solicitud.query
+            .options(
+                load_only(
+                    Solicitud.id,
+                    Solicitud.cliente_id,
+                    Solicitud.codigo_solicitud,
+                    Solicitud.fecha_solicitud,
+                    Solicitud.review_status,
+                    Solicitud.public_form_source,
+                ),
+                joinedload(Solicitud.cliente).load_only(
+                    Cliente.id,
+                    Cliente.nombre_completo,
+                    Cliente.telefono,
+                    Cliente.email,
+                ),
+            )
+            .filter(Solicitud.review_status.isnot(None))
+            .filter(Solicitud.fecha_solicitud >= today_start_utc, Solicitud.fecha_solicitud < today_end_utc)
+            .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
+            .paginate(page=today_page, per_page=per_page, error_out=False)
         )
         counts = {
             "nuevo": int(
@@ -15918,14 +15961,16 @@ def bandeja_formularios_publicos_nuevos():
     except SQLAlchemyError:
         db.session.rollback()
         pagination = SimpleNamespace(items=[], page=1, pages=1, has_prev=False, has_next=False, prev_num=1, next_num=1)
+        today_pagination = SimpleNamespace(items=[], page=1, pages=1, has_prev=False, has_next=False, prev_num=1, next_num=1)
         counts = {"nuevo": 0, "en_gestion": 0, "revisado": 0, "descartado": 0}
 
     return render_template(
         "admin/solicitudes_publicas_bandeja.html",
-        solicitudes=pagination.items,
-        pagination=pagination,
+        solicitudes_nuevas=pagination.items,
+        pagination_nuevas=pagination,
+        solicitudes_hoy=today_pagination.items,
+        pagination_hoy=today_pagination,
         per_page=per_page,
-        status_filter=status_filter,
         counts=counts,
     )
 
