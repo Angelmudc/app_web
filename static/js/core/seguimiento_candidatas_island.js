@@ -39,6 +39,7 @@
   let refreshTimer = null;
   let inFlight = false;
   let previousActive = null;
+  const queueQuickUrl = queueUrl ? (queueUrl + (queueUrl.indexOf("?") >= 0 ? "&" : "?") + "quick=1&limit=80") : "";
 
   function esc(text) {
     return String(text || "")
@@ -220,11 +221,11 @@
   }
 
   async function loadQueue() {
-    if (!queueUrl || inFlight) return;
+    if (!queueQuickUrl || inFlight) return;
     inFlight = true;
     showLoading();
     try {
-      const r = await fetch(queueUrl, {
+      const r = await fetch(queueQuickUrl, {
         credentials: "same-origin",
         cache: "no-store",
         headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
@@ -305,9 +306,10 @@
       canal_origen: "otro",
       proxima_accion_tipo: nextAction,
       proxima_accion_detalle: mergedDetail.trim(),
-      due_at: String(fd.get("due_at") || "").trim(),
       prioridad: String(fd.get("prioridad") || "normal").trim(),
     };
+    const dueAt = String(fd.get("due_at") || "").trim();
+    if (dueAt) payload.due_at = dueAt;
     try {
       const p = await postJson(createUrl, payload);
       let msg = "Caso creado correctamente.";
@@ -319,7 +321,9 @@
         setFeedback(createFeedback, "success", msg);
       }
       createForm.reset();
-      await reloadData();
+      if (typeof p.overdue_count === "number") setCount(p.overdue_count);
+      await loadQueue();
+      await refreshBadge();
       setTab("pendientes");
     } catch (e) {
       setFeedback(createFeedback, "danger", "No se pudo crear el caso: " + esc(e && e.message ? e.message : "error"));

@@ -122,16 +122,38 @@ def test_crear_caso_ok():
     assert int((payload.get("case") or {}).get("id") or 0) > 0
 
 
-def test_crear_caso_invalido_sin_proxima_accion_o_due_at():
+def test_crear_caso_invalido_sin_proxima_accion():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     _ensure_tracking_tables()
     client = flask_app.test_client()
     _login(client)
-    resp = _crear_caso(client, proxima_accion_tipo="", due_at="")
+    resp = _crear_caso(client, proxima_accion_tipo="")
     assert resp.status_code == 400
     payload = resp.get_json() or {}
-    assert payload.get("error") == "proxima_accion_due_required"
+    assert payload.get("error") == "proxima_accion_required"
+
+
+def test_crear_caso_sin_due_at_aplica_vencimiento_automatico_7_dias():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_tracking_tables()
+    client = flask_app.test_client()
+    _login(client)
+    resp = _crear_caso(client, due_at="")
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("ok") is True
+    assert payload.get("auto_due_applied") is True
+    case = payload.get("case") or {}
+    due_raw = str(case.get("due_at") or "")
+    assert due_raw
+    with flask_app.app_context():
+        row = SeguimientoCandidataCaso.query.get(int(case.get("id") or 0))
+        assert row is not None
+        now = admin_routes._seg_now()
+        delta_seconds = abs((row.due_at - (now + admin_routes.timedelta(days=7))).total_seconds())
+        assert delta_seconds < 300
 
 
 def test_dedupe_por_telefono_normalizado_informa_existente():
@@ -447,11 +469,11 @@ def test_isla_seguimiento_visibilidad_positiva_en_rutas_internas_clave():
         assert "segCandidatasDrawer" in html, path
 
 
-def test_isla_seguimiento_visibilidad_negativa_en_publico_cliente_y_home_login():
+def test_isla_seguimiento_visibilidad_negativa_en_publico_cliente_y_login_root():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
 
-    hidden_for_staff_paths = ["/clientes/ayuda", "/cliente/demo", "/login", "/", "/home"]
+    hidden_for_staff_paths = ["/clientes/ayuda", "/cliente/demo", "/login", "/"]
     for path in hidden_for_staff_paths:
         html = _render_base_as(path, role="admin", authenticated=True)
         assert 'class="seg-candidatas-island' not in html, path
@@ -476,8 +498,8 @@ def test_isla_seguimiento_contrato_html_y_carga_condicional_js():
     assert 'href="/admin/seguimiento-candidatas/cola"' in html
     assert "js/core/seguimiento_candidatas_island.js" in html
 
-    html_hidden = _render_base_as("/home", role="secretaria", authenticated=True)
-    assert "js/core/seguimiento_candidatas_island.js" not in html_hidden
+    html_home_staff = _render_base_as("/home", role="secretaria", authenticated=True)
+    assert "js/core/seguimiento_candidatas_island.js" in html_home_staff
 
 
 def test_js_isla_seguimiento_maneja_error_y_no_navega_en_click_isla():

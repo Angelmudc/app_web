@@ -23494,9 +23494,17 @@ def seguimiento_candidatas_cola_json():
                 SeguimientoCandidataCaso.public_id.ilike(il),
             )
         )
+    quick_mode = str(request.args.get("quick") or "").strip().lower() in {"1", "true", "yes", "y"}
+    req_limit = _safe_int(request.args.get("limit"), default=0)
+    if quick_mode:
+        limit = req_limit if req_limit > 0 else 80
+    else:
+        limit = req_limit if req_limit > 0 else 250
+    limit = max(20, min(limit, 250))
+
     rows = (
         base.order_by(SeguimientoCandidataCaso.last_movement_at.desc().nullslast())
-        .limit(250)
+        .limit(limit)
         .all()
     )
     data = [_seg_serialize_case(r) for r in rows]
@@ -23511,11 +23519,17 @@ def seguimiento_candidatas_cola_json():
                 return dt.replace(tzinfo=None)
         return dt
 
+    now_rd_date = to_rd(now).date()
+    enriched = []
+    for row in data:
+        due_dt = _parse_due_naive_utc(row.get("due_at"))
+        enriched.append((row, due_dt))
+
     buckets = {
-        "vencidos": [r for r in data if r["is_open"] and r.get("due_at") and _parse_due_naive_utc(r["due_at"]) and _parse_due_naive_utc(r["due_at"]) < now],
-        "hoy": [r for r in data if r["is_open"] and r.get("due_at") and _parse_due_naive_utc(r["due_at"]) and to_rd(_parse_due_naive_utc(r["due_at"])).date() == to_rd(now).date()],
-        "sin_responsable": [r for r in data if r["is_open"] and not r.get("owner_staff_user_id")],
-        "en_gestion": [r for r in data if r["is_open"] and r.get("estado") == "en_gestion"],
+        "vencidos": [r for (r, due_dt) in enriched if r["is_open"] and due_dt and due_dt < now],
+        "hoy": [r for (r, due_dt) in enriched if r["is_open"] and due_dt and to_rd(due_dt).date() == now_rd_date],
+        "sin_responsable": [r for (r, _due_dt) in enriched if r["is_open"] and not r.get("owner_staff_user_id")],
+        "en_gestion": [r for (r, _due_dt) in enriched if r["is_open"] and r.get("estado") == "en_gestion"],
     }
     return jsonify({"ok": True, "items": data, "buckets": buckets, "ts": iso_utc_z(now)})
 
@@ -23535,14 +23549,15 @@ def seguimiento_candidatas_crear_caso():
     proxima_accion_tipo = (request.form.get("proxima_accion_tipo") or payload.get("proxima_accion_tipo") or "").strip()[:40]
     proxima_accion_detalle = (request.form.get("proxima_accion_detalle") or payload.get("proxima_accion_detalle") or "").strip()[:300]
     prioridad = str(request.form.get("prioridad") or payload.get("prioridad") or "normal").strip().lower()
-    due_at = parse_iso_utc((request.form.get("due_at") or payload.get("due_at") or "").strip()) if (request.form.get("due_at") or payload.get("due_at")) else None
+    due_at_raw = (request.form.get("due_at") or payload.get("due_at") or "").strip()
+    due_at = parse_iso_utc(due_at_raw) if due_at_raw else None
 
     if not (candidata_id > 0 or telefono_norm):
         return jsonify({"ok": False, "error": "identity_required"}), 400
     if canal_origen not in _SEG_CASO_CANALES:
         return jsonify({"ok": False, "error": "invalid_canal_origen"}), 400
-    if not proxima_accion_tipo or not due_at:
-        return jsonify({"ok": False, "error": "proxima_accion_due_required"}), 400
+    if not proxima_accion_tipo:
+        return jsonify({"ok": False, "error": "proxima_accion_required"}), 400
     if prioridad not in _SEG_CASO_PRIORIDADES:
         return jsonify({"ok": False, "error": "invalid_prioridad"}), 400
 
@@ -23576,6 +23591,8 @@ def seguimiento_candidatas_crear_caso():
     existing = dup_q.order_by(SeguimientoCandidataCaso.last_movement_at.desc().nullslast()).first()
 
     now = _seg_now()
+    if due_at is None:
+        due_at = now + timedelta(days=7)
     caso = SeguimientoCandidataCaso(
         public_id=_seg_public_id(),
         candidata_id=int(candidata_id) if candidata_id > 0 else None,
@@ -23609,6 +23626,8 @@ def seguimiento_candidatas_crear_caso():
             "case": _seg_serialize_case(caso),
             "duplicate_detected": bool(existing is not None),
             "existing_case_id": int(existing.id) if existing else None,
+            "overdue_count": seguimiento_candidatas_badge_count(),
+            "auto_due_applied": not bool(due_at_raw),
         }
     )
 
