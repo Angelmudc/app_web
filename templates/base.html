@@ -165,8 +165,7 @@
   or _presence_path.startswith('/mfa')
   or _presence_path.startswith('/admin/mfa/')
   or _presence_path == '/'
-  or _presence_path.startswith('/home')
-  or request.endpoint in ['home', 'admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel']
+  or request.endpoint in ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel']
 ) %}
 {% set _candidatas_finalizar_island_enabled = is_internal_surface and has_endpoint('admin.candidatas_por_finalizar') %}
 {% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
