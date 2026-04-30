@@ -25,10 +25,21 @@
       Gestión profesional, moderna y confiable de empleadas domésticas.
     </p>
 
+    {% set _hero_role = ((current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) or '')|string|lower %}
+    {% if _hero_role in ['secretary', 'secre', 'secretaría'] %}
+      {% set _hero_role = 'secretaria' %}
+    {% endif %}
+    {% set _hero_internal_staff = current_user.is_authenticated and (_hero_role in ['owner', 'admin', 'secretaria']) %}
+    {% set admin_panel_url = (url_for_safe('admin.listar_clientes') or url_for_safe('admin.admin_home') or '/admin/') %}
     {% set admin_login_url = url_for_safe('admin.login') %}
     {% set fallback_login_url = url_for_safe('login') %}
 
-    {% if admin_login_url %}
+    {% if _hero_internal_staff %}
+      <a href="{{ admin_panel_url }}"
+         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
+        <i class="fa-solid fa-gauge-high me-2"></i> Ir a Admin
+      </a>
+    {% elif admin_login_url %}
       <a href="{{ admin_login_url }}"
          class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
         <i class="fa-solid fa-key me-2"></i> Ingresar Administrador

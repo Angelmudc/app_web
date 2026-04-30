@@ -87,6 +87,19 @@ def test_menu_visibility_for_owner():
     assert b'href="/admin/metricas"' not in sec_home.data
 
 
+def test_home_admin_cta_goes_to_lightweight_clientes_for_staff():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    admin_client = flask_app.test_client()
+    assert _login(admin_client, "Cruz", "8998").status_code in (302, 303)
+    admin_home = admin_client.get("/home", follow_redirects=False)
+    assert admin_home.status_code == 200
+    html = admin_home.get_data(as_text=True)
+    assert 'href="/admin/clientes"' in html
+    assert 'href="/admin/login"' not in html
+
+
 def test_role_normalization_accepts_owner():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
