@@ -120,3 +120,20 @@ body.perf .skeleton{ animation: none !important; background-size: auto !importan
 
   .card:hover, .btn:hover{ transform: none !important; }
 }
+
+/* 3) Admin runtime: bajar costo visual por defecto en vistas operativas */
+body[data-admin-runtime="1"] .glass-card,
+body[data-admin-runtime="1"] .navbar{
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+body[data-admin-runtime="1"] .table tbody tr,
+body[data-admin-runtime="1"] .table tbody td,
+body[data-admin-runtime="1"] .table tbody th{
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+body[data-admin-runtime="1"] .table tbody tr:hover{
+  transform: none !important;
+}

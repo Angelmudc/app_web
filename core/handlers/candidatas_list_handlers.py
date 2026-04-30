@@ -25,6 +25,18 @@ def list_candidatas():
             legacy_h.candidatas_activas_filter(legacy_h.Candidata),
             legacy_h.Candidata.estado != "trabajando",
         )
+        if hasattr(base, "options"):
+            base = base.options(
+                load_only(
+                    legacy_h.Candidata.fila,
+                    legacy_h.Candidata.nombre_completo,
+                    legacy_h.Candidata.cedula,
+                    legacy_h.Candidata.disponibilidad_inicio,
+                    legacy_h.Candidata.sueldo_esperado,
+                    legacy_h.Candidata.estado,
+                    legacy_h.Candidata.nota_descalificacion,
+                )
+            )
         if q:
             base = apply_search_to_candidata_query(base, q)
 

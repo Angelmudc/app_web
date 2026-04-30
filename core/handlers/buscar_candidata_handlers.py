@@ -418,6 +418,17 @@ def buscar_candidata():
             resultados = search_candidatas_limited(
                 busqueda,
                 limit=300,
+                fields=(
+                    legacy_h.Candidata.fila,
+                    legacy_h.Candidata.nombre_completo,
+                    legacy_h.Candidata.cedula,
+                    legacy_h.Candidata.numero_telefono,
+                    legacy_h.Candidata.codigo,
+                    legacy_h.Candidata.disponibilidad_inicio,
+                    legacy_h.Candidata.sueldo_esperado,
+                    legacy_h.Candidata.trabaja_con_ninos,
+                    legacy_h.Candidata.trabaja_con_mascotas,
+                ),
                 order_mode="id_desc",
                 log_label="buscar",
             )

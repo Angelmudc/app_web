@@ -5953,6 +5953,16 @@ def monitoreo_candidatas_search():
             filters.append(Candidata.cedula_norm_digits.ilike(f"%{digits}%"))
         rows = (
             Candidata.query
+            .options(
+                load_only(
+                    Candidata.fila,
+                    Candidata.nombre_completo,
+                    Candidata.cedula,
+                    Candidata.codigo,
+                    Candidata.estado,
+                    Candidata.fecha_cambio_estado,
+                )
+            )
             .filter(or_(*filters))
             .order_by(Candidata.fila.desc())
             .limit(limit)
@@ -7300,6 +7310,13 @@ def admin_action_limit_LEGACY(bucket: str = "default", max_actions: int | None =
 # =============================================================================
 #                            CLIENTES (CRUD BÁSICO)
 # =============================================================================
+@admin_bp.route('/')
+@login_required
+@staff_required
+def admin_home():
+    return redirect(url_for('admin.listar_clientes'))
+
+
 @admin_bp.route('/clientes')
 @login_required
 @staff_required
@@ -7316,17 +7333,25 @@ def listar_clientes():
     page = max(1, page)
 
     try:
-        per_page = int(request.args.get('per_page', 25) or 25)
+        per_page = int(request.args.get('per_page', 20) or 20)
     except Exception:
-        per_page = 25
-    per_page = max(10, min(per_page, 100))
+        per_page = 20
+    per_page = max(10, min(per_page, 30))
 
-    query = Cliente.query
+    # Admin home liviano:
+    # - sin búsqueda no listamos clientes
+    # - evita full scans al entrar al panel
+    q_digits = _only_digits(q)
+    has_search = bool(q) and (len(q) >= 2 or q.isdigit() or len(q_digits) >= 6)
 
-    if q:
+    clientes = []
+    total = 0
+    last_page = 1
+
+    if has_search:
+        query = Cliente.query
         filtros = []
         q_lower = q.lower()
-        q_digits = _only_digits(q)
 
         # 1) Si es un ID exacto (entero), permite búsqueda directa por ID
         if q.isdigit():
@@ -7403,51 +7428,54 @@ def listar_clientes():
             filtros.extend([
                 Cliente.nombre_completo.ilike(f"%{q}%"),
                 Cliente.telefono.ilike(f"%{q}%"),
+                Cliente.email_norm.ilike(f"%{q_lower}%"),
             ])
+            if q_digits:
+                filtros.append(Cliente.telefono_norm.ilike(f"%{q_digits}%"))
 
         if filtros:
             query = query.filter(or_(*filtros))
+        list_attrs = []
+        for attr in (
+            "id",
+            "codigo",
+            "nombre_completo",
+            "telefono",
+            "total_solicitudes",
+            "fecha_registro",
+        ):
+            if hasattr(Cliente, attr):
+                list_attrs.append(getattr(Cliente, attr))
 
-    list_attrs = []
-    for attr in (
-        "id",
-        "codigo",
-        "nombre_completo",
-        "telefono",
-        "total_solicitudes",
-        "fecha_registro",
-    ):
-        if hasattr(Cliente, attr):
-            list_attrs.append(getattr(Cliente, attr))
+        if list_attrs and hasattr(query, "options"):
+            try:
+                query = query.options(load_only(*list_attrs))
+            except Exception:
+                # Compatibilidad defensiva con stubs de tests u ORMs parciales.
+                pass
 
-    if list_attrs and hasattr(query, "options"):
-        try:
-            query = query.options(load_only(*list_attrs))
-        except Exception:
-            # Compatibilidad defensiva con stubs de tests u ORMs parciales.
-            pass
-
-    ordered_query = query.order_by(Cliente.fecha_registro.desc())
-    if all(hasattr(ordered_query, attr) for attr in ("count", "offset", "limit", "all")):
-        total = ordered_query.count()
-        clientes = (
-            ordered_query
-            .offset((page - 1) * per_page)
-            .limit(per_page)
-            .all()
-        )
-    else:
-        # Fallback para stubs legacy de tests que solo exponen .all()
-        all_rows = ordered_query.all()
-        total = len(all_rows)
-        clientes = all_rows[(page - 1) * per_page: page * per_page]
-    last_page = ((total - 1) // per_page) + 1 if total > 0 else 1
+        ordered_query = query.order_by(Cliente.fecha_registro.desc())
+        if all(hasattr(ordered_query, attr) for attr in ("count", "offset", "limit", "all")):
+            total = ordered_query.count()
+            clientes = (
+                ordered_query
+                .offset((page - 1) * per_page)
+                .limit(per_page)
+                .all()
+            )
+        else:
+            # Fallback para stubs legacy de tests que solo exponen .all()
+            all_rows = ordered_query.all()
+            total = len(all_rows)
+            clientes = all_rows[(page - 1) * per_page: page * per_page]
+        last_page = ((total - 1) // per_page) + 1 if total > 0 else 1
 
     if _admin_async_wants_json():
         html = render_template(
             'admin/_clientes_list_results.html',
             clientes=clientes,
             q=q,
+            has_search=has_search,
             page=page,
             per_page=per_page,
             total=total,
@@ -7462,6 +7490,7 @@ def listar_clientes():
             update_target='#clientesAsyncRegion',
             extra={
                 "query": q,
+                "has_search": has_search,
                 "page": page,
                 "per_page": per_page,
                 "total": total,
@@ -7473,6 +7502,7 @@ def listar_clientes():
         'admin/clientes_list.html',
         clientes=clientes,
         q=q,
+        has_search=has_search,
         page=page,
         per_page=per_page,
         total=total,
@@ -10823,6 +10853,15 @@ def _load_candidatas_choices(q: str, limit: int = 50):
 
     candidatas = (
         Candidata.query
+        .options(
+            load_only(
+                Candidata.fila,
+                Candidata.nombre_completo,
+                Candidata.cedula,
+                Candidata.codigo,
+                Candidata.numero_telefono,
+            )
+        )
         .filter(candidatas_activas_filter(Candidata))
         .filter(
             or_(
@@ -10834,7 +10873,7 @@ def _load_candidatas_choices(q: str, limit: int = 50):
         )
         .order_by(Candidata.nombre_completo.asc())
         .limit(int(limit))
-        .all()
+        .yield_per(200)
     )
 
     choices = []
@@ -17171,7 +17210,7 @@ def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
         .subquery()
     )
 
-    rows = (
+    rows_iter = (
         base.outerjoin(entrevistas_subq, entrevistas_subq.c.candidata_id == Candidata.fila)
         .add_columns(
             func.coalesce(entrevistas_subq.c.entrevistas_count, 0).label("entrevistas_count"),
@@ -17181,11 +17220,11 @@ def _build_auditoria_completitud_rows(q: str = "") -> list[dict]:
             _blob_len_expr(Candidata.cedula2).label("cedula2_len"),
         )
         .order_by(Candidata.fila.desc())
-        .all()
+        .yield_per(200)
     )
 
     audits: list[dict] = []
-    for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows:
+    for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows_iter:
         flags = {
             "entrevista": entrevista_ok(getattr(cand, "entrevista", None), entrevistas_count),
             "depuracion": binario_ok(dep_len),

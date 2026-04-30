@@ -125,6 +125,7 @@ def search_candidatas_limited(
     limit: int = 300,
     base_query=None,
     minimal_fields: bool = False,
+    fields=None,
     order_mode: str = "nombre_asc",
     log_label: str = "default",
 ):
@@ -134,7 +135,9 @@ def search_candidatas_limited(
         return []
 
     query = base_query if base_query is not None else Candidata.query
-    if minimal_fields:
+    if fields:
+        query = query.options(load_only(*fields))
+    elif minimal_fields:
         query = query.options(
             load_only(
                 Candidata.fila,

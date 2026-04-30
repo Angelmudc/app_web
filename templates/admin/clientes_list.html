@@ -49,7 +49,7 @@
     </div>
   </div>
   <div class="small text-muted mb-3">
-    Operación diaria recomendada: entrar por <strong>Bandeja de solicitudes</strong>. Esta vista queda como consulta/gestión de clientes.
+    Panel rápido: usa accesos directos y busca clientes solo cuando lo necesites.
   </div>
 
   <form class="row g-2 align-items-center mb-3"
@@ -61,7 +61,7 @@
         data-async-preserve-scroll="true"
         data-async-fallback="native">
     <div class="col-12 col-md">
-      <input name="q" class="form-control" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}">
+      <input name="q" class="form-control" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}" autocomplete="off">
     </div>
     <div class="col-6 col-md-auto">
       <select name="per_page" class="form-select">

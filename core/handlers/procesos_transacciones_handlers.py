@@ -83,7 +83,7 @@ def inscripcion():
             q = (request.form.get("buscar") or "").strip()[:128]
             if q:
                 try:
-                    resultados = search_candidatas_limited(q, limit=300)
+                    resultados = search_candidatas_limited(q, limit=300, minimal_fields=True)
                     if not resultados:
                         flash("⚠️ No se encontraron coincidencias.", "error")
                 except Exception:
@@ -94,7 +94,7 @@ def inscripcion():
         q = (request.args.get("buscar") or "").strip()[:128]
         if q:
             try:
-                resultados = search_candidatas_limited(q, limit=300)
+                resultados = search_candidatas_limited(q, limit=300, minimal_fields=True)
                 if not resultados:
                     mensaje = "⚠️ No se encontraron coincidencias."
             except Exception:
@@ -177,7 +177,7 @@ def porciento():
         q = (request.args.get("busqueda") or "").strip()[:128]
         if q:
             try:
-                resultados = search_candidatas_limited(q, limit=300)
+                resultados = search_candidatas_limited(q, limit=300, minimal_fields=True)
                 if not resultados:
                     flash("⚠️ No se encontraron coincidencias.", "warning")
             except Exception:
@@ -302,7 +302,7 @@ def pagos():
 
     if q:
         try:
-            filas = search_candidatas_limited(q, limit=300)
+            filas = search_candidatas_limited(q, limit=300, minimal_fields=True)
 
             resultados = [
                 {

@@ -27,6 +27,7 @@ def referencias():
                 filas = search_candidatas_limited(
                     termino,
                     limit=300,
+                    minimal_fields=True,
                     order_mode="id_desc",
                     log_label="referencias",
                 )

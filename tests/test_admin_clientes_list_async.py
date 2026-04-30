@@ -132,8 +132,8 @@ class AdminClientesListAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(data["page"], 2)
-        self.assertIn("CL-011", data["replace_html"])
-        self.assertNotIn("CL-001", data["replace_html"])
+        self.assertIn("Busca un cliente por nombre, teléfono o cédula.", data["replace_html"])
+        self.assertNotIn("CL-011", data["replace_html"])
 
     def test_accion_por_fila_async_eliminar_cliente(self):
         cliente = _cliente_stub(10, "CL-010")

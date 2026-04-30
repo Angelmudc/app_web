@@ -167,7 +167,7 @@
   or _presence_path == '/'
   or request.endpoint in ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel']
 ) %}
-{% set _candidatas_finalizar_island_enabled = is_internal_surface and has_endpoint('admin.candidatas_por_finalizar') %}
+{% set _candidatas_finalizar_island_enabled = is_internal_surface and (not _presence_path.startswith('/home')) and has_endpoint('admin.candidatas_por_finalizar') %}
 {% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
 {% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
 {% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
@@ -193,6 +193,7 @@
       data-seg-candidatas-full-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola') %}{{ url_for('admin.seguimiento_candidatas_cola') }}{% endif %}"
       data-seg-candidatas-create-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_crear_caso') %}{{ url_for('admin.seguimiento_candidatas_crear_caso') }}{% endif %}"
       data-staff-username="{{ _staff_username }}"
+      data-admin-runtime="{% if _is_admin_runtime_page %}1{% else %}0{% endif %}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
       data-lazy-script-live-refresh="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/core/live-refresh.js') }}{% endif %}"
       data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
