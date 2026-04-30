@@ -308,8 +308,6 @@
       proxima_accion_detalle: mergedDetail.trim(),
       prioridad: String(fd.get("prioridad") || "normal").trim(),
     };
-    const dueAt = String(fd.get("due_at") || "").trim();
-    if (dueAt) payload.due_at = dueAt;
     try {
       const p = await postJson(createUrl, payload);
       let msg = "Caso creado correctamente.";
