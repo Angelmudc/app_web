@@ -37,8 +37,15 @@
 
   let open = false;
   let refreshTimer = null;
-  let inFlight = false;
+  let isQueueLoading = false;
+  let pendingReload = false;
   let previousActive = null;
+  let queueState = null;
+  let lastQueueSignature = null;
+  let lastKpiSig = "";
+  let lastCriticalSig = "";
+  let lastMineSig = "";
+  let suppressInvalidationUntilMs = 0;
   const queueQuickUrl = queueUrl ? (queueUrl + (queueUrl.indexOf("?") >= 0 ? "&" : "?") + "quick=1&limit=80") : "";
 
   function esc(text) {
@@ -169,15 +176,68 @@
     );
   }
 
+  function itemId(item) {
+    const id = Number(item && item.id);
+    return Number.isFinite(id) && id > 0 ? id : 0;
+  }
+
+  function buildCritical(buckets) {
+    const vencidos = Array.isArray(buckets && buckets.vencidos) ? buckets.vencidos : [];
+    const hoy = Array.isArray(buckets && buckets.hoy) ? buckets.hoy : [];
+    const sinResponsable = Array.isArray(buckets && buckets.sin_responsable) ? buckets.sin_responsable : [];
+    const byId = new Map();
+    vencidos.concat(hoy).concat(sinResponsable).forEach(function (item) {
+      const id = itemId(item);
+      if (id <= 0) return;
+      if (!byId.has(id)) byId.set(id, item);
+    });
+    return Array.from(byId.values()).sort(function (a, b) {
+      const ad = a && a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
+      const bd = b && b.due_at ? new Date(b.due_at).getTime() : Number.POSITIVE_INFINITY;
+      return ad - bd;
+    }).slice(0, 25);
+  }
+
+  function buildMine(items) {
+    return (Array.isArray(items) ? items : []).filter(function (i) {
+      return !!staffUsername && String(i && i.owner_staff_username || "").trim().toLowerCase() === staffUsername.toLowerCase() && i && i.is_open;
+    });
+  }
+
+  function listSignature(items) {
+    return (Array.isArray(items) ? items : []).map(function (i) {
+      return [
+        itemId(i),
+        String(i && i.estado || ""),
+        String(i && i.proxima_accion_tipo || ""),
+        String(i && i.due_at || ""),
+        String(i && i.owner_staff_username || ""),
+      ].join("|");
+    }).join(";");
+  }
+
+  function getQueueSignature(data) {
+    const payload = (data && typeof data === "object") ? data : {};
+    const buckets = (payload.buckets && typeof payload.buckets === "object") ? payload.buckets : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const critical = buildCritical(buckets);
+    const mine = buildMine(items);
+    return JSON.stringify({
+      total: items.length,
+      overdue: Array.isArray(buckets.vencidos) ? buckets.vencidos.length : 0,
+      mine: mine.map(function (x) { return itemId(x); }),
+      critical: critical.map(function (x) { return itemId(x); }),
+    });
+  }
+
   function render(payload) {
     const buckets = (payload && payload.buckets) || {};
     const items = Array.isArray(payload && payload.items) ? payload.items : [];
     const vencidos = Array.isArray(buckets.vencidos) ? buckets.vencidos : [];
     const hoy = Array.isArray(buckets.hoy) ? buckets.hoy : [];
     const sinResponsable = Array.isArray(buckets.sin_responsable) ? buckets.sin_responsable : [];
-    const misCasos = items.filter(function (i) {
-      return !!staffUsername && String(i && i.owner_staff_username || "").trim().toLowerCase() === staffUsername.toLowerCase() && i && i.is_open;
-    });
+    const misCasos = buildMine(items);
+    const critical = buildCritical(buckets);
 
     const kpis = [
       ["Vencidos", vencidos.length],
@@ -185,23 +245,25 @@
       ["Sin responsable", sinResponsable.length],
       ["Mis casos", misCasos.length],
     ];
-    kpisNode.innerHTML = kpis.map(function (pair) {
+    const kpiSig = kpis.map(function (pair) { return pair[0] + ":" + pair[1]; }).join("|");
+    if (kpiSig !== lastKpiSig) {
+      kpisNode.innerHTML = kpis.map(function (pair) {
       return '<div class="seg-kpi"><div class="seg-kpi-label">' + esc(pair[0]) + '</div><div class="seg-kpi-value">' + esc(pair[1]) + "</div></div>";
-    }).join("");
+      }).join("");
+      lastKpiSig = kpiSig;
+    }
 
-    const byId = new Map();
-    vencidos.concat(hoy).concat(sinResponsable).forEach(function (item) {
-      if (!item || !item.id) return;
-      if (!byId.has(item.id)) byId.set(item.id, item);
-    });
-    const critical = Array.from(byId.values()).sort(function (a, b) {
-      const ad = a && a.due_at ? new Date(a.due_at).getTime() : Number.POSITIVE_INFINITY;
-      const bd = b && b.due_at ? new Date(b.due_at).getTime() : Number.POSITIVE_INFINITY;
-      return ad - bd;
-    }).slice(0, 25);
+    const criticalSig = listSignature(critical);
+    if (criticalSig !== lastCriticalSig) {
+      criticalListNode.innerHTML = critical.length ? critical.map(caseCard).join("") : '<div class="small text-muted">No hay casos pendientes críticos.</div>';
+      lastCriticalSig = criticalSig;
+    }
 
-    criticalListNode.innerHTML = critical.length ? critical.map(caseCard).join("") : '<div class="small text-muted">No hay casos pendientes críticos.</div>';
-    mineListNode.innerHTML = misCasos.length ? misCasos.map(caseCard).join("") : '<div class="small text-muted">No tienes casos activos.</div>';
+    const mineSig = listSignature(misCasos);
+    if (mineSig !== lastMineSig) {
+      mineListNode.innerHTML = misCasos.length ? misCasos.map(caseCard).join("") : '<div class="small text-muted">No tienes casos activos.</div>';
+      lastMineSig = mineSig;
+    }
   }
 
   async function refreshBadge() {
@@ -221,8 +283,13 @@
   }
 
   async function loadQueue() {
-    if (!queueQuickUrl || inFlight) return;
-    inFlight = true;
+    if (!queueQuickUrl) return;
+    if (isQueueLoading) {
+      pendingReload = true;
+      return;
+    }
+    isQueueLoading = true;
+    pendingReload = false;
     showLoading();
     try {
       const r = await fetch(queueQuickUrl, {
@@ -233,19 +300,53 @@
       if (!r.ok) throw new Error("HTTP_" + r.status);
       const p = await r.json();
       if (!p || p.ok !== true) throw new Error("PAYLOAD");
-      render(p);
-      showContent();
-      setCount(((p.buckets && p.buckets.vencidos) || []).length);
+      const sig = getQueueSignature(p);
+      const changed = sig !== lastQueueSignature;
+      if (changed) {
+        queueState = p;
+        lastQueueSignature = sig;
+        render(p);
+        showContent();
+        setCount(((p.buckets && p.buckets.vencidos) || []).length);
+      } else {
+        if (open) showContent();
+        if (typeof console !== "undefined" && console && typeof console.debug === "function") {
+          console.debug("queue skipped (no changes)");
+        }
+      }
     } catch (_e) {
       showError("No se pudo cargar seguimiento de candidatas. Intenta de nuevo.");
     } finally {
-      inFlight = false;
+      isQueueLoading = false;
+      if (pendingReload) {
+        pendingReload = false;
+        if (queueState) loadQueue().catch(function () {});
+      }
     }
   }
 
   async function reloadData() {
     await loadQueue();
     await refreshBadge();
+  }
+
+  function upsertCaseInQueueState(newCase) {
+    if (!newCase || !itemId(newCase)) return;
+    if (!queueState || typeof queueState !== "object") {
+      queueState = { ok: true, items: [], buckets: { vencidos: [], hoy: [], sin_responsable: [] } };
+    }
+    if (!Array.isArray(queueState.items)) queueState.items = [];
+    const cid = itemId(newCase);
+    queueState.items = queueState.items.filter(function (x) { return itemId(x) !== cid; });
+    queueState.items.unshift(newCase);
+    const isOverdue = !!newCase.due_at && (new Date(newCase.due_at).getTime() < Date.now());
+    if (!queueState.buckets || typeof queueState.buckets !== "object") queueState.buckets = {};
+    if (!Array.isArray(queueState.buckets.vencidos)) queueState.buckets.vencidos = [];
+    if (isOverdue) {
+      queueState.buckets.vencidos = queueState.buckets.vencidos.filter(function (x) { return itemId(x) !== cid; });
+      queueState.buckets.vencidos.unshift(newCase);
+    }
+    lastQueueSignature = getQueueSignature(queueState);
   }
 
   function startOpenRefresh() {
@@ -317,12 +418,19 @@
         createFeedback.innerHTML = 'Ya existe un caso parecido. <a class="btn btn-sm btn-outline-dark ms-2" href="/admin/seguimiento-candidatas/casos/' + esc(p.existing_case_id) + '">Abrir existente</a>';
       } else {
         setFeedback(createFeedback, "success", msg);
+        if (p.case && typeof p.case === "object") {
+          upsertCaseInQueueState(p.case);
+          render(queueState || { items: [], buckets: {} });
+          showContent();
+          suppressInvalidationUntilMs = Date.now() + 1200;
+        }
       }
       createForm.reset();
       if (typeof p.overdue_count === "number") setCount(p.overdue_count);
-      await loadQueue();
-      await refreshBadge();
-      setTab("pendientes");
+      refreshBadge().catch(function () {});
+      window.setTimeout(function () {
+        loadQueue().catch(function () {});
+      }, 250);
     } catch (e) {
       setFeedback(createFeedback, "danger", "No se pudo crear el caso: " + esc(e && e.message ? e.message : "error"));
     } finally {
@@ -467,6 +575,7 @@
     const detail = (ev && ev.detail && ev.detail.event) || null;
     const t = String((detail && detail.event_type) || "").toLowerCase();
     if (t.indexOf("staff.case_tracking.") !== 0) return;
+    if (Date.now() < suppressInvalidationUntilMs) return;
     refreshBadge().catch(function () {});
     if (open) loadQueue().catch(function () {});
   });
