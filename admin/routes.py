@@ -7441,6 +7441,8 @@ def listar_clientes():
             "codigo",
             "nombre_completo",
             "telefono",
+            "email",
+            "estado",
             "total_solicitudes",
             "fecha_registro",
         ):
@@ -22044,6 +22046,18 @@ def generar_link_publico_cliente_nuevo():
         link_publico=link,
         max_age_days=max_age_days,
     )
+
+
+@admin_bp.route('/solicitudes/nueva-publica/link.json', methods=['GET'])
+@login_required
+@admin_required
+def generar_link_publico_cliente_nuevo_json():
+    created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
+    link = generar_link_publico_compartible_cliente_nuevo(created_by=created_by)
+    return jsonify({
+        "ok": True,
+        "link_publico": link,
+    })
 
 
 _ADMIN_CHAT_MESSAGE_MAX_LEN = 1800

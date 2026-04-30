@@ -82,7 +82,7 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
         assert "/clientes/solicitudes/nueva-publica/" not in link_html
         assert "Enlace legado (compatibilidad)" not in link_html
         assert 'id="linkPublicoNuevo"' in link_html
-        assert "navigator.clipboard.writeText(text)" in link_html
+        assert "navigator.clipboard.writeText(value)" in link_html
         assert 'property="og:title"' in link_html
         assert 'property="og:description"' in link_html
         assert 'property="og:image"' in link_html
@@ -109,4 +109,31 @@ def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_ma
     assert "/clientes/solicitudes/publica/tok123" not in html
     assert "Enlace legado (compatibilidad)" not in html
     assert 'id="linkPublico"' in html
-    assert "navigator.clipboard.writeText(text)" in html
+    assert "navigator.clipboard.writeText(value)" in html
+
+
+def test_admin_owner_json_link_publico_usa_public_base_url_y_no_localhost():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    old_public_base = flask_app.config.get("PUBLIC_BASE_URL")
+    flask_app.config["PUBLIC_BASE_URL"] = "https://domestica.example.com"
+
+    try:
+        for usuario, clave in (("Owner", "admin123"), ("Cruz", "8998")):
+            client = flask_app.test_client()
+            assert _login(client, usuario, clave).status_code in (302, 303)
+            resp = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+            assert resp.status_code == 200
+            payload = resp.get_json() or {}
+            assert payload.get("ok") is True
+            link = str(payload.get("link_publico") or "")
+            assert link.startswith("https://domestica.example.com/")
+            assert "localhost" not in link
+            assert "/solicitud/" in link
+
+        client_secretaria = flask_app.test_client()
+        assert _login(client_secretaria, "Karla", "9989").status_code in (302, 303)
+        denied = client_secretaria.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+        assert denied.status_code == 403
+    finally:
+        flask_app.config["PUBLIC_BASE_URL"] = old_public_base

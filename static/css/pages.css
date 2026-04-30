@@ -215,6 +215,160 @@ html[data-theme="dark"] .page-login .form-control.auth{
    ---------------------------------------------------------- */
 
 /* ----------------------------------------------------------
+   PAGE — CLIENTES LIST (Panel operativo)
+   ---------------------------------------------------------- */
+
+.clientes-panel-page .clientes-panel-shell{
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 55%, var(--panel)) 0%, var(--panel) 100%);
+}
+
+.clientes-panel-hero{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 75%, var(--panel));
+}
+
+.clientes-panel-kicker{
+  display: inline-block;
+  font-size: .76rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: .35rem;
+}
+
+.clientes-quick-actions{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .75rem;
+}
+
+.clientes-quick-card{
+  display: flex;
+  gap: .7rem;
+  align-items: flex-start;
+  padding: .8rem .85rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color .16s ease, transform .16s ease;
+}
+
+.clientes-quick-card:hover{
+  border-color: color-mix(in srgb, var(--brand) 36%, var(--border));
+  transform: translateY(-1px);
+}
+
+.clientes-quick-icon{
+  width: 2rem;
+  height: 2rem;
+  border-radius: .6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--panel-2) 78%, var(--panel));
+  color: var(--brand);
+}
+
+.clientes-quick-copy{
+  display: inline-flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.clientes-quick-copy small{
+  color: var(--muted);
+  margin-top: .18rem;
+}
+
+.clientes-search-panel{
+  padding: 1rem;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.clientes-search-hint{
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+.clientes-results-wrap{
+  padding: .4rem 0 0;
+}
+
+.clientes-results-table-wrap{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.clientes-results-table thead th{
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--muted);
+  border-bottom-color: var(--border);
+}
+
+.clientes-results-table td{
+  border-color: var(--border);
+}
+
+.clientes-result-card{
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: .85rem;
+}
+
+.clientes-result-meta{
+  display: grid;
+  gap: .2rem;
+}
+
+.clientes-empty-state{
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--panel-2) 70%, var(--panel));
+}
+
+@media (max-width: 1200px){
+  .clientes-quick-actions{
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 992px){
+  .clientes-panel-hero{
+    flex-direction: column;
+  }
+  .clientes-quick-actions{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px){
+  .clientes-panel-hero,
+  .clientes-search-panel{
+    padding: .8rem;
+  }
+  .clientes-quick-actions{
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ----------------------------------------------------------
    PAGE — SOLICITUDES LIST (Contraste operativo local)
    Scope intencional: solo bandeja/listado de solicitudes
    ---------------------------------------------------------- */

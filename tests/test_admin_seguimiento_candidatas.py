@@ -509,3 +509,20 @@ def test_js_isla_seguimiento_maneja_error_y_no_navega_en_click_isla():
     assert "btn.addEventListener(\"click\"" in js
     assert "openDrawer();" in js
     assert "window.location" not in js
+
+
+def test_isla_copiar_formulario_cliente_visible_solo_owner_admin():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    html_owner = _render_base_as("/admin/solicitudes", role="owner", authenticated=True)
+    assert 'id="clientPublicMessageIslandBtn"' in html_owner
+    assert "js/core/client_public_message_island.js" in html_owner
+
+    html_admin = _render_base_as("/admin/solicitudes", role="admin", authenticated=True)
+    assert 'id="clientPublicMessageIslandBtn"' in html_admin
+    assert "js/core/client_public_message_island.js" in html_admin
+
+    html_secretaria = _render_base_as("/admin/solicitudes", role="secretaria", authenticated=True)
+    assert 'id="clientPublicMessageIslandBtn"' not in html_secretaria
+    assert "js/core/client_public_message_island.js" not in html_secretaria

@@ -171,6 +171,7 @@
 {% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
 {% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
 {% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
+{% set _client_public_message_island_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.generar_link_publico_cliente_nuevo_json') %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -192,6 +193,8 @@
       data-seg-candidatas-queue-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola_json') %}{{ url_for('admin.seguimiento_candidatas_cola_json') }}{% endif %}"
       data-seg-candidatas-full-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola') %}{{ url_for('admin.seguimiento_candidatas_cola') }}{% endif %}"
       data-seg-candidatas-create-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_crear_caso') %}{{ url_for('admin.seguimiento_candidatas_crear_caso') }}{% endif %}"
+      data-client-public-message-island-enabled="{% if _client_public_message_island_enabled %}1{% else %}0{% endif %}"
+      data-client-public-message-link-url="{% if _client_public_message_island_enabled %}{{ url_for('admin.generar_link_publico_cliente_nuevo_json') }}{% endif %}"
       data-staff-username="{{ _staff_username }}"
       data-admin-runtime="{% if _is_admin_runtime_page %}1{% else %}0{% endif %}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
@@ -589,6 +592,19 @@
     </div>
   </aside>
   {% endif %}
+  {% if _client_public_message_island_enabled %}
+  <button class="client-public-message-island"
+          type="button"
+          id="clientPublicMessageIslandBtn"
+          aria-label="Copiar mensaje con formulario de cliente">
+    <span class="cpmi-icon" aria-hidden="true"><i class="fa-solid fa-file-signature"></i></span>
+    <span class="cpmi-label">Copiar formulario cliente</span>
+  </button>
+  <div class="client-public-message-feedback"
+       id="clientPublicMessageIslandFeedback"
+       role="status"
+       aria-live="polite">Mensaje copiado</div>
+  {% endif %}
 
   <footer class="text-center">
     <div class="container d-flex justify-content-between flex-wrap gap-2">
@@ -658,6 +674,9 @@
   {% endif %}
   {% if _seg_candidatas_island_enabled %}
   <script src="{{ url_for('static', filename='js/core/seguimiento_candidatas_island.js') }}" defer></script>
+  {% endif %}
+  {% if _client_public_message_island_enabled %}
+  <script src="{{ url_for('static', filename='js/core/client_public_message_island.js') }}" defer></script>
   {% endif %}
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>

@@ -3,99 +3,141 @@
 
 {% block content %}
 
-<div class="py-1 clientes-shell">
-  <div class="glass-card p-3 p-md-4">
-  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
-    <h1 class="h3 mb-0">👥 Clientes</h1>
-    <div class="d-flex align-items-center gap-3">
-      <div class="btn-group" role="group">
-        <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-success">
-          <i class="fa-solid fa-user-plus"></i> Nuevo
-        </a>
-        <a href="{{ url_for('admin.copiar_solicitudes') }}" class="btn btn-primary"
-           title="Ir directo al flujo operativo de copiar/publicar solicitudes">
-          <i class="fa-solid fa-rectangle-list"></i> Solicitudes
-        </a>
-        <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary"
-           title="Ver panel general de solicitudes">
-          <i class="fa-solid fa-table-list"></i> Bandeja de solicitudes
-        </a>
-        <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="btn btn-warning text-dark">
-          <i class="fa-solid fa-bolt"></i> Pendientes ⚡
-        </a>
-        <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="btn btn-danger">
-          <i class="fa-solid fa-triangle-exclamation"></i> Prioritarias 🔥
-        </a>
-        <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="btn btn-info">
-          <i class="fa-solid fa-calendar-day"></i> Resumen Hoy 📅
-        </a>
+<div class="clientes-panel-page py-1">
+  <div class="clientes-panel-shell glass-card p-3 p-md-4">
+    <section class="clientes-panel-hero mb-4">
+      <div class="clientes-panel-hero-head">
+        <span class="clientes-panel-kicker">Operaciones de clientes</span>
+        <h1 class="h2 mb-2">Panel de Clientes</h1>
+        <p class="text-muted mb-0">Busca, revisa y gestiona clientes sin cargar listados innecesarios.</p>
       </div>
-      <div class="btn-group" role="group" aria-label="Acceso formulario público cliente nuevo">
-        <a href="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}"
-           target="_blank"
-           rel="noopener noreferrer"
-           class="btn btn-outline-dark"
-           title="Genera un enlace seguro de un solo uso para clientes nuevos">
-          <i class="fa-solid fa-up-right-from-square"></i> Formulario clientes nuevos
-        </a>
-        <button type="button"
-                class="btn btn-outline-secondary"
-                id="copyPublicNewClientLinkBtn"
-                data-link="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}"
-                title="Abrir generador de enlace seguro">
-          <i class="fa-solid fa-link"></i> Generar enlace
-        </button>
+      <div class="clientes-panel-hero-meta">
+        <span class="badge text-bg-light border">Búsqueda diferida activa</span>
+      </div>
+    </section>
+
+    <section class="clientes-quick-actions mb-4" aria-label="Acciones rápidas">
+      <a href="{{ url_for('admin.nuevo_cliente') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-user-plus"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Crear cliente</strong>
+          <small>Registrar un nuevo cliente</small>
+        </span>
+      </a>
+      <a href="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}" target="_blank" rel="noopener noreferrer" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-link"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Generar link cliente nuevo</strong>
+          <small>Formulario público de un solo uso</small>
+        </span>
+      </a>
+      <a href="#clientesSearchForm" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-magnifying-glass"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Buscar cliente</strong>
+          <small>Nombre, teléfono, código o email</small>
+        </span>
+      </a>
+      <a href="{{ url_for('admin.copiar_solicitudes') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-rectangle-list"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Solicitudes</strong>
+          <small>Flujo operativo de solicitudes</small>
+        </span>
+      </a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-table-list"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Bandeja solicitudes</strong>
+          <small>Panel general de solicitudes</small>
+        </span>
+      </a>
+      <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-bolt"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Pendientes</strong>
+          <small>Acciones de proceso urgentes</small>
+        </span>
+      </a>
+      <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Prioritarias</strong>
+          <small>Solicitudes por prioridad</small>
+        </span>
+      </a>
+      {% if has_endpoint('admin.seguimiento_candidatas_cola') %}
+      <a href="{{ url_for('admin.seguimiento_candidatas_cola') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-route"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Seguimiento</strong>
+          <small>Casos y próximas acciones</small>
+        </span>
+      </a>
+      {% endif %}
+      {% if has_endpoint('admin.resumen_diario_clientes') %}
+      <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-calendar-day"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Resumen diario</strong>
+          <small>Actividad de clientes de hoy</small>
+        </span>
+      </a>
+      {% endif %}
+      <a href="{{ url_for('home') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-house"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Volver al home</strong>
+          <small>Regresar a la vista principal</small>
+        </span>
+      </a>
+    </section>
+
+    <section class="clientes-search-panel mb-3">
+      <form id="clientesSearchForm"
+            class="row g-2 g-md-3 align-items-center"
+            method="get"
+            action="{{ url_for('admin.listar_clientes') }}"
+            data-admin-async-form
+            data-async-target="#clientesAsyncRegion"
+            data-async-busy-container="#clientesAsyncScope"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        <div class="col-12 col-lg">
+          <label for="clientesSearchInput" class="form-label mb-1 fw-semibold">Buscar cliente</label>
+          <input id="clientesSearchInput"
+                 name="q"
+                 class="form-control form-control-lg"
+                 placeholder="Buscar por nombre, teléfono, código o email..."
+                 value="{{ q }}"
+                 autocomplete="off">
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <label for="clientesPerPage" class="form-label mb-1 fw-semibold">Resultados</label>
+          <select id="clientesPerPage" name="per_page" class="form-select form-select-lg">
+            {% for n in [10,25,50,100] %}
+              <option value="{{n}}" {% if per_page==n %}selected{% endif %}>{{n}} por página</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <label class="form-label mb-1 d-none d-md-block">&nbsp;</label>
+          <button class="btn btn-primary btn-lg w-100" data-loading-text="Buscando...">
+            <i class="fa-solid fa-magnifying-glass me-1"></i> Buscar
+          </button>
+        </div>
+      </form>
+      {% if not has_search %}
+      <p class="clientes-search-hint mb-0 mt-2">Escribe al menos 2 caracteres para buscar un cliente.</p>
+      {% endif %}
+    </section>
+
+    <div id="clientesAsyncScope" data-admin-async-scope>
+      <div id="clientesAsyncRegion" data-async-preserve-scroll="true">
+        {% include 'admin/_clientes_list_results.html' %}
       </div>
     </div>
-  </div>
-  <div class="small text-muted mb-3">
-    Panel rápido: usa accesos directos y busca clientes solo cuando lo necesites.
-  </div>
-
-  <form class="row g-2 align-items-center mb-3"
-        method="get"
-        action="{{ url_for('admin.listar_clientes') }}"
-        data-admin-async-form
-        data-async-target="#clientesAsyncRegion"
-        data-async-busy-container="#clientesAsyncScope"
-        data-async-preserve-scroll="true"
-        data-async-fallback="native">
-    <div class="col-12 col-md">
-      <input name="q" class="form-control" placeholder="🔎 Buscar por ID, código, nombre, email o teléfono" value="{{ q }}" autocomplete="off">
-    </div>
-    <div class="col-6 col-md-auto">
-      <select name="per_page" class="form-select">
-        {% for n in [10,25,50,100] %}
-          <option value="{{n}}" {% if per_page==n %}selected{% endif %}>{{n}} por página</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-6 col-md-auto">
-      <button class="btn btn-outline-secondary w-100" data-loading-text="Buscando...">
-        <i class="fa-solid fa-magnifying-glass"></i> Buscar
-      </button>
-    </div>
-  </form>
-
-  <div id="clientesAsyncScope" data-admin-async-scope>
-    <div id="clientesAsyncRegion" data-async-preserve-scroll="true">
-      {% include 'admin/_clientes_list_results.html' %}
-    </div>
-  </div>
   </div>
 </div>
-
-<script>
-(function () {
-  var btn = document.getElementById('copyPublicNewClientLinkBtn');
-  if (!btn) return;
-
-  btn.addEventListener('click', function () {
-    var target = btn.getAttribute('data-link') || '';
-    if (!target) return;
-    window.open(target, '_blank', 'noopener,noreferrer');
-  });
-})();
-</script>
 
 {% endblock %}
