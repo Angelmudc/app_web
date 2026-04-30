@@ -11,6 +11,25 @@
   if (!btn || !feedbackNode || !linkUrl) return;
 
   var feedbackTimer = null;
+  var inFlight = false;
+  var cooldownUntilMs = 0;
+  var labelNode = btn.querySelector(".cpmi-label");
+  var defaultLabel = labelNode ? String(labelNode.textContent || "").trim() : "";
+
+  function setButtonLabel(text) {
+    if (!labelNode) return;
+    labelNode.textContent = text;
+  }
+
+  function restoreButtonWhenReady() {
+    var waitMs = Math.max(0, cooldownUntilMs - Date.now());
+    window.setTimeout(function () {
+      if (!inFlight && Date.now() >= cooldownUntilMs) {
+        btn.disabled = false;
+        setButtonLabel(defaultLabel || "Copiar formulario cliente");
+      }
+    }, waitMs);
+  }
 
   function showFeedback(text) {
     feedbackNode.textContent = text || "Mensaje copiado";
@@ -48,19 +67,26 @@
 
   function buildProfessionalMessage(link) {
     return [
-      "Hola, gracias por comunicarte con Doméstica del Cibao A&D.",
+      "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud.",
       "",
-      "Para continuar con el proceso, te compartimos nuestro formulario oficial de cliente. Este formulario nos permite registrar tus datos y gestionar tu solicitud de manera organizada y segura.",
+      "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.",
       "",
-      "Por favor complétalo aquí:",
       link,
       "",
-      "La información enviada será usada únicamente para gestionar tu solicitud con Doméstica del Cibao A&D."
+      "Cuando lo completes, envíame tu nombre y dime que ya terminaste."
     ].join("\n");
   }
 
   async function handleCopyClick() {
+    if (inFlight) return;
+    if (Date.now() < cooldownUntilMs) return;
+
+    inFlight = true;
+    cooldownUntilMs = Date.now() + 5000;
     btn.disabled = true;
+    setButtonLabel("Generando enlace...");
+    showFeedback("Generando enlace...");
+
     try {
       var resp = await fetch(linkUrl, {
         method: "GET",
@@ -85,9 +111,11 @@
       }
       showFeedback("Mensaje copiado");
     } catch (_err) {
-      showFeedback("Error al copiar");
+      cooldownUntilMs = Date.now() + 2500;
+      showFeedback("No se pudo copiar");
     } finally {
-      btn.disabled = false;
+      inFlight = false;
+      restoreButtonWhenReady();
     }
   }
 

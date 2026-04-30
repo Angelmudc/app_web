@@ -526,3 +526,14 @@ def test_isla_copiar_formulario_cliente_visible_solo_owner_admin():
     html_secretaria = _render_base_as("/admin/solicitudes", role="secretaria", authenticated=True)
     assert 'id="clientPublicMessageIslandBtn"' not in html_secretaria
     assert "js/core/client_public_message_island.js" not in html_secretaria
+
+
+def test_js_isla_copiar_formulario_cliente_tiene_bloqueo_anti_doble_click():
+    js = Path("static/js/core/client_public_message_island.js").read_text(encoding="utf-8", errors="ignore")
+    assert "var inFlight = false;" in js
+    assert "var cooldownUntilMs = 0;" in js
+    assert "if (inFlight) return;" in js
+    assert "if (Date.now() < cooldownUntilMs) return;" in js
+    assert "Generando enlace..." in js
+    assert "Mensaje copiado" in js
+    assert "No se pudo copiar" in js

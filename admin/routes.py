@@ -22052,12 +22052,93 @@ def generar_link_publico_cliente_nuevo():
 @login_required
 @admin_required
 def generar_link_publico_cliente_nuevo_json():
+    limit = _consume_nueva_publica_link_quota()
+    if not limit.get("allowed"):
+        retry_after = int(limit.get("retry_after_sec") or 10)
+        log_admin_action(
+            event="PUBLIC_CLIENT_LINK_RATE_LIMITED",
+            status="blocked",
+            entity_type="staff_user",
+            entity_id=getattr(current_user, "id", None),
+            reason="rate_limit_exceeded",
+            summary="Generación de enlace público bloqueada temporalmente por límite.",
+            metadata={
+                "retry_after_sec": retry_after,
+                "window_sec": int(limit.get("window_sec") or 0),
+                "max_attempts": int(limit.get("max_attempts") or 0),
+            },
+        )
+        response = jsonify({
+            "ok": False,
+            "error": "rate_limited",
+            "message": "Has generado varios enlaces recientemente. Espera unos segundos antes de crear otro.",
+            "retry_after_sec": retry_after,
+        })
+        response.status_code = 429
+        response.headers["Retry-After"] = str(retry_after)
+        return response
+
     created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
     link = generar_link_publico_compartible_cliente_nuevo(created_by=created_by)
     return jsonify({
         "ok": True,
         "link_publico": link,
     })
+
+
+def _consume_nueva_publica_link_quota() -> dict:
+    """
+    Límite suave por staff para evitar generación masiva accidental de tokens.
+    Regla: max 3 por 60s y max 5 por 300s.
+    """
+    uid = str(getattr(current_user, "id", "") or getattr(current_user, "username", "") or "unknown")
+    now = int(time.time())
+    windows = ((60, 3), (300, 5))
+
+    for window_sec, max_attempts in windows:
+        key = f"rl:staff:nueva_publica_link:{uid}:w{window_sec}"
+        used = 0
+        if _cache_ok():
+            try:
+                used = int(cache.get(key) or 0)
+            except Exception:
+                used = 0
+        else:
+            sess_counts = session.setdefault("_rl_nueva_publica_link", {})
+            row = sess_counts.get(str(window_sec)) or {}
+            started_at = int(row.get("started_at") or 0)
+            if started_at <= 0 or now - started_at >= window_sec:
+                row = {"started_at": now, "count": 0}
+            used = int(row.get("count") or 0)
+            sess_counts[str(window_sec)] = row
+            session["_rl_nueva_publica_link"] = sess_counts
+
+        if used >= max_attempts:
+            return {
+                "allowed": False,
+                "retry_after_sec": window_sec,
+                "window_sec": window_sec,
+                "max_attempts": max_attempts,
+            }
+
+    for window_sec, _max_attempts in windows:
+        key = f"rl:staff:nueva_publica_link:{uid}:w{window_sec}"
+        if _cache_ok():
+            try:
+                cache.set(key, int(cache.get(key) or 0) + 1, timeout=window_sec)
+            except Exception:
+                continue
+        else:
+            sess_counts = session.setdefault("_rl_nueva_publica_link", {})
+            row = sess_counts.get(str(window_sec)) or {"started_at": now, "count": 0}
+            started_at = int(row.get("started_at") or 0)
+            if started_at <= 0 or now - started_at >= window_sec:
+                row = {"started_at": now, "count": 0}
+            row["count"] = int(row.get("count") or 0) + 1
+            sess_counts[str(window_sec)] = row
+            session["_rl_nueva_publica_link"] = sess_counts
+
+    return {"allowed": True}
 
 
 _ADMIN_CHAT_MESSAGE_MAX_LEN = 1800

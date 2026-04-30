@@ -137,3 +137,59 @@ def test_admin_owner_json_link_publico_usa_public_base_url_y_no_localhost():
         assert denied.status_code == 403
     finally:
         flask_app.config["PUBLIC_BASE_URL"] = old_public_base
+
+
+def test_admin_link_json_rate_limit_blocks_excess_and_avoids_extra_token_generation():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    with flask_app.app_context():
+        admin_routes.cache.clear()
+
+    with patch(
+        "admin.routes.generar_link_publico_compartible_cliente_nuevo",
+        side_effect=[
+            "https://domestica.example.com/solicitud/A1",
+            "https://domestica.example.com/solicitud/A2",
+            "https://domestica.example.com/solicitud/A3",
+            "https://domestica.example.com/solicitud/A4",
+        ],
+    ) as gen_mock:
+        r1 = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+        r2 = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+        r3 = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+        r4 = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+
+    assert r1.status_code == 200
+    assert r2.status_code == 200
+    assert r3.status_code == 200
+    assert r4.status_code == 429
+    payload = r4.get_json() or {}
+    assert payload.get("ok") is False
+    assert payload.get("error") == "rate_limited"
+    assert "Has generado varios enlaces recientemente" in str(payload.get("message") or "")
+    assert gen_mock.call_count == 3
+
+
+def test_admin_and_owner_can_generate_inside_limit_and_secretaria_stays_forbidden():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        admin_routes.cache.clear()
+
+    for usuario, clave in (("Owner", "admin123"), ("Cruz", "8998")):
+        client = flask_app.test_client()
+        assert _login(client, usuario, clave).status_code in (302, 303)
+        resp = client.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+        assert resp.status_code == 200
+        payload = resp.get_json() or {}
+        assert payload.get("ok") is True
+        assert "/solicitud/" in str(payload.get("link_publico") or "")
+
+    client_secretaria = flask_app.test_client()
+    assert _login(client_secretaria, "Karla", "9989").status_code in (302, 303)
+    denied = client_secretaria.get("/admin/solicitudes/nueva-publica/link.json", follow_redirects=False)
+    assert denied.status_code == 403
