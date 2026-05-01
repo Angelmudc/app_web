@@ -13,13 +13,13 @@
 
   function buildClientPublicFormMessageExistente(link) {
     return [
-      "Te comparto este formulario para registrar una nueva solicitud en Doméstica del Cibao A&D.",
+      "Te comparto el formulario para registrar una nueva solicitud en Doméstica del Cibao A&D.",
       "",
-      "Este enlace ya está asociado a tu registro, solo debes completar los detalles del servicio que necesitas.",
+      "Este enlace ya está asociado a tu perfil, por lo que solo necesitas completar los detalles del servicio que requieres.",
       "",
       String(link || "").trim(),
       "",
-      "Cuando lo completes, avísame que ya terminaste."
+      "Al finalizar, avísame para dar seguimiento a tu solicitud."
     ].join("\n");
   }
 
