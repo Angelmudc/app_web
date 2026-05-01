@@ -203,6 +203,9 @@
 
     var modal = document.getElementById("deleteClienteFromListModalShared");
     if (!modal) return;
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
     var form = document.getElementById("deleteClienteFromListSharedForm");
     var input = document.getElementById("delete_cliente_list_confirm_input_shared");
     var nextInput = document.getElementById("deleteClienteFromListSharedNext");
@@ -246,6 +249,18 @@
 
     modal.addEventListener("shown.bs.modal", function () {
       if (input) input.focus();
+    });
+
+    // Refuerzo: en algunos estados async, data-bs-dismiss no cierra en re-aperturas.
+    modal.addEventListener("click", function (ev) {
+      var dismissBtn = ev && ev.target && ev.target.closest
+        ? ev.target.closest('[data-bs-dismiss="modal"]')
+        : null;
+      if (!dismissBtn) return;
+      if (!(window.bootstrap && window.bootstrap.Modal)) return;
+      ev.preventDefault();
+      var instance = window.bootstrap.Modal.getInstance(modal) || new window.bootstrap.Modal(modal);
+      instance.hide();
     });
   })();
 </script>
