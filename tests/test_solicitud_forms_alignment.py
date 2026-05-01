@@ -109,3 +109,33 @@ def test_shared_partial_shows_modalidad_otro_input_when_otro_option_selected():
 def test_shared_partial_clears_modalidad_otro_input_when_switching_to_non_otro():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "if (!isOther && fromUserEvent) otherInput.value = '';" in partial
+
+
+def test_shared_partial_planchar_uses_centered_modal_and_required_actions():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"funciones_planchar_modal\"" in partial
+    assert "Planchado seleccionado" in partial
+    assert "id=\"funciones_planchar_continue\">Continuar</button>" in partial
+    assert "id=\"funciones_planchar_cancel\">Quitar opción</button>" in partial
+    assert "function showModal()" in partial
+    assert "function hideModal()" in partial
+
+
+def test_shared_partial_planchar_modal_reuses_existing_notice_text_without_duplication():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"funciones_planchar_notice_text\"" in partial
+    assert "id=\"funciones_planchar_modal_text\"" in partial
+    assert "modalTextNode.textContent = warningTextNode.textContent.trim();" in partial
+    assert partial.count(
+        "La solicitud de planchado suele reducir la disponibilidad de candidatas."
+    ) == 1
+
+
+def test_shared_partial_planchar_modal_buttons_apply_expected_checkbox_behavior():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "plancharInput.checked = true;" in partial
+    assert "plancharInput.checked = false;" in partial
+    assert "showModal();" in partial
+    assert "hideModal();" in partial
+    assert "showWarning();" in partial
+    assert "hideWarning();" in partial

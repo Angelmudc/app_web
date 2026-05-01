@@ -253,6 +253,48 @@
     gap: 8px;
   }
 
+  .public-planchar-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(16, 24, 40, 0.45);
+    z-index: 1055;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+  }
+
+  .public-planchar-modal {
+    width: min(560px, 100%);
+    border-radius: 14px;
+    border: 1px solid #d9e2ec;
+    background: #ffffff;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
+    padding: 16px;
+  }
+
+  .public-planchar-modal-title {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #22344d;
+  }
+
+  .public-planchar-modal-text {
+    margin: 0;
+    font-size: .92rem;
+    line-height: 1.5;
+    color: #3f4f63;
+  }
+
+  .public-planchar-modal-actions {
+    margin-top: 14px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   .public-home-structure-wrap {
     grid-column: 1 / -1;
     overflow: hidden;
@@ -454,12 +496,18 @@
       {{ render_field(form.funciones, hint='Marca una o varias funciones principales.', wrapper_class='public-full') }}
       <div class="public-field public-full public-planchar-warning d-none" id="wrap_funciones_planchar_notice" aria-live="polite" aria-hidden="true">
         <p class="public-planchar-warning-title">Importante sobre la función de planchado</p>
-        <p class="public-planchar-warning-text">
+        <p class="public-planchar-warning-text" id="funciones_planchar_notice_text">
           La solicitud de planchado suele reducir la disponibilidad de candidatas. Muchas no realizan esta función o tienen experiencia limitada, por lo que la búsqueda puede tomar más tiempo y, si luego necesitas reemplazo, también puede haber menos opciones.
         </p>
-        <div class="public-planchar-warning-actions">
-          <button type="button" class="btn btn-sm btn-primary" id="funciones_planchar_continue">Si, continuar</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="funciones_planchar_cancel">No, quitarlo</button>
+      </div>
+      <div class="public-planchar-modal-backdrop d-none" id="funciones_planchar_modal" role="dialog" aria-modal="true" aria-labelledby="funciones_planchar_modal_title" aria-hidden="true">
+        <div class="public-planchar-modal">
+          <h4 class="public-planchar-modal-title" id="funciones_planchar_modal_title">Planchado seleccionado</h4>
+          <p class="public-planchar-modal-text" id="funciones_planchar_modal_text"></p>
+          <div class="public-planchar-modal-actions">
+            <button type="button" class="btn btn-sm btn-primary" id="funciones_planchar_continue">Continuar</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="funciones_planchar_cancel">Quitar opción</button>
+          </div>
         </div>
       </div>
       {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
@@ -1087,14 +1135,21 @@
     function setupPlancharWarning() {
       var funcionesWrap = byId('wrap_funciones');
       var warningWrap = byId('wrap_funciones_planchar_notice');
-      if (!funcionesWrap || !warningWrap) return;
+      var modalWrap = byId('funciones_planchar_modal');
+      if (!funcionesWrap || !warningWrap || !modalWrap) return;
 
       var plancharInput = funcionesWrap.querySelector('input[type="checkbox"][name="funciones"][value="planchar"]');
       if (!plancharInput) return;
 
+      var warningTextNode = byId('funciones_planchar_notice_text');
+      var modalTextNode = byId('funciones_planchar_modal_text');
       var btnContinue = byId('funciones_planchar_continue');
       var btnCancel = byId('funciones_planchar_cancel');
       var plancharConfirmed = !!plancharInput.checked;
+
+      if (warningTextNode && modalTextNode) {
+        modalTextNode.textContent = warningTextNode.textContent.trim();
+      }
 
       function hideWarning() {
         warningWrap.classList.add('d-none');
@@ -1106,20 +1161,33 @@
         warningWrap.setAttribute('aria-hidden', 'false');
       }
 
-      hideWarning();
+      function hideModal() {
+        modalWrap.classList.add('d-none');
+        modalWrap.setAttribute('aria-hidden', 'true');
+      }
+
+      function showModal() {
+        modalWrap.classList.remove('d-none');
+        modalWrap.setAttribute('aria-hidden', 'false');
+      }
+
+      hideModal();
+      if (plancharConfirmed) showWarning();
+      else hideWarning();
 
       plancharInput.addEventListener('change', function () {
         if (!this.checked) {
           plancharConfirmed = false;
           hideWarning();
+          hideModal();
           return;
         }
         if (plancharConfirmed) {
-          hideWarning();
+          showWarning();
+          hideModal();
           return;
         }
-        this.checked = false;
-        showWarning();
+        showModal();
         syncChoiceSelectedState();
       });
 
@@ -1128,7 +1196,10 @@
           ev.preventDefault();
           plancharConfirmed = true;
           plancharInput.checked = true;
-          hideWarning();
+          hideModal();
+          showWarning();
+          plancharInput.dispatchEvent(new Event('change', { bubbles: true }));
+          plancharInput.focus();
           syncChoiceSelectedState();
         });
       }
@@ -1138,7 +1209,10 @@
           ev.preventDefault();
           plancharConfirmed = false;
           plancharInput.checked = false;
+          hideModal();
           hideWarning();
+          plancharInput.dispatchEvent(new Event('change', { bubbles: true }));
+          plancharInput.focus();
           syncChoiceSelectedState();
         });
       }

@@ -41,11 +41,10 @@
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th>Cliente</th>
+            <th>Código cliente</th>
+            <th>Nombre</th>
             <th>Teléfono</th>
             <th>Email</th>
-            <th>Tipo</th>
-            <th>Fecha recibida</th>
             <th>Estado revisión</th>
             <th>Acciones</th>
           </tr>
@@ -53,14 +52,10 @@
         <tbody>
           {% for s in solicitudes_nuevas %}
           <tr>
-            <td>{{ s.cliente.nombre_completo if s.cliente else 'Sin cliente' }}</td>
+            <td>{{ s.cliente.codigo if s.cliente and s.cliente.codigo else 'Cliente no disponible' }}</td>
+            <td>{{ s.cliente.nombre_completo if s.cliente and s.cliente.nombre_completo else 'Cliente no disponible' }}</td>
             <td>{{ s.cliente.telefono if s.cliente else '—' }}</td>
             <td>{{ s.cliente.email if s.cliente else '—' }}</td>
-            <td>
-              {% set source = (s.public_form_source or 'solicitud_publica') %}
-              {% if source == 'cliente_nuevo' %}Cliente nuevo{% elif source == 'cliente_existente' %}Cliente existente{% else %}Solicitud pública{% endif %}
-            </td>
-            <td>{{ format_rd_datetime(s.fecha_solicitud, fallback='—') if format_rd_datetime is defined else (s.fecha_solicitud or '—') }}</td>
             <td>
               {% set rs = (s.review_status or 'nuevo') %}
               {% if rs == 'nuevo' %}
@@ -75,7 +70,11 @@
             </td>
             <td>
               <div class="d-flex flex-wrap gap-1">
-                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Revisar</a>
+                {% if s.cliente and s.cliente.id %}
+                <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_cliente', cliente_id=s.cliente.id) }}">Ver cliente</a>
+                {% else %}
+                <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Ver cliente</button>
+                {% endif %}
                 <form method="post" action="{{ url_for('admin.actualizar_review_status_solicitud', solicitud_id=s.id) }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="review_status" value="en_gestion">
@@ -128,10 +127,10 @@
       <table class="table table-sm align-middle">
         <thead>
           <tr>
-            <th>Cliente</th>
+            <th>Código cliente</th>
+            <th>Nombre</th>
             <th>Teléfono</th>
-            <th>Tipo</th>
-            <th>Hora</th>
+            <th>Email</th>
             <th>Estado revisión</th>
             <th>Acciones</th>
           </tr>
@@ -139,13 +138,10 @@
         <tbody>
           {% for s in solicitudes_hoy %}
           <tr>
-            <td>{{ s.cliente.nombre_completo if s.cliente else 'Sin cliente' }}</td>
+            <td>{{ s.cliente.codigo if s.cliente and s.cliente.codigo else 'Cliente no disponible' }}</td>
+            <td>{{ s.cliente.nombre_completo if s.cliente and s.cliente.nombre_completo else 'Cliente no disponible' }}</td>
             <td>{{ s.cliente.telefono if s.cliente else '—' }}</td>
-            <td>
-              {% set source = (s.public_form_source or 'solicitud_publica') %}
-              {% if source == 'cliente_nuevo' %}Cliente nuevo{% elif source == 'cliente_existente' %}Cliente existente{% else %}Solicitud pública{% endif %}
-            </td>
-            <td>{{ format_rd_datetime(s.fecha_solicitud, fallback='—') if format_rd_datetime is defined else (s.fecha_solicitud or '—') }}</td>
+            <td>{{ s.cliente.email if s.cliente else '—' }}</td>
             <td>
               {% set rs = (s.review_status or 'nuevo') %}
               {% if rs == 'nuevo' %}
@@ -158,7 +154,13 @@
               <span class="badge text-bg-secondary">Descartado</span>
               {% endif %}
             </td>
-            <td><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id) }}">Revisar</a></td>
+            <td>
+              {% if s.cliente and s.cliente.id %}
+              <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.detalle_cliente', cliente_id=s.cliente.id) }}">Ver cliente</a>
+              {% else %}
+              <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Ver cliente</button>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>

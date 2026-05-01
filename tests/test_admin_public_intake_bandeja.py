@@ -36,7 +36,7 @@ def test_owner_sees_public_intake_menu_and_bandeja_lists_pending_items():
                 fecha_solicitud=None,
                 review_status="nuevo",
                 public_form_source="cliente_nuevo",
-                cliente=SimpleNamespace(nombre_completo="Cliente Test", telefono="8090000000", email="x@test.com"),
+                cliente=SimpleNamespace(id=7, codigo="EXT-0007", nombre_completo="Cliente Test", telefono="8090000000", email="x@test.com"),
             )
         ],
         page=1,
@@ -55,7 +55,7 @@ def test_owner_sees_public_intake_menu_and_bandeja_lists_pending_items():
                 fecha_solicitud=None,
                 review_status="revisado",
                 public_form_source="cliente_existente",
-                cliente=SimpleNamespace(nombre_completo="Cliente Test 2", telefono="8091111111", email="y@test.com"),
+                cliente=SimpleNamespace(id=8, codigo="EXT-0008", nombre_completo="Cliente Test 2", telefono="8091111111", email="y@test.com"),
             )
         ],
         page=1,
@@ -98,9 +98,13 @@ def test_owner_sees_public_intake_menu_and_bandeja_lists_pending_items():
     assert "Solicitudes nuevas por revisar" in inbox_html
     assert "Solicitudes de hoy" in inbox_html
     assert "Cliente Test" in inbox_html
-    assert "Cliente nuevo" in inbox_html
+    assert "EXT-0007" in inbox_html
+    assert "8090000000" in inbox_html
+    assert "x@test.com" in inbox_html
     assert "Cliente Test 2" in inbox_html
-    assert "Revisar" in inbox_html
+    assert "Ver cliente" in inbox_html
+    assert "/admin/clientes/7" in inbox_html
+    assert "Revisar" not in inbox_html
 
 
 def test_mark_reviewed_removes_item_from_pending_badge_count():
@@ -202,7 +206,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
             fecha_solicitud=now,
             public_form_source="cliente_nuevo",
             review_status="nuevo",
-            cliente=SimpleNamespace(nombre_completo=n_new, telefono="8090000001", email="n@test.com"),
+            cliente=SimpleNamespace(id=11, codigo="EXT-0011", nombre_completo=n_new, telefono="8090000001", email="n@test.com"),
         ),
         SimpleNamespace(
             id=2,
@@ -211,7 +215,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
             fecha_solicitud=now - timedelta(minutes=3),
             public_form_source="cliente_existente",
             review_status="en_gestion",
-            cliente=SimpleNamespace(nombre_completo=n_mgmt, telefono="8090000002", email="g@test.com"),
+            cliente=SimpleNamespace(id=11, codigo="EXT-0011", nombre_completo=n_mgmt, telefono="8090000002", email="g@test.com"),
         ),
         SimpleNamespace(
             id=3,
@@ -220,7 +224,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
             fecha_solicitud=now - timedelta(minutes=6),
             public_form_source="solicitud_publica",
             review_status="revisado",
-            cliente=SimpleNamespace(nombre_completo=n_rev, telefono="8090000003", email="r@test.com"),
+            cliente=SimpleNamespace(id=11, codigo="EXT-0011", nombre_completo=n_rev, telefono="8090000003", email="r@test.com"),
         ),
         SimpleNamespace(
             id=4,
@@ -229,7 +233,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
             fecha_solicitud=now - timedelta(minutes=9),
             public_form_source="solicitud_publica",
             review_status="descartado",
-            cliente=SimpleNamespace(nombre_completo=n_dis, telefono="8090000004", email="d@test.com"),
+            cliente=SimpleNamespace(id=11, codigo="EXT-0011", nombre_completo=n_dis, telefono="8090000004", email="d@test.com"),
         ),
     ]
 
@@ -284,6 +288,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
 
     # Bandeja nuevas: solo review_status = nuevo
     assert n_new in nuevas_section
+    assert "EXT-0011" in nuevas_section
     assert n_mgmt not in nuevas_section
     assert n_rev not in nuevas_section
     assert n_dis not in nuevas_section
@@ -293,3 +298,69 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
     assert n_mgmt in hoy_section
     assert n_rev in hoy_section
     assert n_dis in hoy_section
+
+
+def test_bandeja_shows_fallback_and_disables_ver_cliente_when_cliente_missing():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    fake_page_new = SimpleNamespace(
+        items=[
+            SimpleNamespace(
+                id=301,
+                cliente_id=None,
+                codigo_solicitud="CL-PUB-Z",
+                fecha_solicitud=None,
+                review_status="nuevo",
+                public_form_source="solicitud_publica",
+                cliente=None,
+            )
+        ],
+        page=1,
+        pages=1,
+        has_prev=False,
+        has_next=False,
+        prev_num=1,
+        next_num=1,
+    )
+    fake_page_today = SimpleNamespace(
+        items=[],
+        page=1,
+        pages=1,
+        has_prev=False,
+        has_next=False,
+        prev_num=1,
+        next_num=1,
+    )
+
+    class _FakeQuery:
+        def __init__(self):
+            self._paginate_calls = 0
+
+        def options(self, *_a, **_k):
+            return self
+
+        def filter(self, *_a, **_k):
+            return self
+
+        def order_by(self, *_a, **_k):
+            return self
+
+        def paginate(self, **_kwargs):
+            self._paginate_calls += 1
+            return fake_page_new if self._paginate_calls == 1 else fake_page_today
+
+        def count(self):
+            return 0
+
+    with flask_app.app_context():
+        with patch("admin.routes.Solicitud.query", _FakeQuery()):
+            resp = client.get("/admin/solicitudes/publicas/nuevas", follow_redirects=False)
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Cliente no disponible" in html
+    assert "Ver cliente" in html
+    assert "disabled" in html

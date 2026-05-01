@@ -15905,6 +15905,7 @@ def bandeja_formularios_publicos_nuevos():
             ),
             joinedload(Solicitud.cliente).load_only(
                 Cliente.id,
+                Cliente.codigo,
                 Cliente.nombre_completo,
                 Cliente.telefono,
                 Cliente.email,
@@ -15934,6 +15935,7 @@ def bandeja_formularios_publicos_nuevos():
                 ),
                 joinedload(Solicitud.cliente).load_only(
                     Cliente.id,
+                    Cliente.codigo,
                     Cliente.nombre_completo,
                     Cliente.telefono,
                     Cliente.email,
