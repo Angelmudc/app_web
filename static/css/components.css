@@ -627,6 +627,25 @@ footer{
   box-shadow: var(--shadow-md);
 }
 
+/* Modal Bootstrap por encima de overlays/islas internas de admin */
+body[data-admin-runtime="1"] .modal{
+  z-index: 2000 !important;
+  pointer-events: auto;
+}
+body[data-admin-runtime="1"] .modal-dialog,
+body[data-admin-runtime="1"] .modal-content{
+  pointer-events: auto;
+}
+body[data-admin-runtime="1"] .modal-backdrop{
+  z-index: 1990 !important;
+}
+
+/* Guard defensivo: si el drawer de seguimiento quedó a medio estado, no debe tapar modales */
+.seg-candidatas-backdrop[hidden],
+.seg-candidatas-drawer[hidden]{
+  display: none !important;
+}
+
 /* Items más grandes */
 .dropdown-menu .dropdown-item{
   padding: 10px 12px;         /* ✅ más alto y cómodo */

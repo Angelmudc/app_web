@@ -208,6 +208,9 @@
     var nextInput = document.getElementById("deleteClienteFromListSharedNext");
     var nameNode = document.getElementById("deleteClienteFromListSharedNombre");
     var codeNode = document.getElementById("deleteClienteFromListSharedCodigo");
+    var segBackdrop = document.getElementById("segCandidatasBackdrop");
+    var segDrawer = document.getElementById("segCandidatasDrawer");
+    var segBodyOpenClass = "seg-drawer-open";
 
     modal.addEventListener("show.bs.modal", function (ev) {
       var trigger = ev && ev.relatedTarget ? ev.relatedTarget : null;
@@ -223,6 +226,22 @@
       if (nameNode) nameNode.textContent = clienteNombre;
       if (codeNode) codeNode.textContent = clienteCodigo;
       if (input) input.value = "";
+
+      // Evita que overlays flotantes de seguimiento queden capturando clics sobre el modal.
+      if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;
+      if (segDrawer && segDrawer.hidden === false) segDrawer.hidden = true;
+      if (document.body) document.body.classList.remove(segBodyOpenClass);
+
+      // Refuerza stacking del modal/backdrop activo.
+      modal.style.setProperty("z-index", "2000");
+      window.setTimeout(function () {
+        var backdrops = Array.prototype.slice.call(document.querySelectorAll(".modal-backdrop"));
+        if (!backdrops.length) return;
+        var activeBackdrop = backdrops[backdrops.length - 1];
+        if (!activeBackdrop) return;
+        activeBackdrop.style.setProperty("z-index", "1990");
+        activeBackdrop.style.setProperty("pointer-events", "auto");
+      }, 0);
     });
 
     modal.addEventListener("shown.bs.modal", function () {
