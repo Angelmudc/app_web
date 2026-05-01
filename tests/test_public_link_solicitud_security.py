@@ -572,7 +572,9 @@ def test_share_landing_route_is_corporate_and_does_not_expose_long_token():
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Formulario oficial de solicitud" in html
-    assert "Enlace válido para este proceso" in html
+    assert "Enlace válido. Puedes continuar al formulario." in html
+    assert "Ir al formulario" in html
+    assert "Detener temporizador" in html
     assert "/solicitud/ABCD2345EF/continuar" in html
     assert "tok123" not in html
     assert 'property="og:title"' in html
