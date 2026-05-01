@@ -251,6 +251,66 @@ class AdminClientesListAsyncTest(unittest.TestCase):
         self.assertFalse(server_data["success"])
         self.assertEqual(server_data["error_code"], "server_error")
 
+    def test_owner_ve_accion_eliminar_en_resultados_con_modal_seguro(self):
+        rows = [_cliente_stub(10, "CL-010")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Cliente, "query", _ClienteQueryStub(rows)):
+                resp = self.client.get("/admin/clientes?q=CL-010&page=1&per_page=10", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Eliminar", html)
+        self.assertIn('data-bs-target="#deleteClienteFromListModal-10"', html)
+        self.assertIn('action="/admin/clientes/10/eliminar"', html)
+        self.assertIn('name="confirm_delete"', html)
+        self.assertIn("ELIMINAR", html)
+        self.assertIn("Cliente 10", html)
+        self.assertIn("CL-010", html)
+
+    def test_admin_no_ve_accion_eliminar_en_resultados(self):
+        client_admin = flask_app.test_client()
+        login = client_admin.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
+        self.assertIn(login.status_code, (302, 303))
+        rows = [_cliente_stub(11, "CL-011")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Cliente, "query", _ClienteQueryStub(rows)):
+                resp = client_admin.get("/admin/clientes?q=CL-011&page=1&per_page=10", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertNotIn('deleteClienteFromListModal-11', html)
+        self.assertNotIn('action="/admin/clientes/11/eliminar"', html)
+
+    def test_secretaria_no_ve_accion_eliminar_en_resultados(self):
+        client_secretaria = flask_app.test_client()
+        login = client_secretaria.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+        self.assertIn(login.status_code, (302, 303))
+        rows = [_cliente_stub(12, "CL-012")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Cliente, "query", _ClienteQueryStub(rows)):
+                resp = client_secretaria.get("/admin/clientes?q=CL-012&page=1&per_page=10", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertNotIn('deleteClienteFromListModal-12', html)
+        self.assertNotIn('action="/admin/clientes/12/eliminar"', html)
+
+    def test_no_aparece_boton_eliminar_sin_busqueda_o_sin_resultados(self):
+        rows = [_cliente_stub(13, "CL-013")]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Cliente, "query", _ClienteQueryStub(rows)):
+                resp_no_search = self.client.get("/admin/clientes", follow_redirects=False)
+                resp_no_match = self.client.get("/admin/clientes?q=ZZZ-NO-MATCH", follow_redirects=False)
+
+        self.assertEqual(resp_no_search.status_code, 200)
+        html_no_search = resp_no_search.get_data(as_text=True)
+        self.assertNotIn("deleteClienteFromListModal-", html_no_search)
+        self.assertNotIn("action=\"/admin/clientes/13/eliminar\"", html_no_search)
+
+        self.assertEqual(resp_no_match.status_code, 200)
+        html_no_match = resp_no_match.get_data(as_text=True)
+        self.assertNotIn("deleteClienteFromListModal-", html_no_match)
+
 
 if __name__ == "__main__":
     unittest.main()
