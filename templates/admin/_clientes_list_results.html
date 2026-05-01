@@ -62,7 +62,12 @@
                 type="button"
                 class="btn btn-sm btn-danger"
                 data-bs-toggle="modal"
-                data-bs-target="#deleteClienteFromListModal-{{ c.id }}"
+                data-bs-target="#deleteClienteFromListModalShared"
+                data-delete-cliente-id="{{ c.id }}"
+                data-delete-cliente-codigo="{{ c.codigo or c.id }}"
+                data-delete-cliente-nombre="{{ c.nombre_completo or '—' }}"
+                data-delete-next-url="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}"
+                data-delete-action-url="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
               >
                 Eliminar
               </button>
@@ -107,7 +112,12 @@
           type="button"
           class="btn btn-sm btn-danger"
           data-bs-toggle="modal"
-          data-bs-target="#deleteClienteFromListModal-{{ c.id }}"
+          data-bs-target="#deleteClienteFromListModalShared"
+          data-delete-cliente-id="{{ c.id }}"
+          data-delete-cliente-codigo="{{ c.codigo or c.id }}"
+          data-delete-cliente-nombre="{{ c.nombre_completo or '—' }}"
+          data-delete-next-url="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}"
+          data-delete-action-url="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
         >
           Eliminar
         </button>
@@ -116,50 +126,6 @@
     </article>
     {% endfor %}
   </div>
-
-  {% if can_delete_cliente %}
-    {% for c in slice %}
-    <div class="modal fade" id="deleteClienteFromListModal-{{ c.id }}" tabindex="-1" aria-labelledby="deleteClienteFromListModalLabel-{{ c.id }}" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-danger-subtle">
-          <div class="modal-header">
-            <h3 class="modal-title h5" id="deleteClienteFromListModalLabel-{{ c.id }}">Eliminar cliente</h3>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
-          </div>
-          <form method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}">
-            <div class="modal-body">
-              <p class="mb-2 fw-semibold">
-                Esta acción eliminará el cliente permanentemente. ¿Estás seguro?
-              </p>
-              <p class="small text-muted mb-3">
-                Cliente: <strong>{{ c.nombre_completo or '—' }}</strong><br>
-                Código: <strong>{{ c.codigo or c.id }}</strong><br>
-                Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente.
-              </p>
-              {% if csrf_token %}
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              {% endif %}
-              <input type="hidden" name="next" value="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}">
-              <label class="form-label" for="delete_cliente_list_confirm_input_{{ c.id }}">Confirmación</label>
-              <input
-                type="text"
-                class="form-control"
-                id="delete_cliente_list_confirm_input_{{ c.id }}"
-                name="confirm_delete"
-                autocomplete="off"
-                required
-              >
-            </div>
-            <div class="modal-footer">
-              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-              <button type="submit" class="btn btn-danger">Eliminar cliente</button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
-    {% endfor %}
-  {% endif %}
 
   <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
     <small class="text-muted">

@@ -155,4 +155,81 @@
   </div>
 </div>
 
+{% set can_delete_cliente = ((current_user.role|default('')|lower) == 'owner') %}
+{% if can_delete_cliente %}
+<div class="modal fade" id="deleteClienteFromListModalShared" tabindex="-1" aria-labelledby="deleteClienteFromListModalSharedLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-danger-subtle">
+      <div class="modal-header">
+        <h3 class="modal-title h5" id="deleteClienteFromListModalSharedLabel">Eliminar cliente</h3>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <form method="post" id="deleteClienteFromListSharedForm" action="#">
+        <div class="modal-body">
+          <p class="mb-2 fw-semibold">
+            Esta acción eliminará el cliente permanentemente. ¿Estás seguro?
+          </p>
+          <p class="small text-muted mb-3">
+            Cliente: <strong id="deleteClienteFromListSharedNombre">—</strong><br>
+            Código: <strong id="deleteClienteFromListSharedCodigo">—</strong><br>
+            Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente.
+          </p>
+          {% if csrf_token %}
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% endif %}
+          <input type="hidden" name="next" id="deleteClienteFromListSharedNext" value="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}">
+          <label class="form-label" for="delete_cliente_list_confirm_input_shared">Confirmación</label>
+          <input
+            type="text"
+            class="form-control"
+            id="delete_cliente_list_confirm_input_shared"
+            name="confirm_delete"
+            autocomplete="off"
+            required
+          >
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Eliminar cliente</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    if (window.__deleteClienteListSharedModalBound) return;
+    window.__deleteClienteListSharedModalBound = true;
+
+    var modal = document.getElementById("deleteClienteFromListModalShared");
+    if (!modal) return;
+    var form = document.getElementById("deleteClienteFromListSharedForm");
+    var input = document.getElementById("delete_cliente_list_confirm_input_shared");
+    var nextInput = document.getElementById("deleteClienteFromListSharedNext");
+    var nameNode = document.getElementById("deleteClienteFromListSharedNombre");
+    var codeNode = document.getElementById("deleteClienteFromListSharedCodigo");
+
+    modal.addEventListener("show.bs.modal", function (ev) {
+      var trigger = ev && ev.relatedTarget ? ev.relatedTarget : null;
+      if (!trigger) return;
+
+      var actionUrl = String(trigger.getAttribute("data-delete-action-url") || "").trim();
+      var nextUrl = String(trigger.getAttribute("data-delete-next-url") || "").trim();
+      var clienteNombre = String(trigger.getAttribute("data-delete-cliente-nombre") || "—");
+      var clienteCodigo = String(trigger.getAttribute("data-delete-cliente-codigo") || "—");
+
+      if (form && actionUrl) form.setAttribute("action", actionUrl);
+      if (nextInput && nextUrl) nextInput.value = nextUrl;
+      if (nameNode) nameNode.textContent = clienteNombre;
+      if (codeNode) codeNode.textContent = clienteCodigo;
+      if (input) input.value = "";
+    });
+
+    modal.addEventListener("shown.bs.modal", function () {
+      if (input) input.focus();
+    });
+  })();
+</script>
+{% endif %}
+
 {% endblock %}

@@ -260,8 +260,9 @@ class AdminClientesListAsyncTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
         self.assertIn("Eliminar", html)
-        self.assertIn('data-bs-target="#deleteClienteFromListModal-10"', html)
-        self.assertIn('action="/admin/clientes/10/eliminar"', html)
+        self.assertIn('id="deleteClienteFromListModalShared"', html)
+        self.assertIn('data-bs-target="#deleteClienteFromListModalShared"', html)
+        self.assertIn('data-delete-action-url="/admin/clientes/10/eliminar"', html)
         self.assertIn('name="confirm_delete"', html)
         self.assertIn("ELIMINAR", html)
         self.assertIn("Cliente 10", html)
@@ -278,7 +279,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertNotIn('deleteClienteFromListModal-11', html)
+        self.assertNotIn('deleteClienteFromListModalShared', html)
         self.assertNotIn('action="/admin/clientes/11/eliminar"', html)
 
     def test_secretaria_no_ve_accion_eliminar_en_resultados(self):
@@ -292,7 +293,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertNotIn('deleteClienteFromListModal-12', html)
+        self.assertNotIn('deleteClienteFromListModalShared', html)
         self.assertNotIn('action="/admin/clientes/12/eliminar"', html)
 
     def test_no_aparece_boton_eliminar_sin_busqueda_o_sin_resultados(self):
@@ -304,12 +305,12 @@ class AdminClientesListAsyncTest(unittest.TestCase):
 
         self.assertEqual(resp_no_search.status_code, 200)
         html_no_search = resp_no_search.get_data(as_text=True)
-        self.assertNotIn("deleteClienteFromListModal-", html_no_search)
+        self.assertNotIn('data-bs-target="#deleteClienteFromListModalShared"', html_no_search)
         self.assertNotIn("action=\"/admin/clientes/13/eliminar\"", html_no_search)
 
         self.assertEqual(resp_no_match.status_code, 200)
         html_no_match = resp_no_match.get_data(as_text=True)
-        self.assertNotIn("deleteClienteFromListModal-", html_no_match)
+        self.assertNotIn('data-bs-target="#deleteClienteFromListModalShared"', html_no_match)
 
 
 if __name__ == "__main__":
