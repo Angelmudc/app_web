@@ -7145,11 +7145,7 @@ def solicitud_publica_nueva_token(token):
                 success=True,
                 metadata_extra={"method": request.method, "action": "success_once_after_submit", "status_code": 200},
             )
-            solicitud_id = int(success_state.get("solicitud_id") or 0)
             session.pop("public_new_solicitud_success", None)
-            if solicitud_id > 0:
-                _grant_public_recommendation_access(solicitud_id=solicitud_id)
-                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             return render_template(
                 'clientes/public_new_success.html',
                 cliente_nombre=str(success_state.get("cliente_nombre") or ""),
@@ -7534,9 +7530,6 @@ def solicitud_publica_nueva_token(token):
                     "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
                     "solicitud_id": solicitud_id,
                 }
-                if solicitud_id > 0:
-                    _grant_public_recommendation_access(solicitud_id=solicitud_id)
-                    return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
                 if share_code:
                     return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
                 if request.endpoint == "clientes.solicitud_publica_nueva_short":
@@ -7623,11 +7616,7 @@ def solicitud_publica(token):
             and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
         )
         if show_success:
-            solicitud_id = int(success_state.get("solicitud_id") or 0)
             session.pop("public_solicitud_success", None)
-            if solicitud_id > 0:
-                _grant_public_recommendation_access(solicitud_id=solicitud_id)
-                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             return render_template(
                 'clientes/public_link_success.html',
                 cliente_nombre=str(success_state.get("cliente_nombre") or ""),
@@ -8118,9 +8107,6 @@ def solicitud_publica(token):
                 "solicitud_codigo": str(codigo_holder.get("value") or ""),
                 "solicitud_id": solicitud_id,
             }
-            if solicitud_id > 0:
-                _grant_public_recommendation_access(solicitud_id=solicitud_id)
-                return redirect(url_for("clientes.solicitud_recomendaciones", id=solicitud_id))
             if share_code:
                 return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
             if request.endpoint == "clientes.solicitud_publica_short":

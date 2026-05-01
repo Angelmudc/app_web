@@ -231,6 +231,7 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
 
     assert resp.status_code in (302, 303)
     assert "/clientes/solicitudes/nueva-publica/tok123" in (resp.location or "")
+    assert "/clientes/login" not in (resp.location or "")
     assert second.status_code == 410
     assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
 
@@ -262,8 +263,12 @@ def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once()
         success = client.get(f"/clientes/solicitudes/nueva-publica/{token}?estado=enviado")
         later = client.get(f"/clientes/solicitudes/nueva-publica/{token}")
 
-    assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/88/recomendaciones" in (success.location or "")
+    assert success.status_code == 200
+    success_html = success.get_data(as_text=True)
+    assert "Solicitud recibida correctamente" in success_html
+    assert "2,154-A" in success_html
+    assert "envíanos tu nombre por WhatsApp" in success_html
+    assert "/clientes/login" not in success_html
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
@@ -532,8 +537,12 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
         success = client.get("/solicitud/WXYZ5678JK/continuar?estado=enviado")
         later = client.get("/solicitud/WXYZ5678JK/continuar")
 
-    assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/88/recomendaciones" in (success.location or "")
+    assert success.status_code == 200
+    success_html = success.get_data(as_text=True)
+    assert "Solicitud recibida correctamente" in success_html
+    assert "2,154-A" in success_html
+    assert "Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario." in success_html
+    assert "/clientes/login" not in success_html
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 

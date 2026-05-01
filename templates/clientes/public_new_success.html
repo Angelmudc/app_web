@@ -111,28 +111,16 @@
     <article class="public-success-card">
       <header class="public-success-hero">
         <div class="public-success-check"><i class="bi bi-check-lg"></i></div>
-        <h1 class="public-success-title">Tu solicitud fue recibida correctamente</h1>
-        <p class="public-success-sub">Creamos tu cliente y registramos tu solicitud. Nuestro equipo te contactará para el seguimiento.</p>
+        <h1 class="public-success-title">Solicitud recibida correctamente</h1>
+        <p class="public-success-sub">Tu solicitud fue registrada correctamente. Por favor envíanos tu nombre por WhatsApp e indícanos que ya completaste el formulario.</p>
       </header>
 
       <div class="public-success-body">
-        <div class="public-success-block">
-          <div class="public-success-label">Cliente</div>
-          <div class="public-success-value">{{ cliente_nombre or 'Cliente registrado' }}</div>
-        </div>
-
-        <div class="public-success-block">
-          <div class="public-success-label">Código de cliente</div>
-          <div class="public-success-value">{{ cliente_codigo or 'Generado correctamente' }}</div>
-        </div>
-
         <div class="public-success-block">
           <div class="public-success-label">Código de solicitud</div>
           <div class="public-success-value">
             {% if solicitud_codigo %}
               {{ solicitud_codigo }}
-            {% elif solicitud_id %}
-              Referencia #{{ solicitud_id }}
             {% else %}
               Registrada correctamente
             {% endif %}
@@ -140,15 +128,15 @@
         </div>
 
         <div class="public-success-block">
-          <div class="public-success-value">Solicitud registrada correctamente.</div>
+          <div class="public-success-value">Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario.</div>
         </div>
 
         <div class="public-success-block">
           <div class="public-success-label">Próximos pasos</div>
           <ol class="public-success-steps">
             <li>Validaremos la información enviada.</li>
-            <li>Te contactaremos para confirmar el proceso.</li>
-            <li>Conserva tu código de cliente para referencia.</li>
+            <li>Avísanos por WhatsApp que ya completaste el formulario.</li>
+            <li>Conserva tu código de solicitud para referencia.</li>
           </ol>
         </div>
       </div>

@@ -408,6 +408,7 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
 
     assert resp.status_code in (302, 303)
     assert "/clientes/solicitudes/publica/tok123" in (resp.location or "")
+    assert "/clientes/login" not in (resp.location or "")
     assert second.status_code == 410
     assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
 
@@ -468,11 +469,11 @@ def test_public_link_successful_save_shows_professional_success_page_once():
         later = client.get("/clientes/solicitudes/publica/tok123")
 
     assert success.status_code == 200
-    assert "Tu solicitud fue enviada correctamente" in success.get_data(as_text=True)
+    assert "Solicitud recibida correctamente" in success.get_data(as_text=True)
     success_html = success.get_data(as_text=True)
-    assert "Cliente Uno" in success_html
     assert "CL-001-C" in success_html
-    assert "la solicitud quedó registrada correctamente" in success_html
+    assert "envíanos tu nombre por WhatsApp" in success_html
+    assert "/clientes/login" not in success_html
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
@@ -508,8 +509,11 @@ def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
     with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
         success_resp = client.get("/clientes/solicitudes/publica/tok123?estado=enviado")
 
-    assert success_resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/91/recomendaciones" in (success_resp.location or "")
+    assert success_resp.status_code == 200
+    success_html = success_resp.get_data(as_text=True)
+    assert "Solicitud recibida correctamente" in success_html
+    assert "Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario." in success_html
+    assert "/clientes/login" not in success_html
 
     for resp in (form_resp, used_resp, invalid_resp):
         assert resp.status_code in (200, 410)
@@ -646,8 +650,11 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
         success = client.get("/solicitud/ABCD2345EF/continuar?estado=enviado")
         later = client.get("/solicitud/ABCD2345EF/continuar")
 
-    assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/91/recomendaciones" in (success.location or "")
+    assert success.status_code == 200
+    success_html = success.get_data(as_text=True)
+    assert "Solicitud recibida correctamente" in success_html
+    assert "CL-001-B" in success_html
+    assert "/clientes/login" not in success_html
     assert later.status_code == 410
     assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
 
