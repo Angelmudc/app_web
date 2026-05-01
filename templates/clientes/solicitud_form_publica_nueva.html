@@ -316,11 +316,12 @@
               <div class="public-terms-actions">
                 <button type="button" class="btn btn-success" id="termsAcceptNuevaBtn">Aceptar</button>
                 <button type="button" class="btn btn-outline-danger" id="termsRejectNuevaBtn">No aceptar</button>
+                <span class="badge text-bg-success d-none" id="termsAcceptedNuevaStatus" aria-live="polite">Términos aceptados</span>
               </div>
             </section>
 
             <div class="public-submit-wrap">
-              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitNuevaBtn">
+              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitNuevaBtn" disabled aria-disabled="true">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitNuevaSpinner" aria-hidden="true"></span>
                 <span id="publicSubmitNuevaLabel">Enviar solicitud</span>
               </button>
@@ -343,6 +344,7 @@
   var label = document.getElementById('publicSubmitNuevaLabel');
   var acceptBtn = document.getElementById('termsAcceptNuevaBtn');
   var rejectBtn = document.getElementById('termsRejectNuevaBtn');
+  var acceptedStatus = document.getElementById('termsAcceptedNuevaStatus');
   var termsAcceptedInput = document.getElementById('termsAcceptedNuevaInput');
   var termsDecisionInput = document.getElementById('termsDecisionNuevaInput');
   var isSubmitting = false;
@@ -352,8 +354,19 @@
   function markAccepted() {
     if (termsAcceptedInput) termsAcceptedInput.value = '1';
     if (termsDecisionInput) termsDecisionInput.value = 'accept';
-    if (acceptBtn) acceptBtn.classList.add('active');
-    if (rejectBtn) rejectBtn.classList.remove('active');
+    if (acceptBtn) {
+      acceptBtn.classList.add('active');
+      acceptBtn.textContent = 'Aceptado';
+    }
+    if (rejectBtn) {
+      rejectBtn.classList.remove('active');
+      rejectBtn.disabled = true;
+      rejectBtn.classList.add('d-none');
+      rejectBtn.setAttribute('aria-hidden', 'true');
+    }
+    if (acceptedStatus) acceptedStatus.classList.remove('d-none');
+    btn.disabled = false;
+    btn.setAttribute('aria-disabled', 'false');
   }
 
   function markRejected() {

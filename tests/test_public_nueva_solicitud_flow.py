@@ -112,6 +112,26 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert 'domestica-preview.png' in html
 
 
+def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+        resp = client.get("/clientes/solicitudes/nueva-publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="publicSubmitNuevaBtn" disabled aria-disabled="true"' in html
+    assert 'id="termsAcceptedNuevaStatus"' in html
+    assert "Términos aceptados" in html
+    assert "rejectBtn.disabled = true" in html
+    assert "rejectBtn.classList.add('d-none')" in html
+    assert "acceptBtn.textContent = 'Aceptado'" in html
+
+
 def test_new_public_post_keeps_cliente_city_sector_separate_from_solicitud_ciudad_sector():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

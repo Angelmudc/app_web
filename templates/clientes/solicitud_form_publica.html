@@ -308,11 +308,12 @@
               <div class="public-terms-actions">
                 <button type="button" class="btn btn-success" id="termsAcceptBtn">Aceptar</button>
                 <button type="button" class="btn btn-outline-danger" id="termsRejectBtn">No aceptar</button>
+                <span class="badge text-bg-success d-none" id="termsAcceptedStatus" aria-live="polite">Términos aceptados</span>
               </div>
             </section>
 
             <div class="public-submit-wrap">
-              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn">
+              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn" disabled aria-disabled="true">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
                 <span id="publicSubmitLabel">Enviar solicitud</span>
               </button>
@@ -335,6 +336,7 @@
   var label = document.getElementById('publicSubmitLabel');
   var acceptBtn = document.getElementById('termsAcceptBtn');
   var rejectBtn = document.getElementById('termsRejectBtn');
+  var acceptedStatus = document.getElementById('termsAcceptedStatus');
   var termsAcceptedInput = document.getElementById('termsAcceptedInput');
   var termsDecisionInput = document.getElementById('termsDecisionInput');
   var isSubmitting = false;
@@ -344,8 +346,19 @@
   function markAccepted() {
     if (termsAcceptedInput) termsAcceptedInput.value = '1';
     if (termsDecisionInput) termsDecisionInput.value = 'accept';
-    if (acceptBtn) acceptBtn.classList.add('active');
-    if (rejectBtn) rejectBtn.classList.remove('active');
+    if (acceptBtn) {
+      acceptBtn.classList.add('active');
+      acceptBtn.textContent = 'Aceptado';
+    }
+    if (rejectBtn) {
+      rejectBtn.classList.remove('active');
+      rejectBtn.disabled = true;
+      rejectBtn.classList.add('d-none');
+      rejectBtn.setAttribute('aria-hidden', 'true');
+    }
+    if (acceptedStatus) acceptedStatus.classList.remove('d-none');
+    btn.disabled = false;
+    btn.setAttribute('aria-disabled', 'false');
   }
 
   function markRejected() {

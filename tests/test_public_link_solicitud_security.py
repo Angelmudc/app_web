@@ -215,6 +215,26 @@ def test_public_link_form_renders_pasaje_three_options_and_otro_input():
     assert 'name="pasaje_otro_text"' in html
 
 
+def test_public_link_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'id="publicSubmitBtn" disabled aria-disabled="true"' in html
+    assert 'id="termsAcceptedStatus"' in html
+    assert "Términos aceptados" in html
+    assert "rejectBtn.disabled = true" in html
+    assert "rejectBtn.classList.add('d-none')" in html
+    assert "acceptBtn.textContent = 'Aceptado'" in html
+
+
 def test_public_link_form_renders_guided_modalidad_with_two_main_groups():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
