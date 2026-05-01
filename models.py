@@ -1005,6 +1005,33 @@ class Solicitud(db.Model):
                                 nullable=True,
                                 comment="Usuario staff que aplicó el último cambio de revisión."
                              )
+    terms_accepted         = db.Column(
+                                db.Boolean,
+                                nullable=False,
+                                default=False,
+                                server_default=text("false"),
+                                comment="Indica si el cliente aceptó términos en el formulario público."
+                             )
+    terms_accepted_at      = db.Column(
+                                db.DateTime,
+                                nullable=True,
+                                comment="Fecha/hora UTC de aceptación de términos."
+                             )
+    terms_version          = db.Column(
+                                db.String(20),
+                                nullable=True,
+                                comment="Versión de términos aceptada."
+                             )
+    terms_ip               = db.Column(
+                                db.String(64),
+                                nullable=True,
+                                comment="IP reportada al aceptar términos."
+                             )
+    terms_user_agent       = db.Column(
+                                db.String(512),
+                                nullable=True,
+                                comment="User-Agent reportado al aceptar términos."
+                             )
 
     # ─────────────────────────────────────────────
     # SEGUIMIENTO / PRIORIDAD (NUEVO)

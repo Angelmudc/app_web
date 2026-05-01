@@ -8798,6 +8798,47 @@ def _delete_plan_has_uncertain_inspection(plan: dict[str, object]) -> bool:
     return False
 
 
+def _summary_positive(summary: dict[str, object], key: str) -> int:
+    try:
+        return max(0, int(summary.get(key) or 0))
+    except Exception:
+        return 0
+
+
+def _plan_has_critical_cliente_data(summary: dict[str, object]) -> bool:
+    if _summary_positive(summary, "solicitudes") > 0:
+        return True
+    if _summary_positive(summary, "solicitudes_criticas") > 0:
+        return True
+    if _summary_positive(summary, "notificaciones_cliente") > 0:
+        return True
+    if _summary_positive(summary, "notificaciones_solicitud") > 0:
+        return True
+    if _summary_positive(summary, "reemplazos") > 0:
+        return True
+    if _summary_positive(summary, "chat_conversations") > 0:
+        return True
+    if _summary_positive(summary, "chat_messages") > 0:
+        return True
+    if _summary_positive(summary, "tareas") > 0:
+        return True
+    if _summary_positive(summary, "recommendation_runs") > 0:
+        return True
+    if _summary_positive(summary, "recommendation_items") > 0:
+        return True
+    if _summary_positive(summary, "recommendation_selections") > 0:
+        return True
+    if _summary_positive(summary, "tokens_publicos_cliente") > 0:
+        return True
+    if _summary_positive(summary, "tokens_publicos_solicitud") > 0:
+        return True
+    if _summary_positive(summary, "tokens_cliente_nuevo_cliente") > 0:
+        return True
+    if _summary_positive(summary, "tokens_cliente_nuevo_solicitud") > 0:
+        return True
+    return False
+
+
 def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str, int]:
     cid = int(cliente_id or 0)
     sid_list = [int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0]
@@ -9047,6 +9088,31 @@ def eliminar_cliente(cliente_id):
             )
         return blocked_resp
 
+    confirmation_raw = (request.form.get("confirm_delete") or "").strip()
+    confirmation_upper = confirmation_raw.upper()
+    valid_by_keyword = confirmation_upper == "ELIMINAR"
+    valid_by_code = confirmation_raw.casefold() == cliente_code.casefold()
+    if not (valid_by_keyword or valid_by_code):
+        msg = "Confirmación inválida. Escribe ELIMINAR o el código del cliente para continuar."
+        _audit_log(
+            action_type="CLIENTE_DELETE_BLOCKED",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Borrado bloqueado por confirmación inválida para cliente {cliente_code}",
+            metadata={"confirmation_length": len(confirmation_raw)},
+            success=False,
+            error=msg,
+        )
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=400,
+            error_code="invalid_confirmation",
+        )
+
     idem_row, duplicate = _claim_idempotency(
         scope="admin_cliente_delete",
         entity_type="Cliente",
@@ -9091,7 +9157,7 @@ def eliminar_cliente(cliente_id):
     inspection_uncertain = _delete_plan_has_uncertain_inspection(plan)
 
     if blocked_issues:
-        msg = "Este cliente no puede eliminarse de forma segura: " + " | ".join(blocked_issues)
+        msg = "Este cliente tiene información asociada y no puede eliminarse."
         _audit_log(
             action_type="CLIENTE_DELETE_BLOCKED",
             entity_type="Cliente",
@@ -9140,6 +9206,30 @@ def eliminar_cliente(cliente_id):
             fallback=fallback,
             http_status=409,
             error_code="dependency_inspection_failed",
+        )
+
+    if _plan_has_critical_cliente_data(summary):
+        msg = "Este cliente tiene información asociada y no puede eliminarse."
+        _audit_log(
+            action_type="CLIENTE_DELETE_BLOCKED",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Borrado bloqueado por datos asociados para cliente {cliente_code}",
+            metadata={
+                "warnings": warnings,
+                "dependency_summary": summary,
+            },
+            success=False,
+            error=msg,
+        )
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="conflict",
         )
 
     try:

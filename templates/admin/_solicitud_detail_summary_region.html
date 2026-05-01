@@ -62,5 +62,23 @@
       <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Motivo de cancelación</dt>
       <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.motivo_cancelacion }}</dd>
       {% endif %}
+
+      {% set _viewer_role = (current_user.role if current_user is defined and current_user and current_user.role is defined else '') %}
+      {% if _viewer_role in ['owner', 'admin'] %}
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Términos aceptados</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ 'Sí' if solicitud.terms_accepted else 'No' }}</dd>
+
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Fecha términos</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.terms_accepted_at|rd_datetime('%Y-%m-%d %H:%M') if solicitud.terms_accepted_at else '—' }}</dd>
+
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">IP términos</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.terms_ip or '—' }}</dd>
+
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Navegador términos</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.terms_user_agent or '—' }}</dd>
+
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Versión términos</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.terms_version or '—' }}</dd>
+      {% endif %}
     </dl>
   </div>

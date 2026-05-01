@@ -194,6 +194,36 @@
     font-size: .9rem;
   }
 
+  .public-terms-wrap {
+    margin-top: 18px;
+    border: 1px solid #d3dce8;
+    border-radius: 14px;
+    background: #f8fafc;
+    padding: 14px;
+  }
+
+  .public-terms-title {
+    margin: 0 0 8px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1f3650;
+  }
+
+  .public-terms-text {
+    margin: 0;
+    white-space: pre-line;
+    color: #263a50;
+    font-size: .92rem;
+    line-height: 1.5;
+  }
+
+  .public-terms-actions {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
   @media (max-width: 991.98px) {
     .public-flow-layout { grid-template-columns: 1fr; }
     .public-identity-grid { grid-template-columns: 1fr 1fr; }
@@ -267,6 +297,17 @@
 
             {% include 'clientes/_solicitud_form_fields.html' %}
 
+            <section class="public-terms-wrap" aria-label="Términos y condiciones">
+              <h3 class="public-terms-title">Términos y condiciones de servicio</h3>
+              <p class="public-terms-text">Autorizo a Doméstica del Cibao A&D S.R.L a iniciar un reclutamiento para colocar una empleada doméstica u otro servicio en mi hogar u oficina. Declaro además que la responsabilidad de Doméstica del Cibao A&D S.R.L termina en el momento que coloca el recurso en mi casa u oficina.</p>
+              <input type="hidden" name="terms_accepted" id="termsAcceptedInput" value="0">
+              <input type="hidden" name="terms_decision" id="termsDecisionInput" value="">
+              <div class="public-terms-actions">
+                <button type="button" class="btn btn-success" id="termsAcceptBtn">Aceptar</button>
+                <button type="button" class="btn btn-outline-danger" id="termsRejectBtn">No aceptar</button>
+              </div>
+            </section>
+
             <div class="public-submit-wrap">
               <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
@@ -289,13 +330,52 @@
   var btn = document.getElementById('publicSubmitBtn');
   var spinner = document.getElementById('publicSubmitSpinner');
   var label = document.getElementById('publicSubmitLabel');
+  var acceptBtn = document.getElementById('termsAcceptBtn');
+  var rejectBtn = document.getElementById('termsRejectBtn');
+  var termsAcceptedInput = document.getElementById('termsAcceptedInput');
+  var termsDecisionInput = document.getElementById('termsDecisionInput');
   var isSubmitting = false;
 
   if (!form || !btn) return;
 
-  form.addEventListener('submit', function () {
+  function markAccepted() {
+    if (termsAcceptedInput) termsAcceptedInput.value = '1';
+    if (termsDecisionInput) termsDecisionInput.value = 'accept';
+    if (acceptBtn) acceptBtn.classList.add('active');
+    if (rejectBtn) rejectBtn.classList.remove('active');
+  }
+
+  function markRejected() {
+    if (termsAcceptedInput) termsAcceptedInput.value = '0';
+    if (termsDecisionInput) termsDecisionInput.value = 'reject';
+    if (rejectBtn) rejectBtn.classList.add('active');
+    if (acceptBtn) acceptBtn.classList.remove('active');
+    form.submit();
+  }
+
+  if (acceptBtn) {
+    acceptBtn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      markAccepted();
+    });
+  }
+
+  if (rejectBtn) {
+    rejectBtn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      markRejected();
+    });
+  }
+
+  form.addEventListener('submit', function (ev) {
+    if (!termsDecisionInput || !termsAcceptedInput || termsDecisionInput.value !== 'accept' || termsAcceptedInput.value !== '1') {
+      ev.preventDefault();
+      window.alert('Debes aceptar los términos y condiciones para enviar la solicitud.');
+      return;
+    }
     if (isSubmitting) {
-      return false;
+      ev.preventDefault();
+      return;
     }
     isSubmitting = true;
     btn.disabled = true;

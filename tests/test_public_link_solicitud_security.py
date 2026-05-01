@@ -303,7 +303,7 @@ def test_public_link_post_blocks_when_cliente_reaches_active_business_limit():
          patch("clientes.routes.enforce_business_limit", return_value=(False, 1)), \
          patch("clientes.routes.enforce_min_human_interval", return_value=(False, 3)), \
          patch("clientes.routes._cliente_active_solicitudes_count", return_value=99):
-        resp = client.post("/clientes/solicitudes/publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code == 429
     assert "demasiadas solicitudes activas".lower() in resp.get_data(as_text=True).lower()
@@ -347,7 +347,7 @@ def test_public_link_token_of_one_client_cannot_be_used_with_other_identity():
          patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
          patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
          patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero):
-        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"})
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"})
 
     assert resp.status_code == 403
     assert "no coincide" in resp.get_data(as_text=True).lower()
@@ -366,7 +366,7 @@ def test_public_link_post_does_not_show_false_success_when_save_fails():
          patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
          patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=1, error_message="forced")):
-        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         retry_get = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code == 200
@@ -403,7 +403,7 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
          patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
          patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
-        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code in (302, 303)
@@ -465,7 +465,7 @@ def test_public_link_successful_save_shows_professional_success_page_once():
          patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
          patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
-        success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=True)
+        success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=True)
         later = client.get("/clientes/solicitudes/publica/tok123")
 
     assert success.status_code == 200
@@ -674,6 +674,8 @@ def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_requ
             data={
                 "csrf_token": csrf_token,
                 "token": "tok123",
+                "terms_decision": "accept",
+                "terms_accepted": "1",
             },
         )
 
@@ -704,6 +706,8 @@ def test_public_link_post_rerender_preserves_modalidad_value_on_validation_error
                 "csrf_token": csrf_token,
                 "token": "tok123",
                 "modalidad_trabajo": modalidad_value,
+                "terms_decision": "accept",
+                "terms_accepted": "1",
             },
         )
 
@@ -726,6 +730,8 @@ def test_public_link_post_with_invalid_csrf_returns_controlled_public_message():
             data={
                 "csrf_token": "csrf-invalido",
                 "token": "tok123",
+                "terms_decision": "accept",
+                "terms_accepted": "1",
             },
         )
 
@@ -768,6 +774,8 @@ def test_public_link_pasaje_otro_mode_maps_without_breaking_legacy_storage():
                 "pasaje_mode": "otro",
                 "pasaje_otro_text": "pasaje los sabados",
                 "pisos_selector": "2",
+                "terms_decision": "accept",
+                "terms_accepted": "1",
             },
         )
         captured["response_status"] = resp.status_code
@@ -775,3 +783,81 @@ def test_public_link_pasaje_otro_mode_maps_without_breaking_legacy_storage():
     assert captured["response_status"] == 200
     assert captured["mode"] == "otro"
     assert captured["text"] == "pasaje los sabados"
+
+
+def test_public_link_reject_terms_closes_flow_and_marks_token_used():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    used_state = {"used": False}
+    used_row = SimpleNamespace(cliente_id=7, solicitud_id=None, used_at=datetime.utcnow(), solicitud=None)
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _consume_side_effect(**_kwargs):
+        used_state["used"] = True
+
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=_FakePublicForm(token="tok123", codigo=c.codigo, nombre=c.nombre_completo, email=c.email)), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._consume_public_existing_token_on_terms_reject", side_effect=_consume_side_effect):
+        reject = client.post(
+            "/clientes/solicitudes/publica/tok123",
+            data={"token": "tok123", "terms_decision": "reject", "terms_accepted": "0"},
+            follow_redirects=False,
+        )
+        reuse = client.get("/clientes/solicitudes/publica/tok123", follow_redirects=False)
+
+    assert reject.status_code == 410
+    assert "No aceptaste los términos y condiciones. Este formulario ha sido cerrado." in reject.get_data(as_text=True)
+    assert reuse.status_code == 410
+
+
+def test_public_link_backend_blocks_submit_without_terms_acceptance():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=_FakePublicForm(token="tok123", codigo=c.codigo, nombre=c.nombre_completo, email=c.email)), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123"}, follow_redirects=False)
+
+    assert resp.status_code == 400
+    assert "Debes aceptar los términos y condiciones para enviar la solicitud." in resp.get_data(as_text=True)
+
+
+def test_public_link_terms_evidence_is_prepared_with_ip_user_agent_and_v1():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    captured = {"ip": None, "ua": None, "version": None}
+
+    def _capture_save(**kwargs):
+        persist_fn = kwargs.get("persist_fn")
+        freevars = list(getattr(persist_fn.__code__, "co_freevars", ()))
+        values = [cell.cell_contents for cell in (persist_fn.__closure__ or [])]
+        env = dict(zip(freevars, values))
+        captured["ip"] = env.get("terms_evidence_ip")
+        captured["ua"] = env.get("terms_evidence_user_agent")
+        captured["version"] = env.get("terms_evidence_version")
+        return RobustSaveResult(ok=False, attempts=1, error_message="forced")
+
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=_FakePublicForm(token="tok123", codigo=c.codigo, nombre=c.nombre_completo, email=c.email)), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
+         patch("clientes.routes.execute_robust_save", side_effect=_capture_save):
+        resp = client.post(
+            "/clientes/solicitudes/publica/tok123",
+            data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"},
+            headers={"User-Agent": "pytest-public-existing-agent"},
+        )
+
+    assert resp.status_code == 200
+    assert (captured["ip"] or "").strip() != ""
+    assert captured["ua"] == "pytest-public-existing-agent"
+    assert captured["version"] == "v1"

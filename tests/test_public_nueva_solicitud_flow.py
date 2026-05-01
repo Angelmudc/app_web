@@ -140,7 +140,7 @@ def test_new_public_post_keeps_cliente_city_sector_separate_from_solicitud_ciuda
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
          patch("clientes.routes.execute_robust_save", side_effect=_capture_save):
-        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code == 200
     assert captured["cliente_ciudad"] == "Santiago"
@@ -173,7 +173,7 @@ def test_new_public_form_token_blocks_abuse_with_controlled_429():
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes.enforce_business_limit", return_value=(True, 99)):
-        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code == 429
     assert "límite diario".lower() in resp.get_data(as_text=True).lower()
@@ -226,7 +226,7 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
-        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert resp.status_code in (302, 303)
@@ -285,7 +285,7 @@ def test_new_public_form_token_save_fail_keeps_token_valid():
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
          patch("clientes.routes.execute_robust_save", return_value=RobustSaveResult(ok=False, attempts=1, error_message="forced")):
-        post = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        post = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         retry_get = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert post.status_code == 200
@@ -306,7 +306,7 @@ def test_new_public_form_duplicate_email_or_phone_is_controlled():
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")), \
          patch("clientes.routes._consume_public_new_token_on_duplicate") as consume_mock:
-        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code == 409
     assert "Ya existe un registro asociado" in resp.get_data(as_text=True)
@@ -335,7 +335,7 @@ def test_new_public_duplicate_email_case_insensitive_blocks_and_consumes_token()
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "email")), \
          patch("clientes.routes._consume_public_new_token_on_duplicate", side_effect=_consume_side_effect):
-        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert first.status_code == 409
@@ -365,7 +365,7 @@ def test_new_public_duplicate_phone_with_format_variants_blocks_and_consumes_tok
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(dup, "telefono")), \
          patch("clientes.routes._consume_public_new_token_on_duplicate", side_effect=_consume_side_effect):
-        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1"}, follow_redirects=False)
+        first = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert first.status_code == 409
@@ -482,7 +482,7 @@ def test_new_public_short_route_success_redirect_stays_on_short_path():
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
-        resp = client.post("/clientes/n/tok123", data={"dummy": "1"}, follow_redirects=False)
+        resp = client.post("/clientes/n/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert "/clientes/n/tok123" in (resp.location or "")
@@ -561,6 +561,8 @@ def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_e
             "/clientes/solicitudes/nueva-publica/tok123",
             data={
                 "modalidad_trabajo": modalidad_value,
+                "terms_decision": "accept",
+                "terms_accepted": "1",
             },
         )
 
@@ -569,3 +571,84 @@ def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_e
     assert modalidad_norm in html
     assert modalidad_value not in html
     assert 'id="modalidad_otro_text"' in html
+
+
+def test_new_public_reject_terms_closes_flow_and_invalidates_token():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    used_state = {"used": False}
+    used_row = SimpleNamespace(cliente_id=None, solicitud_id=None, used_at=None, solicitud=None)
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _consume_side_effect(**_kwargs):
+        used_state["used"] = True
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=_FakeNewPublicForm()), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._consume_public_new_token_on_terms_reject", side_effect=_consume_side_effect):
+        reject = client.post(
+            "/clientes/solicitudes/nueva-publica/tok123",
+            data={"terms_decision": "reject", "terms_accepted": "0"},
+            follow_redirects=False,
+        )
+        reuse = client.get("/clientes/solicitudes/nueva-publica/tok123", follow_redirects=False)
+
+    assert reject.status_code == 410
+    assert "No aceptaste los términos y condiciones. Este formulario ha sido cerrado." in reject.get_data(as_text=True)
+    assert reuse.status_code == 410
+
+
+def test_new_public_backend_rejects_submit_without_terms_acceptance():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=_FakeNewPublicForm()), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None):
+        resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={}, follow_redirects=False)
+
+    assert resp.status_code == 400
+    assert "Debes aceptar los términos y condiciones para enviar la solicitud." in resp.get_data(as_text=True)
+
+
+def test_new_public_terms_evidence_is_prepared_with_ip_user_agent_and_v1():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fake_form = _FakeNewPublicForm()
+    captured = {"ip": None, "ua": None, "version": None}
+
+    def _capture_save(**kwargs):
+        persist_fn = kwargs.get("persist_fn")
+        freevars = list(getattr(persist_fn.__code__, "co_freevars", ()))
+        values = [cell.cell_contents for cell in (persist_fn.__closure__ or [])]
+        env = dict(zip(freevars, values))
+        captured["ip"] = env.get("terms_evidence_ip")
+        captured["ua"] = env.get("terms_evidence_user_agent")
+        captured["version"] = env.get("terms_evidence_version")
+        return RobustSaveResult(ok=False, attempts=1, error_message="forced")
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_capture_save):
+        resp = client.post(
+            "/clientes/solicitudes/nueva-publica/tok123",
+            data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"},
+            headers={"User-Agent": "pytest-public-new-agent"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 200
+    assert (captured["ip"] or "").strip() != ""
+    assert captured["ua"] == "pytest-public-new-agent"
+    assert captured["version"] == "v1"

@@ -982,6 +982,47 @@ def _consume_public_new_token_on_duplicate(
     )
 
 
+def _consume_public_existing_token_on_terms_reject(
+    *,
+    token_hash_storage: str,
+    cliente_id=None,
+) -> None:
+    if not token_hash_storage:
+        return
+    usage_row = _public_link_usage_by_hash(token_hash_storage)
+    if usage_row is not None:
+        return
+    db.session.add(
+        PublicSolicitudTokenUso(
+            token_hash=token_hash_storage,
+            cliente_id=int(cliente_id or 0) or None,
+            solicitud_id=None,
+            used_at=utc_now_naive(),
+        )
+    )
+    db.session.commit()
+
+
+def _consume_public_new_token_on_terms_reject(
+    *,
+    token_hash_storage: str,
+) -> None:
+    if not token_hash_storage:
+        return
+    usage_row = _public_new_link_usage_by_hash(token_hash_storage)
+    if usage_row is not None:
+        return
+    db.session.add(
+        PublicSolicitudClienteNuevoTokenUso(
+            token_hash=token_hash_storage,
+            cliente_id=None,
+            solicitud_id=None,
+            used_at=utc_now_naive(),
+        )
+    )
+    db.session.commit()
+
+
 def _public_link_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
         current_app.config["SECRET_KEY"],
@@ -7210,13 +7251,50 @@ def solicitud_publica_nueva_token(token):
         if hasattr(form, 'pasaje_aporte') and form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = False
 
+    public_pisos_value = "2" if bool(getattr(form, "dos_pisos", type("x", (object,), {"data": False})).data) else "1"
+    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
+    public_pasaje_otro = ""
+
     if request.method == 'POST' and hasattr(form, 'hp'):
         if (form.hp.data or '').strip():
             abort(400)
 
-    public_pisos_value = "2" if bool(getattr(form, "dos_pisos", type("x", (object,), {"data": False})).data) else "1"
-    public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
-    public_pasaje_otro = ""
+    if request.method == "POST":
+        terms_decision = (request.form.get("terms_decision") or "").strip().lower()
+        terms_accepted = (request.form.get("terms_accepted") or "").strip()
+        if terms_decision == "reject":
+            try:
+                _consume_public_new_token_on_terms_reject(token_hash_storage=token_hash_storage)
+            except Exception:
+                db.session.rollback()
+            _log_public_new_link_event(
+                "PUBLIC_NEW_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason="terms_rejected",
+                metadata_extra={"method": request.method, "status_code": 410},
+            )
+            return render_template(
+                "clientes/public_terms_rejected.html",
+                status_code=410,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 410
+        if not (terms_decision == "accept" and terms_accepted == "1"):
+            flash("Debes aceptar los términos y condiciones para enviar la solicitud.", "danger")
+            return render_template(
+                'clientes/solicitud_form_publica_nueva.html',
+                form=form,
+                nuevo=True,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                service_section_title="Seccion 2 - Datos de la solicitud",
+                service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 400
+
     if request.method == "POST":
         pisos_post = (request.form.get("pisos_selector") or "").strip()
         if pisos_post in ("1", "2", "3+"):
@@ -7229,6 +7307,10 @@ def solicitud_publica_nueva_token(token):
             form.dos_pisos.data = (public_pisos_value in ("2", "3+"))
         if hasattr(form, "pasaje_aporte"):
             form.pasaje_aporte.data = (public_pasaje_mode == "aparte")
+
+    terms_evidence_ip = (_client_ip_for_security_layer() or request.remote_addr or "").strip() or None
+    terms_evidence_user_agent = (request.headers.get("User-Agent") or "").strip() or None
+    terms_evidence_version = "v1"
 
     if form.validate_on_submit():
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
@@ -7373,6 +7455,16 @@ def solicitud_publica_nueva_token(token):
                     fecha_solicitud=now_ref,
                     codigo_solicitud=codigo_solicitud
                 )
+                if hasattr(s, "terms_accepted"):
+                    s.terms_accepted = True
+                if hasattr(s, "terms_accepted_at"):
+                    s.terms_accepted_at = datetime.utcnow()
+                if hasattr(s, "terms_version"):
+                    s.terms_version = terms_evidence_version
+                if hasattr(s, "terms_ip"):
+                    s.terms_ip = terms_evidence_ip
+                if hasattr(s, "terms_user_agent"):
+                    s.terms_user_agent = terms_evidence_user_agent
                 if hasattr(s, "public_form_source"):
                     s.public_form_source = "cliente_nuevo"
                 if hasattr(s, "review_status"):
@@ -7696,7 +7788,48 @@ def solicitud_publica(token):
     public_pisos_value = "2" if bool(getattr(form, "dos_pisos", type("x",(object,),{"data":False})).data) else "1"
     public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x",(object,),{"data":False})).data) else "incluido"
     public_pasaje_otro = ""
+    terms_evidence_ip = (_client_ip_for_security_layer() or request.remote_addr or "").strip() or None
+    terms_evidence_user_agent = (request.headers.get("User-Agent") or "").strip() or None
+    terms_evidence_version = "v1"
     if request.method == "POST":
+        terms_decision = (request.form.get("terms_decision") or "").strip().lower()
+        terms_accepted = (request.form.get("terms_accepted") or "").strip()
+        if terms_decision == "reject":
+            try:
+                _consume_public_existing_token_on_terms_reject(
+                    token_hash_storage=token_hash_storage,
+                    cliente_id=int(getattr(c, "id", 0) or 0) or None,
+                )
+            except Exception:
+                db.session.rollback()
+            _log_public_link_event(
+                "PUBLIC_LINK_VIEW_FAIL",
+                token,
+                success=False,
+                reason="terms_rejected",
+                cliente_id=int(getattr(c, "id", 0) or 0) or None,
+                metadata_extra={"method": request.method, "status_code": 410},
+            )
+            return render_template(
+                "clientes/public_terms_rejected.html",
+                status_code=410,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 410
+        if not (terms_decision == "accept" and terms_accepted == "1"):
+            flash("Debes aceptar los términos y condiciones para enviar la solicitud.", "danger")
+            return render_template(
+                'clientes/solicitud_form_publica.html',
+                form=form,
+                nuevo=True,
+                cliente=c,
+                public_pisos_value=public_pisos_value,
+                public_pasaje_mode=public_pasaje_mode,
+                public_pasaje_otro=public_pasaje_otro,
+                og_url=short_share_url,
+                canonical_url=short_share_url,
+            ), 400
+
         pisos_post = (request.form.get("pisos_selector") or "").strip()
         if pisos_post in ("1", "2", "3+"):
             public_pisos_value = pisos_post
@@ -7956,6 +8089,16 @@ def solicitud_publica(token):
                 fecha_solicitud=now_ref,
                 codigo_solicitud=codigo
             )
+            if hasattr(s, "terms_accepted"):
+                s.terms_accepted = True
+            if hasattr(s, "terms_accepted_at"):
+                s.terms_accepted_at = datetime.utcnow()
+            if hasattr(s, "terms_version"):
+                s.terms_version = terms_evidence_version
+            if hasattr(s, "terms_ip"):
+                s.terms_ip = terms_evidence_ip
+            if hasattr(s, "terms_user_agent"):
+                s.terms_user_agent = terms_evidence_user_agent
             if hasattr(s, "public_form_source"):
                 s.public_form_source = "cliente_existente"
             if hasattr(s, "review_status"):

@@ -61,6 +61,66 @@
     </div>
   </div>
 
+  {% if (current_user.role|default('')|lower) == 'owner' %}
+  <section class="alert alert-danger border-danger-subtle mb-4" aria-label="Zona de peligro cliente">
+    <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+      <div>
+        <h2 class="h6 mb-1">Zona de peligro</h2>
+        <p class="mb-0">
+          Acción irreversible para clientes de prueba. Verifica que el cliente no tenga información asociada.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn btn-danger"
+        data-bs-toggle="modal"
+        data-bs-target="#deleteClienteModal"
+      >
+        Eliminar cliente
+      </button>
+    </div>
+  </section>
+
+  <div class="modal fade" id="deleteClienteModal" tabindex="-1" aria-labelledby="deleteClienteModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-danger-subtle">
+        <div class="modal-header">
+          <h3 class="modal-title h5" id="deleteClienteModalLabel">Eliminar cliente</h3>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <form method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente.id) }}">
+          <div class="modal-body">
+            <p class="mb-2 fw-semibold">
+              Esta acción eliminará el cliente permanentemente. ¿Estás seguro?
+            </p>
+            <p class="small text-muted mb-3">
+              Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente:
+              <strong>{{ cliente.codigo or cliente.id }}</strong>
+            </p>
+            {% if csrf_token %}
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            {% endif %}
+            <input type="hidden" name="next" value="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">
+            <label class="form-label" for="delete_cliente_confirm_input">Confirmación</label>
+            <input
+              type="text"
+              class="form-control"
+              id="delete_cliente_confirm_input"
+              name="confirm_delete"
+              autocomplete="off"
+              required
+            >
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+            <button type="submit" class="btn btn-danger">Eliminar cliente</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ===== Tarjetas de info ===== -->
   <div class="row g-4">
     <!-- Información general -->

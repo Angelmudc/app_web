@@ -152,7 +152,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/clientes/10/eliminar",
-                    data={"next": "/admin/clientes?page=1"},
+                    data={"next": "/admin/clientes?page=1", "confirm_delete": "ELIMINAR"},
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -181,7 +181,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit"):
                 resp = self.client.post(
                     "/admin/clientes/10/eliminar",
-                    data={"next": "/admin/clientes?page=2"},
+                    data={"next": "/admin/clientes?page=2", "confirm_delete": "ELIMINAR"},
                     follow_redirects=False,
                 )
 
@@ -202,7 +202,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
                  }):
                 resp_conflict = self.client.post(
                     "/admin/clientes/10/eliminar",
-                    data={"next": "/admin/clientes?page=1"},
+                    data={"next": "/admin/clientes?page=1", "confirm_delete": "ELIMINAR"},
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -217,7 +217,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
                  patch("admin.routes._admin_block_sensitive_action", return_value=redirect("/admin/clientes")):
                 resp_rate = self.client.post(
                     "/admin/clientes/10/eliminar",
-                    data={"next": "/admin/clientes?page=1"},
+                    data={"next": "/admin/clientes?page=1", "confirm_delete": "ELIMINAR"},
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -241,7 +241,7 @@ class AdminClientesListAsyncTest(unittest.TestCase):
                  patch("admin.routes.db.session.rollback"):
                 resp_server = self.client.post(
                     "/admin/clientes/10/eliminar",
-                    data={"next": "/admin/clientes?page=1"},
+                    data={"next": "/admin/clientes?page=1", "confirm_delete": "ELIMINAR"},
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )

@@ -49,7 +49,11 @@ def test_owner_can_delete_simple_cliente():
         "admin.routes._collect_cliente_delete_plan",
         return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
     ):
-        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=False,
+        )
     assert resp.status_code in (302, 303)
 
     with flask_app.app_context():
@@ -70,7 +74,11 @@ def test_owner_can_delete_simple_cliente_without_mocked_plan():
 
     client = flask_app.test_client()
     assert _login(client, "Owner", "admin123").status_code in (302, 303)
-    resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "ELIMINAR"},
+        follow_redirects=False,
+    )
     assert resp.status_code in (302, 303)
 
     with flask_app.app_context():
@@ -89,7 +97,11 @@ def test_admin_cannot_delete_cliente_even_with_direct_request():
 
     client = flask_app.test_client()
     assert _login(client, "Cruz", "8998").status_code in (302, 303)
-    resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "ELIMINAR"},
+        follow_redirects=False,
+    )
     assert resp.status_code == 403
 
     with flask_app.app_context():
@@ -107,7 +119,11 @@ def test_secretaria_cannot_delete_cliente_even_with_direct_request():
 
     client = flask_app.test_client()
     assert _login(client, "Karla", "9989").status_code in (302, 303)
-    resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "ELIMINAR"},
+        follow_redirects=False,
+    )
     assert resp.status_code == 403
 
     with flask_app.app_context():
@@ -135,7 +151,11 @@ def test_owner_delete_is_blocked_when_critical_dependencies_exist():
             "blocked_issues": ["Dependencia no gestionada detectada en tabla 'x'."],
         },
     ):
-        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=True)
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=True,
+        )
 
     assert resp.status_code == 200
     assert "no puede eliminarse".encode("utf-8") in resp.data
@@ -144,7 +164,7 @@ def test_owner_delete_is_blocked_when_critical_dependencies_exist():
         assert Cliente.query.get(target_id) is not None
 
 
-def test_owner_can_delete_cliente_with_related_test_solicitudes_when_plan_is_safe():
+def test_owner_cannot_delete_cliente_when_has_associated_critical_data_even_if_plan_has_no_blocked_issues():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
 
@@ -190,13 +210,17 @@ def test_owner_can_delete_cliente_with_related_test_solicitudes_when_plan_is_saf
         "admin.routes._delete_cliente_tree",
         side_effect=_fake_delete_tree,
     ) as delete_tree_mock:
-        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=False)
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=False,
+        )
 
     assert resp.status_code in (302, 303)
-    delete_tree_mock.assert_called_once_with(target_id, solicitud_ids=[9001, 9002])
+    delete_tree_mock.assert_not_called()
 
     with flask_app.app_context():
-        assert Cliente.query.get(target_id) is None
+        assert Cliente.query.get(target_id) is not None
         assert Cliente.query.get(other_id) is not None
 
 
@@ -214,9 +238,13 @@ def test_owner_delete_rolls_back_when_tree_delete_fails():
 
     with patch(
         "admin.routes._collect_cliente_delete_plan",
-        return_value={"solicitud_ids": [55], "summary": {"solicitudes": 1}, "warnings": [], "blocked_issues": []},
+        return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
     ), patch("admin.routes._delete_cliente_tree", side_effect=SQLAlchemyError("forced fail")):
-        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=True)
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=True,
+        )
 
     assert resp.status_code == 200
     assert "No se pudo eliminar el cliente".encode("utf-8") in resp.data
@@ -247,7 +275,11 @@ def test_owner_delete_cliente_blocked_when_has_critical_solicitudes():
             ],
         },
     ):
-        resp = client.post(f"/admin/clientes/{target_id}/eliminar", data={}, follow_redirects=True)
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=True,
+        )
 
     assert resp.status_code == 200
     assert "no puede eliminarse".encode("utf-8") in resp.data
@@ -278,7 +310,7 @@ def test_owner_delete_cliente_is_blocked_when_dependency_inspection_is_uncertain
     ), patch("admin.routes._delete_cliente_tree") as delete_tree_mock:
         resp = client.post(
             f"/admin/clientes/{target_id}/eliminar",
-            data={},
+            data={"confirm_delete": "ELIMINAR"},
             headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
             follow_redirects=False,
         )
@@ -314,6 +346,64 @@ def test_collect_cliente_delete_plan_marks_chat_and_recommendation_tables_as_man
         plan = admin_routes._collect_cliente_delete_plan(cliente_id=999)
 
     assert list(plan.get("blocked_issues") or []) == []
+
+
+def test_owner_delete_is_blocked_when_confirmation_is_invalid():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_bad_confirm")
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "BORRAR"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is not None
+
+
+def test_owner_delete_accepts_cliente_code_as_confirmation():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_code_confirm")
+        target_id = int(target.id)
+        target_code = str(target.codigo)
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    with patch(
+        "admin.routes._collect_cliente_delete_plan",
+        return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
+    ):
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": target_code},
+            follow_redirects=False,
+        )
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is None
+
+
+def test_cliente_detail_template_places_delete_in_owner_only_danger_zone():
+    tpl_path = "templates/admin/_cliente_detail_summary_region.html"
+    content = open(tpl_path, "r", encoding="utf-8").read()
+    assert "{% if (current_user.role|default('')|lower) == 'owner' %}" in content
+    assert "Zona de peligro" in content
+    assert "Eliminar cliente" in content
+    assert "Esta acción eliminará el cliente permanentemente. ¿Estás seguro?" in content
 
 
 def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
