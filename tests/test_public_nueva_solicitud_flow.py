@@ -394,7 +394,9 @@ def test_existing_token_public_flow_still_available():
         resp = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code == 200
-    assert "Formulario oficial de solicitud" in resp.get_data(as_text=True)
+    html = resp.get_data(as_text=True)
+    assert "Nueva solicitud" in html
+    assert "Este formulario es para registrar una nueva solicitud en Doméstica del Cibao A&amp;D." in html
 
 
 def test_new_public_short_route_renders_with_consistent_preview_metadata():
@@ -652,3 +654,48 @@ def test_new_public_terms_evidence_is_prepared_with_ip_user_agent_and_v1():
     assert (captured["ip"] or "").strip() != ""
     assert captured["ua"] == "pytest-public-new-agent"
     assert captured["version"] == "v1"
+
+
+def test_new_public_double_post_same_token_blocks_second_submit_without_new_save():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_form = _FakeNewPublicForm()
+    used_state = {"used": False}
+    save_calls = {"count": 0}
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=88,
+        used_at=None,
+        solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
+    )
+
+    def _usage_side_effect(_token_hash):
+        return used_row if used_state["used"] else None
+
+    def _save_ok(*_args, **_kwargs):
+        save_calls["count"] += 1
+        used_state["used"] = True
+        return RobustSaveResult(ok=True, attempts=1, error_message="")
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
+        first = client.post(
+            "/clientes/solicitudes/nueva-publica/tok123",
+            data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"},
+            follow_redirects=False,
+        )
+        second = client.post(
+            "/clientes/solicitudes/nueva-publica/tok123",
+            data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"},
+            follow_redirects=False,
+        )
+
+    assert first.status_code in (302, 303)
+    assert second.status_code == 410
+    assert save_calls["count"] == 1

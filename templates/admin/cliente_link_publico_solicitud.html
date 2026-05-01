@@ -112,13 +112,13 @@
           class="form-control"
           rows="7"
           readonly
-        >Este es el formulario de Doméstica del Cibao A&amp;D para registrar tu solicitud.
+        >Te comparto este formulario para registrar una nueva solicitud en Doméstica del Cibao A&amp;D.
 
-Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.
+Este enlace ya está asociado a tu registro, solo debes completar los detalles del servicio que necesitas.
 
 {{ link_publico }}
 
-Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
+Cuando lo completes, avísame que ya terminaste.</textarea>
       </div>
 
       <div class="d-flex flex-wrap gap-2 mt-3">
@@ -231,7 +231,7 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     const field = document.getElementById('waMensajeClienteExistente');
     const input = document.getElementById('linkPublico');
     if (!field || !input) return;
-    const builder = window.buildClientPublicFormMessage;
+    const builder = window.buildClientPublicFormMessageExistente;
     if (typeof builder === 'function') {
       field.value = builder(String(input.value || '').trim());
     }

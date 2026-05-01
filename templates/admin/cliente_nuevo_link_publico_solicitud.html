@@ -226,7 +226,7 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     const field = document.getElementById('waMensajeClienteNuevo');
     const input = document.getElementById('linkPublicoNuevo');
     if (!field || !input) return;
-    const builder = window.buildClientPublicFormMessage;
+    const builder = window.buildClientPublicFormMessageNuevo || window.buildClientPublicFormMessage;
     if (typeof builder === 'function') {
       field.value = builder(String(input.value || '').trim());
     }

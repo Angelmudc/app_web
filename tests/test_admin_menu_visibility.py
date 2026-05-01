@@ -115,10 +115,9 @@ def test_admin_existing_client_public_link_view_shows_only_short_url_and_copy_ma
     assert "Enlace legado (compatibilidad)" not in html
     assert 'id="linkPublico"' in html
     assert "navigator.clipboard.writeText(value)" in html
-    assert "Este es el formulario de Doméstica del Cibao" in html
-    assert "para registrar tu solicitud." in html
-    assert "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor." in html
-    assert "Cuando lo completes, envíame tu nombre y dime que ya terminaste." in html
+    assert "Te comparto este formulario para registrar una nueva solicitud en Doméstica del Cibao A&amp;D." in html
+    assert "Este enlace ya está asociado a tu registro, solo debes completar los detalles del servicio que necesitas." in html
+    assert "Cuando lo completes, avísame que ya terminaste." in html
     assert "Hola, gracias por comunicarte con Doméstica del Cibao A&D." not in html
 
 

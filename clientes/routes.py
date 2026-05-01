@@ -3025,6 +3025,91 @@ def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
         return
 
 
+def _apply_public_solicitud_fields(
+    *,
+    solicitud_obj,
+    form,
+    public_pisos_value: str,
+    public_pasaje_mode: str,
+    public_pasaje_otro: str,
+    now_ref,
+) -> None:
+    """Aplica de forma consistente los campos de solicitud pública en ambos flujos."""
+    form.populate_obj(solicitud_obj)
+    _apply_banos_from_request(solicitud_obj, form)
+    _normalize_modalidad_on_solicitud(solicitud_obj)
+
+    selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
+    funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
+    if (funciones_otro_raw or '').strip() and 'otro' not in selected_funciones:
+        selected_funciones.append('otro')
+    funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
+
+    solicitud_obj.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
+    if hasattr(solicitud_obj, 'funciones_otro'):
+        solicitud_obj.funciones_otro = funciones_otro_clean or None
+
+    areas_selected_raw = _clean_list(
+        getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+    )
+    area_otro_txt = (getattr(getattr(form, 'area_otro', None), 'data', '') or '').strip() if hasattr(form, 'area_otro') else ''
+    areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
+    solicitud_obj.areas_comunes = _normalize_areas_comunes_selected(
+        areas_selected_raw,
+        getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
+    ) or []
+
+    edad_codes_selected = _clean_list(
+        getattr(form, 'edad_requerida', type('x', (object,), {'data': []})).data
+    )
+    edad_otro_txt = (getattr(getattr(form, 'edad_otro', None), 'data', '') or '').strip() if hasattr(form, 'edad_otro') else ''
+    if edad_otro_txt and 'otro' not in edad_codes_selected:
+        edad_codes_selected.append('otro')
+    solicitud_obj.edad_requerida = _map_edad_choices(
+        edad_codes_selected,
+        getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
+        edad_otro_txt,
+    ) or []
+
+    tipo_lugar_value = getattr(solicitud_obj, 'tipo_lugar', '')
+    tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
+    if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
+        tipo_lugar_value = 'otro'
+    solicitud_obj.tipo_lugar = _map_tipo_lugar(
+        tipo_lugar_value,
+        tipo_lugar_otro_txt,
+    )
+
+    if hasattr(solicitud_obj, 'mascota') and hasattr(form, 'mascota'):
+        solicitud_obj.mascota = (form.mascota.data or '').strip() or None
+
+    if hasattr(solicitud_obj, 'area_otro') and hasattr(form, 'area_otro'):
+        area_otro_txt = (form.area_otro.data or '').strip()
+        solicitud_obj.area_otro = (area_otro_txt if areas_has_otro else '') or None
+
+    if hasattr(solicitud_obj, 'nota_cliente') and hasattr(form, 'nota_cliente'):
+        solicitud_obj.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
+        if _has_limpieza_funcion(selected_funciones) and public_pisos_value == "3+":
+            marker_pisos = "Pisos reportados: 3+."
+            if marker_pisos not in (solicitud_obj.nota_cliente or ""):
+                solicitud_obj.nota_cliente = (solicitud_obj.nota_cliente + ("\n" if solicitud_obj.nota_cliente else "") + marker_pisos).strip()
+
+    apply_pasaje_to_solicitud(
+        solicitud_obj,
+        mode_raw=public_pasaje_mode,
+        text_raw=public_pasaje_otro,
+        default_mode="aparte" if bool(getattr(solicitud_obj, "pasaje_aporte", False)) else "incluido",
+    )
+
+    if hasattr(solicitud_obj, 'sueldo'):
+        solicitud_obj.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
+    _clear_house_structure_if_not_limpieza(solicitud_obj, selected_funciones)
+
+    solicitud_obj.ciudad_sector = (form.ciudad_sector.data or '').strip()
+    if hasattr(solicitud_obj, 'fecha_ultima_modificacion'):
+        solicitud_obj.fecha_ultima_modificacion = now_ref
+
+
 def _resolve_modalidad_ui_context_from_request(form_obj, *, prefer_post: bool = False) -> tuple[str, str, str]:
     """Compone estado guiado de modalidad para re-render estable en GET/POST."""
     fallback_group = ""
@@ -7473,78 +7558,14 @@ def solicitud_publica_nueva_token(token):
                     s.reviewed_at = None
                 if hasattr(s, "reviewed_by"):
                     s.reviewed_by = None
-                form.populate_obj(s)
-                _apply_banos_from_request(s, form)
-                _normalize_modalidad_on_solicitud(s)
-
-                selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
-                funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
-                if (funciones_otro_raw or '').strip() and 'otro' not in selected_funciones:
-                    selected_funciones.append('otro')
-                funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
-
-                s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
-                if hasattr(s, 'funciones_otro'):
-                    s.funciones_otro = funciones_otro_clean or None
-
-                areas_selected_raw = _clean_list(
-                    getattr(form, 'areas_comunes', type('x', (object,), {'data': []})).data
+                _apply_public_solicitud_fields(
+                    solicitud_obj=s,
+                    form=form,
+                    public_pisos_value=public_pisos_value,
+                    public_pasaje_mode=public_pasaje_mode,
+                    public_pasaje_otro=public_pasaje_otro,
+                    now_ref=now_ref,
                 )
-                area_otro_txt = (getattr(getattr(form, 'area_otro', None), 'data', '') or '').strip() if hasattr(form, 'area_otro') else ''
-                areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
-                s.areas_comunes = _normalize_areas_comunes_selected(
-                    areas_selected_raw,
-                    getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
-                ) or []
-
-                edad_codes_selected = _clean_list(
-                    getattr(form, 'edad_requerida', type('x', (object,), {'data': []})).data
-                )
-                edad_otro_txt = (getattr(getattr(form, 'edad_otro', None), 'data', '') or '').strip() if hasattr(form, 'edad_otro') else ''
-                if edad_otro_txt and 'otro' not in edad_codes_selected:
-                    edad_codes_selected.append('otro')
-                s.edad_requerida = _map_edad_choices(
-                    edad_codes_selected,
-                    getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
-                    edad_otro_txt,
-                ) or []
-
-                tipo_lugar_value = getattr(s, 'tipo_lugar', '')
-                tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
-                if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
-                    tipo_lugar_value = 'otro'
-                s.tipo_lugar = _map_tipo_lugar(
-                    tipo_lugar_value,
-                    tipo_lugar_otro_txt,
-                )
-
-                if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
-                    s.mascota = (form.mascota.data or '').strip() or None
-
-                if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                    area_otro_txt = (form.area_otro.data or '').strip()
-                    s.area_otro = (area_otro_txt if areas_has_otro else '') or None
-
-                if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                    s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
-                    if _has_limpieza_funcion(selected_funciones) and public_pisos_value == "3+":
-                        marker_pisos = "Pisos reportados: 3+."
-                        if marker_pisos not in (s.nota_cliente or ""):
-                            s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
-                apply_pasaje_to_solicitud(
-                    s,
-                    mode_raw=public_pasaje_mode,
-                    text_raw=public_pasaje_otro,
-                    default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
-                )
-
-                if hasattr(s, 'sueldo'):
-                    s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
-                _clear_house_structure_if_not_limpieza(s, selected_funciones)
-
-                s.ciudad_sector = (form.ciudad_sector.data or '').strip()
-                if hasattr(s, 'fecha_ultima_modificacion'):
-                    s.fecha_ultima_modificacion = now_ref
 
                 db.session.add(s)
                 db.session.flush()
@@ -7852,6 +7873,12 @@ def solicitud_publica(token):
     if hasattr(form, "email_cliente"):
         # Mantiene compatibilidad del form sin exponer email en UI pública.
         form.email_cliente.data = c.email or ''
+    if hasattr(form, "codigo_cliente"):
+        form.codigo_cliente.data = c.codigo or ""
+    if hasattr(form, "nombre_cliente"):
+        form.nombre_cliente.data = c.nombre_completo or ""
+    if hasattr(form, "token"):
+        form.token.data = token
 
     if form.validate_on_submit():
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
@@ -8026,50 +8053,6 @@ def solicitud_publica(token):
                     canonical_url=short_share_url,
                 ), 400
 
-        if _norm_text(getattr(form, 'codigo_cliente', type('x',(object,),{'data':''})) .data) != _norm_text(c.codigo):
-            _log_public_link_event(
-                "PUBLIC_LINK_VIEW_FAIL",
-                token,
-                success=False,
-                reason="codigo_no_match",
-                cliente_id=int(c.id),
-                metadata_extra={"method": request.method, "status_code": 403},
-            )
-            flash("El código no coincide con este enlace.", "danger")
-            return render_template(
-                'clientes/solicitud_form_publica.html',
-                form=form,
-                nuevo=True,
-                cliente=c,
-                public_pisos_value=public_pisos_value,
-                public_pasaje_mode=public_pasaje_mode,
-                public_pasaje_otro=public_pasaje_otro,
-                og_url=short_share_url,
-                canonical_url=short_share_url,
-            ), 403
-
-        if _norm_text(getattr(form, 'nombre_cliente', type('x',(object,),{'data':''})).data) != _norm_text(c.nombre_completo):
-            _log_public_link_event(
-                "PUBLIC_LINK_VIEW_FAIL",
-                token,
-                success=False,
-                reason="nombre_no_match",
-                cliente_id=int(c.id),
-                metadata_extra={"method": request.method, "status_code": 403},
-            )
-            flash("El nombre no coincide con ese código.", "danger")
-            return render_template(
-                'clientes/solicitud_form_publica.html',
-                form=form,
-                nuevo=True,
-                cliente=c,
-                public_pisos_value=public_pisos_value,
-                public_pasaje_mode=public_pasaje_mode,
-                public_pasaje_otro=public_pasaje_otro,
-                og_url=short_share_url,
-                canonical_url=short_share_url,
-            ), 403
-
         codigo_holder: dict[str, str] = {"value": ""}
         solicitud_id_holder: dict[str, int] = {"value": 0}
         now_ref = utc_now_naive()
@@ -8108,77 +8091,14 @@ def solicitud_publica(token):
             if hasattr(s, "reviewed_by"):
                 s.reviewed_by = None
 
-            form.populate_obj(s)
-            _apply_banos_from_request(s, form)
-            _normalize_modalidad_on_solicitud(s)
-
-            selected_funciones = _clean_list(getattr(form, 'funciones', type('x',(object,),{'data':[]})).data)
-            funciones_otro_raw = getattr(getattr(form, 'funciones_otro', None), 'data', '') if hasattr(form, 'funciones_otro') else ''
-            if (funciones_otro_raw or '').strip() and 'otro' not in selected_funciones:
-                selected_funciones.append('otro')
-            funciones_otro_clean = (funciones_otro_raw or '').strip() if 'otro' in selected_funciones else ''
-
-            s.funciones = _map_funciones(selected_funciones, funciones_otro_clean)
-            if hasattr(s, 'funciones_otro'):
-                s.funciones_otro = funciones_otro_clean or None
-
-            areas_selected_raw = _clean_list(
-                getattr(form, 'areas_comunes', type('x',(object,),{'data':[]})).data
+            _apply_public_solicitud_fields(
+                solicitud_obj=s,
+                form=form,
+                public_pisos_value=pisos_selector,
+                public_pasaje_mode=pasaje_mode,
+                public_pasaje_otro=pasaje_otro_text,
+                now_ref=now_ref,
             )
-            area_otro_txt = (getattr(getattr(form, 'area_otro', None), 'data', '') or '').strip() if hasattr(form, 'area_otro') else ''
-            areas_has_otro = ('otro' in areas_selected_raw) or bool(area_otro_txt)
-            s.areas_comunes = _normalize_areas_comunes_selected(
-                areas_selected_raw,
-                getattr(getattr(form, 'areas_comunes', None), 'choices', []) if hasattr(form, 'areas_comunes') else [],
-            ) or []
-
-            edad_codes_selected = _clean_list(
-                getattr(form, 'edad_requerida', type('x',(object,),{'data':[]})).data
-            )
-            edad_otro_txt = (getattr(getattr(form, 'edad_otro', None), 'data', '') or '').strip() if hasattr(form, 'edad_otro') else ''
-            if edad_otro_txt and 'otro' not in edad_codes_selected:
-                edad_codes_selected.append('otro')
-            s.edad_requerida = _map_edad_choices(
-                edad_codes_selected,
-                getattr(getattr(form, 'edad_requerida', None), 'choices', []) if hasattr(form, 'edad_requerida') else [],
-                edad_otro_txt,
-            ) or []
-
-            tipo_lugar_value = getattr(s, 'tipo_lugar', '')
-            tipo_lugar_otro_txt = (getattr(getattr(form, 'tipo_lugar_otro', None), 'data', '') or '').strip() if hasattr(form, 'tipo_lugar_otro') else ''
-            if tipo_lugar_otro_txt and str(tipo_lugar_value or '').strip() != 'otro':
-                tipo_lugar_value = 'otro'
-            s.tipo_lugar = _map_tipo_lugar(
-                tipo_lugar_value,
-                tipo_lugar_otro_txt,
-            )
-
-            if hasattr(s, 'mascota') and hasattr(form, 'mascota'):
-                s.mascota = (form.mascota.data or '').strip() or None
-
-            if hasattr(s, 'area_otro') and hasattr(form, 'area_otro'):
-                area_otro_txt = (form.area_otro.data or '').strip()
-                s.area_otro = (area_otro_txt if areas_has_otro else '') or None
-
-            if hasattr(s, 'nota_cliente') and hasattr(form, 'nota_cliente'):
-                s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
-                if _has_limpieza_funcion(selected_funciones) and pisos_selector == "3+":
-                    marker_pisos = "Pisos reportados: 3+."
-                    if marker_pisos not in (s.nota_cliente or ""):
-                        s.nota_cliente = (s.nota_cliente + ("\n" if s.nota_cliente else "") + marker_pisos).strip()
-            apply_pasaje_to_solicitud(
-                s,
-                mode_raw=pasaje_mode,
-                text_raw=pasaje_otro_text,
-                default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
-            )
-
-            if hasattr(s, 'sueldo'):
-                s.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x',(object,),{'data':None})).data)
-            _clear_house_structure_if_not_limpieza(s, selected_funciones)
-
-            if hasattr(s, 'fecha_ultima_modificacion'):
-                s.fecha_ultima_modificacion = now_ref
 
             db.session.add(s)
             db.session.flush()

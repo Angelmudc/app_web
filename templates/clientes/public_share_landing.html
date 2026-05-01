@@ -95,8 +95,20 @@
       <header class="share-top">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
           <div>
-            <h1 class="h4 fw-bold mb-2">Formulario oficial de solicitud</h1>
-            <p class="mb-0 text-white-50">Este formulario es para registrar tu solicitud en Doméstica del Cibao A&amp;D.</p>
+            <h1 class="h4 fw-bold mb-2">
+              {% if link_type == 'existente' %}
+                Formulario oficial de nueva solicitud
+              {% else %}
+                Formulario oficial de solicitud
+              {% endif %}
+            </h1>
+            <p class="mb-0 text-white-50">
+              {% if link_type == 'existente' %}
+                Este formulario es para registrar una nueva solicitud en Doméstica del Cibao A&amp;D.
+              {% else %}
+                Este formulario es para registrar tu solicitud en Doméstica del Cibao A&amp;D.
+              {% endif %}
+            </p>
           </div>
           <span class="share-code"><i class="bi bi-patch-check"></i> {{ share_code }}</span>
         </div>
@@ -125,7 +137,13 @@
           </div>
         {% endif %}
 
-        <p class="share-lead">Completa el formulario para registrar tu solicitud de servicio.</p>
+        <p class="share-lead">
+          {% if link_type == 'existente' %}
+            Completa el formulario para registrar una nueva solicitud de servicio asociada a tu cliente.
+          {% else %}
+            Completa el formulario para registrar tu solicitud de servicio.
+          {% endif %}
+        </p>
 
         <div class="share-cta">
           {% if _is_ready %}
