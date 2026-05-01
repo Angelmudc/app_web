@@ -119,6 +119,56 @@
       </div>
     </div>
   </div>
+  <script>
+    (function () {
+      if (window.__deleteClienteDetailModalBound) return;
+      window.__deleteClienteDetailModalBound = true;
+
+      var modal = document.getElementById("deleteClienteModal");
+      if (!modal) return;
+      if (modal.parentElement !== document.body) {
+        document.body.appendChild(modal);
+      }
+
+      var input = document.getElementById("delete_cliente_confirm_input");
+      var segBackdrop = document.getElementById("segCandidatasBackdrop");
+      var segDrawer = document.getElementById("segCandidatasDrawer");
+      var segBodyOpenClass = "seg-drawer-open";
+
+      modal.addEventListener("show.bs.modal", function () {
+        if (input) input.value = "";
+
+        if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;
+        if (segDrawer && segDrawer.hidden === false) segDrawer.hidden = true;
+        if (document.body) document.body.classList.remove(segBodyOpenClass);
+
+        modal.style.setProperty("z-index", "2000");
+        window.setTimeout(function () {
+          var backdrops = Array.prototype.slice.call(document.querySelectorAll(".modal-backdrop"));
+          if (!backdrops.length) return;
+          var activeBackdrop = backdrops[backdrops.length - 1];
+          if (!activeBackdrop) return;
+          activeBackdrop.style.setProperty("z-index", "1990");
+          activeBackdrop.style.setProperty("pointer-events", "auto");
+        }, 0);
+      });
+
+      modal.addEventListener("shown.bs.modal", function () {
+        if (input) input.focus();
+      });
+
+      modal.addEventListener("click", function (ev) {
+        var dismissBtn = ev && ev.target && ev.target.closest
+          ? ev.target.closest('[data-bs-dismiss="modal"]')
+          : null;
+        if (!dismissBtn) return;
+        if (!(window.bootstrap && window.bootstrap.Modal)) return;
+        ev.preventDefault();
+        var instance = window.bootstrap.Modal.getInstance(modal) || new window.bootstrap.Modal(modal);
+        instance.hide();
+      });
+    })();
+  </script>
   {% endif %}
 
   <!-- ===== Tarjetas de info ===== -->

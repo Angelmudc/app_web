@@ -5,12 +5,47 @@ from unittest.mock import MagicMock, patch
 
 from app import app as flask_app
 from config_app import db
-from models import Cliente
+from models import Cliente, StaffUser
 from sqlalchemy.exc import SQLAlchemyError
 
 
 def _login(client, usuario: str, clave: str):
     return client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)
+
+
+def _ensure_staff_user(*, username: str, role: str, password: str) -> None:
+    user = StaffUser.query.filter_by(username=username).first()
+    if user is None:
+        user = StaffUser(
+            username=username,
+            email=f"{username.lower()}@test.local",
+            role=role,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        db.session.add(user)
+    user.role = role
+    user.is_active = True
+    user.set_password(password)
+    db.session.commit()
+
+
+def _login_owner(client):
+    with flask_app.app_context():
+        _ensure_staff_user(username="Owner", role="owner", password="admin123")
+    return _login(client, "Owner", "admin123")
+
+
+def _login_admin(client):
+    with flask_app.app_context():
+        _ensure_staff_user(username="Cruz", role="admin", password="8998")
+    return _login(client, "Cruz", "8998")
+
+
+def _login_secretaria(client):
+    with flask_app.app_context():
+        _ensure_staff_user(username="Karla", role="secretaria", password="9989")
+    return _login(client, "Karla", "9989")
 
 
 def _ensure_cliente_table():
@@ -44,7 +79,7 @@ def test_owner_can_delete_simple_cliente():
         survivor_id = int(survivor.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     with patch(
         "admin.routes._collect_cliente_delete_plan",
         return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},
@@ -73,7 +108,7 @@ def test_owner_can_delete_simple_cliente_without_mocked_plan():
         survivor_id = int(survivor.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     resp = client.post(
         f"/admin/clientes/{target_id}/eliminar",
         data={"confirm_delete": "ELIMINAR"},
@@ -96,7 +131,7 @@ def test_admin_cannot_delete_cliente_even_with_direct_request():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Cruz", "8998").status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
     resp = client.post(
         f"/admin/clientes/{target_id}/eliminar",
         data={"confirm_delete": "ELIMINAR"},
@@ -118,7 +153,7 @@ def test_secretaria_cannot_delete_cliente_even_with_direct_request():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Karla", "9989").status_code in (302, 303)
+    assert _login_secretaria(client).status_code in (302, 303)
     resp = client.post(
         f"/admin/clientes/{target_id}/eliminar",
         data={"confirm_delete": "ELIMINAR"},
@@ -140,7 +175,7 @@ def test_owner_delete_is_blocked_when_critical_dependencies_exist():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
 
     with patch(
         "admin.routes._collect_cliente_delete_plan",
@@ -176,7 +211,7 @@ def test_owner_cannot_delete_cliente_when_has_associated_critical_data_even_if_p
         other_id = int(other.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
 
     plan = {
         "solicitud_ids": [9001, 9002],
@@ -234,7 +269,7 @@ def test_owner_delete_rolls_back_when_tree_delete_fails():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
 
     with patch(
         "admin.routes._collect_cliente_delete_plan",
@@ -263,7 +298,7 @@ def test_owner_delete_cliente_blocked_when_has_critical_solicitudes():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     with patch(
         "admin.routes._collect_cliente_delete_plan",
         return_value={
@@ -298,7 +333,7 @@ def test_owner_delete_cliente_is_blocked_when_dependency_inspection_is_uncertain
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     with patch(
         "admin.routes._collect_cliente_delete_plan",
         return_value={
@@ -358,7 +393,7 @@ def test_owner_delete_is_blocked_when_confirmation_is_invalid():
         target_id = int(target.id)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     resp = client.post(
         f"/admin/clientes/{target_id}/eliminar",
         data={"confirm_delete": "BORRAR"},
@@ -381,7 +416,7 @@ def test_owner_delete_accepts_cliente_code_as_confirmation():
         target_code = str(target.codigo)
 
     client = flask_app.test_client()
-    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+    assert _login_owner(client).status_code in (302, 303)
     with patch(
         "admin.routes._collect_cliente_delete_plan",
         return_value={"solicitud_ids": [], "summary": {}, "warnings": [], "blocked_issues": []},

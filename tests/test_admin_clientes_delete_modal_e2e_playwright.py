@@ -27,6 +27,24 @@ def _free_port() -> int:
     return int(port)
 
 
+def _ensure_staff_user(*, username: str, email: str, role: str, password: str) -> None:
+    user = StaffUser.query.filter_by(username=username).first()
+    if user is None:
+        user = StaffUser(
+            username=username,
+            email=email,
+            role=role,
+            is_active=True,
+            mfa_enabled=False,
+        )
+        db.session.add(user)
+    else:
+        user.email = email
+        user.role = role
+        user.is_active = True
+    user.set_password(password)
+
+
 @pytest.fixture()
 def clientes_modal_env():
     flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
@@ -40,15 +58,12 @@ def clientes_modal_env():
             mapped_models.append(cls)
         ensure_sqlite_compat_tables(mapped_models, reset=True)
 
-        owner = StaffUser(
+        _ensure_staff_user(
             username="owner_e2e_modal",
             email="owner_e2e_modal@test.local",
             role="owner",
-            is_active=True,
-            mfa_enabled=False,
+            password="Owner#12345",
         )
-        owner.password_hash = generate_password_hash("Owner#12345", method="pbkdf2:sha256")
-        db.session.add(owner)
 
         cliente = Cliente(
             codigo="CL-E2E-MODAL-001",
