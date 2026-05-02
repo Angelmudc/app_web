@@ -144,8 +144,8 @@ def test_nino_7_anos_no_aumenta_fuerte():
     with_nino_1 = analyze_salary_suggestion(
         _base_payload(funciones=["ninos"], ninos="1", edades_ninos="1")
     )
-    assert with_nino_7["can_suggest"] is True
-    assert with_nino_7["suggested_min"] < with_nino_1["suggested_min"]
+    assert with_nino_7["can_suggest"] is True and with_nino_1["can_suggest"] is True
+    assert with_nino_7["suggested_min"] == with_nino_1["suggested_min"]
     assert "mas de supervision que de atencion directa" in with_nino_7["message"].lower()
 
 
@@ -156,8 +156,8 @@ def test_ninos_8_y_10_no_aumentan_fuerte():
     with_ninos_pequenos = analyze_salary_suggestion(
         _base_payload(funciones=["ninos"], ninos="2", edades_ninos="2 y 4")
     )
-    assert with_ninos_mayores["can_suggest"] is True
-    assert with_ninos_mayores["suggested_min"] < with_ninos_pequenos["suggested_min"]
+    assert with_ninos_mayores["can_suggest"] is True and with_ninos_pequenos["can_suggest"] is True
+    assert with_ninos_mayores["suggested_min"] == with_ninos_pequenos["suggested_min"]
 
 
 def test_ninos_3_y_7_si_cuenta_por_nino_pequeno():
@@ -168,7 +168,7 @@ def test_ninos_3_y_7_si_cuenta_por_nino_pequeno():
         _base_payload(funciones=["ninos"], ninos="2", edades_ninos="1 y 7")
     )
     assert mixto["can_suggest"] is True and mayores["can_suggest"] is True
-    assert mixto["suggested_min"] > mayores["suggested_min"]
+    assert mixto["suggested_min"] == mayores["suggested_min"]
 
 
 def test_todas_las_funciones_con_ninos_grandes_no_dispara_rango():
@@ -563,3 +563,106 @@ def test_con_dormida_ninos_grandes_y_funciones_no_sube_exagerado_en_casa_normal(
     assert r["can_suggest"] is True
     assert r["base_salary"] == 20000
     assert r["suggested_max"] <= 24000
+
+
+def test_con_dormida_ls_solo_ninos_pequenos_no_sube_fuerte():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a sábado",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 21000
+    assert r["suggested_min"] == 21000
+
+
+def test_con_dormida_ls_varios_ninos_pequenos_solo_ninera_no_sube_fuerte():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a sábado",
+            funciones=["ninos"],
+            ninos="3",
+            edades_ninos="1, 3, 5",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 21000
+    assert r["suggested_min"] == 21000
+
+
+def test_sd_lv_solo_nino_pequeno_no_sube_fuerte():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - lunes a viernes",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 15000
+    assert r["suggested_min"] == 15000
+
+
+def test_sd_lv_varios_ninos_pequenos_solo_ninera_no_sube_fuerte():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - lunes a viernes",
+            funciones=["ninos"],
+            ninos="3",
+            edades_ninos="1, 3, 5",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 15000
+    assert r["suggested_min"] == 15000
+
+
+def test_ninos_pequenos_mas_limpieza_cocinar_lavar_si_sube():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "limpieza", "cocinar", "lavar"],
+            ninos="2",
+            edades_ninos="2 y 4",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["suggested_min"] >= (r["base_salary"] + 3000)
+
+
+def test_ninos_grandes_mas_limpieza_cocinar_lavar_sube_max_500():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "limpieza", "cocinar", "lavar"],
+            ninos="2",
+            edades_ninos="8 y 10",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) <= 500
+
+
+def test_ninos_cocinar_lavar_sin_limpieza_no_sube_fuerte():
+    base = analyze_salary_suggestion(
+        _base_payload(funciones=["ninos"], ninos="2", edades_ninos="2 y 4")
+    )
+    extra = analyze_salary_suggestion(
+        _base_payload(funciones=["ninos", "cocinar", "lavar"], ninos="2", edades_ninos="2 y 4")
+    )
+    assert base["can_suggest"] is True and extra["can_suggest"] is True
+    assert (extra["suggested_min"] - base["suggested_min"]) <= 500
+
+
+def test_ninos_mas_limpieza_sin_cocinar_lavar_no_es_funcion_completa():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "limpieza"],
+            ninos="2",
+            edades_ninos="2 y 4",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) <= 2000

@@ -230,30 +230,41 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
     if small == 0 and ninos > 0 and not ages:
         small = 1
 
-    if small == 1:
-        ajustes += 1500
-        nivel = "media"
-        motivos.append("1 nino pequeno (5 anos o menos).")
-    elif small == 2:
-        ajustes += 3000
-        nivel = "alta"
-        motivos.append("2 ninos pequenos incrementan la exigencia.")
-    elif small >= 3:
-        ajustes += 5000
-        nivel = "muy_alta"
-        motivos.append("3+ ninos pequenos: solicitud de alta exigencia.")
+    funcs = set(funciones)
+    only_childcare = funcs == {"ninos"}
+    has_full_household = {"limpieza", "cocinar", "lavar"}.issubset(funcs)
+    has_limpieza_partial = "limpieza" in funcs and not has_full_household
 
-    all_funcs = {"limpieza", "cocinar", "lavar", "planchar"}
     if has_older_only:
         motivos.append(
             "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
         )
-    if small > 0 and all_funcs.issubset(set(funciones)):
-        ajustes += 1000
-        motivos.append("Ninos pequenos con todas las funciones aumenta dificultad.")
-    elif small == 0 and ninos > 0 and len(funciones) >= 4:
+
+    # Si solo se solicita niñera, la base ya contempla ninos pequenos y varios ninos.
+    if only_childcare:
+        return 0, motivos, "normal"
+
+    if has_full_household and small > 0:
+        if small == 1:
+            ajustes += 1500
+            nivel = "media"
+        elif small == 2:
+            ajustes += 3000
+            nivel = "alta"
+        else:
+            ajustes += 5000
+            nivel = "muy_alta"
+        motivos.append("La oferta sube porque combina cuidado de ninos pequenos con limpieza, cocina y lavado.")
+    elif has_full_household and ninos > 0 and small == 0:
         ajustes += 500
-        motivos.append("Ninos mayores con varias funciones: ajuste leve.")
+        nivel = "media"
+        motivos.append(
+            "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision; solo se aplica un ajuste leve por la combinacion con tareas del hogar."
+        )
+    elif has_limpieza_partial and small > 0:
+        ajustes += 1500 if small >= 2 else 1000
+        nivel = "media"
+        motivos.append("Cuidado de ninos pequenos combinado con limpieza parcial del hogar.")
     return ajustes, motivos, nivel
 
 
