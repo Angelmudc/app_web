@@ -25,22 +25,34 @@ def _is_true(raw: str, *, default: bool = False) -> bool:
     return val in {"1", "true", "yes", "on"}
 
 
-def mfa_enforced_for_staff(*, testing: bool = False) -> bool:
-    # MFA obligatorio por defecto fuera de tests.
-    required = _is_true(os.getenv("STAFF_MFA_REQUIRED", "1"), default=True)
-    if testing:
-        if not required:
-            return False
-        return _is_true(os.getenv("STAFF_MFA_ENFORCE_IN_TESTS", "0"), default=False)
+def _resolve_runtime_env(app_env: Optional[str] = None) -> str:
+    if app_env is not None and str(app_env).strip():
+        return str(app_env).strip().lower()
+    return (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
 
-    run_env = (os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+
+def is_mfa_required(*, app_env: Optional[str] = None, testing: bool = False) -> bool:
+    """
+    MFA requerido solo en producción.
+    - production/prod: requerido por defecto (fail-closed).
+    - local/development/test/testing: deshabilitado para facilitar pruebas.
+    """
+    run_env = _resolve_runtime_env(app_env)
     is_prod = run_env in {"prod", "production"}
-    if not required:
-        # Fail-closed en producción: ignora desactivación accidental.
-        if is_prod and not _is_true(os.getenv("STAFF_MFA_ALLOW_DISABLE_IN_PROD", "0"), default=False):
-            return True
+    if not is_prod:
         return False
-    return True
+
+    required = _is_true(os.getenv("STAFF_MFA_REQUIRED", "1"), default=True)
+    if required:
+        return True
+    # Fail-closed en producción: ignora desactivación accidental salvo override explícito.
+    if not _is_true(os.getenv("STAFF_MFA_ALLOW_DISABLE_IN_PROD", "0"), default=False):
+        return True
+    return False
+
+
+def mfa_enforced_for_staff(*, testing: bool = False) -> bool:
+    return is_mfa_required(testing=testing)
 
 
 def staff_role_requires_mfa(role: str) -> bool:

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from clientes.routes import _clear_house_structure_if_not_limpieza
+from clientes.routes import _clear_adultos_if_not_household_funciones, _clear_house_structure_if_not_limpieza
 
 
 def test_clear_house_structure_when_limpieza_is_not_selected():
@@ -50,3 +50,15 @@ def test_keep_house_structure_when_limpieza_is_selected():
     assert s.dos_pisos is False
     assert s.areas_comunes == ["sala"]
     assert s.nota_cliente == "Pisos reportados: 3+."
+
+
+def test_clear_adultos_when_only_cuidar_ninos_function_is_selected():
+    s = SimpleNamespace(adultos=3)
+    _clear_adultos_if_not_household_funciones(s, ["ninos"])
+    assert s.adultos is None
+
+
+def test_keep_adultos_when_household_function_is_selected():
+    s = SimpleNamespace(adultos=3)
+    _clear_adultos_if_not_household_funciones(s, ["ninos", "cocinar"])
+    assert s.adultos == 3

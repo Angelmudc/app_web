@@ -65,10 +65,10 @@ def normalize_cedula(raw: str) -> Optional[str]:
 # ─────────────────────────────────────────────────────────────
 # Utilidades DB: normalizar DATABASE_URL y asegurar SSL
 # ─────────────────────────────────────────────────────────────
-def _normalize_db_url(url: str) -> str:
+def _normalize_db_url(url: str, *, require_ssl: bool = True) -> str:
     """
     - Acepta 'postgres://...' y lo convierte a 'postgresql+psycopg2://...'
-    - Asegura 'sslmode=require' en la querystring (para Render/Supabase/Neon/etc).
+    - En producción puede asegurar 'sslmode=require' en la querystring.
     """
     if not url:
         raise RuntimeError("DATABASE_URL no configurada.")
@@ -84,7 +84,11 @@ def _normalize_db_url(url: str) -> str:
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # Asegurar sslmode=require en URL
+    # En entornos no productivos no forzamos SSL para permitir Postgres local.
+    if not require_ssl:
+        return url
+
+    # En producción asegurar sslmode=require en URL.
     if "sslmode=" not in url:
         sep = "&" if "?" in url else "?"
         url = f"{url}{sep}sslmode=require"
@@ -98,6 +102,50 @@ def _is_true(v: str) -> bool:
 
 def _detect_env() -> str:
     return (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").strip().lower()
+
+
+def _resolve_database_url_for_env(env: str) -> tuple[str, str]:
+    """
+    Selecciona DB por APP_ENV:
+      - production/prod -> DATABASE_URL
+      - local/development -> DATABASE_URL_LOCAL
+      - test/testing -> DATABASE_URL_TEST
+    Incluye guardas para evitar tocar producción por error.
+    """
+    env_name = (env or "").strip().lower()
+    production_url = (os.getenv("DATABASE_URL") or "").strip()
+    local_url = (os.getenv("DATABASE_URL_LOCAL") or "").strip()
+    test_url = (os.getenv("DATABASE_URL_TEST") or "").strip()
+
+    allowed_envs = {"production", "prod", "local", "development", "test", "testing"}
+    if env_name not in allowed_envs:
+        raise RuntimeError(
+            "APP_ENV inválido. Valores permitidos: production, local, development, test."
+        )
+
+    if env_name in {"production", "prod"}:
+        if not production_url:
+            raise RuntimeError("APP_ENV=production requiere DATABASE_URL.")
+        return production_url, "production"
+
+    if env_name in {"local", "development"}:
+        if not local_url:
+            raise RuntimeError("APP_ENV=local/development requiere DATABASE_URL_LOCAL.")
+        selected = local_url
+        selected_label = "local/test"
+    else:
+        if not test_url:
+            raise RuntimeError("APP_ENV=test/testing requiere DATABASE_URL_TEST.")
+        selected = test_url
+        selected_label = "test"
+
+    if production_url and selected == production_url:
+        raise RuntimeError(
+            "Bloqueado por seguridad: APP_ENV no es production pero la DB seleccionada "
+            "coincide con DATABASE_URL (producción)."
+        )
+
+    return selected, selected_label
 
 
 def create_app():
@@ -412,16 +460,10 @@ def create_app():
     # ─────────────────────────────────────────────────────────
     # Base de datos (Postgres en prod, SQLite aislada para tests)
     # ─────────────────────────────────────────────────────────
-    raw_db_url = (
-        get_secret("DATABASE_URL", required=prod)
-        or ""
-    ).strip()
-    if env in ("test", "testing"):
-        # En tests siempre usar SQLite aislada para evitar tocar BD real.
-        if not raw_db_url.startswith("sqlite:"):
-            raw_db_url = "sqlite:///:memory:"
-    db_url = _normalize_db_url(raw_db_url)
+    raw_db_url, db_label = _resolve_database_url_for_env(env)
+    db_url = _normalize_db_url(raw_db_url, require_ssl=prod)
     is_sqlite = db_url.startswith("sqlite:")
+    app.logger.warning("APP_ENV=%s usando base %s", env, db_label)
 
     pool_mode = (os.getenv("DB_POOL_MODE", "") or "").lower()
     use_null_pool = pool_mode in ("pgbouncer", "nullpool", "off")
@@ -432,7 +474,6 @@ def create_app():
         }
     else:
         connect_args = {
-            "sslmode": "require",
             "connect_timeout": int(os.getenv("DB_CONNECT_TIMEOUT", "8")),
             "keepalives": int(os.getenv("DB_KEEPALIVES", "1")),
             "keepalives_idle": int(os.getenv("DB_KEEPALIVES_IDLE", "30")),
@@ -440,6 +481,8 @@ def create_app():
             "keepalives_count": int(os.getenv("DB_KEEPALIVES_COUNT", "3")),
             "application_name": os.getenv("DB_APPNAME", "app_web"),
         }
+        if prod:
+            connect_args["sslmode"] = "require"
 
         engine_opts = {
             "pool_pre_ping": True,
@@ -891,6 +934,29 @@ def create_app():
     def create_owner_command(username: str, password: str, email: str):
         """Atajo para crear staff con rol owner."""
         _create_staff_user(username=username, role="owner", password=password, email=email)
+
+    @app.cli.command("create-local-owner-test")
+    @click.option("--username", default="owner_test", show_default=True, help="Usuario local de pruebas.")
+    @click.option("--password", default="admin123", show_default=True, help="Contraseña local de pruebas.")
+    @click.option("--email", default="owner_test@local.test", show_default=True, help="Email local opcional.")
+    def create_local_owner_test_command(username: str, password: str, email: str):
+        """Crea/actualiza owner_test solo en entorno local/development."""
+        if env not in {"local", "development"}:
+            raise click.ClickException("Este comando solo está permitido con APP_ENV=local/development.")
+        from models import StaffUser
+
+        username_clean = (username or "").strip()
+        email_clean = (email or "").strip().lower() or None
+        row = StaffUser.query.filter(func.lower(StaffUser.username) == username_clean.lower()).first()
+        if row is None:
+            row = StaffUser(username=username_clean, role="owner", is_active=True)
+            db.session.add(row)
+        row.role = "owner"
+        row.is_active = True
+        row.email = email_clean
+        row.set_password(password)
+        db.session.commit()
+        click.echo(f"Usuario local listo: username={row.username} role={row.role} id={row.id}")
 
     @app.cli.command("create-emergency-admin")
     @click.option("--username", required=True, help="Username del admin de emergencia.")

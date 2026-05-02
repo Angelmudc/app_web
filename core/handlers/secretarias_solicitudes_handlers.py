@@ -10,6 +10,7 @@ from datetime import datetime
 from config_app import db
 from decorators import roles_required
 from utils.timezone import format_rd_datetime, rd_today
+from utils.envejeciente import format_envejeciente_resumen
 
 from core import legacy_handlers as legacy_h
 
@@ -179,6 +180,12 @@ def secretarias_copiar_solicitudes():
 
         nota_cli = (s.nota_cliente or "").strip()
         nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+        envejeciente_lines = format_envejeciente_resumen(
+            tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
+            responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
+            solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
+            nota=getattr(s, "envejeciente_nota", None),
+        )
         sueldo_txt = (
             f"Sueldo: ${_s(s.sueldo)} mensual"
             f"{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
@@ -204,6 +211,8 @@ def secretarias_copiar_solicitudes():
         ]
         if hogar_val:
             lines += ["", hogar_val]
+        if envejeciente_lines:
+            lines += [""] + envejeciente_lines
 
         lines += ["", f"Adultos: {adultos}"]
         if ninos_line:

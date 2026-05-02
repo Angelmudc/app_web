@@ -14,6 +14,8 @@ def _base_payload() -> MultiDict:
             "ciudad_sector": "Santiago Centro",
             "rutas_cercanas": "Ruta K",
             "modalidad_trabajo": "Con salida diaria - Lunes a Viernes",
+            "modalidad_grupo": "con_salida_diaria",
+            "modalidad_especifica": "Salida diaria - lunes a viernes",
             "edad_requerida": "26-35",
             "experiencia": "Experiencia en limpieza y cocina",
             "horario": "L-V 8:00 a 17:00",
@@ -29,7 +31,7 @@ def _base_payload() -> MultiDict:
 
 
 def _validate(formdata: MultiDict):
-    with flask_app.test_request_context("/", method="POST"):
+    with flask_app.test_request_context("/", method="POST", data=formdata):
         form = SolicitudForm(formdata=formdata, meta={"csrf": False})
         return form, form.validate()
 
@@ -89,3 +91,41 @@ def test_form_placeholders_remove_optional_copy_for_mascota_and_edades_ninos():
 
         assert "(opcional)" not in str(form.mascota.render_kw.get("placeholder", "")).lower()
         assert "(opcional)" not in str(form.edades_ninos.render_kw.get("placeholder", "")).lower()
+
+
+def test_adultos_not_required_when_only_cuidar_ninos_is_selected():
+    payload = _base_payload()
+    payload.setlist("funciones", ["ninos"])
+    payload["adultos"] = ""
+    payload["ninos"] = "1"
+    payload["edades_ninos"] = "4"
+
+    form, ok = _validate(payload)
+
+    assert ok is True
+    assert form.adultos.errors == []
+
+
+def test_adultos_required_when_cuidar_ninos_and_cocinar_are_selected():
+    payload = _base_payload()
+    payload.setlist("funciones", ["ninos", "cocinar"])
+    payload["adultos"] = ""
+    payload["ninos"] = "1"
+    payload["edades_ninos"] = "4"
+
+    form, ok = _validate(payload)
+
+    assert ok is False
+    assert any("adult" in e.lower() for e in form.adultos.errors)
+
+
+def test_mascota_guidance_does_not_autofill_nota_cliente():
+    payload = _base_payload()
+    payload.setlist("funciones", ["limpieza"])
+    payload["mascota"] = "Perro"
+    payload["nota_cliente"] = ""
+
+    form, ok = _validate(payload)
+
+    assert ok is True
+    assert (form.nota_cliente.data or "") == ""

@@ -365,6 +365,8 @@ def _protect_sensitive_routes():
         return None
     if path.startswith("/clientes/n/"):
         return None
+    if path.startswith("/clientes/api/sueldo-sugerido"):
+        return None
 
     if path.startswith("/admin/"):
         if not _is_staff_any():

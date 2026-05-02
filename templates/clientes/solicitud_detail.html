@@ -199,6 +199,26 @@
 
         <dt class="col-sm-4">Nota de cliente</dt>
         <dd class="col-sm-8">{{ s.nota_cliente or '—' }}</dd>
+        {% if s.envejeciente_tipo_cuidado %}
+        <dt class="col-sm-4">Información del envejeciente</dt>
+        <dd class="col-sm-8">
+          {% if (s.envejeciente_tipo_cuidado or '')|lower == 'independiente' %}
+            Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero.
+          {% else %}
+            {% if s.envejeciente_solo_acompanamiento %}
+              Envejeciente: encamado. La doméstica no realizará higiene, pañales, alimentación ni medicamentos; solo acompañamiento o supervisión.
+            {% else %}
+              {% set _resp_map = {'pampers':'cambiar pampers','higiene':'higiene personal','comida':'darle de comer','medicamentos':'darle medicamentos','movilidad':'movilizarlo o ayudarlo a levantarse','otro':'otro cuidado especial'} %}
+              {% set _resp_text = [] %}
+              {% for _r in (s.envejeciente_responsabilidades or []) %}
+                {% set _ = _resp_text.append(_resp_map.get((_r|string)|lower, _r)) %}
+              {% endfor %}
+              Envejeciente: encamado. Requiere: {{ _resp_text|join(', ') }}.
+            {% endif %}
+          {% endif %}
+          {% if s.envejeciente_nota %}<br>Nota sobre el envejeciente: {{ s.envejeciente_nota }}{% endif %}
+        </dd>
+        {% endif %}
       </dl>
       <div class="mt-2 d-flex flex-wrap align-items-center gap-2">
         <span class="chip"><i class="bi bi-shield-check"></i> Datos protegidos</span>

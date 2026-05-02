@@ -10,6 +10,7 @@ from flask import request
 
 from app import app as flask_app
 import admin.routes as admin_routes
+from utils.envejeciente import format_envejeciente_resumen
 
 
 class _SolicitudStub:
@@ -54,6 +55,10 @@ class _SolicitudStub:
         self.nota_cliente = "Nota interna"
         self.detalles_servicio = {}
         self.tipo_servicio = "DOMESTICA_LIMPIEZA"
+        self.envejeciente_tipo_cuidado = None
+        self.envejeciente_responsabilidades = None
+        self.envejeciente_solo_acompanamiento = False
+        self.envejeciente_nota = None
 
 
 class _CandidataStub:
@@ -293,6 +298,75 @@ class AdminCopiarActionsTest(unittest.TestCase):
             admin_routes._pasaje_operativo_phrase_from_solicitud(solicitud_otro),
             "Cliente cubre taxi nocturno",
         )
+
+    def test_build_resumen_cliente_solicitud_incluye_texto_exacto_envejeciente_independiente(self):
+        s = _SolicitudStub(estado="activa")
+        s.envejeciente_tipo_cuidado = "independiente"
+        with flask_app.app_context():
+            with patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resumen = admin_routes.build_resumen_cliente_solicitud(s)
+        self.assertIn(
+            "Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero.",
+            resumen,
+        )
+
+    def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
+        self._login("Karla", "9989")
+        s = _SolicitudStub(estado="activa")
+        s.envejeciente_tipo_cuidado = "encamado"
+        s.envejeciente_responsabilidades = ["pampers", "higiene", "medicamentos"]
+        s.envejeciente_nota = "Usa cama clínica"
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([s])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+        html = resp.get_data(as_text=True)
+        expected = format_envejeciente_resumen(
+            tipo_cuidado="encamado",
+            responsabilidades=["pampers", "higiene", "medicamentos"],
+            solo_acompanamiento=False,
+            nota="Usa cama clínica",
+        )
+        self.assertEqual(
+            expected[0],
+            "Envejeciente: encamado. Requiere: cambiar pampers, higiene personal, darle medicamentos.",
+        )
+        self.assertEqual(expected[1], "Nota sobre el envejeciente: Usa cama clínica")
+        self.assertIn("Envejeciente: encamado.", html)
+        self.assertIn("Nota sobre el envejeciente:", html)
+
+    def test_copiar_solicitudes_incluye_envejeciente_solo_acompanamiento(self):
+        self._login("Karla", "9989")
+        s = _SolicitudStub(estado="activa")
+        s.envejeciente_tipo_cuidado = "encamado"
+        s.envejeciente_solo_acompanamiento = True
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([s])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+        html = resp.get_data(as_text=True)
+        expected = format_envejeciente_resumen(
+            tipo_cuidado="encamado",
+            responsabilidades=[],
+            solo_acompanamiento=True,
+            nota=None,
+        )[0]
+        self.assertEqual(
+            expected,
+            "Envejeciente: encamado. La doméstica no realizará higiene, pañales, alimentación ni medicamentos; solo acompañamiento o supervisión.",
+        )
+        self.assertIn("Envejeciente: encamado.", html)
+
+    def test_build_resumen_cliente_solicitud_legacy_sin_campos_envejeciente_no_falla(self):
+        s = _SolicitudStub(estado="activa")
+        delattr(s, "envejeciente_tipo_cuidado")
+        delattr(s, "envejeciente_responsabilidades")
+        delattr(s, "envejeciente_solo_acompanamiento")
+        delattr(s, "envejeciente_nota")
+        with flask_app.app_context():
+            with patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resumen = admin_routes.build_resumen_cliente_solicitud(s)
+        self.assertIn("🧾 Resumen de su solicitud", resumen)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")

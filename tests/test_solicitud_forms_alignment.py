@@ -39,7 +39,7 @@ def test_shared_partial_keeps_core_order_aligned():
     idx_ciudad = partial.find("{{ render_field(form.ciudad_sector) }}")
     idx_rutas = partial.find("{{ render_field(form.rutas_cercanas) }}")
     idx_modalidad = partial.find("id=\"wrap_modalidad_guiada\"")
-    idx_horario = partial.find("{{ render_field(form.horario")
+    idx_horario = partial.find("id=\"wrap_horario_inteligente\"")
     assert -1 not in (idx_ciudad, idx_rutas, idx_modalidad, idx_horario)
     assert idx_ciudad < idx_rutas < idx_modalidad < idx_horario
 
@@ -50,16 +50,32 @@ def test_shared_partial_keeps_core_order_aligned():
     assert idx_edad < idx_exp < idx_func
 
     idx_tl = partial.find("{{ render_field(form.tipo_lugar) }}")
-    idx_hab = partial.find("{{ render_field(form.habitaciones) }}")
-    idx_banos = partial.find("{{ render_field(form.banos) }}")
+    idx_hab = partial.find("id=\"wrap_habitaciones_selector\"")
+    idx_banos = partial.find("id=\"wrap_banos_selector\"")
     idx_pisos = partial.find("Cantidad de pisos")
     idx_areas = partial.find("{{ render_field(form.areas_comunes")
-    idx_ad = partial.find("{{ render_field(form.adultos) }}")
+    idx_ad = partial.find("wrapper_id='wrap_adultos'")
     idx_ni = partial.find("{{ render_field(form.ninos, wrapper_id='wrap_ninos') }}")
     idx_ed = partial.find("{{ render_field(form.edades_ninos, wrapper_id='wrap_edades_ninos') }}")
     idx_mas = partial.find("{{ render_field(form.mascota, wrapper_id='wrap_mascota') }}")
     assert -1 not in (idx_tl, idx_hab, idx_banos, idx_pisos, idx_areas, idx_ad, idx_ni, idx_ed, idx_mas)
     assert idx_tl < idx_hab < idx_banos < idx_pisos < idx_areas < idx_ad < idx_ni < idx_ed < idx_mas
+
+
+def test_shared_partial_ruta_santiago_notice_and_house_selectors_are_present():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"wrap_rutas_santiago_notice\"" in partial
+    assert "En Santiago, la ruta de transporte cercana nos ayuda a ubicar mejor el servicio" in partial
+    assert "name=\"habitaciones_selector\"" in partial
+    assert "['1', '2', '3', '4', '5']" in partial
+    assert "name=\"habitaciones_selector\" value=\"otro\"" in partial
+    assert "id=\"wrap_habitaciones_otro\"" in partial
+    assert "name=\"banos_selector\"" in partial
+    assert "['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5']" in partial
+    assert "name=\"banos_selector\" value=\"otro\"" in partial
+    assert "id=\"wrap_banos_otro\"" in partial
+    assert "function syncSantiagoRutaNotice()" in partial
+    assert "function syncAdultosRules(fromUserEvent)" in partial
 
 
 def test_shared_partial_renders_pasaje_three_options_and_otro_field():
@@ -95,6 +111,11 @@ def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optiona
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "wrapper_id='wrap_edades_ninos'" in partial
     assert "function syncNinosRules(fromUserEvent)" in partial
+    assert "name=\"horario_dias_trabajo\"" in partial
+    assert "name=\"horario_hora_entrada\"" in partial
+    assert "name=\"horario_hora_salida\"" in partial
+    assert "name=\"horario_dormida_entrada\"" in partial
+    assert "name=\"horario_dormida_salida\"" in partial
 
 
 def test_shared_partial_shows_modalidad_otro_input_when_otro_option_selected():
@@ -139,3 +160,59 @@ def test_shared_partial_planchar_modal_buttons_apply_expected_checkbox_behavior(
     assert "hideModal();" in partial
     assert "showWarning();" in partial
     assert "hideWarning();" in partial
+
+
+def test_shared_partial_contains_smart_alert_for_ninos_y_limpieza():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"wrap_ninos_limpieza_smart_alert\"" in partial
+    assert "Esta solicitud puede requerir aclaración." in partial
+    assert "id=\"ninos_limpieza_smart_alert_ack\">Entendido</button>" in partial
+    assert "function setupNinosLimpiezaSmartAlert()" in partial
+
+
+def test_shared_partial_smart_alert_requires_exact_three_conditions():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "var hasCuidarNinos = hasSelectedValue('funciones', 'ninos');" in partial
+    assert "var hasLimpiezaGeneral = hasSelectedValue('funciones', 'limpieza');" in partial
+    assert "var hasNinoLe5 = hasNinoAgeFiveOrLess(edadesInput ? edadesInput.value : '');" in partial
+    assert "var shouldShow = !!(hasCuidarNinos && hasLimpiezaGeneral && hasNinoLe5);" in partial
+
+
+def test_shared_partial_smart_alert_uses_age_parser_for_free_text():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "function parseNinosAgesFromFreeText(rawText)" in partial
+    assert "var direct = txt.match(/\\b(\\d{1,2})\\s*anos?\\b/g) || [];" in partial
+    assert "function hasNinoAgeFiveOrLess(rawText)" in partial
+
+
+def test_shared_partial_contains_mascota_guidance_notes():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"wrap_mascota_main_note\"" in partial
+    assert "Si hay mascotas en el hogar, por favor indícalo." in partial
+    assert "id=\"wrap_mascota_secondary_note\"" in partial
+    assert "Si la doméstica no tendrá responsabilidades relacionadas con la mascota" in partial
+
+
+def test_shared_partial_mascota_secondary_note_is_conditional_and_does_not_edit_notes():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "function setupMascotaGuidance()" in partial
+    assert "function isMascotaDeclared(txt)" in partial
+    assert "secondaryWrap.classList.toggle('d-none', !show);" in partial
+    assert "name === '{{ form.mascota.name if form.mascota is defined else \"\" }}'" in partial
+
+
+def test_shared_partial_contains_salary_suggestion_box_and_actions():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "Analisis de sueldo sugerido" in partial
+    assert "id=\"salarySuggestionBox\"" in partial
+    assert "id=\"salarySuggestionUseBtn\">Usar sueldo sugerido</button>" in partial
+    assert "id=\"salarySuggestionManualBtn\">Escribir otro monto</button>" in partial
+    assert "function setupSalarySuggestion()" in partial
+    assert "fetch('/clientes/api/sueldo-sugerido?'" in partial
+
+
+def test_shared_partial_salary_suggestion_is_non_blocking():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "hostForm.addEventListener('submit'" in partial
+    assert "No se pudo calcular la sugerencia en este momento." in partial
+    assert "renderNoSuggest(result.reason_no_suggestion" in partial

@@ -114,6 +114,10 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
         nota_cliente="Solo con referencias",
         sueldo="18000",
         pasaje_aporte=False,
+        envejeciente_tipo_cuidado="independiente",
+        envejeciente_responsabilidades=None,
+        envejeciente_solo_acompanamiento=False,
+        envejeciente_nota="Toma agua cada 2 horas",
     )
     get_q = _GetQuery([row])
     fake_solicitud = SimpleNamespace(
@@ -153,9 +157,61 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
     assert "Disponible ( SOL-007 )" in salida
     assert "Con dormida 💤 L-V" in salida
     assert "Funciones: Cocinar, Planchar" in salida
+    assert "Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero." in salida
+    assert "Nota sobre el envejeciente: Toma agua cada 2 horas" in salida
     assert "Apartamento - 3 habitaciones, 2 baños, 2 pisos, Patio, Terraza" in salida
     assert "Hogar:" not in salida
     assert "Modalidad:" not in salida
+
+
+def test_secretarias_solicitudes_copiar_envejeciente_solo_acompanamiento_y_legacy_sin_campos_no_rompe():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    row = SimpleNamespace(
+        id=8, codigo_solicitud="SOL-008", ciudad_sector="Santiago", rutas_cercanas="27",
+        modalidad_trabajo="Con dormida L-V", modalidad="", tipo_modalidad="", edad_requerida="30-45",
+        experiencia="Cuidado", horario="8am-5pm", funciones=["envejeciente"], funciones_otro="",
+        adultos=1, ninos="0", edades_ninos="", mascota="", tipo_lugar="", habitaciones=None, banos=None,
+        dos_pisos=False, areas_comunes=[], area_otro="", nota_cliente="", sueldo="18000", pasaje_aporte=False,
+        envejeciente_tipo_cuidado="encamado", envejeciente_responsabilidades=[], envejeciente_solo_acompanamiento=True, envejeciente_nota=None,
+    )
+    legacy_row = SimpleNamespace(
+        id=9, codigo_solicitud="SOL-009", ciudad_sector="Santiago", rutas_cercanas="27", modalidad_trabajo="",
+        modalidad="", tipo_modalidad="", edad_requerida="", experiencia="", horario="", funciones=[], funciones_otro="",
+        adultos="", ninos="", edades_ninos="", mascota="", tipo_lugar="", habitaciones=None, banos=None, dos_pisos=False,
+        areas_comunes=[], area_otro="", nota_cliente="", sueldo="18000", pasaje_aporte=False,
+    )
+    get_q = _GetQuery([row, legacy_row])
+    fake_solicitud = SimpleNamespace(
+        query=get_q, reemplazos=_Expr(), estado=_Expr(), last_copiado_at=_Expr(), fecha_solicitud=_Expr()
+    )
+    fake_reemplazo = SimpleNamespace(candidata_new=_Expr())
+
+    class _Form:
+        funciones = SimpleNamespace(choices=[("envejeciente", "Cuidar envejecientes")])
+
+    captured = {}
+    def _fake_render(_template_name, **ctx):
+        captured["solicitudes"] = ctx["solicitudes"]
+        return "ok"
+
+    with patch("core.handlers.secretarias_solicitudes_handlers.legacy_h.Solicitud", new=fake_solicitud), \
+         patch("core.handlers.secretarias_solicitudes_handlers.legacy_h.Reemplazo", new=fake_reemplazo), \
+         patch("core.handlers.secretarias_solicitudes_handlers.joinedload", side_effect=lambda *_a, **_k: _JoinedLoad()), \
+         patch("core.handlers.secretarias_solicitudes_handlers.or_", side_effect=lambda *a: a), \
+         patch("core.handlers.secretarias_solicitudes_handlers.rd_today", return_value="2026-03-26"), \
+         patch("core.handlers.secretarias_solicitudes_handlers.AdminSolicitudForm", new=_Form), \
+         patch("core.handlers.secretarias_solicitudes_handlers.render_template", side_effect=_fake_render):
+        resp = client.get("/secretarias/solicitudes/copiar", follow_redirects=False)
+
+    assert resp.status_code == 200
+    out_first = captured["solicitudes"][0]["order_text"]
+    assert "La doméstica no realizará higiene, pañales, alimentación ni medicamentos; solo acompañamiento o supervisión." in out_first
+    out_second = captured["solicitudes"][1]["order_text"]
+    assert "Disponible" in out_second
 
 
 def test_secretarias_copiar_solicitud_post_ok_redirect_y_ajax():

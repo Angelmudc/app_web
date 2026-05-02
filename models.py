@@ -1173,6 +1173,28 @@ class Solicitud(db.Model):
         nullable=True,
         comment="Bloque de respuestas específicas según el tipo de servicio (niñera, chofer, etc.)."
     )
+    envejeciente_tipo_cuidado = db.Column(
+        db.String(20),
+        nullable=True,
+        comment="Tipo de cuidado del envejeciente: independiente o encamado."
+    )
+    envejeciente_responsabilidades = db.Column(
+        JSONB,
+        nullable=True,
+        comment="Lista de responsabilidades para cuidado de envejeciente cuando aplica encamado."
+    )
+    envejeciente_solo_acompanamiento = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="Cuando es encamado pero la domestica solo dara acompanamiento/supervision."
+    )
+    envejeciente_nota = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Nota adicional sobre el envejeciente."
+    )
 
     # Áreas comunes (nuevo portal)
     areas_comunes          = db.Column(

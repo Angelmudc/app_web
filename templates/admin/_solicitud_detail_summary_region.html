@@ -54,6 +54,33 @@
 
       <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Modalidad</dt>
       <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.modalidad_trabajo }}</dd>
+      {% set _env_tipo = (solicitud.envejeciente_tipo_cuidado or '')|lower %}
+      {% if _env_tipo %}
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Envejeciente</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">
+        {% if _env_tipo == 'independiente' %}
+          Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero.
+        {% else %}
+          {% if solicitud.envejeciente_solo_acompanamiento %}
+            Envejeciente: encamado. La doméstica no realizará higiene, pañales, alimentación ni medicamentos; solo acompañamiento o supervisión.
+          {% else %}
+            Envejeciente: encamado.
+            {% if solicitud.envejeciente_responsabilidades %}
+              {% set _resp_map = {'pampers':'cambiar pampers','higiene':'higiene personal','comida':'darle de comer','medicamentos':'darle medicamentos','movilidad':'movilizarlo o ayudarlo a levantarse','otro':'otro cuidado especial'} %}
+              {% set _resp_text = [] %}
+              {% for _r in (solicitud.envejeciente_responsabilidades or []) %}
+                {% set _ = _resp_text.append(_resp_map.get((_r|string)|lower, _r)) %}
+              {% endfor %}
+              Requiere: {{ _resp_text|join(', ') }}.
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      </dd>
+      {% if solicitud.envejeciente_nota %}
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Nota envejeciente</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.envejeciente_nota }}</dd>
+      {% endif %}
+      {% endif %}
 
       {% if solicitud.fecha_cancelacion %}
       <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Fecha de cancelación</dt>

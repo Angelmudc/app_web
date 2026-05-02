@@ -4,7 +4,7 @@ import hashlib
 from app import app as flask_app
 from config_app import db
 from models import StaffUser, TrustedDevice
-from utils.staff_mfa import MFA_SETUP_SECRET_SESSION_KEY, generate_totp_token, mfa_enforced_for_staff
+from utils.staff_mfa import MFA_SETUP_SECRET_SESSION_KEY, generate_totp_token, mfa_enforced_for_staff, is_mfa_required
 
 
 def _login_admin(client, usuario: str, clave: str, **kwargs):
@@ -62,8 +62,8 @@ def _legacy_fingerprint(user_id: int, token: str, user_agent: str, ip_addr: str)
 
 
 def _enable_mfa_flags(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
     monkeypatch.setenv("STAFF_MFA_REQUIRED", "1")
-    monkeypatch.setenv("STAFF_MFA_ENFORCE_IN_TESTS", "1")
 
 
 def test_staff_login_with_mfa_enabled_is_blocked_until_totp(monkeypatch):
@@ -497,3 +497,36 @@ def test_mfa_flag_fail_closed_in_production(monkeypatch):
     monkeypatch.setenv("STAFF_MFA_REQUIRED", "0")
     monkeypatch.delenv("STAFF_MFA_ALLOW_DISABLE_IN_PROD", raising=False)
     assert mfa_enforced_for_staff(testing=False) is True
+
+
+def test_is_mfa_required_production_true(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("STAFF_MFA_REQUIRED", "1")
+    assert is_mfa_required(testing=False) is True
+
+
+def test_is_mfa_required_local_false(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("STAFF_MFA_REQUIRED", "1")
+    assert is_mfa_required(testing=False) is False
+
+
+def test_is_mfa_required_test_false(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("STAFF_MFA_REQUIRED", "1")
+    assert is_mfa_required(testing=True) is False
+
+
+def test_admin_login_local_does_not_require_mfa_even_if_user_has_mfa(monkeypatch):
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    monkeypatch.setenv("APP_ENV", "local")
+    monkeypatch.setenv("STAFF_MFA_REQUIRED", "1")
+
+    secret = "JBSWY3DPEHPK3PXP"
+    _set_staff_mfa(username="Cruz", enabled=True, secret=secret)
+
+    client = flask_app.test_client()
+    resp = _login_admin(client, "Cruz", "8998")
+    assert resp.status_code in (302, 303)
+    assert "/admin/mfa/" not in (resp.headers.get("Location") or "")

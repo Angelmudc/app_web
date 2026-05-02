@@ -50,6 +50,10 @@ def test_editar_desde_clientes_conservando_5_5():
     _assert_client_banos("5.5", 5.5)
 
 
+def test_editar_desde_clientes_conservando_otro_mayor_a_5_5():
+    _assert_client_banos("6.5", 6.5)
+
+
 def test_crear_desde_admin_con_banos_1():
     _assert_admin_banos("1", 1.0)
 
@@ -72,3 +76,7 @@ def test_editar_desde_admin_conservando_5():
 
 def test_editar_desde_admin_conservando_5_5():
     _assert_admin_banos("5.5", 5.5)
+
+
+def test_editar_desde_admin_conservando_otro_mayor_a_5_5():
+    _assert_admin_banos("6.5", 6.5)

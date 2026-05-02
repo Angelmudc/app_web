@@ -91,6 +91,7 @@ from utils.candidata_completitud_audit import (
 )
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
+from utils.envejeciente import format_envejeciente_resumen
 from utils.audit_labels import (
     humanize_audit_field,
     humanize_audit_value,
@@ -164,6 +165,9 @@ from utils.pasaje_mode import (
     read_pasaje_mode_text,
     strip_pasaje_marker_from_note,
 )
+from utils.pisos_mode import apply_pisos_to_solicitud, read_pisos_value
+from utils.horario_mode import apply_horario_to_solicitud
+from utils.horario_mode import build_horario_from_form
 from utils.modalidad import (
     canonicalize_modalidad_trabajo,
     split_modalidad_for_ui,
@@ -3106,6 +3110,12 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         fun_labels.append(otros_fun)
 
     funciones_txt = format_funciones(fun_labels, otros_fun)
+    envejeciente_lines = format_envejeciente_resumen(
+        tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
+        responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
+        solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
+        nota=getattr(s, "envejeciente_nota", None),
+    )
 
     # Hogar
     tipo_lugar   = _s(getattr(s, 'tipo_lugar', None))
@@ -3197,6 +3207,8 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         lineas.append(f"• {funciones_txt}")
     else:
         lineas.append("• (No se especificaron funciones en detalle)")
+    if envejeciente_lines:
+        lineas.extend([f"• {ln}" for ln in envejeciente_lines])
     lineas.append("")
 
     # Dinero
@@ -7842,6 +7854,11 @@ def _has_limpieza_funcion(funciones_selected):
     return False
 
 
+def _has_household_funcion(funciones_selected):
+    vals = {str(raw or '').strip().lower() for raw in _clean_list(funciones_selected)}
+    return bool(vals.intersection({'limpieza', 'cocinar', 'lavar', 'planchar'}))
+
+
 def _strip_pisos_marker_from_note(note_text):
     txt = str(note_text or '')
     lines = txt.split('\n')
@@ -7871,6 +7888,33 @@ def _clear_house_structure_if_not_limpieza(solicitud_obj, funciones_selected):
         solicitud_obj.area_otro = None
     if hasattr(solicitud_obj, 'nota_cliente'):
         solicitud_obj.nota_cliente = _strip_pisos_marker_from_note(getattr(solicitud_obj, 'nota_cliente', ''))
+
+
+def _clear_adultos_if_not_household_funciones(solicitud_obj, funciones_selected):
+    if _has_household_funcion(funciones_selected):
+        return
+    if hasattr(solicitud_obj, 'adultos'):
+        solicitud_obj.adultos = None
+
+
+def _sync_envejeciente_fields(solicitud_obj, funciones_selected):
+    vals = {str(v or '').strip().lower() for v in _clean_list(funciones_selected)}
+    if 'envejeciente' not in vals:
+        if hasattr(solicitud_obj, 'envejeciente_tipo_cuidado'):
+            solicitud_obj.envejeciente_tipo_cuidado = None
+        if hasattr(solicitud_obj, 'envejeciente_responsabilidades'):
+            solicitud_obj.envejeciente_responsabilidades = None
+        if hasattr(solicitud_obj, 'envejeciente_solo_acompanamiento'):
+            solicitud_obj.envejeciente_solo_acompanamiento = False
+        if hasattr(solicitud_obj, 'envejeciente_nota'):
+            solicitud_obj.envejeciente_nota = None
+        return
+    tipo = str(getattr(solicitud_obj, 'envejeciente_tipo_cuidado', '') or '').strip().lower()
+    if tipo == 'independiente':
+        if hasattr(solicitud_obj, 'envejeciente_responsabilidades'):
+            solicitud_obj.envejeciente_responsabilidades = None
+        if hasattr(solicitud_obj, 'envejeciente_solo_acompanamiento'):
+            solicitud_obj.envejeciente_solo_acompanamiento = False
 
 
 def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
@@ -10090,6 +10134,17 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
     detalles: dict = {
         "tipo": ts  # siempre guardamos el tipo aquí
     }
+    _horario_text, horario_payload, _horario_errors = build_horario_from_form(
+        modalidad_group=request.form.get("modalidad_grupo"),
+        modalidad_trabajo=(getattr(form, "modalidad_trabajo", None).data if hasattr(form, "modalidad_trabajo") else ""),
+        dias_trabajo=request.form.get("horario_dias_trabajo"),
+        hora_entrada=request.form.get("horario_hora_entrada"),
+        hora_salida=request.form.get("horario_hora_salida"),
+        dormida_entrada=request.form.get("horario_dormida_entrada"),
+        dormida_salida=request.form.get("horario_dormida_salida"),
+        horario_legacy=(getattr(form, "horario", None).data if hasattr(form, "horario") else ""),
+    )
+    detalles.update(horario_payload)
 
     # ─────────────────────────────
     # NIÑERA
@@ -10294,6 +10349,7 @@ def nueva_solicitud_admin(cliente_id):
     form = AdminSolicitudForm()
     public_pasaje_mode = "aparte" if bool(getattr(form, "pasaje_aporte", type("x", (object,), {"data": False})).data) else "incluido"
     public_pasaje_otro = ""
+    public_pisos_value = read_pisos_value(dos_pisos=getattr(form, "dos_pisos", type("x", (object,), {"data": False})).data, detalles_servicio=None, nota_cliente="")
     public_modalidad_group = ""
     public_modalidad_specific = ""
     public_modalidad_other = ""
@@ -10339,6 +10395,11 @@ def nueva_solicitud_admin(cliente_id):
             form.chofer_licencia_detalle.data = ''
 
     if request.method == "POST":
+        pisos_post = (request.form.get("pisos_selector") or "").strip()
+        if pisos_post in ("1", "2", "3+"):
+            public_pisos_value = pisos_post
+        if hasattr(form, "dos_pisos"):
+            form.dos_pisos.data = (public_pisos_value in ("2", "3+"))
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
             request.form.get("pasaje_mode"),
             request.form.get("pasaje_otro_text"),
@@ -10374,6 +10435,17 @@ def nueva_solicitud_admin(cliente_id):
                 form.populate_obj(s)
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
+                apply_horario_to_solicitud(
+                    s,
+                    modalidad_group=request.form.get("modalidad_grupo"),
+                    modalidad_trabajo=getattr(s, "modalidad_trabajo", ""),
+                    dias_trabajo=request.form.get("horario_dias_trabajo"),
+                    hora_entrada=request.form.get("horario_hora_entrada"),
+                    hora_salida=request.form.get("horario_hora_salida"),
+                    dormida_entrada=request.form.get("horario_dormida_entrada"),
+                    dormida_salida=request.form.get("horario_dormida_salida"),
+                    horario_legacy=getattr(form, "horario", type("x", (object,), {"data": ""})).data,
+                )
 
                 if hasattr(form, 'sueldo'):
                     try:
@@ -10434,9 +10506,13 @@ def nueva_solicitud_admin(cliente_id):
                     area_otro_txt = (form.area_otro.data or '').strip()
                     s.area_otro = (area_otro_txt if areas_has_otro else '') or None
                 _clear_house_structure_if_not_limpieza(s, s.funciones)
+                _clear_adultos_if_not_household_funciones(s, s.funciones)
+                _sync_envejeciente_fields(s, s.funciones)
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
+                if _has_limpieza_funcion(s.funciones):
+                    apply_pisos_to_solicitud(s, pisos_raw=public_pisos_value)
                 apply_pasaje_to_solicitud(
                     s,
                     mode_raw=public_pasaje_mode,
@@ -10535,6 +10611,7 @@ def nueva_solicitud_admin(cliente_id):
         nuevo=True,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_pisos_value=public_pisos_value,
         public_modalidad_group=public_modalidad_group,
         public_modalidad_specific=public_modalidad_specific,
         public_modalidad_other=public_modalidad_other,
@@ -10554,6 +10631,11 @@ def editar_solicitud_admin(cliente_id, id):
     wants_async = _admin_async_wants_json()
     public_pasaje_mode = "aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido"
     public_pasaje_otro = ""
+    public_pisos_value = read_pisos_value(
+        dos_pisos=getattr(s, "dos_pisos", False),
+        detalles_servicio=getattr(s, "detalles_servicio", None),
+        nota_cliente=getattr(s, "nota_cliente", ""),
+    )
     public_modalidad_group = ""
     public_modalidad_specific = ""
     public_modalidad_other = ""
@@ -10665,6 +10747,11 @@ def editar_solicitud_admin(cliente_id, id):
         ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     if request.method == "POST":
+        pisos_post = (request.form.get("pisos_selector") or "").strip()
+        if pisos_post in ("1", "2", "3+"):
+            public_pisos_value = pisos_post
+        if hasattr(form, "dos_pisos"):
+            form.dos_pisos.data = (public_pisos_value in ("2", "3+"))
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
             request.form.get("pasaje_mode"),
             request.form.get("pasaje_otro_text"),
@@ -10699,6 +10786,7 @@ def editar_solicitud_admin(cliente_id, id):
             nuevo=False,
             public_pasaje_mode=public_pasaje_mode,
             public_pasaje_otro=public_pasaje_otro,
+            public_pisos_value=public_pisos_value,
             public_modalidad_group=public_modalidad_group,
             public_modalidad_specific=public_modalidad_specific,
             public_modalidad_other=public_modalidad_other,
@@ -10740,6 +10828,17 @@ def editar_solicitud_admin(cliente_id, id):
                 form.populate_obj(s)
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
+                apply_horario_to_solicitud(
+                    s,
+                    modalidad_group=request.form.get("modalidad_grupo"),
+                    modalidad_trabajo=getattr(s, "modalidad_trabajo", ""),
+                    dias_trabajo=request.form.get("horario_dias_trabajo"),
+                    hora_entrada=request.form.get("horario_hora_entrada"),
+                    hora_salida=request.form.get("horario_hora_salida"),
+                    dormida_entrada=request.form.get("horario_dormida_entrada"),
+                    dormida_salida=request.form.get("horario_dormida_salida"),
+                    horario_legacy=getattr(form, "horario", type("x", (object,), {"data": ""})).data,
+                )
                 submitted_modalidad = (
                     (getattr(form, "modalidad_trabajo", None).data or "").strip()
                     if hasattr(form, "modalidad_trabajo")
@@ -10809,11 +10908,15 @@ def editar_solicitud_admin(cliente_id, id):
                     area_otro_txt = (form.area_otro.data or '').strip()
                     s.area_otro = (area_otro_txt if areas_has_otro else '') or None
                 _clear_house_structure_if_not_limpieza(s, s.funciones)
+                _clear_adultos_if_not_household_funciones(s, s.funciones)
+                _sync_envejeciente_fields(s, s.funciones)
 
                 s.fecha_ultima_modificacion = utc_now_naive()
                 s.detalles_servicio = _build_detalles_servicio_from_form(form)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
+                if _has_limpieza_funcion(s.funciones):
+                    apply_pisos_to_solicitud(s, pisos_raw=public_pisos_value)
                 apply_pasaje_to_solicitud(
                     s,
                     mode_raw=public_pasaje_mode,
@@ -10923,6 +11026,7 @@ def editar_solicitud_admin(cliente_id, id):
         nuevo=False,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
+        public_pisos_value=public_pisos_value,
         public_modalidad_group=public_modalidad_group,
         public_modalidad_specific=public_modalidad_specific,
         public_modalidad_other=public_modalidad_other,
@@ -19066,6 +19170,10 @@ def copiar_solicitudes():
                 Solicitud.nota_cliente,
                 Solicitud.detalles_servicio,
                 Solicitud.tipo_servicio,
+                Solicitud.envejeciente_tipo_cuidado,
+                Solicitud.envejeciente_responsabilidades,
+                Solicitud.envejeciente_solo_acompanamiento,
+                Solicitud.envejeciente_nota,
             ),
             selectinload(Solicitud.reemplazos).load_only(
                 Reemplazo.id,
@@ -19327,6 +19435,13 @@ def copiar_solicitudes():
             chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
 
         # ===== Texto final =====
+        envejeciente_lines = format_envejeciente_resumen(
+            tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
+            responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
+            solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
+            nota=getattr(s, "envejeciente_nota", None),
+        )
+        envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
         cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
         header_block = "\n".join([
             f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
@@ -19377,6 +19492,8 @@ def copiar_solicitudes():
             "",
             hogar_line if hogar_line else None,
             "",
+            envejeciente_block if envejeciente_block else None,
+            "" if envejeciente_block else None,
             ninera_block if ninera_block else None,
             enf_block if enf_block else None,
             chofer_block if chofer_block else None,

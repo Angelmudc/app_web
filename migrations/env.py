@@ -9,12 +9,13 @@ from sqlalchemy import engine_from_config, pool
 # ─── Asegura que Alembic encuentre tu proyecto ──────────────────────────
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# ─── Importa tu extensión de base de datos y configuración ─────────────
-from config_app import db
-from utils.secrets_manager import get_required_secret
+# ─── Importa tu extensión de base de datos y resolvedor de entorno ─────
+from config_app import db, _detect_env, _normalize_db_url, _resolve_database_url_for_env
 
-# ─── Obtiene la URL de la base desde la capa central de secretos ───────
-database_url = get_required_secret("DATABASE_URL")
+# ─── Usa la misma selección de DB que Flask (APP_ENV) ──────────────────
+env_name = _detect_env()
+raw_database_url, _ = _resolve_database_url_for_env(env_name)
+database_url = _normalize_db_url(raw_database_url, require_ssl=(env_name in {"production", "prod"}))
 
 # ─── Configuración de Alembic ──────────────────────────────────────────
 config = context.config

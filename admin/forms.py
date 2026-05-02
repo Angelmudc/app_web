@@ -38,6 +38,8 @@ from wtforms.validators import (
 )
 from wtforms.widgets import ListWidget, CheckboxInput
 from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.horario_mode import build_horario_from_form
+from utils.envejeciente import clean_list as _clean_list_envejeciente
 
 
 
@@ -308,6 +310,7 @@ class AdminClienteForm(FlaskForm):
 #                                 SOLICITUD
 # =============================================================================
 class AdminSolicitudForm(FlaskForm):
+    HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
     # ─────────────────────────────────────────────
     # TIPO DE SOLICITUD
     # ─────────────────────────────────────────────
@@ -384,6 +387,7 @@ class AdminSolicitudForm(FlaskForm):
             ('limpieza',     'Limpieza General'),
             ('cocinar',      'Cocinar'),
             ('lavar',        'Lavar'),
+            ('planchar',     'Planchar'),
             ('ninos',        'Cuidar Niños'),
             ('envejeciente', 'Cuidar envejecientes'),
             ('otro',         'Otro'),
@@ -396,6 +400,34 @@ class AdminSolicitudForm(FlaskForm):
         'Otra función (si marcaste Otro)',
         validators=[Optional(), Length(max=200)],
         render_kw={"placeholder": "Especifica otra función (opcional)"}
+    )
+    envejeciente_tipo_cuidado = RadioField(
+        "Tipo de cuidado del envejeciente",
+        choices=[("independiente", "Independiente"), ("encamado", "Encamado")],
+        validators=[Optional()],
+        coerce=str
+    )
+    envejeciente_responsabilidades = MultiCheckboxField(
+        "Responsabilidades con envejeciente encamado",
+        choices=[
+            ("pampers", "Cambiar pampers"),
+            ("higiene", "Banarlo / higiene personal"),
+            ("comida", "Darle de comer"),
+            ("medicamentos", "Darle medicamentos"),
+            ("movilidad", "Movilizarlo o ayudarlo a levantarse"),
+            ("otro", "Otro cuidado especial"),
+        ],
+        validators=[Optional()],
+        coerce=str,
+        default=[]
+    )
+    envejeciente_solo_acompanamiento = BooleanField(
+        "La domestica no realizara higiene, panales, alimentacion ni medicamentos; solo acompanamiento o supervision."
+    )
+    envejeciente_nota = TextAreaField(
+        "Nota adicional sobre el envejeciente",
+        validators=[Optional(), Length(max=1000)],
+        render_kw={"rows": 3, "placeholder": "Opcional"}
     )
 
     # ─────────────────────────────────────────────
@@ -646,6 +678,21 @@ class AdminSolicitudForm(FlaskForm):
         vals = [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
         return 'limpieza' in vals
 
+    @staticmethod
+    def _selected_funciones_values() -> list[str]:
+        try:
+            raw = request.form.getlist('funciones')
+        except Exception:
+            raw = []
+        return [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
+
+    @classmethod
+    def _requires_adultos_for_funciones(cls, funciones_selected: list[str]) -> bool:
+        vals = set(funciones_selected or [])
+        if not vals:
+            return False
+        return bool(vals.intersection(cls.HOUSEHOLD_FUNCIONES))
+
     def validate_modalidad_trabajo(self, field):
         field.data = canonicalize_modalidad_trabajo(field.data)
 
@@ -656,7 +703,9 @@ class AdminSolicitudForm(FlaskForm):
         """Validación condicional según tipo de servicio."""
         rv = super().validate(extra_validators)
         tipo = (self.tipo_servicio.data or '').strip()
-        requiere_limpieza = self._has_limpieza_selected()
+        funciones_selected = self._selected_funciones_values()
+        requiere_limpieza = 'limpieza' in funciones_selected
+        requiere_adultos = self._requires_adultos_for_funciones(funciones_selected)
 
         # Para DOMÉSTICA y ENFERMERA: hogar obligatorio
         if tipo in ('DOMESTICA_LIMPIEZA', 'ENFERMERA', '') and requiere_limpieza:
@@ -669,7 +718,7 @@ class AdminSolicitudForm(FlaskForm):
             if self.banos.data is None:
                 self.banos.errors.append("Indica la cantidad de baños.")
                 rv = False
-            if self.adultos.data is None:
+            if requiere_adultos and self.adultos.data is None:
                 self.adultos.errors.append("Indica cuántos adultos hay en la casa.")
                 rv = False
 
@@ -697,12 +746,51 @@ class AdminSolicitudForm(FlaskForm):
             # Quitamos posibles errores de hogar/ocupantes si quedaron
             for f in (self.tipo_lugar, self.habitaciones, self.banos, self.adultos):
                 f.errors.clear()
+        elif requiere_adultos and self.adultos.data is None:
+            if "Indica cuántos adultos." not in (self.adultos.errors or []):
+                self.adultos.errors.append("Indica cuántos adultos.")
+            rv = False
 
+        modalidad_group = ""
+        try:
+            modalidad_group = str((request.form or {}).get("modalidad_grupo") or "").strip()
+        except Exception:
+            modalidad_group = ""
+        horario_txt, _payload, horario_errors = build_horario_from_form(
+            modalidad_group=modalidad_group,
+            modalidad_trabajo=self.modalidad_trabajo.data,
+            dias_trabajo=(request.form or {}).get("horario_dias_trabajo"),
+            hora_entrada=(request.form or {}).get("horario_hora_entrada"),
+            hora_salida=(request.form or {}).get("horario_hora_salida"),
+            dormida_entrada=(request.form or {}).get("horario_dormida_entrada"),
+            dormida_salida=(request.form or {}).get("horario_dormida_salida"),
+            horario_legacy=self.horario.data,
+        )
+        self.horario.data = horario_txt
+        if horario_errors:
+            for msg in horario_errors:
+                if msg not in (self.horario.errors or []):
+                    self.horario.errors.append(msg)
+            rv = False
+        if tipo == 'CHOFER':
             if not self.chofer_vehiculo.data:
                 self.chofer_vehiculo.errors.append("Indica si usará vehículo del cliente o propio.")
                 rv = False
             if not self.chofer_tipo_vehiculo.data:
                 self.chofer_tipo_vehiculo.errors.append("Selecciona el tipo de vehículo.")
+                rv = False
+        requiere_envejeciente = "envejeciente" in _clean_list_envejeciente(funciones_selected)
+        tipo_cuidado = (self.envejeciente_tipo_cuidado.data or "").strip().lower()
+        responsabilidades = _clean_list_envejeciente(self.envejeciente_responsabilidades.data or [])
+        solo_acomp = bool(self.envejeciente_solo_acompanamiento.data)
+        if requiere_envejeciente:
+            if tipo_cuidado not in {"independiente", "encamado"}:
+                self.envejeciente_tipo_cuidado.errors.append("Selecciona el tipo de cuidado del envejeciente.")
+                rv = False
+            if tipo_cuidado == "encamado" and (not solo_acomp) and not responsabilidades:
+                self.envejeciente_responsabilidades.errors.append(
+                    "Para encamado debes marcar responsabilidades o seleccionar solo acompanamiento/supervision."
+                )
                 rv = False
 
         return rv

@@ -81,6 +81,19 @@ Activar/desactivar:
 - En `development/testing` se carga `.env` automáticamente (sin pisar variables ya definidas).
 - En `production` no se carga `.env`; se usan variables de entorno seguras o un Secret Manager externo.
 
+### Selección automática de base de datos por entorno
+- `APP_ENV=production` o `prod` usa `DATABASE_URL`.
+- `APP_ENV=local` o `development` usa `DATABASE_URL_LOCAL`.
+- `APP_ENV=test` o `testing` usa `DATABASE_URL_TEST`.
+- Guardas de seguridad activas:
+  - si `APP_ENV` no es válido, la app no inicia;
+  - si `APP_ENV` es local/development y falta `DATABASE_URL_LOCAL`, la app no inicia;
+  - si `APP_ENV` es test/testing y falta `DATABASE_URL_TEST`, la app no inicia;
+  - si `APP_ENV` no es producción y la URL seleccionada coincide con `DATABASE_URL`, la app no inicia.
+- Referencia de variables: `.env.example` (sin credenciales reales).
+- Bootstrap local guiado:
+  - `scripts/local/bootstrap_local_env.sh`
+
 ### Secret Manager externo (opcional)
 - `SECRET_MANAGER_BACKEND=aws|gcp`
 - `SECRET_MANAGER_PREFIX=mi-app/prod` (opcional)

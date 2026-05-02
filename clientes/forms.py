@@ -4,7 +4,7 @@ from flask import request
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, PasswordField, SelectField, SelectMultipleField,
-    TextAreaField, BooleanField, IntegerField, DecimalField, SubmitField, HiddenField
+    TextAreaField, BooleanField, IntegerField, DecimalField, SubmitField, HiddenField, RadioField
 )
 from wtforms.validators import (
     DataRequired, Length, NumberRange, Optional, ValidationError, Email
@@ -15,6 +15,8 @@ from wtforms.widgets import ListWidget, CheckboxInput
 # ─────────────────────────────────────────────────────────────
 import re
 from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.horario_mode import build_horario_from_form
+from utils.envejeciente import clean_list as _clean_list_envejeciente
 
 def _solo_texto(valor):
     """
@@ -135,6 +137,7 @@ class ClienteSolicitudForm(FlaskForm):
 # Formulario completo de Solicitud
 # ─────────────────────────────────────────────────────────────
 class SolicitudForm(FlaskForm):
+    HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
     # Ubicación
     ciudad_sector = StringField(
         "Ciudad / Sector",
@@ -215,6 +218,35 @@ class SolicitudForm(FlaskForm):
         filters=STRIP,
         render_kw={"placeholder": "Una o varias, separadas por coma"}
     )
+    envejeciente_tipo_cuidado = RadioField(
+        "Tipo de cuidado del envejeciente",
+        choices=[("independiente", "Independiente"), ("encamado", "Encamado")],
+        validators=[Optional()],
+        coerce=str,
+    )
+    envejeciente_responsabilidades = SelectMultipleField(
+        "Responsabilidades con envejeciente encamado",
+        choices=[
+            ("pampers", "Cambiar pampers"),
+            ("higiene", "Banarlo / higiene personal"),
+            ("comida", "Darle de comer"),
+            ("medicamentos", "Darle medicamentos"),
+            ("movilidad", "Movilizarlo o ayudarlo a levantarse"),
+            ("otro", "Otro cuidado especial"),
+        ],
+        validators=[Optional()],
+        option_widget=CheckboxInput(),
+        widget=ListWidget(prefix_label=False),
+        coerce=str,
+    )
+    envejeciente_solo_acompanamiento = BooleanField(
+        "La domestica no realizara higiene, panales, alimentacion ni medicamentos; solo acompanamiento o supervision."
+    )
+    envejeciente_nota = TextAreaField(
+        "Nota adicional sobre el envejeciente",
+        validators=[Optional(), Length(max=1000)],
+        filters=STRIP,
+    )
 
     # Tipo de lugar
     tipo_lugar = SelectField(
@@ -252,7 +284,7 @@ class SolicitudForm(FlaskForm):
     # Ocupantes
     adultos = IntegerField(
         "Cantidad de adultos",
-        validators=[DataRequired("Indica cuántos adultos."), NumberRange(min=0)],
+        validators=[Optional(), NumberRange(min=0)],
         render_kw={"min": 0}
     )
     ninos = IntegerField(
@@ -319,8 +351,25 @@ class SolicitudForm(FlaskForm):
         vals = [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
         return 'limpieza' in vals
 
+    @staticmethod
+    def _selected_funciones_values() -> list[str]:
+        try:
+            raw = request.form.getlist('funciones')
+        except Exception:
+            raw = []
+        return [str(x).strip().lower() for x in (raw or []) if str(x).strip()]
+
+    @classmethod
+    def _requires_adultos_for_funciones(cls, funciones_selected: list[str]) -> bool:
+        vals = set(funciones_selected or [])
+        if not vals:
+            return False
+        return bool(vals.intersection(cls.HOUSEHOLD_FUNCIONES))
+
     def validate(self, extra_validators=None):
-        requiere_limpieza = self._has_limpieza_selected()
+        funciones_selected = self._selected_funciones_values()
+        requiere_limpieza = 'limpieza' in funciones_selected
+        requiere_adultos = self._requires_adultos_for_funciones(funciones_selected)
         if not requiere_limpieza:
             def _strip_required(validators):
                 return [
@@ -351,6 +400,16 @@ class SolicitudForm(FlaskForm):
                 except Exception:
                     pass
             ok = all(not f.errors for f in self._fields.values())
+
+        if not requiere_adultos:
+            try:
+                self.adultos.errors = []
+            except Exception:
+                pass
+            try:
+                self.adultos.process_errors = []
+            except Exception:
+                pass
         modalidad_group = ""
         modalidad_specific = ""
         try:
@@ -379,6 +438,19 @@ class SolicitudForm(FlaskForm):
             if not (self.edades_ninos.data and str(self.edades_ninos.data).strip()):
                 self.edades_ninos.errors.append("Debes indicar las edades de los niños.")
                 ok = False
+        requiere_envejeciente = "envejeciente" in _clean_list_envejeciente(funciones)
+        tipo_cuidado = (self.envejeciente_tipo_cuidado.data or "").strip().lower()
+        responsabilidades = _clean_list_envejeciente(self.envejeciente_responsabilidades.data or [])
+        solo_acomp = bool(self.envejeciente_solo_acompanamiento.data)
+        if requiere_envejeciente:
+            if tipo_cuidado not in {"independiente", "encamado"}:
+                self.envejeciente_tipo_cuidado.errors.append("Selecciona el tipo de cuidado del envejeciente.")
+                ok = False
+            if tipo_cuidado == "encamado" and (not solo_acomp) and not responsabilidades:
+                self.envejeciente_responsabilidades.errors.append(
+                    "Para encamado debes marcar responsabilidades o seleccionar solo acompanamiento/supervision."
+                )
+                ok = False
 
         if not modalidad_group:
             _append_modalidad_error("Selecciona la modalidad de trabajo.")
@@ -386,6 +458,28 @@ class SolicitudForm(FlaskForm):
 
         if not modalidad_specific:
             _append_modalidad_error("Selecciona la modalidad específica.")
+            ok = False
+
+        horario_txt, _payload, horario_errors = build_horario_from_form(
+            modalidad_group=modalidad_group,
+            modalidad_trabajo=self.modalidad_trabajo.data,
+            dias_trabajo=(request.form or {}).get("horario_dias_trabajo"),
+            hora_entrada=(request.form or {}).get("horario_hora_entrada"),
+            hora_salida=(request.form or {}).get("horario_hora_salida"),
+            dormida_entrada=(request.form or {}).get("horario_dormida_entrada"),
+            dormida_salida=(request.form or {}).get("horario_dormida_salida"),
+            horario_legacy=self.horario.data,
+        )
+        self.horario.data = horario_txt
+        if horario_errors:
+            for msg in horario_errors:
+                if msg not in (self.horario.errors or []):
+                    self.horario.errors.append(msg)
+            ok = False
+
+        if requiere_adultos and self.adultos.data is None:
+            if "Indica cuántos adultos." not in (self.adultos.errors or []):
+                self.adultos.errors.append("Indica cuántos adultos.")
             ok = False
 
         return ok

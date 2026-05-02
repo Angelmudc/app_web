@@ -2,6 +2,7 @@
 {% set ordered_names = [
   'ciudad_sector', 'rutas_cercanas', 'modalidad_trabajo', 'horario',
   'edad_requerida', 'edad_otro', 'experiencia', 'funciones', 'funciones_otro',
+  'envejeciente_tipo_cuidado', 'envejeciente_responsabilidades', 'envejeciente_solo_acompanamiento', 'envejeciente_nota',
   'tipo_lugar', 'tipo_lugar_otro', 'habitaciones', 'banos', 'dos_pisos',
   'areas_comunes', 'area_otro', 'adultos', 'ninos', 'edades_ninos',
   'mascota', 'sueldo', 'pasaje_aporte', 'nota_cliente'
@@ -40,6 +41,12 @@
 } %}
 {% set _modalidad_initial_specs = _modalidad_specs[_modalidad_group_value] if _modalidad_group_value in _modalidad_specs else [] %}
 {% set _modalidad_is_other = ('otro' in (_modalidad_specific_value|lower)) if _modalidad_specific_value else false %}
+{% set _hs = (solicitud.detalles_servicio if solicitud is defined and solicitud and solicitud.detalles_servicio else {}) %}
+{% set _horario_dias_val = request.form.get('horario_dias_trabajo', (_hs.get('dias_trabajo', '') if _hs else '')) %}
+{% set _horario_hora_in_val = request.form.get('horario_hora_entrada', (_hs.get('hora_entrada', '') if _hs else '')) %}
+{% set _horario_hora_out_val = request.form.get('horario_hora_salida', (_hs.get('hora_salida', '') if _hs else '')) %}
+{% set _horario_dormida_in_val = request.form.get('horario_dormida_entrada', (_hs.get('dormida_entrada', '') if _hs else '')) %}
+{% set _horario_dormida_out_val = request.form.get('horario_dormida_salida', (_hs.get('dormida_salida', '') if _hs else '')) %}
 
 {% macro render_errors(field) -%}
   {% if field.errors %}
@@ -70,6 +77,15 @@
         {{ field(class='form-select' + css_invalid) }}
 
       {% elif field.type == 'SelectMultipleField' %}
+        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
+          {% for sub in field %}
+            <label class="public-choice-item">
+              {{ sub(class='form-check-input') }}
+              <span>{{ sub.label.text }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      {% elif field.type == 'RadioField' %}
         <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
           {% for sub in field %}
             <label class="public-choice-item">
@@ -232,6 +248,21 @@
     margin-top: -4px;
   }
 
+  .public-santiago-warning {
+    border: 1px solid #cfe6ff;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f6fbff 0%, #eef7ff 100%);
+    padding: 9px 11px;
+    margin-top: 8px;
+  }
+
+  .public-santiago-warning p {
+    margin: 0;
+    font-size: .82rem;
+    color: #2e557b;
+    line-height: 1.45;
+  }
+
   .public-planchar-warning-title {
     margin: 0 0 4px;
     font-size: .86rem;
@@ -251,6 +282,49 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  .public-smart-warning {
+    border: 1px solid #f0d18a;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fffaf0 0%, #fff6e8 100%);
+    padding: 11px 12px;
+    margin-top: 8px;
+  }
+
+  .public-smart-warning-title {
+    margin: 0 0 5px;
+    font-size: .9rem;
+    font-weight: 700;
+    color: #6f4f1f;
+  }
+
+  .public-smart-warning-text {
+    margin: 0;
+    font-size: .84rem;
+    color: #6b5534;
+    line-height: 1.45;
+  }
+
+  .public-smart-warning-actions {
+    margin-top: 9px;
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .public-mascota-note {
+    border: 1px solid #d6e3f0;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f3f8ff 100%);
+    padding: 9px 11px;
+    margin-top: 7px;
+  }
+
+  .public-mascota-note p {
+    margin: 0;
+    font-size: .82rem;
+    line-height: 1.45;
+    color: #345170;
   }
 
   .public-planchar-modal-backdrop {
@@ -436,7 +510,12 @@
       {% if not hide_ciudad_sector %}
         {{ render_field(form.ciudad_sector) }}
       {% endif %}
-      {{ render_field(form.rutas_cercanas) }}
+      <div class="public-field" id="wrap_rutas_cercanas_field">
+        {{ render_field(form.rutas_cercanas) }}
+        <div class="public-santiago-warning d-none" id="wrap_rutas_santiago_notice" aria-live="polite" aria-hidden="true">
+          <p>En Santiago, la ruta de transporte cercana nos ayuda a ubicar mejor el servicio y enviar candidatas con mayor facilidad. Si la conoces, por favor colócala.</p>
+        </div>
+      </div>
       <div class="public-field public-full" id="wrap_modalidad_guiada">
         <label class="public-field-label">Modalidad de trabajo</label>
         {{ form.modalidad_trabajo(class='form-control d-none' ~ (' is-invalid' if form.modalidad_trabajo.errors else ''), id='modalidad_trabajo_hidden') }}
@@ -479,7 +558,48 @@
           <div class="invalid-feedback d-block">{{ form.modalidad_trabajo.errors[0] }}</div>
         {% endif %}
       </div>
-      {{ render_field(form.horario, title='Horario / Define el horario de trabajo', hint='Indica dias y rango horario esperado.') }}
+      <div class="public-field public-full" id="wrap_horario_inteligente">
+        {% if form.horario is defined %}
+          {{ form.horario(class='form-control d-none' ~ (' is-invalid' if form.horario.errors else ''), id='horario_hidden') }}
+        {% else %}
+          <input type="text" class="form-control d-none" id="horario_hidden" name="horario" value="">
+        {% endif %}
+        <label class="public-field-label">Horario de trabajo</label>
+        <div id="horario_salida_diaria_wrap">
+          <div class="public-field-hint mb-2">Indica los días y el horario de entrada y salida del mismo día.</div>
+          <div class="public-fields-grid">
+            <div class="public-field">
+              <label class="public-field-label" for="horario_dias_trabajo">Días de trabajo</label>
+              <input type="text" class="form-control" id="horario_dias_trabajo" name="horario_dias_trabajo" placeholder="Ej. Lunes a viernes" value="{{ _horario_dias_val }}">
+            </div>
+            <div class="public-field">
+              <label class="public-field-label" for="horario_hora_entrada">Hora de entrada</label>
+              <input type="text" class="form-control" id="horario_hora_entrada" name="horario_hora_entrada" placeholder="Ej. 8:00 AM" value="{{ _horario_hora_in_val }}">
+            </div>
+            <div class="public-field">
+              <label class="public-field-label" for="horario_hora_salida">Hora de salida</label>
+              <input type="text" class="form-control" id="horario_hora_salida" name="horario_hora_salida" placeholder="Ej. 5:00 PM" value="{{ _horario_hora_out_val }}">
+            </div>
+          </div>
+        </div>
+        <div id="horario_con_dormida_wrap" class="mt-2" style="display:none;">
+          <div class="public-field-hint mb-2">Indica cuándo debe entrar y cuándo sale de descanso.</div>
+          <div class="public-fields-grid">
+            <div class="public-field">
+              <label class="public-field-label" for="horario_dormida_entrada">Día y hora de entrada</label>
+              <input type="text" class="form-control" id="horario_dormida_entrada" name="horario_dormida_entrada" placeholder="Ej. Lunes 8:00 AM" value="{{ _horario_dormida_in_val }}">
+            </div>
+            <div class="public-field">
+              <label class="public-field-label" for="horario_dormida_salida">Día y hora de salida</label>
+              <input type="text" class="form-control" id="horario_dormida_salida" name="horario_dormida_salida" placeholder="Ej. Sábado 12:00 PM" value="{{ _horario_dormida_out_val }}">
+            </div>
+          </div>
+        </div>
+        <div class="public-field-hint mt-2">Horario final guardado: <span id="horario_preview_text">{{ (form.horario.data or '') if form.horario is defined else '' }}</span></div>
+        {% if form.horario is defined and form.horario.errors %}
+          <div class="invalid-feedback d-block">{{ form.horario.errors[0] }}</div>
+        {% endif %}
+      </div>
     </div>
   </section>
 
@@ -511,6 +631,17 @@
         </div>
       </div>
       {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
+      <div class="public-field public-full" id="wrap_envejeciente_info" style="display:none;">
+        <div class="public-form-card" style="padding:10px;">
+          <div class="public-form-card-header" style="margin-bottom:8px;">
+            <h4 class="public-form-card-title">Informacion del envejeciente</h4>
+          </div>
+          {{ render_field(form.envejeciente_tipo_cuidado, hint='Independiente: acompanamiento/supervision ligera. Encamado: asistencia directa diaria.', wrapper_class='public-full') }}
+          {{ render_field(form.envejeciente_solo_acompanamiento, wrapper_class='public-full') }}
+          {{ render_field(form.envejeciente_responsabilidades, wrapper_class='public-full', wrapper_id='wrap_envejeciente_responsabilidades') }}
+          {{ render_field(form.envejeciente_nota, wrapper_class='public-full') }}
+        </div>
+      </div>
     </div>
   </section>
 
@@ -525,8 +656,66 @@
         <div class="public-home-structure-grid">
           {{ render_field(form.tipo_lugar) }}
           {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
-          {{ render_field(form.habitaciones) }}
-          {{ render_field(form.banos) }}
+          {% if form.habitaciones is defined %}
+            <div class="public-field" id="wrap_habitaciones_selector">
+              <label class="public-field-label">Habitaciones</label>
+              {{ form.habitaciones(class='form-control d-none' ~ (' is-invalid' if form.habitaciones.errors else ''), id='habitaciones_hidden') }}
+              <div class="public-segmented public-segmented-grid">
+                {% for hval in ['1', '2', '3', '4', '5'] %}
+                  <label class="public-segmented-item">
+                    <input type="radio" name="habitaciones_selector" value="{{ hval }}">
+                    <span>{{ hval }}</span>
+                  </label>
+                {% endfor %}
+                <label class="public-segmented-item">
+                  <input type="radio" name="habitaciones_selector" value="otro">
+                  <span>Otro</span>
+                </label>
+              </div>
+              <div class="mt-2 d-none" id="wrap_habitaciones_otro">
+                <input
+                  type="number"
+                  class="form-control"
+                  id="habitaciones_otro_input"
+                  min="0"
+                  step="1"
+                  inputmode="numeric"
+                  placeholder="Escribe cantidad de habitaciones"
+                >
+              </div>
+              {{ render_errors(form.habitaciones) }}
+            </div>
+          {% endif %}
+          {% if form.banos is defined %}
+            <div class="public-field" id="wrap_banos_selector">
+              <label class="public-field-label">Baños</label>
+              {{ form.banos(class='form-control d-none' ~ (' is-invalid' if form.banos.errors else ''), id='banos_hidden') }}
+              <div class="public-segmented public-segmented-grid">
+                {% for bval in ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5'] %}
+                  <label class="public-segmented-item">
+                    <input type="radio" name="banos_selector" value="{{ bval }}">
+                    <span>{{ bval }}</span>
+                  </label>
+                {% endfor %}
+                <label class="public-segmented-item">
+                  <input type="radio" name="banos_selector" value="otro">
+                  <span>Otro</span>
+                </label>
+              </div>
+              <div class="mt-2 d-none" id="wrap_banos_otro">
+                <input
+                  type="number"
+                  class="form-control"
+                  id="banos_otro_input"
+                  min="0"
+                  step="0.5"
+                  inputmode="decimal"
+                  placeholder="Escribe cantidad de baños"
+                >
+              </div>
+              {{ render_errors(form.banos) }}
+            </div>
+          {% endif %}
 
           <div class="public-field">
             <label class="public-field-label">Cantidad de pisos</label>
@@ -552,10 +741,31 @@
           {{ render_field(form.area_otro, wrapper_id='wrap_area_otro', wrapper_class='public-full') }}
         </div>
       </div>
-      {{ render_field(form.adultos) }}
+      {{ render_field(form.adultos, wrapper_id='wrap_adultos') }}
       {{ render_field(form.ninos, wrapper_id='wrap_ninos') }}
       {{ render_field(form.edades_ninos, wrapper_id='wrap_edades_ninos') }}
+      <div class="public-field public-full public-smart-warning d-none" id="wrap_ninos_limpieza_smart_alert" aria-live="polite" aria-hidden="true">
+        <p class="public-smart-warning-title">Esta solicitud puede requerir aclaración.</p>
+        <p class="public-smart-warning-text">
+          Cuando hay niños pequeños y también se solicita limpieza general, la responsabilidad aumenta bastante.
+          Esto puede hacer que la oferta sea menos atractiva para algunas candidatas.
+        </p>
+        <p class="public-smart-warning-text mt-1">
+          Si habrá alguien ayudando con el niño o si la limpieza será ligera, por favor acláralo en las notas.
+        </p>
+        <div class="public-smart-warning-actions">
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="ninos_limpieza_smart_alert_ack">Entendido</button>
+        </div>
+      </div>
       {{ render_field(form.mascota, wrapper_id='wrap_mascota') }}
+      <div class="public-field public-full">
+        <div class="public-mascota-note" id="wrap_mascota_main_note" aria-live="polite" aria-hidden="false">
+          <p>Si hay mascotas en el hogar, por favor indícalo. Esta información nos ayuda a tomar en cuenta posibles alergias o preferencias de las candidatas.</p>
+        </div>
+        <div class="public-mascota-note d-none" id="wrap_mascota_secondary_note" aria-live="polite" aria-hidden="true">
+          <p>Si la doméstica no tendrá responsabilidades relacionadas con la mascota, puedes aclararlo en las notas de la solicitud.</p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -567,6 +777,19 @@
     </header>
     <div class="public-fields-grid public-comp-grid">
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
+      <div class="public-field public-full">
+        <div id="salarySuggestionBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
+          <p class="public-smart-warning-title">Analisis de sueldo sugerido</p>
+          <p class="public-smart-warning-text mb-1" id="salarySuggestionRange"></p>
+          <p class="public-smart-warning-text mb-1" id="salarySuggestionStatus"></p>
+          <div class="public-smart-warning-text mb-1" id="salarySuggestionReasons"></div>
+          <div class="public-smart-warning-text d-none" id="salarySuggestionWarning"></div>
+          <div class="public-smart-warning-actions mt-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="salarySuggestionUseBtn">Usar sueldo sugerido</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="salarySuggestionManualBtn">Escribir otro monto</button>
+          </div>
+        </div>
+      </div>
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
@@ -731,6 +954,25 @@
         else labels[i].classList.remove('is-selected');
       }
     }
+    function syncEnvejecienteSection(fromUserEvent) {
+      var selected = hasSelectedValue('funciones', 'envejeciente');
+      var wrap = byId('wrap_envejeciente_info');
+      var respWrap = byId('wrap_envejeciente_responsabilidades');
+      if (wrap) wrap.style.display = selected ? '' : 'none';
+      var tipo = '';
+      var tipoChecked = hostForm.querySelector('input[name="envejeciente_tipo_cuidado"]:checked');
+      if (tipoChecked) tipo = norm(tipoChecked.value);
+      var solo = hostForm.querySelector('input[name="envejeciente_solo_acompanamiento"]');
+      var showResp = selected && tipo === 'encamado' && !(solo && solo.checked);
+      if (respWrap) respWrap.style.display = showResp ? '' : 'none';
+      if (!selected && fromUserEvent) {
+        var radios = hostForm.querySelectorAll('input[name="envejeciente_tipo_cuidado"]');
+        for (var i = 0; i < radios.length; i++) radios[i].checked = false;
+        if (solo) solo.checked = false;
+        var resp = hostForm.querySelectorAll('input[name="envejeciente_responsabilidades"]');
+        for (var j = 0; j < resp.length; j++) resp[j].checked = false;
+      }
+    }
 
     function syncPisosAndPasaje() {
       var pisosChecked = hostForm.querySelector('input[name="pisos_selector"]:checked');
@@ -756,6 +998,35 @@
           wrapPasajeOtro.style.display = (mode === 'otro') ? '' : 'none';
         }
       }
+    }
+
+    function syncHorarioInteligente() {
+      var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
+      var group = groupNode ? norm(groupNode.value) : '';
+      var salidaWrap = byId('horario_salida_diaria_wrap');
+      var dormidaWrap = byId('horario_con_dormida_wrap');
+      var horarioHidden = byId('horario_hidden');
+      var preview = byId('horario_preview_text');
+      var dias = byId('horario_dias_trabajo');
+      var hIn = byId('horario_hora_entrada');
+      var hOut = byId('horario_hora_salida');
+      var dIn = byId('horario_dormida_entrada');
+      var dOut = byId('horario_dormida_salida');
+      var isDormida = (group === 'con_dormida');
+
+      if (salidaWrap) salidaWrap.style.display = isDormida ? 'none' : '';
+      if (dormidaWrap) dormidaWrap.style.display = isDormida ? '' : 'none';
+
+      var horarioTxt = '';
+      if (isDormida) {
+        if (dIn && dOut && norm(dIn.value) && norm(dOut.value)) {
+          horarioTxt = 'Entrada: ' + dIn.value.trim() + ' / Salida: ' + dOut.value.trim();
+        }
+      } else if (dias && hIn && hOut && norm(dias.value) && norm(hIn.value) && norm(hOut.value)) {
+        horarioTxt = dias.value.trim() + ', de ' + hIn.value.trim() + ' a ' + hOut.value.trim();
+      }
+      if (horarioHidden && horarioTxt) horarioHidden.value = horarioTxt;
+      if (preview) preview.textContent = horarioTxt || (horarioHidden ? (horarioHidden.value || '') : '');
     }
 
     function selectedByName(name, value) {
@@ -1026,6 +1297,211 @@
           edadesInput.value = '';
         }
       }
+    }
+
+    function parseNinosAgesFromFreeText(rawText) {
+      var txt = stripAccents((rawText || '').toString().toLowerCase()).replace(/\s+/g, ' ').trim();
+      if (!txt) return [];
+      var ages = {};
+      var direct = txt.match(/\b(\d{1,2})\s*anos?\b/g) || [];
+      for (var i = 0; i < direct.length; i++) {
+        var m = /(\d{1,2})/.exec(direct[i] || '');
+        if (m) ages[m[1]] = true;
+      }
+      var unitRegex = /\banos?\b/g;
+      var unitMatch;
+      while ((unitMatch = unitRegex.exec(txt)) !== null) {
+        var start = Math.max(0, unitMatch.index - 28);
+        var chunk = txt.slice(start, unitMatch.index);
+        if (!/(,|\by\b)/.test(chunk)) continue;
+        var nums = chunk.match(/\b\d{1,2}\b/g) || [];
+        for (var j = 0; j < nums.length; j++) ages[nums[j]] = true;
+      }
+      var out = [];
+      Object.keys(ages).forEach(function (k) {
+        var n = parseInt(k, 10);
+        if (isFinite(n)) out.push(n);
+      });
+      return out;
+    }
+
+    function hasNinoAgeFiveOrLess(rawText) {
+      var ages = parseNinosAgesFromFreeText(rawText);
+      for (var i = 0; i < ages.length; i++) {
+        if (ages[i] <= 5) return true;
+      }
+      return false;
+    }
+
+    function setupNinosLimpiezaSmartAlert() {
+      var alertWrap = byId('wrap_ninos_limpieza_smart_alert');
+      if (!alertWrap) return null;
+      var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
+      var ackBtn = byId('ninos_limpieza_smart_alert_ack');
+      var dismissed = false;
+
+      function sync() {
+        var hasCuidarNinos = hasSelectedValue('funciones', 'ninos');
+        var hasLimpiezaGeneral = hasSelectedValue('funciones', 'limpieza');
+        var hasNinoLe5 = hasNinoAgeFiveOrLess(edadesInput ? edadesInput.value : '');
+        var shouldShow = !!(hasCuidarNinos && hasLimpiezaGeneral && hasNinoLe5);
+        if (!shouldShow) dismissed = false;
+        var visible = shouldShow && !dismissed;
+        alertWrap.classList.toggle('d-none', !visible);
+        alertWrap.setAttribute('aria-hidden', visible ? 'false' : 'true');
+      }
+
+      if (ackBtn) {
+        ackBtn.addEventListener('click', function () {
+          dismissed = true;
+          sync();
+        });
+      }
+      if (edadesInput) {
+        edadesInput.addEventListener('input', sync);
+      }
+
+      sync();
+      return { sync: sync };
+    }
+
+    function setupMascotaGuidance() {
+      var mascotaInput = byId('{{ form.mascota.id if form.mascota is defined else "" }}');
+      var secondaryWrap = byId('wrap_mascota_secondary_note');
+      if (!mascotaInput || !secondaryWrap) return null;
+
+      function isMascotaDeclared(txt) {
+        var v = stripAccents(norm(txt));
+        if (!v) return false;
+        if (v === 'no' || v === 'ninguna' || v === 'ninguno' || v === 'sin' || v === 'n/a' || v === 'na' || v === '0') {
+          return false;
+        }
+        if (v.indexOf('sin ') === 0) return false;
+        if (v.indexOf('no ') === 0) return false;
+        return true;
+      }
+
+      function sync() {
+        var show = isMascotaDeclared(mascotaInput.value);
+        secondaryWrap.classList.toggle('d-none', !show);
+        secondaryWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+      }
+
+      mascotaInput.addEventListener('input', sync);
+      mascotaInput.addEventListener('change', sync);
+      sync();
+      return { sync: sync };
+    }
+
+    function syncSantiagoRutaNotice() {
+      var ciudadInput = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
+      var rutaInput = byId('{{ form.rutas_cercanas.id if form.rutas_cercanas is defined else "" }}');
+      var noticeWrap = byId('wrap_rutas_santiago_notice');
+      if (!ciudadInput || !rutaInput || !noticeWrap) return;
+      var ciudadTxt = stripAccents(norm(ciudadInput.value));
+      var isSantiago = ciudadTxt === 'santiago' || ciudadTxt.indexOf('santiago ') === 0 || ciudadTxt.indexOf('santiago/') === 0 || ciudadTxt.indexOf('santiago -') === 0;
+      var rutaVacia = !norm(rutaInput.value);
+      var show = !!(isSantiago && rutaVacia);
+      noticeWrap.classList.toggle('d-none', !show);
+      noticeWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function syncHabitacionesBanosSelectors() {
+      var habHidden = byId('habitaciones_hidden');
+      var banHidden = byId('banos_hidden');
+      var habOtroWrap = byId('wrap_habitaciones_otro');
+      var banOtroWrap = byId('wrap_banos_otro');
+      var habOtroInput = byId('habitaciones_otro_input');
+      var banOtroInput = byId('banos_otro_input');
+      var allowedHab = { '1': true, '2': true, '3': true, '4': true, '5': true };
+      var allowedBan = { '1': true, '1.5': true, '2': true, '2.5': true, '3': true, '3.5': true, '4': true, '4.5': true, '5': true, '5.5': true };
+      if (habHidden) {
+        var habVal = (habHidden.value || '').toString().trim();
+        var habRadioVal = allowedHab[habVal] ? habVal : (habVal ? 'otro' : '');
+        var habRadio = hostForm.querySelector('input[name="habitaciones_selector"][value="' + habRadioVal + '"]');
+        if (habRadio) habRadio.checked = true;
+        if (habOtroWrap) habOtroWrap.classList.toggle('d-none', habRadioVal !== 'otro');
+        if (habOtroInput && habRadioVal === 'otro') habOtroInput.value = habVal;
+      }
+      if (banHidden) {
+        var banVal = (banHidden.value || '').toString().trim();
+        var banRadioVal = allowedBan[banVal] ? banVal : (banVal ? 'otro' : '');
+        var banRadio = hostForm.querySelector('input[name="banos_selector"][value="' + banRadioVal + '"]');
+        if (banRadio) banRadio.checked = true;
+        if (banOtroWrap) banOtroWrap.classList.toggle('d-none', banRadioVal !== 'otro');
+        if (banOtroInput && banRadioVal === 'otro') banOtroInput.value = banVal;
+      }
+    }
+
+    function setupHabitacionesBanosSelectors() {
+      syncHabitacionesBanosSelectors();
+      var habHidden = byId('habitaciones_hidden');
+      var banHidden = byId('banos_hidden');
+      var habOtroWrap = byId('wrap_habitaciones_otro');
+      var banOtroWrap = byId('wrap_banos_otro');
+      var habOtroInput = byId('habitaciones_otro_input');
+      var banOtroInput = byId('banos_otro_input');
+      var habRadios = hostForm.querySelectorAll('input[name="habitaciones_selector"]');
+      var banRadios = hostForm.querySelectorAll('input[name="banos_selector"]');
+      for (var i = 0; i < habRadios.length; i++) {
+        habRadios[i].addEventListener('change', function () {
+          if (!this.checked) return;
+          if (this.value === 'otro') {
+            if (habOtroWrap) habOtroWrap.classList.remove('d-none');
+            if (habHidden && habOtroInput) habHidden.value = (habOtroInput.value || '').toString().trim();
+            return;
+          }
+          if (habOtroWrap) habOtroWrap.classList.add('d-none');
+          if (habHidden) habHidden.value = this.value;
+        });
+      }
+      for (var j = 0; j < banRadios.length; j++) {
+        banRadios[j].addEventListener('change', function () {
+          if (!this.checked) return;
+          if (this.value === 'otro') {
+            if (banOtroWrap) banOtroWrap.classList.remove('d-none');
+            if (banHidden && banOtroInput) banHidden.value = (banOtroInput.value || '').toString().trim();
+            return;
+          }
+          if (banOtroWrap) banOtroWrap.classList.add('d-none');
+          if (banHidden) banHidden.value = this.value;
+        });
+      }
+      if (habOtroInput) {
+        habOtroInput.addEventListener('input', function () {
+          var selected = hostForm.querySelector('input[name="habitaciones_selector"][value="otro"]');
+          if (selected && selected.checked && habHidden) habHidden.value = (this.value || '').toString().trim();
+        });
+      }
+      if (banOtroInput) {
+        banOtroInput.addEventListener('input', function () {
+          var selected = hostForm.querySelector('input[name="banos_selector"][value="otro"]');
+          if (selected && selected.checked && banHidden) banHidden.value = (this.value || '').toString().trim();
+        });
+      }
+    }
+
+    function syncAdultosRules(fromUserEvent) {
+      var adultosWrap = byId('wrap_adultos');
+      var adultosInput = byId('{{ form.adultos.id if form.adultos is defined else "" }}');
+      if (!adultosWrap || !adultosInput) return;
+      var selected = getFieldsByName('funciones');
+      var picked = [];
+      for (var i = 0; i < selected.length; i++) {
+        if (selected[i].checked) picked.push(norm(selected[i].value));
+      }
+      var needsAdultos = false;
+      for (var p = 0; p < picked.length; p++) {
+        if (picked[p] === 'limpieza' || picked[p] === 'cocinar' || picked[p] === 'lavar' || picked[p] === 'planchar') {
+          needsAdultos = true;
+          break;
+        }
+      }
+      adultosWrap.style.display = needsAdultos ? '' : 'none';
+      adultosInput.required = !!needsAdultos;
+      adultosInput.setAttribute('aria-required', needsAdultos ? 'true' : 'false');
+      adultosInput.disabled = !needsAdultos;
+      if (!needsAdultos && fromUserEvent) adultosInput.value = '';
     }
 
     function extractMarker(noteText, prefix) {
@@ -1306,6 +1782,141 @@
       return { sync: sync };
     }
 
+    function setupSalarySuggestion() {
+      var box = byId('salarySuggestionBox');
+      var rangeNode = byId('salarySuggestionRange');
+      var statusNode = byId('salarySuggestionStatus');
+      var reasonsNode = byId('salarySuggestionReasons');
+      var warningNode = byId('salarySuggestionWarning');
+      var useBtn = byId('salarySuggestionUseBtn');
+      var manualBtn = byId('salarySuggestionManualBtn');
+      var sueldoInput = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
+      if (!box || !rangeNode || !statusNode || !reasonsNode || !warningNode || !sueldoInput) return { sync: function () {} };
+
+      var timer = null;
+      function showBox() {
+        box.classList.remove('d-none');
+        box.setAttribute('aria-hidden', 'false');
+      }
+      function hideBox() {
+        box.classList.add('d-none');
+        box.setAttribute('aria-hidden', 'true');
+      }
+      function renderNoSuggest(msg) {
+        hideBox();
+        rangeNode.textContent = '';
+        statusNode.textContent = msg || '';
+        reasonsNode.textContent = '';
+        warningNode.textContent = '';
+        warningNode.classList.add('d-none');
+        if (useBtn) useBtn.classList.add('d-none');
+      }
+      function formatMoney(v) {
+        var n = parseInt(v || 0, 10);
+        if (!n) return "0";
+        return n.toLocaleString('en-US');
+      }
+      function gatherData() {
+        var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
+        var getVal = function (name) {
+          var el = hostForm.querySelector('[name="' + name + '"]');
+          return el ? (el.value || '') : '';
+        };
+        var checkedValue = function (name) {
+          var el = hostForm.querySelector('input[name="' + name + '"]:checked');
+          return el ? (el.value || '') : '';
+        };
+        var getAll = function (name) {
+          var out = [];
+          var nodes = hostForm.querySelectorAll('input[name="' + name + '"]:checked');
+          for (var i = 0; i < nodes.length; i++) out.push(nodes[i].value || '');
+          return out;
+        };
+        return {
+          modalidad_trabajo: selectedModalidad ? (selectedModalidad.value || '') : '',
+          horario: getVal('horario'),
+          horario_hora_entrada: getVal('horario_hora_entrada'),
+          horario_hora_salida: getVal('horario_hora_salida'),
+          tipo_lugar: getVal('tipo_lugar'),
+          habitaciones: getVal('habitaciones'),
+          banos: getVal('banos'),
+          pisos: checkedValue('pisos_selector'),
+          dos_pisos: getVal('dos_pisos'),
+          ninos: getVal('ninos'),
+          edades_ninos: getVal('edades_ninos'),
+          adultos: getVal('adultos'),
+          sueldo: sueldoInput.value || '',
+          envejeciente_tipo_cuidado: checkedValue('envejeciente_tipo_cuidado'),
+          envejeciente_responsabilidades: getAll('envejeciente_responsabilidades'),
+          funciones: getAll('funciones'),
+          areas_comunes: getAll('areas_comunes')
+        };
+      }
+      function fillWithSuggested(result) {
+        if (!result || !result.suggested_min || !result.suggested_max) return;
+        var useValue = Math.round((parseInt(result.suggested_min, 10) + parseInt(result.suggested_max, 10)) / 2);
+        if (!useValue || useValue <= 0) useValue = parseInt(result.suggested_min, 10);
+        sueldoInput.value = String(useValue);
+        sueldoInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      function render(result) {
+        if (!result) return;
+        if (!result.can_suggest) {
+          renderNoSuggest(result.reason_no_suggestion || result.message || 'No disponible');
+          return;
+        }
+        showBox();
+        if (useBtn) useBtn.classList.remove('d-none');
+        rangeNode.textContent = 'Rango sugerido: RD$' + formatMoney(result.suggested_min) + ' - RD$' + formatMoney(result.suggested_max) + ' mensual';
+        statusNode.textContent = result.message || '';
+        var reasons = result.adjustments || [];
+        var top = [];
+        for (var i = 0; i < reasons.length && top.length < 4; i++) {
+          if (reasons[i] && reasons[i].label) top.push('- ' + reasons[i].label);
+        }
+        reasonsNode.textContent = top.length ? ('Motivos:\n' + top.join('\n')) : '';
+        var warnings = result.warnings || [];
+        warningNode.textContent = warnings.length ? warnings[0] : '';
+        warningNode.classList.toggle('d-none', !warnings.length);
+      }
+      function sync() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          var d = gatherData();
+          var q = new URLSearchParams();
+          Object.keys(d).forEach(function (k) {
+            var val = d[k];
+            if (Array.isArray(val)) {
+              for (var i = 0; i < val.length; i++) q.append(k, val[i]);
+            } else {
+              q.append(k, val || '');
+            }
+          });
+          fetch('/clientes/api/sueldo-sugerido?' + q.toString(), { method: 'GET', credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (json) { render(json); })
+            .catch(function () { renderNoSuggest('No se pudo calcular la sugerencia en este momento.'); });
+        }, 260);
+      }
+      if (useBtn) useBtn.addEventListener('click', function () { sync(); });
+      if (manualBtn) manualBtn.addEventListener('click', function () { sueldoInput.focus(); });
+      if (useBtn) useBtn.addEventListener('click', function () {
+        var d = gatherData();
+        var q = new URLSearchParams();
+        Object.keys(d).forEach(function (k) {
+          var val = d[k];
+          if (Array.isArray(val)) for (var i = 0; i < val.length; i++) q.append(k, val[i]);
+          else q.append(k, val || '');
+        });
+        fetch('/clientes/api/sueldo-sugerido?' + q.toString(), { method: 'GET', credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (json) { if (json && json.can_suggest) fillWithSuggested(json); render(json); })
+          .catch(function () {});
+      });
+      sync();
+      return { sync: sync };
+    }
+
     function setupEdadSingleChoice() {
       var wrap = byId('wrap_edad_requerida');
       if (!wrap) return;
@@ -1380,13 +1991,20 @@
     initModalidadGuided();
     setupEdadSingleChoice();
     setupPlancharWarning();
+    var ninosLimpiezaSmartAlertCtrl = setupNinosLimpiezaSmartAlert();
+    var mascotaGuidanceCtrl = setupMascotaGuidance();
     var homeStructureCtrl = setupHomeStructureVisibility();
+    var salarySuggestionCtrl = setupSalarySuggestion();
     syncOtherFields(false);
     setupAreasTodas();
     syncFromExistingMarkers();
     syncPisosAndPasaje();
     syncChoiceSelectedState();
     syncNinosRules(false);
+    syncSantiagoRutaNotice();
+    setupHabitacionesBanosSelectors();
+    syncAdultosRules(false);
+    syncEnvejecienteSection(false);
 
     hostForm.addEventListener('change', function (ev) {
       var name = (ev.target && ev.target.name) || '';
@@ -1402,16 +2020,32 @@
         syncOtherFields(true);
         syncChoiceSelectedState();
         syncNinosRules(true);
+        syncAdultosRules(true);
+        syncEnvejecienteSection(true);
+        if (ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
+          ninosLimpiezaSmartAlertCtrl.sync();
+        }
+      }
+      if (name === 'envejeciente_tipo_cuidado' || name === 'envejeciente_solo_acompanamiento') {
+        syncEnvejecienteSection(true);
       }
       if (name === 'pisos_selector' || name === 'pasaje_mode') {
         syncPisosAndPasaje();
       }
       if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
         syncModalidadGuided(true);
+        syncHorarioInteligente();
       }
       if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
         syncNinosRules(true);
       }
+      if (name === '{{ form.mascota.name if form.mascota is defined else "" }}') {
+        if (mascotaGuidanceCtrl && mascotaGuidanceCtrl.sync) mascotaGuidanceCtrl.sync();
+      }
+      if (name === '{{ form.ciudad_sector.name if form.ciudad_sector is defined else "" }}' || name === '{{ form.rutas_cercanas.name if form.rutas_cercanas is defined else "" }}') {
+        syncSantiagoRutaNotice();
+      }
+      if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
     });
 
     var modalidadOtroInput = byId('modalidad_otro_text');
@@ -1425,31 +2059,55 @@
     if (ninosInputNode) {
       ninosInputNode.addEventListener('input', function () {
         syncNinosRules(true);
+        if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
+      });
+    }
+    var edadesInputNode = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
+    if (edadesInputNode && ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
+      edadesInputNode.addEventListener('input', function () {
+        ninosLimpiezaSmartAlertCtrl.sync();
+      });
+    }
+    var ciudadInputNode = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
+    if (ciudadInputNode) ciudadInputNode.addEventListener('input', syncSantiagoRutaNotice);
+    var rutaInputNode = byId('{{ form.rutas_cercanas.id if form.rutas_cercanas is defined else "" }}');
+    if (rutaInputNode) rutaInputNode.addEventListener('input', syncSantiagoRutaNotice);
+    var sueldoInputNode = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
+    if (sueldoInputNode) {
+      sueldoInputNode.addEventListener('input', function () {
+        if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
       });
     }
     var banosInputNode = hostForm.querySelector('[name="banos"]');
     if (banosInputNode) {
       banosInputNode.addEventListener('blur', cleanBanosDisplayValue);
     }
+    ['horario_dias_trabajo', 'horario_hora_entrada', 'horario_hora_salida', 'horario_dormida_entrada', 'horario_dormida_salida'].forEach(function (id) {
+      var node = byId(id);
+      if (!node) return;
+      node.addEventListener('input', syncHorarioInteligente);
+    });
 
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
+      syncHorarioInteligente();
       syncNinosRules(false);
+      syncAdultosRules(false);
+      syncEnvejecienteSection(false);
+      if (ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
+        ninosLimpiezaSmartAlertCtrl.sync();
+      }
+      if (mascotaGuidanceCtrl && mascotaGuidanceCtrl.sync) {
+        mascotaGuidanceCtrl.sync();
+      }
       var allMasterControls = hostForm.querySelectorAll('input[type="checkbox"][value="todas_anteriores"]');
       for (var mi = 0; mi < allMasterControls.length; mi++) {
         allMasterControls[mi].checked = false;
       }
-      var note = hostForm.querySelector('textarea[name="nota_cliente"]');
-      if (!note) return;
-      var pisoNode = hostForm.querySelector('input[name="pisos_selector"]:checked');
-      var piso = pisoNode ? norm(pisoNode.value) : '1';
-      var base = removeMarkers(note.value || '');
-      var lines = base ? [base] : [];
-      if (piso === '3+') lines.push('Pisos reportados: 3+.');
-      note.value = lines.join('\n').trim();
     });
 
     cleanBanosDisplayValue();
+    syncHorarioInteligente();
 
     return true;
   }
