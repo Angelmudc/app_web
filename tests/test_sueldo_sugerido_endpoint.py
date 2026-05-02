@@ -28,7 +28,7 @@ def test_endpoint_caso_sugerible_correcto():
     assert resp.status_code == 200
     data = resp.get_json()
     assert data["can_suggest"] is True
-    assert data["base_salary"] == 16000
+    assert data["base_salary"] == 18000
     assert data["suggested_min"] >= 16000
     assert data["suggested_max"] > data["suggested_min"]
 
@@ -132,4 +132,3 @@ def test_endpoint_no_rompe_con_valores_raros_y_nunca_500():
     data = resp.get_json()
     assert isinstance(data, dict)
     assert data.get("can_suggest") is False
-

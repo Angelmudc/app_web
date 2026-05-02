@@ -327,6 +327,12 @@
     color: #345170;
   }
 
+  .public-mascota-note--important {
+    border-color: #efc36e;
+    background: linear-gradient(180deg, #fff9ef 0%, #fff4df 100%);
+    box-shadow: inset 0 0 0 1px rgba(197, 132, 23, 0.12);
+  }
+
   .public-planchar-modal-backdrop {
     position: fixed;
     inset: 0;
@@ -828,11 +834,10 @@
       </div>
       {{ render_field(form.mascota, wrapper_id='wrap_mascota') }}
       <div class="public-field public-full">
-        <div class="public-mascota-note" id="wrap_mascota_main_note" aria-live="polite" aria-hidden="false">
-          <p>Si hay mascotas en el hogar, por favor indícalo. Esta información nos ayuda a tomar en cuenta posibles alergias o preferencias de las candidatas.</p>
-        </div>
-        <div class="public-mascota-note d-none" id="wrap_mascota_secondary_note" aria-live="polite" aria-hidden="true">
-          <p>Si la doméstica no tendrá responsabilidades relacionadas con la mascota, puedes aclararlo en las notas de la solicitud.</p>
+        <div class="public-mascota-note public-mascota-note--important d-none" id="wrap_mascota_secondary_note" aria-live="polite" aria-hidden="true">
+          <p><strong>Importante sobre mascotas:</strong></p>
+          <p>Si la domestica tendra que alimentar, limpiar, pasear o atender la mascota, esto puede hacer que la solicitud sea menos atractiva para algunas candidatas.</p>
+          <p>Si la domestica no tendra responsabilidades con la mascota, aclaralo en las notas de la solicitud.</p>
         </div>
       </div>
     </div>

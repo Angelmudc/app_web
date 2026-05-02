@@ -17,6 +17,7 @@ BASE_SALARY_MAP = {
     "sd_1_dia": 5000,
     "sd_2_dias": 9500,
     "sd_3_dias": 12500,
+    "sd_4_dias": 15000,
     "sd_l_v": 16000,
     "sd_l_s": 17000,
     "sd_fin_semana": 11000,
@@ -24,6 +25,14 @@ BASE_SALARY_MAP = {
     "cd_l_s": 22000,
     "cd_quincenal": 25000,
     "cd_fin_semana": 14000,
+}
+
+SD_PROFILE_BASE = {
+    1: {"ninera": 4500, "domestica": 5000, "mixto": 6500},
+    2: {"ninera": 8000, "domestica": 9000, "mixto": 10000},
+    3: {"ninera": 10500, "domestica": 12500, "mixto": 14500},
+    4: {"ninera": 12500, "domestica": 15000, "mixto": 16000},
+    5: {"ninera": 15000, "domestica": 18000, "mixto": 20000},
 }
 
 
@@ -102,6 +111,7 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
         (r"salida\s+diaria.*1\s*d[ií]a|1\s*d[ií]a\s*a\s*la\s*semana", "sd_1_dia"),
         (r"salida\s+diaria.*2\s*d[ií]as|2\s*d[ií]as\s*a\s*la\s*semana", "sd_2_dias"),
         (r"salida\s+diaria.*3\s*d[ií]as|3\s*d[ií]as\s*a\s*la\s*semana", "sd_3_dias"),
+        (r"salida\s+diaria.*4\s*d[ií]as|4\s*d[ií]as\s*a\s*la\s*semana", "sd_4_dias"),
         (r"salida\s+diaria.*lunes\s*a\s*viernes|lunes\s*a\s*viernes", "sd_l_v"),
         (r"salida\s+diaria.*lunes\s*a\s*s[áa]bado|lunes\s*a\s*s[áa]bado", "sd_l_s"),
         (r"salida\s+diaria.*fin\s*de\s*semana|s[áa]bado\s*y\s*domingo|viernes\s*a\s*lunes", "sd_fin_semana"),
@@ -116,6 +126,39 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
     if "otro" in modalidad:
         return None, "ambigua"
     return None, "ambigua"
+
+
+def _service_profile(funciones: list[str]) -> str:
+    has_ninos = "ninos" in funciones
+    has_limpieza = "limpieza" in funciones
+    if has_ninos and has_limpieza:
+        return "mixto"
+    if has_ninos and not has_limpieza:
+        return "ninera"
+    return "domestica"
+
+
+def _sd_days_from_schedule(schedule_key: str) -> int | None:
+    if schedule_key == "sd_l_v":
+        return 5
+    if schedule_key == "sd_1_dia":
+        return 1
+    if schedule_key == "sd_2_dias":
+        return 2
+    if schedule_key == "sd_3_dias":
+        return 3
+    if schedule_key == "sd_4_dias":
+        return 4
+    return None
+
+
+def _base_salary_for_schedule(schedule_key: str, funciones: list[str]) -> tuple[int, str]:
+    if schedule_key.startswith("sd_"):
+        days = _sd_days_from_schedule(schedule_key)
+        profile = _service_profile(funciones)
+        if days in SD_PROFILE_BASE:
+            return SD_PROFILE_BASE[days][profile], profile
+    return BASE_SALARY_MAP[schedule_key], "general"
 
 
 def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int, list[str], str]:
@@ -168,6 +211,7 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
 
     ages = [int(x) for x in re.findall(r"\b(\d{1,2})\b", edades)]
     small = len([a for a in ages if a <= 5])
+    has_older_only = bool(ninos > 0 and ages and small == 0 and all(a >= 6 for a in ages))
     if small == 0 and ninos > 0 and not ages:
         small = 1
 
@@ -185,6 +229,10 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
         motivos.append("3+ ninos pequenos: solicitud de alta exigencia.")
 
     all_funcs = {"limpieza", "cocinar", "lavar", "planchar"}
+    if has_older_only:
+        motivos.append(
+            "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
+        )
     if small > 0 and all_funcs.issubset(set(funciones)):
         ajustes += 1000
         motivos.append("Ninos pequenos con todas las funciones aumenta dificultad.")
@@ -199,16 +247,30 @@ def classify_elder_care(data: dict[str, Any], funciones: list[str]) -> tuple[int
         return 0, [], "normal", []
     tipo = _norm(data.get("envejeciente_tipo_cuidado"))
     resp = _as_list(data.get("envejeciente_responsabilidades"))
+    solo_acomp = _norm(data.get("envejeciente_solo_acompanamiento")) in {"1", "true", "y", "yes", "si"}
     ajustes = 0
     motivos: list[str] = []
     warnings: list[str] = []
     nivel = "normal"
-    if tipo == "encamado":
-        ajustes += 5000
-        nivel = "muy_alta"
-        motivos.append("Cuidado de envejeciente encamado.")
-        if any(_norm(r) in {"pampers", "higiene", "comida", "medicamentos", "movilidad"} for r in resp):
+    if tipo == "independiente":
+        ajustes += 1000
+        nivel = "media"
+        motivos.append("Cuidado de envejeciente independiente (acompanamiento/supervision).")
+    elif tipo == "encamado":
+        strong_resp = any(_norm(r) in {"pampers", "higiene", "comida", "medicamentos", "movilidad"} for r in resp)
+        if solo_acomp:
+            ajustes += 1500
+            nivel = "media"
+            motivos.append("Envejeciente encamado con solo acompanamiento o supervision.")
+        elif strong_resp:
+            ajustes += 5000
+            nivel = "muy_alta"
+            motivos.append("Cuidado de envejeciente encamado con asistencia directa.")
             warnings.append("Solicitud de alta responsabilidad por cuidados de envejeciente.")
+        else:
+            ajustes += 3500
+            nivel = "alta"
+            motivos.append("Cuidado de envejeciente encamado.")
     return ajustes, motivos, nivel, warnings
 
 
@@ -306,14 +368,24 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
         elif "nino pequeno" in n or "ninos pequenos" in n:
             bullet = "Ninos pequenos que requieren mas atencion."
         elif "ninos mayores" in n:
-            bullet = "Apoyo con ninos, combinado con otras tareas."
+            bullet = "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
+        elif "supervision" in n and "atencion directa" in n and "ninos" in n:
+            bullet = "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
         elif "envejeciente encamado" in n:
             bullet = "Cuidado de envejeciente."
+        elif "envejeciente independiente" in n:
+            bullet = "Cuidado de envejeciente con acompanamiento o supervision."
         elif "6+ adultos" in n or "5+ adultos" in n:
             bullet = "Hogar con varios adultos."
         elif "modalidad clasificada" in n:
             # Evitar exponer codigo tecnico (sd_l_v, cd_l_s, etc.).
             bullet = "Modalidad y jornada seleccionadas."
+        elif "perfil base de servicio" in n:
+            bullet = txt
+        elif "dias por semana considerados" in n:
+            bullet = txt
+        elif "perfil combinado: domestica + cuidado de envejeciente" in n:
+            bullet = txt
         if bullet and bullet not in seen:
             seen.add(bullet)
             out.append(bullet)
@@ -389,9 +461,22 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         out["message"] = NO_SUGGESTION_MESSAGE
         return out
 
-    base = BASE_SALARY_MAP[schedule_key]
+    base, profile = _base_salary_for_schedule(schedule_key, funciones)
     ajustes_total = 0
     motivos: list[str] = [f"Modalidad clasificada: {schedule_key}."]
+    if schedule_key.startswith("sd_"):
+        profile_txt = {
+            "ninera": "ninera",
+            "domestica": "domestica",
+            "mixto": "domestica y ninera",
+            "general": "general",
+        }.get(profile, "general")
+        days = _sd_days_from_schedule(schedule_key)
+        if days:
+            motivos.append(f"Perfil base de servicio: {profile_txt}.")
+            motivos.append(f"Dias por semana considerados: {days}.")
+    if "envejeciente" in funciones and "limpieza" in funciones:
+        motivos.append("Perfil combinado: domestica + cuidado de envejeciente.")
     warnings: list[str] = []
     levels = ["normal"]
 
@@ -448,6 +533,14 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     )
     if schedule_key == "sd_l_v" and not strong_non_schedule and suggested_max > 21000:
         suggested_max = 21000
+        if suggested_min > suggested_max:
+            suggested_min = max(base, suggested_max - 1500)
+
+    # Si solo hay ninos mayores (sin ninos pequenos), evitar picos exagerados.
+    has_small_children_signal = any("nino pequeno" in _norm(m) or "ninos pequenos" in _norm(m) for m in child_mot)
+    has_older_only_signal = any("mas de supervision que de atencion directa" in _norm(m) for m in child_mot)
+    if schedule_key == "sd_l_v" and has_older_only_signal and not has_small_children_signal and suggested_max > 23000:
+        suggested_max = 23000
         if suggested_min > suggested_max:
             suggested_min = max(base, suggested_max - 1500)
     client_salary = parse_salary_amount(data.get("sueldo"))

@@ -187,10 +187,10 @@ def test_shared_partial_smart_alert_uses_age_parser_for_free_text():
 
 def test_shared_partial_contains_mascota_guidance_notes():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
-    assert "id=\"wrap_mascota_main_note\"" in partial
-    assert "Si hay mascotas en el hogar, por favor indícalo." in partial
     assert "id=\"wrap_mascota_secondary_note\"" in partial
-    assert "Si la doméstica no tendrá responsabilidades relacionadas con la mascota" in partial
+    assert "Importante sobre mascotas:" in partial
+    assert "esto puede hacer que la solicitud sea menos atractiva para algunas candidatas." in partial
+    assert "Si la domestica no tendra responsabilidades con la mascota" in partial
 
 
 def test_shared_partial_mascota_secondary_note_is_conditional_and_does_not_edit_notes():
