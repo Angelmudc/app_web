@@ -146,7 +146,7 @@ def test_nino_7_anos_no_aumenta_fuerte():
     )
     assert with_nino_7["can_suggest"] is True and with_nino_1["can_suggest"] is True
     assert with_nino_7["suggested_min"] == with_nino_1["suggested_min"]
-    assert "mas de supervision que de atencion directa" in with_nino_7["message"].lower()
+    assert "más de supervisión que de atención directa" in with_nino_7["message"].lower()
 
 
 def test_ninos_8_y_10_no_aumentan_fuerte():
@@ -378,10 +378,10 @@ def test_salary_message_includes_intro_why_warning_and_flexible_close():
     )
     msg = result["message"]
     assert "Para este tipo de solicitud, el sueldo suele estar entre RD$" in msg
-    assert "¿Por que?" in msg
+    assert "¿Por qué este rango?" in msg
     assert "- " in msg
     assert "puede dificultar encontrar una candidata disponible o adecuada." in msg
-    assert "Puedes ajustar el monto segun tu presupuesto" in msg
+    assert "Puedes ajustar el monto según tu presupuesto" in msg
 
 
 def test_salary_message_low_load_uses_relaxed_wording():
@@ -464,7 +464,7 @@ def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
     assert "ayuda de pasaje" in result["message"].lower()
-    assert "marcar la opcion de ayuda para el pasaje" in result["message"].lower()
+    assert "marcar la opción de ayuda para el pasaje" in result["message"].lower()
 
 
 def test_con_dormida_lv_base_minima_20000():

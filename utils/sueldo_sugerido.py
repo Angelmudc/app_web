@@ -366,6 +366,23 @@ def _format_rd(amount: int) -> str:
     return f"{int(amount):,}".replace(",", ",")
 
 
+def _human_schedule_from_key(schedule_key: str) -> str:
+    mapping = {
+        "sd_1_dia": "salida diaria de 1 día a la semana",
+        "sd_2_dias": "salida diaria de 2 días a la semana",
+        "sd_3_dias": "salida diaria de 3 días a la semana",
+        "sd_4_dias": "salida diaria de 4 días a la semana",
+        "sd_l_v": "salida diaria de lunes a viernes",
+        "sd_l_s": "salida diaria de lunes a sábado",
+        "sd_fin_semana": "salida diaria de fin de semana",
+        "cd_l_v": "con dormida de lunes a viernes",
+        "cd_l_s": "con dormida de lunes a sábado",
+        "cd_quincenal": "con dormida con salida quincenal",
+        "cd_fin_semana": "con dormida de fin de semana",
+    }
+    return mapping.get(schedule_key, "modalidad y horario seleccionados")
+
+
 def _reason_bullets(payload: dict[str, Any]) -> list[str]:
     raw = payload.get("adjustments") or []
     labels = []
@@ -382,36 +399,45 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
         n = _norm(txt)
         bullet = ""
         if "incluye planchado" in n:
-            bullet = "Multiples funciones del hogar (incluye planchado)."
+            bullet = "Incluye planchado dentro de las funciones del hogar."
         elif "casa muy grande" in n or "casa grande" in n or "casa mediana" in n or "apartamento amplio" in n:
-            bullet = "Tamano del hogar y espacios a mantener."
+            bullet = "El tamaño del hogar y sus espacios también influyen en la carga."
         elif "areas comunes" in n:
-            bullet = "Varias areas comunes que aumentan la carga diaria."
+            bullet = "Hay varias áreas comunes que aumentan la carga diaria."
         elif "jornada de 10 horas" in n or "jornada de 11 horas" in n or "jornada de 12+ horas" in n:
-            bullet = "Horario extendido."
+            bullet = "El horario es extendido."
         elif "salida despues de 6:00 pm" in n or "salida despues de 7:00 pm" in n:
-            bullet = "Salida tarde."
+            bullet = "La hora de salida es tarde."
         elif "nino pequeno" in n or "ninos pequenos" in n:
-            bullet = "Ninos pequenos que requieren mas atencion."
+            bullet = "El cuidado de niños pequeños requiere más atención y responsabilidad."
         elif "ninos mayores" in n:
-            bullet = "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
+            bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión que de atención directa."
         elif "supervision" in n and "atencion directa" in n and "ninos" in n:
-            bullet = "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
+            bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión que de atención directa."
         elif "envejeciente encamado" in n:
-            bullet = "Cuidado de envejeciente."
+            bullet = "Incluye cuidado de envejeciente encamado, que exige mayor responsabilidad."
         elif "envejeciente independiente" in n:
-            bullet = "Cuidado de envejeciente con acompanamiento o supervision."
+            bullet = "Incluye cuidado de envejeciente con acompañamiento o supervisión."
         elif "6+ adultos" in n or "5+ adultos" in n:
-            bullet = "Hogar con varios adultos."
+            bullet = "Es un hogar con varios adultos, lo que incrementa tareas de apoyo."
         elif "modalidad clasificada" in n:
-            # Evitar exponer codigo tecnico (sd_l_v, cd_l_s, etc.).
-            bullet = "Modalidad y jornada seleccionadas."
+            raw_key = txt.split(":", 1)[1].strip(" .") if ":" in txt else ""
+            bullet = f"Modalidad: {_human_schedule_from_key(raw_key)}."
         elif "perfil base de servicio" in n:
-            bullet = txt
+            if "ninera" in n:
+                bullet = "El rango parte del servicio de niñera según la modalidad y días seleccionados."
+            elif "cuidado de envejeciente" in n:
+                bullet = "El rango parte de un servicio de cuidado de envejeciente según la modalidad y días seleccionados."
+            elif "domestica y ninera" in n:
+                bullet = "La solicitud combina cuidado de niños con tareas del hogar."
+            else:
+                bullet = "El rango parte del tipo de servicio y la modalidad seleccionada."
         elif "dias por semana considerados" in n:
-            bullet = txt
+            if ":" in txt:
+                days = txt.split(":", 1)[1].strip(" .")
+                bullet = f"Días de trabajo considerados: {days}."
         elif "perfil combinado: domestica + cuidado de envejeciente" in n:
-            bullet = txt
+            bullet = "La solicitud combina tareas del hogar con cuidado de envejeciente."
         if bullet and bullet not in seen:
             seen.add(bullet)
             out.append(bullet)
@@ -428,8 +454,9 @@ def build_salary_message(payload: dict[str, Any]) -> str:
     status = payload.get("offer_status")
     load_level = _norm(payload.get("load_level"))
     reasons = _reason_bullets(payload)
+    title = f"Rango sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual"
     intro = f"Para este tipo de solicitud, el sueldo suele estar entre RD${_format_rd(min_s)} y RD${_format_rd(max_s)} mensual + ayuda de pasaje."
-    why_block = "¿Por que?\n" + "\n".join(f"- {r}" for r in reasons)
+    why_block = "¿Por qué este rango?\n" + "\n".join(f"- {r}" for r in reasons)
 
     if load_level in {"normal", "media"}:
         warning_msg = "Ofrecer menos puede dificultar encontrar una candidata disponible o adecuada."
@@ -440,16 +467,16 @@ def build_salary_message(payload: dict[str, Any]) -> str:
         "competitiva": "Tu oferta actual luce competitiva para esta solicitud.",
         "baja": "Tu oferta actual parece algo baja frente a la carga estimada.",
         "muy_baja": "Tu oferta actual luce bastante por debajo de lo que normalmente se requiere.",
-        "sin_sueldo": "Aun no has indicado sueldo; este rango te sirve como referencia.",
+        "sin_sueldo": "Aún no has indicado sueldo; este rango te sirve como referencia.",
     }.get(status, "")
     closing = (
-        "Puedes ajustar el monto segun tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal.\n\n"
-        "Tambien recomendamos marcar la opcion de ayuda para el pasaje, ya que mejora el atractivo de la oferta."
+        "Puedes ajustar el monto según tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal.\n\n"
+        "También recomendamos marcar la opción de ayuda para el pasaje, ya que mejora el atractivo de la oferta."
     )
 
-    parts = [intro, why_block, warning_msg, closing]
+    parts = [title, intro, why_block, warning_msg, closing]
     if status_msg:
-        parts.insert(2, status_msg)
+        parts.insert(3, status_msg)
     return "\n\n".join(parts)
 
 
