@@ -281,7 +281,7 @@ def test_ninera_sin_habitaciones_banos_sigue_sugiriendo():
             edades_ninos="7",
             habitaciones="",
             banos="",
-            tipo_lugar="",
+            tipo_lugar="casa",
         )
     )
     assert r["can_suggest"] is True
@@ -294,7 +294,7 @@ def test_envejeciente_con_cocinar_sin_limpieza_sugiere():
             envejeciente_tipo_cuidado="independiente",
             habitaciones="",
             banos="",
-            tipo_lugar="",
+            tipo_lugar="casa",
         )
     )
     assert r["can_suggest"] is True
@@ -778,6 +778,18 @@ def test_message_visible_no_contiene_tecnicismos():
     assert "modalidad clasificada" not in msg
 
 
+def test_sin_tipo_lugar_no_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            tipo_lugar="",
+            funciones=["limpieza", "cocinar", "lavar"],
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is False
+    assert "servicio será en casa o apartamento" in (r.get("message") or "").lower()
+
+
 def test_todas_las_areas_comunes_ajuste_max_2000():
     r = analyze_salary_suggestion(
         _base_payload(
@@ -960,7 +972,23 @@ def test_casa_3h_2b_con_limpieza_cocinar_lavar_no_aumenta_por_tamano():
     assert (r["suggested_min"] - r["base_salary"]) == 0
 
 
-def test_casa_3h_3b_si_aumenta():
+def test_casa_2h_3b_no_aumenta():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            tipo_lugar="casa",
+            habitaciones="2",
+            banos="3",
+            pisos="1",
+            areas_comunes=[],
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) == 0
+
+
+def test_casa_3h_3b_no_aumenta():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -973,7 +1001,7 @@ def test_casa_3h_3b_si_aumenta():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) > 0
+    assert (r["suggested_min"] - r["base_salary"]) == 0
 
 
 def test_casa_4h_si_aumenta():
@@ -1040,6 +1068,22 @@ def test_apto_4h_2b_no_aumenta_o_minimo():
     assert (r["suggested_min"] - r["base_salary"]) <= 500
 
 
+def test_apto_4h_3b_no_aumenta_o_minimo():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            tipo_lugar="apto",
+            habitaciones="4",
+            banos="3",
+            pisos="1",
+            areas_comunes=[],
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) <= 500
+
+
 def test_apto_4b_aumento_leve_menor_que_casa():
     apto = analyze_salary_suggestion(
         _base_payload(
@@ -1082,3 +1126,17 @@ def test_casa_pequena_con_funciones_normales_mantiene_base():
     )
     assert r["can_suggest"] is True
     assert r["suggested_min"] == r["base_salary"]
+def test_casa_3h_4b_si_aumenta():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            tipo_lugar="casa",
+            habitaciones="3",
+            banos="4",
+            pisos="1",
+            areas_comunes=[],
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) > 0

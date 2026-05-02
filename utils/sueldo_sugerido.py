@@ -14,6 +14,7 @@ NO_SUGGESTION_MESSAGE = (
 SOFT_INCOMPLETE_MESSAGE = "Completa modalidad, horario y funciones para ver una sugerencia."
 CHILDREN_INCOMPLETE_MESSAGE = "Completa la cantidad o edades de los niños para ver una sugerencia de sueldo."
 ADULTS_INCOMPLETE_MESSAGE = "Completa la cantidad de adultos del hogar para ver una sugerencia de sueldo."
+PLACE_INCOMPLETE_MESSAGE = "Selecciona si el servicio será en casa o apartamento para ver una sugerencia de sueldo."
 
 BASE_SALARY_MAP = {
     "sd_1_dia": 5000,
@@ -209,9 +210,6 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
             ajustes += 1000
             nivel = "media"
             motivos.append("Casa grande por cantidad de habitaciones.")
-        elif hab >= 3 and banos >= 3:
-            ajustes += 500
-            motivos.append("Casa con mayor carga por distribución de baños.")
 
         if banos >= 4:
             ajustes += 1000
@@ -514,6 +512,12 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         out = dict(base_out)
         out["reason_no_suggestion"] = SOFT_INCOMPLETE_MESSAGE
         out["message"] = SOFT_INCOMPLETE_MESSAGE
+        return out
+
+    if not tipo_lugar:
+        out = dict(base_out)
+        out["reason_no_suggestion"] = PLACE_INCOMPLETE_MESSAGE
+        out["message"] = PLACE_INCOMPLETE_MESSAGE
         return out
 
     if (
