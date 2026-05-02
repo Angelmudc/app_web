@@ -195,7 +195,7 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
         return 0, motivos, nivel
 
     if tipo_lugar == "casa":
-        # Estructura del hogar: ajustes moderados para evitar sobreestimar.
+        # Casa pequeña/normal: hasta 3 habitaciones y 2 baños no sube por tamaño.
         if pisos == "3+":
             ajustes += 1500
             nivel = "media"
@@ -204,13 +204,19 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
             ajustes += 1000
             nivel = "media"
             motivos.append("La vivienda tiene más de un nivel.")
-        elif hab >= 4 or banos >= 4:
+
+        if hab >= 4:
             ajustes += 1000
             nivel = "media"
-            motivos.append("Casa grande por habitaciones/baños.")
-        elif hab >= 3:
+            motivos.append("Casa grande por cantidad de habitaciones.")
+        elif hab >= 3 and banos >= 3:
             ajustes += 500
-            motivos.append("Casa mediana por cantidad de habitaciones.")
+            motivos.append("Casa con mayor carga por distribución de baños.")
+
+        if banos >= 4:
+            ajustes += 1000
+            nivel = "media"
+            motivos.append("Casa grande por cantidad de baños.")
 
         if has_all_areas:
             ajustes += 2000
@@ -223,9 +229,16 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
             ajustes += 500
             motivos.append("Incluye varias áreas comunes del hogar.")
     elif tipo_lugar == "apto":
-        if hab >= 4 and banos >= 3:
+        # Apartamentos suben menos que casas.
+        if banos >= 4:
             ajustes += 500
-            motivos.append("Apartamento amplio con varias áreas.")
+            motivos.append("Apartamento con varios baños.")
+        if has_all_areas:
+            ajustes += 500
+            motivos.append("Incluye varias áreas comunes del hogar.")
+        elif some_areas_count >= 4:
+            ajustes += 500
+            motivos.append("Incluye varias áreas comunes del hogar.")
     return ajustes, motivos, nivel
 
 
