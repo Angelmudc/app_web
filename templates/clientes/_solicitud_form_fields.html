@@ -470,6 +470,58 @@
   .public-choice-grid--funciones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .public-choice-grid--areas_comunes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .public-choice-grid--areas_comunes .public-choice-item { min-height: 36px; }
+  .public-envejeciente-card {
+    padding: 12px;
+  }
+
+  .public-envejeciente-header {
+    margin-bottom: 10px;
+  }
+
+  .public-envejeciente-header .public-form-card-desc {
+    margin-top: 6px;
+  }
+
+  .public-envejeciente-note {
+    border: 1px solid #d8e6f3;
+    border-radius: 10px;
+    background: #f6fbff;
+    color: #335270;
+    padding: 10px 11px;
+    font-size: .82rem;
+    line-height: 1.45;
+  }
+
+  .public-envejeciente-acomp-card {
+    width: 100%;
+    margin: 0;
+    border: 1px solid #d4e0ed;
+    border-radius: 12px;
+    background: #f8fbff;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 11px;
+    color: #27405e;
+    font-size: .82rem;
+    line-height: 1.4;
+    cursor: pointer;
+  }
+
+  .public-envejeciente-acomp-card .form-check-input {
+    margin-top: 2px;
+    flex: 0 0 auto;
+  }
+
+  .public-envejeciente-acomp-card:hover {
+    border-color: #95b2cf;
+    background: #f2f8ff;
+  }
+
+  .public-envejeciente-acomp-card:focus-within {
+    border-color: #6fa5d6;
+    box-shadow: 0 0 0 0.18rem rgba(57, 123, 179, 0.18);
+  }
   .public-comp-grid .public-field { align-self: start; }
   .public-comp-note { margin-top: 2px; }
 
@@ -632,12 +684,29 @@
       </div>
       {{ render_field(form.funciones_otro, wrapper_id='wrap_funciones_otro') }}
       <div class="public-field public-full" id="wrap_envejeciente_info" style="display:none;">
-        <div class="public-form-card" style="padding:10px;">
-          <div class="public-form-card-header" style="margin-bottom:8px;">
+        <div class="public-form-card public-envejeciente-card">
+          <div class="public-form-card-header public-envejeciente-header">
             <h4 class="public-form-card-title">Informacion del envejeciente</h4>
+            <p class="public-form-card-desc">Indica el nivel de asistencia que necesita la persona.</p>
           </div>
-          {{ render_field(form.envejeciente_tipo_cuidado, hint='Independiente: acompanamiento/supervision ligera. Encamado: asistencia directa diaria.', wrapper_class='public-full') }}
-          {{ render_field(form.envejeciente_solo_acompanamiento, wrapper_class='public-full') }}
+          {{ render_field(form.envejeciente_tipo_cuidado, title='Tipo de cuidado', wrapper_class='public-full') }}
+          <div class="public-field public-full" id="wrap_envejeciente_info_independiente" style="display:none;">
+            <div class="public-envejeciente-note">
+              El envejeciente puede movilizarse o realizar parte de sus actividades por si mismo. La ayuda requerida es principalmente acompanamiento, supervision o apoyo ligero.
+            </div>
+          </div>
+          <div class="public-field public-full" id="wrap_envejeciente_info_encamado" style="display:none;">
+            <div class="public-envejeciente-note">
+              El envejeciente requiere asistencia directa para higiene, alimentacion, movilidad o cuidado diario.
+            </div>
+          </div>
+          <div class="public-field public-full" id="wrap_envejeciente_solo_acompanamiento" style="display:none;">
+            <label class="public-envejeciente-acomp-card">
+              {{ form.envejeciente_solo_acompanamiento(class='form-check-input') }}
+              <span>La domestica no realizara higiene, panales, alimentacion ni medicamentos; solo acompanamiento o supervision.</span>
+            </label>
+            {{ render_errors(form.envejeciente_solo_acompanamiento) }}
+          </div>
           {{ render_field(form.envejeciente_responsabilidades, wrapper_class='public-full', wrapper_id='wrap_envejeciente_responsabilidades') }}
           {{ render_field(form.envejeciente_nota, wrapper_class='public-full') }}
         </div>
@@ -958,20 +1027,32 @@
       var selected = hasSelectedValue('funciones', 'envejeciente');
       var wrap = byId('wrap_envejeciente_info');
       var respWrap = byId('wrap_envejeciente_responsabilidades');
+      var soloWrap = byId('wrap_envejeciente_solo_acompanamiento');
+      var infoIndWrap = byId('wrap_envejeciente_info_independiente');
+      var infoEncWrap = byId('wrap_envejeciente_info_encamado');
       if (wrap) wrap.style.display = selected ? '' : 'none';
       var tipo = '';
       var tipoChecked = hostForm.querySelector('input[name="envejeciente_tipo_cuidado"]:checked');
       if (tipoChecked) tipo = norm(tipoChecked.value);
       var solo = hostForm.querySelector('input[name="envejeciente_solo_acompanamiento"]');
-      var showResp = selected && tipo === 'encamado' && !(solo && solo.checked);
+      var isEncamado = selected && tipo === 'encamado';
+      var showResp = isEncamado && !(solo && solo.checked);
+      if (infoIndWrap) infoIndWrap.style.display = (selected && tipo === 'independiente') ? '' : 'none';
+      if (infoEncWrap) infoEncWrap.style.display = isEncamado ? '' : 'none';
+      if (soloWrap) soloWrap.style.display = isEncamado ? '' : 'none';
       if (respWrap) respWrap.style.display = showResp ? '' : 'none';
-      if (!selected && fromUserEvent) {
-        var radios = hostForm.querySelectorAll('input[name="envejeciente_tipo_cuidado"]');
-        for (var i = 0; i < radios.length; i++) radios[i].checked = false;
-        if (solo) solo.checked = false;
+      if ((!selected || tipo !== 'encamado') && solo) {
+        solo.checked = false;
+      }
+      if ((!selected || tipo !== 'encamado') && fromUserEvent) {
         var resp = hostForm.querySelectorAll('input[name="envejeciente_responsabilidades"]');
         for (var j = 0; j < resp.length; j++) resp[j].checked = false;
       }
+      if (!selected && fromUserEvent) {
+        var radios = hostForm.querySelectorAll('input[name="envejeciente_tipo_cuidado"]');
+        for (var i = 0; i < radios.length; i++) radios[i].checked = false;
+      }
+      syncChoiceSelectedState();
     }
 
     function syncPisosAndPasaje() {
