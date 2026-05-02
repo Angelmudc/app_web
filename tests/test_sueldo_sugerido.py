@@ -91,3 +91,109 @@ def test_offer_status_competitiva_baja_muy_baja():
     assert r_baja["offer_status"] == "baja"
     assert r_muy_baja["offer_status"] == "muy_baja"
 
+
+def test_salary_message_includes_intro_why_warning_and_flexible_close():
+    result = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar", "planchar", "ninos", "envejeciente"],
+            habitaciones="4",
+            banos="4",
+            pisos="3+",
+            ninos="2",
+            edades_ninos="2 y 5",
+            horario_hora_entrada="8:00 AM",
+            horario_hora_salida="8:00 PM",
+            adultos="6",
+            envejeciente_tipo_cuidado="encamado",
+            envejeciente_responsabilidades=["pampers", "higiene"],
+            sueldo="13000",
+        )
+    )
+    msg = result["message"]
+    assert "Para este tipo de solicitud, el sueldo suele estar entre RD$" in msg
+    assert "¿Por que?" in msg
+    assert "- " in msg
+    assert "puede dificultar encontrar una candidata disponible o adecuada." in msg
+    assert "Puedes ajustar el monto segun tu presupuesto" in msg
+
+
+def test_salary_message_low_load_uses_relaxed_wording():
+    result = analyze_salary_suggestion(_base_payload(funciones=["limpieza"], ninos="0", adultos="1"))
+    msg = result["message"]
+    assert "Por el nivel de exigencia" not in msg
+    assert "Ofrecer menos puede dificultar encontrar una candidata disponible o adecuada." in msg
+
+
+def test_sd_lv_10h_is_moderate():
+    result = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            horario_hora_entrada="8:00 AM",
+            horario_hora_salida="6:00 PM",
+            adultos="2",
+            ninos="0",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    assert result["can_suggest"] is True
+    assert result["suggested_max"] <= 21000
+
+
+def test_sd_lv_11h_is_reasonable():
+    result = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            horario_hora_entrada="8:00 AM",
+            horario_hora_salida="7:00 PM",
+            adultos="2",
+            ninos="0",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    assert result["can_suggest"] is True
+    assert result["suggested_max"] <= 21000
+
+
+def test_sd_lv_12h_without_other_heavy_loads_keeps_cap_near_21k():
+    result = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar"],
+            horario_hora_entrada="8:00 AM",
+            horario_hora_salida="8:00 PM",
+            adultos="2",
+            ninos="0",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    assert result["can_suggest"] is True
+    assert result["suggested_max"] <= 21000
+
+
+def test_sd_lv_12h_with_heavy_loads_can_exceed_21k():
+    result = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["limpieza", "cocinar", "lavar", "planchar", "ninos"],
+            horario_hora_entrada="8:00 AM",
+            horario_hora_salida="8:00 PM",
+            ninos="2",
+            edades_ninos="2 y 4",
+            habitaciones="4",
+            banos="4",
+            pisos="3+",
+            adultos="6",
+        )
+    )
+    assert result["can_suggest"] is True
+    assert result["suggested_max"] > 21000
+
+
+def test_salary_message_always_mentions_pasaje():
+    result = analyze_salary_suggestion(_base_payload())
+    assert result["can_suggest"] is True
+    assert "ayuda de pasaje" in result["message"].lower()

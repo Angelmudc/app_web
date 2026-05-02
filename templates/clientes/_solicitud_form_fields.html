@@ -700,6 +700,7 @@
               El envejeciente requiere asistencia directa para higiene, alimentacion, movilidad o cuidado diario.
             </div>
           </div>
+          {{ render_field(form.envejeciente_responsabilidades, wrapper_class='public-full', wrapper_id='wrap_envejeciente_responsabilidades') }}
           <div class="public-field public-full" id="wrap_envejeciente_solo_acompanamiento" style="display:none;">
             <label class="public-envejeciente-acomp-card">
               {{ form.envejeciente_solo_acompanamiento(class='form-check-input') }}
@@ -707,7 +708,6 @@
             </label>
             {{ render_errors(form.envejeciente_solo_acompanamiento) }}
           </div>
-          {{ render_field(form.envejeciente_responsabilidades, wrapper_class='public-full', wrapper_id='wrap_envejeciente_responsabilidades') }}
           {{ render_field(form.envejeciente_nota, wrapper_class='public-full') }}
         </div>
       </div>

@@ -243,18 +243,18 @@ def _horario_adjustments(data: dict[str, Any], schedule_key: str) -> tuple[int, 
         end += 12
     hours = end - start
     if hours == 10:
-        adj += 1500
+        adj += 1000
         motivos.append("Jornada de 10 horas.")
     elif hours == 11:
-        adj += 3000
+        adj += 2000
         motivos.append("Jornada de 11 horas.")
     elif hours >= 12:
-        adj += 5000
+        adj += 3000
         motivos.append("Jornada de 12+ horas.")
         warnings.append("Horario extendido: solicitud mas exigente de lo normal.")
 
     if end > 18:
-        adj += 1000
+        adj += 500
         motivos.append("Salida despues de 6:00 PM.")
     if end > 19:
         adj += 1000
@@ -274,19 +274,82 @@ def _offer_status(client_salary: int | None, suggested_min: int) -> str:
     return "muy_baja"
 
 
+def _format_rd(amount: int) -> str:
+    return f"{int(amount):,}".replace(",", ",")
+
+
+def _reason_bullets(payload: dict[str, Any]) -> list[str]:
+    raw = payload.get("adjustments") or []
+    labels = []
+    for item in raw:
+        if isinstance(item, dict):
+            txt = str(item.get("label") or "").strip()
+        else:
+            txt = str(item or "").strip()
+        if txt:
+            labels.append(txt)
+    out: list[str] = []
+    seen: set[str] = set()
+    for txt in labels:
+        n = _norm(txt)
+        bullet = ""
+        if "incluye planchado" in n:
+            bullet = "Multiples funciones del hogar (incluye planchado)."
+        elif "casa muy grande" in n or "casa grande" in n or "casa mediana" in n or "apartamento amplio" in n:
+            bullet = "Tamano del hogar y espacios a mantener."
+        elif "areas comunes" in n:
+            bullet = "Varias areas comunes que aumentan la carga diaria."
+        elif "jornada de 10 horas" in n or "jornada de 11 horas" in n or "jornada de 12+ horas" in n:
+            bullet = "Horario extendido."
+        elif "salida despues de 6:00 pm" in n or "salida despues de 7:00 pm" in n:
+            bullet = "Salida tarde."
+        elif "nino pequeno" in n or "ninos pequenos" in n:
+            bullet = "Ninos pequenos que requieren mas atencion."
+        elif "ninos mayores" in n:
+            bullet = "Apoyo con ninos, combinado con otras tareas."
+        elif "envejeciente encamado" in n:
+            bullet = "Cuidado de envejeciente."
+        elif "6+ adultos" in n or "5+ adultos" in n:
+            bullet = "Hogar con varios adultos."
+        elif "modalidad clasificada" in n:
+            # Evitar exponer codigo tecnico (sd_l_v, cd_l_s, etc.).
+            bullet = "Modalidad y jornada seleccionadas."
+        if bullet and bullet not in seen:
+            seen.add(bullet)
+            out.append(bullet)
+    if not out:
+        out.append("Modalidad, horario y funciones seleccionadas.")
+    return out[:5]
+
+
 def build_salary_message(payload: dict[str, Any]) -> str:
     if not payload.get("can_suggest"):
         return str(payload.get("reason_no_suggestion") or SOFT_INCOMPLETE_MESSAGE)
     min_s = int(payload.get("suggested_min") or 0)
     max_s = int(payload.get("suggested_max") or 0)
     status = payload.get("offer_status")
+    load_level = _norm(payload.get("load_level"))
+    reasons = _reason_bullets(payload)
+    intro = f"Para este tipo de solicitud, el sueldo suele estar entre RD${_format_rd(min_s)} y RD${_format_rd(max_s)} mensual + ayuda de pasaje."
+    why_block = "¿Por que?\n" + "\n".join(f"- {r}" for r in reasons)
+
+    if load_level in {"normal", "media"}:
+        warning_msg = "Ofrecer menos puede dificultar encontrar una candidata disponible o adecuada."
+    else:
+        warning_msg = "Por el nivel de exigencia, ofrecer menos puede dificultar encontrar una candidata disponible o adecuada."
+
     status_msg = {
-        "competitiva": "Tu oferta esta dentro de un rango competitivo para esta solicitud.",
-        "baja": "Tu oferta puede estar un poco baja para las funciones solicitadas. Para hacerla mas atractiva, considera acercarla al rango sugerido.",
-        "muy_baja": "Esta solicitud puede ser dificil de cubrir con el sueldo indicado, debido a la carga de trabajo, horario o responsabilidades.",
-        "sin_sueldo": "Aun no has indicado sueldo. Puedes usar el rango sugerido como referencia.",
+        "competitiva": "Tu oferta actual luce competitiva para esta solicitud.",
+        "baja": "Tu oferta actual parece algo baja frente a la carga estimada.",
+        "muy_baja": "Tu oferta actual luce bastante por debajo de lo que normalmente se requiere.",
+        "sin_sueldo": "Aun no has indicado sueldo; este rango te sirve como referencia.",
     }.get(status, "")
-    return f"Rango sugerido: RD${min_s:,} - RD${max_s:,}. {status_msg}".replace(",", ",")
+    closing = "Puedes ajustar el monto segun tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal."
+
+    parts = [intro, why_block, warning_msg, closing]
+    if status_msg:
+        parts.insert(2, status_msg)
+    return "\n\n".join(parts)
 
 
 def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
@@ -373,6 +436,20 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     suggested_min = base + ajustes_total
     spread = 5000 if any(l == "muy_alta" for l in levels) else 3000 if any(l == "alta" for l in levels) else 2000
     suggested_max = suggested_min + spread
+
+    # Cap moderado para salida diaria L-V cuando la unica carga fuerte es horario extendido.
+    strong_non_schedule = (
+        house_lvl in {"alta", "muy_alta"}
+        or child_lvl in {"alta", "muy_alta"}
+        or elder_lvl in {"alta", "muy_alta"}
+        or adultos >= 5
+        or {"limpieza", "cocinar", "lavar", "planchar"}.issubset(set(funciones))
+        or ("planchar" in funciones and len(funciones) >= 3)
+    )
+    if schedule_key == "sd_l_v" and not strong_non_schedule and suggested_max > 21000:
+        suggested_max = 21000
+        if suggested_min > suggested_max:
+            suggested_min = max(base, suggested_max - 1500)
     client_salary = parse_salary_amount(data.get("sueldo"))
     status = _offer_status(client_salary, suggested_min)
     load_level = "muy_alta" if "muy_alta" in levels else "alta" if "alta" in levels else "media" if "media" in levels else "normal"
