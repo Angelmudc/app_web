@@ -22,7 +22,7 @@ BASE_SALARY_MAP = {
     "sd_l_s": 17000,
     "sd_fin_semana": 11000,
     "cd_l_v": 20000,
-    "cd_l_s": 22000,
+    "cd_l_s": 21000,
     "cd_quincenal": 25000,
     "cd_fin_semana": 14000,
 }
@@ -108,17 +108,17 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
         ).strip()
 
     patterns = [
-        (r"salida\s+diaria.*1\s*d[ií]a|1\s*d[ií]a\s*a\s*la\s*semana", "sd_1_dia"),
-        (r"salida\s+diaria.*2\s*d[ií]as|2\s*d[ií]as\s*a\s*la\s*semana", "sd_2_dias"),
-        (r"salida\s+diaria.*3\s*d[ií]as|3\s*d[ií]as\s*a\s*la\s*semana", "sd_3_dias"),
-        (r"salida\s+diaria.*4\s*d[ií]as|4\s*d[ií]as\s*a\s*la\s*semana", "sd_4_dias"),
-        (r"salida\s+diaria.*lunes\s*a\s*viernes|lunes\s*a\s*viernes", "sd_l_v"),
-        (r"salida\s+diaria.*lunes\s*a\s*s[áa]bado|lunes\s*a\s*s[áa]bado", "sd_l_s"),
-        (r"salida\s+diaria.*fin\s*de\s*semana|s[áa]bado\s*y\s*domingo|viernes\s*a\s*lunes", "sd_fin_semana"),
         (r"con\s+dormida.*lunes\s*a\s*viernes", "cd_l_v"),
         (r"con\s+dormida.*lunes\s*a\s*s[áa]bado", "cd_l_s"),
         (r"quincenal|salida\s+quincenal", "cd_quincenal"),
         (r"con\s+dormida.*fin\s*de\s*semana|con\s+dormida.*s[áa]bado\s*y\s*domingo", "cd_fin_semana"),
+        (r"salida\s+diaria.*1\s*d[ií]a|salida\s+diaria.*1\s*d[ií]a\s*a\s*la\s*semana", "sd_1_dia"),
+        (r"salida\s+diaria.*2\s*d[ií]as|salida\s+diaria.*2\s*d[ií]as\s*a\s*la\s*semana", "sd_2_dias"),
+        (r"salida\s+diaria.*3\s*d[ií]as|salida\s+diaria.*3\s*d[ií]as\s*a\s*la\s*semana", "sd_3_dias"),
+        (r"salida\s+diaria.*4\s*d[ií]as|salida\s+diaria.*4\s*d[ií]as\s*a\s*la\s*semana", "sd_4_dias"),
+        (r"salida\s+diaria.*lunes\s*a\s*viernes", "sd_l_v"),
+        (r"salida\s+diaria.*lunes\s*a\s*s[áa]bado", "sd_l_s"),
+        (r"salida\s+diaria.*fin\s*de\s*semana|salida\s+diaria.*s[áa]bado\s*y\s*domingo|salida\s+diaria.*viernes\s*a\s*lunes", "sd_fin_semana"),
     ]
     for pattern, key in patterns:
         if re.search(pattern, expanded_modalidad):
@@ -165,6 +165,9 @@ def _sd_days_from_schedule(schedule_key: str) -> int | None:
 
 
 def _base_salary_for_schedule(schedule_key: str, funciones: list[str]) -> tuple[int, str]:
+    # Con dormida usa base fija por modalidad (no por perfil).
+    if schedule_key.startswith("cd_"):
+        return BASE_SALARY_MAP[schedule_key], "con_dormida_fija"
     if schedule_key.startswith("sd_"):
         days = _sd_days_from_schedule(schedule_key)
         profile = _service_profile(funciones)
@@ -428,7 +431,10 @@ def build_salary_message(payload: dict[str, Any]) -> str:
         "muy_baja": "Tu oferta actual luce bastante por debajo de lo que normalmente se requiere.",
         "sin_sueldo": "Aun no has indicado sueldo; este rango te sirve como referencia.",
     }.get(status, "")
-    closing = "Puedes ajustar el monto segun tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal."
+    closing = (
+        "Puedes ajustar el monto segun tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal.\n\n"
+        "Tambien recomendamos marcar la opcion de ayuda para el pasaje, ya que mejora el atractivo de la oferta."
+    )
 
     parts = [intro, why_block, warning_msg, closing]
     if status_msg:
@@ -559,6 +565,12 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         suggested_max = 23000
         if suggested_min > suggested_max:
             suggested_min = max(base, suggested_max - 1500)
+    # Nunca bajar por debajo de la base fija de la modalidad.
+    if suggested_min < base:
+        suggested_min = base
+    if suggested_max < suggested_min:
+        suggested_max = suggested_min
+
     client_salary = parse_salary_amount(data.get("sueldo"))
     status = _offer_status(client_salary, suggested_min)
     load_level = "muy_alta" if "muy_alta" in levels else "alta" if "alta" in levels else "media" if "media" in levels else "normal"

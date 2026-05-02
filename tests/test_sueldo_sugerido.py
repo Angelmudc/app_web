@@ -35,7 +35,7 @@ def test_base_salary_map_expected_values():
     assert BASE_SALARY_MAP["sd_l_s"] == 17000
     assert BASE_SALARY_MAP["sd_fin_semana"] == 11000
     assert BASE_SALARY_MAP["cd_l_v"] == 20000
-    assert BASE_SALARY_MAP["cd_l_s"] == 22000
+    assert BASE_SALARY_MAP["cd_l_s"] == 21000
     assert BASE_SALARY_MAP["cd_quincenal"] == 25000
     assert BASE_SALARY_MAP["cd_fin_semana"] == 14000
 
@@ -464,3 +464,102 @@ def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
     assert "ayuda de pasaje" in result["message"].lower()
+    assert "marcar la opcion de ayuda para el pasaje" in result["message"].lower()
+
+
+def test_con_dormida_lv_base_minima_20000():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 20000
+    assert r["suggested_min"] >= 20000
+
+
+def test_con_dormida_ls_base_minima_21000():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a sábado",
+            funciones=["limpieza"],
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 21000
+    assert r["suggested_min"] >= 21000
+
+
+def test_con_dormida_quincenal_base_25000():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - salida quincenal",
+            funciones=["envejeciente"],
+            envejeciente_tipo_cuidado="independiente",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 25000
+    assert r["suggested_min"] >= 25000
+
+
+def test_con_dormida_fin_semana_base_14000():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - sábado y domingo",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="9",
+            horario="Sábado y domingo, de 8:00 AM a 5:00 PM",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 14000
+    assert r["suggested_min"] >= 14000
+
+
+def test_con_dormida_lv_no_baja_por_perfil_ninera_domestica_envejeciente():
+    ninera = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    domestica = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["limpieza", "cocinar", "lavar"],
+        )
+    )
+    enve = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["envejeciente"],
+            envejeciente_tipo_cuidado="independiente",
+        )
+    )
+    assert ninera["suggested_min"] >= 20000
+    assert domestica["suggested_min"] >= 20000
+    assert enve["suggested_min"] >= 20000
+
+
+def test_con_dormida_ninos_grandes_y_funciones_no_sube_exagerado_en_casa_normal():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos", "cocinar", "lavar"],
+            ninos="2",
+            edades_ninos="8 y 10",
+            habitaciones="2",
+            banos="2",
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 20000
+    assert r["suggested_max"] <= 24000
