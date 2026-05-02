@@ -28,11 +28,11 @@ BASE_SALARY_MAP = {
 }
 
 SD_PROFILE_BASE = {
-    1: {"ninera": 4500, "domestica": 5000, "mixto": 6500},
-    2: {"ninera": 8000, "domestica": 9000, "mixto": 10000},
-    3: {"ninera": 10500, "domestica": 12500, "mixto": 14500},
-    4: {"ninera": 12500, "domestica": 15000, "mixto": 16000},
-    5: {"ninera": 15000, "domestica": 18000, "mixto": 20000},
+    1: {"ninera": 4500, "domestica": 5000, "envejeciente": 5500, "mixto": 6500, "mixto_alto": 7000},
+    2: {"ninera": 8000, "domestica": 9000, "envejeciente": 10000, "mixto": 10000, "mixto_alto": 11000},
+    3: {"ninera": 10500, "domestica": 12500, "envejeciente": 13500, "mixto": 14500, "mixto_alto": 15500},
+    4: {"ninera": 12500, "domestica": 15000, "envejeciente": 16000, "mixto": 16000, "mixto_alto": 17000},
+    5: {"ninera": 15000, "domestica": 18000, "envejeciente": 19000, "mixto": 20000, "mixto_alto": 21000},
 }
 
 
@@ -130,11 +130,23 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
 
 def _service_profile(funciones: list[str]) -> str:
     has_ninos = "ninos" in funciones
+    has_envejeciente = "envejeciente" in funciones
     has_limpieza = "limpieza" in funciones
+    has_household_light = any(f in funciones for f in ("cocinar", "lavar", "planchar"))
+
+    if has_ninos and has_envejeciente:
+        return "mixto_alto"
+    if has_envejeciente and has_limpieza:
+        return "mixto_alto"
     if has_ninos and has_limpieza:
         return "mixto"
-    if has_ninos and not has_limpieza:
+    if has_ninos:
         return "ninera"
+    if has_envejeciente:
+        return "envejeciente"
+    # cocinar/lavar/planchar sin ninos ni envejeciente se mantiene como domestica.
+    if has_household_light:
+        return "domestica"
     return "domestica"
 
 
@@ -437,10 +449,12 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         "offer_status": "sin_sueldo",
     }
     funciones = [_norm(x) for x in _as_list(data.get("funciones"))]
+    principal_funcs = {"ninos", "envejeciente", "limpieza", "cocinar", "lavar", "planchar"}
+    has_principal_function = any(f in principal_funcs for f in funciones)
     tipo_lugar = _norm(data.get("tipo_lugar"))
     schedule_key, schedule_state = classify_schedule(data)
     horario = _norm(data.get("horario"))
-    if schedule_state == "incompleta" or not funciones or not tipo_lugar:
+    if schedule_state == "incompleta" or not has_principal_function:
         out = dict(base_out)
         out["reason_no_suggestion"] = SOFT_INCOMPLETE_MESSAGE
         out["message"] = SOFT_INCOMPLETE_MESSAGE
@@ -468,7 +482,9 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         profile_txt = {
             "ninera": "ninera",
             "domestica": "domestica",
+            "envejeciente": "cuidado de envejeciente",
             "mixto": "domestica y ninera",
+            "mixto_alto": "cuidado mixto (ninos/envejeciente + hogar)",
             "general": "general",
         }.get(profile, "general")
         days = _sd_days_from_schedule(schedule_key)

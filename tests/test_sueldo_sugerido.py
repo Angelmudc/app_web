@@ -258,6 +258,33 @@ def test_envejeciente_encamado_sin_limpieza_sube_mas_que_independiente():
     assert enc["suggested_min"] > indep["suggested_min"]
 
 
+def test_ninera_sin_habitaciones_banos_sigue_sugiriendo():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="7",
+            habitaciones="",
+            banos="",
+            tipo_lugar="",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_envejeciente_con_cocinar_sin_limpieza_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["envejeciente", "cocinar"],
+            envejeciente_tipo_cuidado="independiente",
+            habitaciones="",
+            banos="",
+            tipo_lugar="",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
 def test_encamado_con_responsabilidades_sube_fuerte():
     base_enc = analyze_salary_suggestion(
         _base_payload(

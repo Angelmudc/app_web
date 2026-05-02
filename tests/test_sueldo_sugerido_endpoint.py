@@ -132,3 +132,48 @@ def test_endpoint_no_rompe_con_valores_raros_y_nunca_500():
     data = resp.get_json()
     assert isinstance(data, dict)
     assert data.get("can_suggest") is False
+
+
+def test_endpoint_ninera_sin_limpieza_ni_estructura_sugiere():
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+    resp = _get(
+        client,
+        {
+            "modalidad_trabajo": "Salida diaria - 3 días a la semana",
+            "horario": "Martes a jueves, de 8:00 AM a 5:00 PM",
+            "horario_hora_entrada": "8:00 AM",
+            "horario_hora_salida": "5:00 PM",
+            "tipo_lugar": "",
+            "habitaciones": "",
+            "banos": "",
+            "funciones": ["ninos", "cocinar"],
+            "ninos": "1",
+            "edades_ninos": "8",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["can_suggest"] is True
+
+
+def test_endpoint_envejeciente_sin_limpieza_ni_estructura_sugiere():
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+    resp = _get(
+        client,
+        {
+            "modalidad_trabajo": "Salida diaria - lunes a viernes",
+            "horario": "Lunes a viernes, de 8:00 AM a 5:00 PM",
+            "horario_hora_entrada": "8:00 AM",
+            "horario_hora_salida": "5:00 PM",
+            "tipo_lugar": "",
+            "habitaciones": "",
+            "banos": "",
+            "funciones": ["envejeciente", "cocinar"],
+            "envejeciente_tipo_cuidado": "independiente",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["can_suggest"] is True
