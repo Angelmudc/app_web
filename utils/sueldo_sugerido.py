@@ -12,6 +12,8 @@ NO_SUGGESTION_MESSAGE = (
 )
 
 SOFT_INCOMPLETE_MESSAGE = "Completa modalidad, horario y funciones para ver una sugerencia."
+CHILDREN_INCOMPLETE_MESSAGE = "Completa la cantidad o edades de los niños para ver una sugerencia de sueldo."
+ADULTS_INCOMPLETE_MESSAGE = "Completa la cantidad de adultos del hogar para ver una sugerencia de sueldo."
 
 BASE_SALARY_MAP = {
     "sd_1_dia": 5000,
@@ -446,6 +448,16 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
     return out[:5]
 
 
+def _sanitize_client_text(text: str) -> str:
+    out = str(text or "")
+    # Eliminar cualquier remanente técnico visible para cliente.
+    out = re.sub(r"\b(?:cd|sd)_[a-z0-9_]+\b", "modalidad seleccionada", out, flags=re.IGNORECASE)
+    out = re.sub(r"modalidad\s+clasificada\s*:\s*[^.\n]+\.?", "Modalidad seleccionada.", out, flags=re.IGNORECASE)
+    out = re.sub(r"\bclasificada\b", "", out, flags=re.IGNORECASE)
+    out = re.sub(r"[ ]{2,}", " ", out)
+    return out.strip()
+
+
 def build_salary_message(payload: dict[str, Any]) -> str:
     if not payload.get("can_suggest"):
         return str(payload.get("reason_no_suggestion") or SOFT_INCOMPLETE_MESSAGE)
@@ -453,7 +465,9 @@ def build_salary_message(payload: dict[str, Any]) -> str:
     max_s = int(payload.get("suggested_max") or 0)
     status = payload.get("offer_status")
     load_level = _norm(payload.get("load_level"))
-    reasons = _reason_bullets(payload)
+    reasons = list(payload.get("public_reasons") or [])
+    if not reasons:
+        reasons = _reason_bullets(payload)
     title = f"Rango sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual"
     intro = f"Para este tipo de solicitud, el sueldo suele estar entre RD${_format_rd(min_s)} y RD${_format_rd(max_s)} mensual + ayuda de pasaje."
     why_block = "¿Por qué este rango?\n" + "\n".join(f"- {r}" for r in reasons)
@@ -477,7 +491,7 @@ def build_salary_message(payload: dict[str, Any]) -> str:
     parts = [title, intro, why_block, warning_msg, closing]
     if status_msg:
         parts.insert(3, status_msg)
-    return "\n\n".join(parts)
+    return _sanitize_client_text("\n\n".join(parts))
 
 
 def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
@@ -503,6 +517,7 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         out["reason_no_suggestion"] = SOFT_INCOMPLETE_MESSAGE
         out["message"] = SOFT_INCOMPLETE_MESSAGE
         return out
+
     if (
         schedule_state == "ambigua"
         or tipo_lugar in {"oficina", "otro"}
@@ -513,6 +528,26 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         out["reason_no_suggestion"] = NO_SUGGESTION_MESSAGE
         out["message"] = NO_SUGGESTION_MESSAGE
         return out
+
+    # Si incluye cuidado de niños, se requiere al menos cantidad o edades.
+    if "ninos" in funciones:
+        ninos_count = _to_int(data.get("ninos"), default=0)
+        edades_txt = _norm(data.get("edades_ninos"))
+        if ninos_count <= 0 and not edades_txt:
+            out = dict(base_out)
+            out["reason_no_suggestion"] = CHILDREN_INCOMPLETE_MESSAGE
+            out["message"] = CHILDREN_INCOMPLETE_MESSAGE
+            return out
+
+    # Si hay funciones del hogar donde aplica adultos, exigir ese dato.
+    # Adultos aplica principalmente cuando hay limpieza del hogar.
+    if "limpieza" in funciones:
+        adultos_raw = data.get("adultos")
+        if adultos_raw is None or str(adultos_raw).strip() == "":
+            out = dict(base_out)
+            out["reason_no_suggestion"] = ADULTS_INCOMPLETE_MESSAGE
+            out["message"] = ADULTS_INCOMPLETE_MESSAGE
+            return out
     if not schedule_key or schedule_key not in BASE_SALARY_MAP:
         out = dict(base_out)
         out["reason_no_suggestion"] = NO_SUGGESTION_MESSAGE
@@ -613,11 +648,14 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     status = _offer_status(client_salary, suggested_min)
     load_level = "muy_alta" if "muy_alta" in levels else "alta" if "alta" in levels else "media" if "media" in levels else "normal"
 
+    public_reasons = _reason_bullets({"adjustments": [{"label": m, "amount": None} for m in motivos]})
     out = {
         "can_suggest": True,
         "reason_no_suggestion": "",
         "base_salary": base,
-        "adjustments": [{"label": m, "amount": None} for m in motivos],
+        "adjustments": [{"label": r, "amount": None} for r in public_reasons],
+        "public_reasons": public_reasons,
+        "internal_adjustments": [{"label": m, "amount": None} for m in motivos],
         "suggested_min": suggested_min,
         "suggested_max": suggested_max,
         "load_level": load_level,

@@ -343,7 +343,7 @@ def test_envejeciente_y_limpieza_marca_perfil_combinado():
     )
     assert r["can_suggest"] is True
     labels = [a.get("label", "") for a in (r.get("adjustments") or [])]
-    assert any("Perfil combinado: domestica + cuidado de envejeciente." in l for l in labels)
+    assert any("combina tareas del hogar con cuidado de envejeciente" in l.lower() for l in labels)
 
 
 def test_offer_status_competitiva_baja_muy_baja():
@@ -666,3 +666,96 @@ def test_ninos_mas_limpieza_sin_cocinar_lavar_no_es_funcion_completa():
     )
     assert r["can_suggest"] is True
     assert (r["suggested_min"] - r["base_salary"]) <= 2000
+
+
+def test_message_y_motivos_no_exponen_codigos_tecnicos():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos", "limpieza", "cocinar", "lavar"],
+            ninos="1",
+            edades_ninos="3",
+        )
+    )
+    msg = (r.get("message") or "").lower()
+    assert "cd_" not in msg
+    assert "sd_" not in msg
+    assert "clasificada" not in msg
+    for a in (r.get("adjustments") or []):
+        label = str(a.get("label") or "").lower()
+        assert "cd_" not in label
+        assert "sd_" not in label
+        assert "clasificada" not in label
+
+
+def test_cuidar_ninos_sin_cantidad_ni_edades_no_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="",
+            edades_ninos="",
+        )
+    )
+    assert r["can_suggest"] is False
+    assert "completa la cantidad o edades de los niños" in (r.get("message") or "").lower()
+
+
+def test_cuidar_ninos_con_edades_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="",
+            edades_ninos="7",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_cuidar_ninos_con_cantidad_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_cuidar_ninos_solo_con_edades_y_sin_adultos_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="",
+            edades_ninos="8 y 10",
+            adultos="",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_cuidar_ninos_mas_hogar_sin_adultos_no_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "limpieza", "cocinar", "lavar"],
+            ninos="1",
+            edades_ninos="7",
+            adultos="",
+        )
+    )
+    assert r["can_suggest"] is False
+
+
+def test_message_visible_no_contiene_tecnicismos():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="7",
+        )
+    )
+    msg = (r.get("message") or "").lower()
+    assert "cd_" not in msg
+    assert "sd_" not in msg
+    assert "modalidad clasificada" not in msg
