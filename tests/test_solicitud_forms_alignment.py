@@ -93,6 +93,7 @@ def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     assert "('con_salida_diaria', 'Salida diaria')" in partial
     assert "'label': 'Con dormida 💤 quincenal'" in partial
     assert "'label': 'Salida diaria - 1 día a la semana'" in partial
+    assert "'label': 'Salida diaria - 4 días a la semana'" in partial
     assert "'label': 'Salida diaria - lunes a viernes'" in partial
     assert "id=\"modalidad_especifica_select\"" in partial
     assert "id=\"wrap_modalidad_otro\"" in partial
@@ -105,6 +106,48 @@ def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():
     assert "'label': 'Con dormida 💤 viernes a lunes'" not in partial
     assert "Salida Quincenal, sale viernes después del medio día" in partial
     assert "Lunes a sábado, sale sábado después del medio día" in partial
+
+
+def test_shared_partial_modalidad_options_stay_grouped_by_matrix():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "'con_salida_diaria': [" in partial
+    assert "'key': 'sd_1_dia'" in partial
+    assert "'key': 'sd_2_dias'" in partial
+    assert "'key': 'sd_3_dias'" in partial
+    assert "'key': 'sd_4_dias'" in partial
+    assert "'key': 'sd_l_v'" in partial
+    assert "'key': 'sd_l_s'" in partial
+    assert "'key': 'sd_fin_semana'" in partial
+    assert "'label': 'Salida diaria otro'" in partial
+    assert "'con_dormida': [" in partial
+    assert "'key': 'cd_l_v'" in partial
+    assert "'key': 'cd_l_s'" in partial
+    assert "'key': 'cd_quincenal'" in partial
+    assert "'key': 'cd_fin_semana'" in partial
+    assert "'label': 'Con dormida 💤 otro'" in partial
+
+
+def test_shared_partial_horario_suggestions_block_and_hooks_exist():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "id=\"horario_sugerencias_wrap\"" in partial
+    assert "Horarios sugeridos" in partial
+    assert "Otro (escribir horario)" in partial
+    assert "var HORARIO_SUGGESTIONS = {" in partial
+    assert "function syncHorarioSuggestions(fromUserEvent)" in partial
+    assert "function applyHorarioSuggestion(item)" in partial
+    assert "function clearHorarioSuggestionSelection()" in partial
+    assert "name = 'horario_sugerido_option'" in partial or "name=\"horario_sugerido_option\"" in partial
+    assert "syncHorarioSuggestions(true);" in partial
+    assert "clearHorarioSuggestionSelection();" in partial
+
+
+def test_shared_partial_horario_suggestions_include_required_matrix_samples():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "Lunes a viernes, 8:00 AM - 4:00 PM" in partial
+    assert "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" in partial
+    assert "Sábado y domingo, 8:00 AM - 5:00 PM" in partial
+    assert "Entrada viernes en la tarde / salida lunes en la mañana" in partial
+    assert "Entrada sábado 8:00 AM / salida domingo 5:00 PM" in partial
 
 
 def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optional_copy():

@@ -26,6 +26,7 @@
     {'key': 'sd_1_dia', 'label': 'Salida diaria - 1 día a la semana', 'aliases': ['1 día a la semana', 'Un día a la semana']},
     {'key': 'sd_2_dias', 'label': 'Salida diaria - 2 días a la semana', 'aliases': ['2 días a la semana', 'Dos días a la semana']},
     {'key': 'sd_3_dias', 'label': 'Salida diaria - 3 días a la semana', 'aliases': ['3 días a la semana', 'Tres días a la semana']},
+    {'key': 'sd_4_dias', 'label': 'Salida diaria - 4 días a la semana', 'aliases': ['4 días a la semana', 'Cuatro días a la semana']},
     {'key': 'sd_l_v', 'label': 'Salida diaria - lunes a viernes', 'aliases': ['Lunes a Viernes', 'Salida diaria lunes a viernes']},
     {'key': 'sd_l_s', 'label': 'Salida diaria - lunes a sábado', 'aliases': ['Lunes a Sábado']},
     {'key': 'sd_fin_semana', 'label': 'Salida diaria - fin de semana', 'aliases': ['Sábado y Domingo', 'Viernes a Lunes', 'Fin de semana']},
@@ -461,6 +462,27 @@
     box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
   }
 
+  .public-suggest-wrap {
+    margin-top: 10px;
+    border: 1px solid #d8e4f1;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fafdff 0%, #f6fbff 100%);
+    padding: 10px;
+  }
+
+  .public-suggest-title {
+    margin: 0 0 4px;
+    font-size: .86rem;
+    font-weight: 700;
+    color: #284869;
+  }
+
+  .public-suggest-desc {
+    margin: 0 0 8px;
+    font-size: .8rem;
+    color: #5f7799;
+  }
+
   .public-hidden-checkbox {
     position: absolute;
     left: -9999px;
@@ -622,7 +644,14 @@
         {% else %}
           <input type="text" class="form-control d-none" id="horario_hidden" name="horario" value="">
         {% endif %}
+        <input type="hidden" id="horario_sugerencia_key" name="horario_sugerencia_key" value="">
+        <input type="hidden" id="horario_sugerencia_text" name="horario_sugerencia_text" value="">
         <label class="public-field-label">Horario de trabajo</label>
+        <div id="horario_sugerencias_wrap" class="public-suggest-wrap" style="display:none;">
+          <p class="public-suggest-title">Horarios sugeridos</p>
+          <p class="public-suggest-desc">Elige una opción común o selecciona “Otro (escribir horario)”.</p>
+          <div class="public-segmented public-segmented-grid" id="horario_sugerencias_options"></div>
+        </div>
         <div id="horario_salida_diaria_wrap" style="display:none;">
           <div class="public-field-hint mb-2">Indica los días y el horario de entrada y salida del mismo día.</div>
           <div class="public-fields-grid">
@@ -1086,6 +1115,98 @@
       }
     }
 
+    function clearHorarioSuggestionSelection() {
+      var key = byId('horario_sugerencia_key');
+      var txt = byId('horario_sugerencia_text');
+      if (key) key.value = '';
+      if (txt) txt.value = '';
+      var checked = hostForm.querySelector('input[name="horario_sugerido_option"]:checked');
+      if (checked) checked.checked = false;
+    }
+
+    function getHorarioSuggestionList(group, specific) {
+      if (!group || !specific) return [];
+      var byGroup = (HORARIO_SUGGESTIONS || {})[group] || {};
+      return byGroup[specific] || [];
+    }
+
+    function applyHorarioSuggestion(item) {
+      var dias = byId('horario_dias_trabajo');
+      var hIn = byId('horario_hora_entrada');
+      var hOut = byId('horario_hora_salida');
+      var dIn = byId('horario_dormida_entrada');
+      var dOut = byId('horario_dormida_salida');
+      var key = byId('horario_sugerencia_key');
+      var txt = byId('horario_sugerencia_text');
+      if (!item || item.manual) {
+        if (key) key.value = 'manual';
+        if (txt) txt.value = '';
+        return;
+      }
+      if (dias && Object.prototype.hasOwnProperty.call(item, 'dias')) dias.value = item.dias || '';
+      if (hIn && Object.prototype.hasOwnProperty.call(item, 'hIn')) hIn.value = item.hIn || '';
+      if (hOut && Object.prototype.hasOwnProperty.call(item, 'hOut')) hOut.value = item.hOut || '';
+      if (dIn && Object.prototype.hasOwnProperty.call(item, 'dIn')) dIn.value = item.dIn || '';
+      if (dOut && Object.prototype.hasOwnProperty.call(item, 'dOut')) dOut.value = item.dOut || '';
+      if (item.overrideText) {
+        if (dias) dias.value = '';
+        if (hIn) hIn.value = '';
+        if (hOut) hOut.value = '';
+      }
+      if (key) key.value = item.key || '';
+      if (txt) txt.value = item.overrideText || '';
+    }
+
+    function syncHorarioSuggestions(fromUserEvent) {
+      var wrap = byId('horario_sugerencias_wrap');
+      var optionsWrap = byId('horario_sugerencias_options');
+      var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
+      var group = groupNode ? groupNode.value : '';
+      var specificNode = byId('modalidad_especifica_select');
+      var specific = specificNode ? (specificNode.value || '') : '';
+      var keyHidden = byId('horario_sugerencia_key');
+      var currentKey = keyHidden ? (keyHidden.value || '') : '';
+      var suggestions = getHorarioSuggestionList(group, specific);
+      if (!wrap || !optionsWrap) return;
+      if (!group || !specific || !suggestions.length) {
+        wrap.style.display = 'none';
+        optionsWrap.innerHTML = '';
+        clearHorarioSuggestionSelection();
+        return;
+      }
+      wrap.style.display = '';
+      optionsWrap.innerHTML = '';
+      var matchedCurrent = false;
+      for (var i = 0; i < suggestions.length; i++) {
+        var item = suggestions[i] || {};
+        var key = item.key || ('opt_' + i);
+        var label = document.createElement('label');
+        label.className = 'public-segmented-item';
+        var input = document.createElement('input');
+        input.type = 'radio';
+        input.name = 'horario_sugerido_option';
+        input.value = key;
+        if (currentKey && currentKey === key) {
+          input.checked = true;
+          matchedCurrent = true;
+        }
+        input.addEventListener('change', (function (opt) {
+          return function () {
+            applyHorarioSuggestion(opt);
+            syncHorarioInteligente(true);
+          };
+        })(item));
+        var span = document.createElement('span');
+        span.textContent = item.label || '';
+        label.appendChild(input);
+        label.appendChild(span);
+        optionsWrap.appendChild(label);
+      }
+      if (fromUserEvent && currentKey && !matchedCurrent) {
+        clearHorarioSuggestionSelection();
+      }
+    }
+
     function syncHorarioInteligente(fromUserEvent) {
       var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
       var group = groupNode ? norm(groupNode.value) : '';
@@ -1099,6 +1220,7 @@
       var hOut = byId('horario_hora_salida');
       var dIn = byId('horario_dormida_entrada');
       var dOut = byId('horario_dormida_salida');
+      var suggestionText = byId('horario_sugerencia_text');
       var hasGroup = !!group;
       var isDormida = (group === 'con_dormida');
       var isSalida = (group === 'con_salida_diaria');
@@ -1127,7 +1249,10 @@
       }
 
       var horarioTxt = '';
-      if (isDormida) {
+      var overrideTxt = suggestionText ? (suggestionText.value || '').trim() : '';
+      if (overrideTxt) {
+        horarioTxt = overrideTxt;
+      } else if (isDormida) {
         if (dIn && dOut && norm(dIn.value) && norm(dOut.value)) {
           horarioTxt = 'Entrada: ' + dIn.value.trim() + ' / Salida: ' + dOut.value.trim();
         }
@@ -1148,6 +1273,83 @@
     var MODALIDAD_GROUP_LABELS = {
       "con_dormida": "Con dormida 💤",
       "con_salida_diaria": "Salida diaria"
+    };
+    var HORARIO_SUGGESTIONS = {
+      "con_salida_diaria": {
+        "Salida diaria - lunes a viernes": [
+          { key: "sd_lv_8_4", label: "Lunes a viernes, 8:00 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_lv_8_5", label: "Lunes a viernes, 8:00 AM - 5:00 PM", dias: "Lunes a viernes", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_lv_7_4", label: "Lunes a viernes, 7:00 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "7:00 AM", hOut: "4:00 PM" },
+          { key: "sd_lv_9_6", label: "Lunes a viernes, 9:00 AM - 6:00 PM", dias: "Lunes a viernes", hIn: "9:00 AM", hOut: "6:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - lunes a sábado": [
+          { key: "sd_ls_8_4_s12", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 12:00 PM" },
+          { key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 1:00 PM" },
+          { key: "sd_ls_8_5_s12", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" },
+          { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - 1 día a la semana": [
+          { key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_1_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_1_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - 2 días a la semana": [
+          { key: "sd_2_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_2_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_2_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - 3 días a la semana": [
+          { key: "sd_3_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_3_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_3_7_3", label: "7:00 AM - 3:00 PM", hIn: "7:00 AM", hOut: "3:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - 4 días a la semana": [
+          { key: "sd_4_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_4_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_4_7_3", label: "7:00 AM - 3:00 PM", hIn: "7:00 AM", hOut: "3:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Salida diaria - fin de semana": [
+          { key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", overrideText: "Sábado y domingo, 8:00 AM - 5:00 PM" },
+          { key: "sd_fs_9_6", label: "Sábado y domingo, 9:00 AM - 6:00 PM", overrideText: "Sábado y domingo, 9:00 AM - 6:00 PM" },
+          { key: "sd_fs_mix", label: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", overrideText: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ]
+      },
+      "con_dormida": {
+        "Con dormida 💤 lunes a viernes": [
+          { key: "cd_lv_1", label: "Entrada lunes 8:00 AM / salida viernes 5:00 PM", dIn: "lunes 8:00 AM", dOut: "viernes 5:00 PM" },
+          { key: "cd_lv_2", label: "Entrada lunes 7:00 AM / salida viernes 4:00 PM", dIn: "lunes 7:00 AM", dOut: "viernes 4:00 PM" },
+          { key: "cd_lv_3", label: "Entrada domingo en la tarde / salida viernes 5:00 PM", dIn: "domingo en la tarde", dOut: "viernes 5:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Con dormida 💤 lunes a sábado": [
+          { key: "cd_ls_1", label: "Entrada lunes 8:00 AM / salida sábado 12:00 PM", dIn: "lunes 8:00 AM", dOut: "sábado 12:00 PM" },
+          { key: "cd_ls_2", label: "Entrada lunes 8:00 AM / salida sábado 1:00 PM", dIn: "lunes 8:00 AM", dOut: "sábado 1:00 PM" },
+          { key: "cd_ls_3", label: "Entrada lunes 7:00 AM / salida sábado 12:00 PM", dIn: "lunes 7:00 AM", dOut: "sábado 12:00 PM" },
+          { key: "cd_ls_4", label: "Entrada domingo en la tarde / salida sábado 12:00 PM", dIn: "domingo en la tarde", dOut: "sábado 12:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Con dormida 💤 quincenal": [
+          { key: "cd_q_1", label: "Entrada lunes 8:00 AM / salida sábado 12:00 PM cada 15 días", dIn: "lunes 8:00 AM", dOut: "sábado 12:00 PM cada 15 días" },
+          { key: "cd_q_2", label: "Entrada lunes 8:00 AM / salida sábado 1:00 PM cada 15 días", dIn: "lunes 8:00 AM", dOut: "sábado 1:00 PM cada 15 días" },
+          { key: "cd_q_3", label: "Entrada domingo en la tarde / salida sábado 12:00 PM cada 15 días", dIn: "domingo en la tarde", dOut: "sábado 12:00 PM cada 15 días" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ],
+        "Con dormida 💤 fin de semana": [
+          { key: "cd_fs_1", label: "Entrada viernes en la tarde / salida lunes en la mañana", dIn: "viernes en la tarde", dOut: "lunes en la mañana" },
+          { key: "cd_fs_2", label: "Entrada viernes 8:00 AM / salida lunes en la mañana", dIn: "viernes 8:00 AM", dOut: "lunes en la mañana" },
+          { key: "cd_fs_3", label: "Entrada viernes 5:00 PM / salida lunes 8:00 AM", dIn: "viernes 5:00 PM", dOut: "lunes 8:00 AM" },
+          { key: "cd_fs_4", label: "Entrada sábado 8:00 AM / salida domingo 5:00 PM", dIn: "sábado 8:00 AM", dOut: "domingo 5:00 PM" },
+          { key: "cd_fs_5", label: "Entrada sábado 9:00 AM / salida domingo 6:00 PM", dIn: "sábado 9:00 AM", dOut: "domingo 6:00 PM" },
+          { key: "manual", label: "Otro (escribir horario)", manual: true }
+        ]
+      }
     };
 
     function initModalidadMaps() {
@@ -2143,6 +2345,7 @@
       }
       if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
         syncModalidadGuided(true);
+        syncHorarioSuggestions(true);
         syncHorarioInteligente(true);
       }
       if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
@@ -2210,12 +2413,14 @@
       var node = byId(id);
       if (!node) return;
       node.addEventListener('input', function () {
+        clearHorarioSuggestionSelection();
         syncHorarioInteligente(false);
       });
     });
 
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
+      syncHorarioSuggestions(false);
       syncHorarioInteligente(false);
       syncNinosRules(false);
       syncAdultosRules(false);
@@ -2233,6 +2438,7 @@
     });
 
     cleanBanosDisplayValue();
+    syncHorarioSuggestions(false);
     syncHorarioInteligente(false);
 
     return true;

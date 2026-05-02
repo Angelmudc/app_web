@@ -137,3 +137,12 @@ def test_split_modalidad_for_ui_soporta_alias_normalizado():
         "specific": "Salida diaria - 1 día a la semana",
         "other": "",
     }
+
+
+def test_split_modalidad_for_ui_soporta_salida_diaria_4_dias():
+    parsed = split_modalidad_for_ui("Salida diaria - 4 días a la semana")
+    assert parsed == {
+        "group": "con_salida_diaria",
+        "specific": "Salida diaria - 4 días a la semana",
+        "other": "",
+    }

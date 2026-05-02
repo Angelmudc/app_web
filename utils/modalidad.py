@@ -30,6 +30,10 @@ _MODALIDAD_SPECS = {
             "aliases": ["3 días a la semana", "Tres días a la semana"],
         },
         {
+            "label": "Salida diaria - 4 días a la semana",
+            "aliases": ["4 días a la semana", "Cuatro días a la semana"],
+        },
+        {
             "label": "Salida diaria - lunes a viernes",
             "aliases": ["Lunes a Viernes", "Salida diaria lunes a viernes"],
         },

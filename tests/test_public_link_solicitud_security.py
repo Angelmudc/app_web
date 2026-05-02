@@ -33,12 +33,34 @@ class _FakePublicForm:
         self.nombre_cliente = _FakeField(nombre)
         self.email_cliente = _FakeField(email)
         self.hp = _FakeField("")
+        self.ciudad_sector = _FakeField("Santiago / Los Jardines")
+        self.rutas_cercanas = _FakeField("Ruta K")
         self.areas_comunes = _FakeField([])
+        self.areas_comunes.choices = [("sala", "Sala"), ("otro", "Otro")]
+        self.area_otro = _FakeField("")
         self.funciones = _FakeField([])
+        self.funciones.choices = [("limpieza", "Limpieza"), ("envejeciente", "Envejeciente"), ("otro", "Otro")]
+        self.funciones_otro = _FakeField("")
         self.edad_requerida = _FakeField([])
+        self.edad_requerida.choices = [("26-35", "26-35"), ("otro", "Otro")]
+        self.edad_otro = _FakeField("")
         self.modalidad_trabajo = _FakeField("Con salida diaria - Lunes a Viernes")
+        self.horario = _FakeField("Lunes a viernes, de 8:00 AM a 5:00 PM")
+        self.tipo_lugar = _FakeField("casa")
+        self.tipo_lugar_otro = _FakeField("")
+        self.habitaciones = _FakeField(2)
+        self.banos = _FakeField(1.0)
         self.dos_pisos = _FakeField(False)
+        self.adultos = _FakeField(2)
+        self.ninos = _FakeField(0)
+        self.edades_ninos = _FakeField("")
+        self.mascota = _FakeField("")
+        self.sueldo = _FakeField("18000")
         self.pasaje_aporte = _FakeField(False)
+        self.envejeciente_tipo_cuidado = _FakeField("")
+        self.envejeciente_responsabilidades = _FakeField([])
+        self.envejeciente_solo_acompanamiento = _FakeField(False)
+        self.envejeciente_nota = _FakeField("")
         self.nota_cliente = _FakeField("")
 
     def validate_on_submit(self):
@@ -46,6 +68,9 @@ class _FakePublicForm:
 
     def hidden_tag(self):
         return ""
+
+    def populate_obj(self, obj):
+        return obj
 
     def __iter__(self):
         return iter([])
@@ -292,6 +317,7 @@ def test_public_link_form_modalidad_options_keep_prefixes_for_each_group():
     assert '"sd_1_dia"' in html
     assert '"sd_2_dias"' in html
     assert '"sd_3_dias"' in html
+    assert '"sd_4_dias"' in html
     assert '"sd_fin_semana"' in html
     assert '"Salida Quincenal, sale viernes despu\\u00e9s del medio d\\u00eda"' in html
     assert '"Lunes a s\\u00e1bado, sale s\\u00e1bado despu\\u00e9s del medio d\\u00eda"' in html
