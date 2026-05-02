@@ -184,9 +184,9 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
     banos = _to_float(data.get("banos"), default=0.0)
     pisos = _norm(data.get("pisos") or data.get("cantidad_pisos"))
     areas = _as_list(data.get("areas_comunes"))
-    many_areas = len([a for a in areas if _norm(a) not in {"otro", "todas_anteriores"}]) >= 5 or any(
-        _norm(a) == "todas_anteriores" for a in areas
-    )
+    has_all_areas = any(_norm(a) == "todas_anteriores" for a in areas)
+    some_areas_count = len([a for a in areas if _norm(a) not in {"otro", "todas_anteriores"}])
+    two_levels = _norm(data.get("dos_pisos")) in {"true", "1", "y"}
     ajustes = 0
     motivos: list[str] = []
     nivel = "normal"
@@ -195,25 +195,37 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
         return 0, motivos, nivel
 
     if tipo_lugar == "casa":
-        if (pisos == "3+") or (hab >= 4 and banos >= 4) or (_norm(data.get("dos_pisos")) in {"true", "1", "y"} and many_areas):
-            ajustes += 5000
-            nivel = "muy_alta"
-            motivos.append("Casa muy grande (pisos/areas) aumenta la carga.")
-        elif hab >= 4 or banos >= 4:
-            ajustes += 3000
-            nivel = "alta"
-            motivos.append("Casa grande por habitaciones/banos.")
-        elif hab >= 3:
+        # Estructura del hogar: ajustes moderados para evitar sobreestimar.
+        if pisos == "3+":
             ajustes += 1500
             nivel = "media"
-            motivos.append("Casa mediana (3 habitaciones).")
-        if many_areas and ajustes < 5000:
+            motivos.append("La vivienda tiene más de un nivel.")
+        elif two_levels:
             ajustes += 1000
-            motivos.append("Varias areas comunes incrementan la carga.")
+            nivel = "media"
+            motivos.append("La vivienda tiene más de un nivel.")
+        elif hab >= 4 or banos >= 4:
+            ajustes += 1000
+            nivel = "media"
+            motivos.append("Casa grande por habitaciones/baños.")
+        elif hab >= 3:
+            ajustes += 500
+            motivos.append("Casa mediana por cantidad de habitaciones.")
+
+        if has_all_areas:
+            ajustes += 2000
+            nivel = "media"
+            motivos.append("Incluye varias áreas comunes del hogar.")
+        elif some_areas_count >= 4:
+            ajustes += 1000
+            motivos.append("Incluye varias áreas comunes del hogar.")
+        elif some_areas_count >= 2:
+            ajustes += 500
+            motivos.append("Incluye varias áreas comunes del hogar.")
     elif tipo_lugar == "apto":
         if hab >= 4 and banos >= 3:
-            ajustes += 1000
-            motivos.append("Apartamento amplio con varias areas.")
+            ajustes += 500
+            motivos.append("Apartamento amplio con varias áreas.")
     return ajustes, motivos, nivel
 
 
@@ -229,44 +241,19 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
     ages = [int(x) for x in re.findall(r"\b(\d{1,2})\b", edades)]
     small = len([a for a in ages if a <= 5])
     has_older_only = bool(ninos > 0 and ages and small == 0 and all(a >= 6 for a in ages))
+    known_ages = bool(ages)
     if small == 0 and ninos > 0 and not ages:
         small = 1
 
-    funcs = set(funciones)
-    only_childcare = funcs == {"ninos"}
-    has_full_household = {"limpieza", "cocinar", "lavar"}.issubset(funcs)
-    has_limpieza_partial = "limpieza" in funcs and not has_full_household
-
     if has_older_only:
-        motivos.append(
-            "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision que de atencion directa."
-        )
-
-    # Si solo se solicita niñera, la base ya contempla ninos pequenos y varios ninos.
-    if only_childcare:
+        motivos.append("Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión.")
         return 0, motivos, "normal"
 
-    if has_full_household and small > 0:
-        if small == 1:
-            ajustes += 1500
-            nivel = "media"
-        elif small == 2:
-            ajustes += 3000
-            nivel = "alta"
-        else:
-            ajustes += 5000
-            nivel = "muy_alta"
-        motivos.append("La oferta sube porque combina cuidado de ninos pequenos con limpieza, cocina y lavado.")
-    elif has_full_household and ninos > 0 and small == 0:
-        ajustes += 500
-        nivel = "media"
-        motivos.append(
-            "Los ninos indicados son mayores, por lo que el cuidado suele ser mas de supervision; solo se aplica un ajuste leve por la combinacion con tareas del hogar."
-        )
-    elif has_limpieza_partial and small > 0:
-        ajustes += 1500 if small >= 2 else 1000
-        nivel = "media"
-        motivos.append("Cuidado de ninos pequenos combinado con limpieza parcial del hogar.")
+    if small > 0:
+        # Regla calibrada: RD$1,000 por cada niño de 5 años o menos.
+        ajustes += 1000 * small
+        nivel = "media" if small <= 2 else "alta"
+        motivos.append("Los niños pequeños requieren mayor atención y responsabilidad.")
     return ajustes, motivos, nivel
 
 
@@ -280,25 +267,15 @@ def classify_elder_care(data: dict[str, Any], funciones: list[str]) -> tuple[int
     motivos: list[str] = []
     warnings: list[str] = []
     nivel = "normal"
-    if tipo == "independiente":
-        ajustes += 1000
-        nivel = "media"
-        motivos.append("Cuidado de envejeciente independiente (acompanamiento/supervision).")
-    elif tipo == "encamado":
+    if tipo in {"independiente", "encamado"}:
         strong_resp = any(_norm(r) in {"pampers", "higiene", "comida", "medicamentos", "movilidad"} for r in resp)
-        if solo_acomp:
-            ajustes += 1500
+        if solo_acomp or strong_resp or tipo == "encamado":
+            ajustes = 1500
             nivel = "media"
-            motivos.append("Envejeciente encamado con solo acompanamiento o supervision.")
-        elif strong_resp:
-            ajustes += 5000
-            nivel = "muy_alta"
-            motivos.append("Cuidado de envejeciente encamado con asistencia directa.")
-            warnings.append("Solicitud de alta responsabilidad por cuidados de envejeciente.")
         else:
-            ajustes += 3500
-            nivel = "alta"
-            motivos.append("Cuidado de envejeciente encamado.")
+            ajustes = 1000
+            nivel = "media"
+        motivos.append("Cuidado de envejeciente requiere atención y responsabilidad adicional.")
     return ajustes, motivos, nivel, warnings
 
 
@@ -406,20 +383,28 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
             bullet = "El tamaño del hogar y sus espacios también influyen en la carga."
         elif "areas comunes" in n:
             bullet = "Hay varias áreas comunes que aumentan la carga diaria."
+        elif "vivienda tiene mas de un nivel" in n or "vivienda tiene más de un nivel" in n:
+            bullet = "La vivienda tiene más de un nivel."
         elif "jornada de 10 horas" in n or "jornada de 11 horas" in n or "jornada de 12+ horas" in n:
             bullet = "El horario es extendido."
         elif "salida despues de 6:00 pm" in n or "salida despues de 7:00 pm" in n:
             bullet = "La hora de salida es tarde."
         elif "nino pequeno" in n or "ninos pequenos" in n:
             bullet = "El cuidado de niños pequeños requiere más atención y responsabilidad."
+        elif "ninos pequenos requieren mayor atencion" in n or "niños pequeños requieren mayor atención" in n:
+            bullet = "Los niños pequeños requieren mayor atención y responsabilidad."
         elif "ninos mayores" in n:
             bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión que de atención directa."
         elif "supervision" in n and "atencion directa" in n and "ninos" in n:
             bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión que de atención directa."
+        elif "cuidado suele ser mas de supervision" in n or "cuidado suele ser más de supervisión" in n:
+            bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión."
         elif "envejeciente encamado" in n:
             bullet = "Incluye cuidado de envejeciente encamado, que exige mayor responsabilidad."
         elif "envejeciente independiente" in n:
             bullet = "Incluye cuidado de envejeciente con acompañamiento o supervisión."
+        elif "cuidado de envejeciente requiere atencion y responsabilidad adicional" in n or "cuidado de envejeciente requiere atención y responsabilidad adicional" in n:
+            bullet = "Cuidado de envejeciente requiere atención y responsabilidad adicional."
         elif "6+ adultos" in n or "5+ adultos" in n:
             bullet = "Es un hogar con varios adultos, lo que incrementa tareas de apoyo."
         elif "modalidad clasificada" in n:
