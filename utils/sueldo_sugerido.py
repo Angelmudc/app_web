@@ -416,6 +416,8 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
             bullet = "Incluye cuidado de envejeciente con acompañamiento o supervisión."
         elif "cuidado de envejeciente requiere atencion y responsabilidad adicional" in n or "cuidado de envejeciente requiere atención y responsabilidad adicional" in n:
             bullet = "Cuidado de envejeciente requiere atención y responsabilidad adicional."
+        elif "4 o más adultos" in n or "4 o mas adultos" in n or "más de 4 adultos" in n or "mas de 4 adultos" in n:
+            bullet = "Hay 4 o más adultos en el hogar, lo que aumenta la carga de limpieza y lavado. Se recomienda mejorar ligeramente la oferta."
         elif "6+ adultos" in n or "5+ adultos" in n:
             bullet = "Es un hogar con varios adultos, lo que incrementa tareas de apoyo."
         elif "modalidad clasificada" in n:
@@ -601,13 +603,11 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     levels.append(elder_lvl)
 
     adultos = _to_int(data.get("adultos"), default=0)
-    if adultos >= 6 and len(funciones) >= 3:
-        ajustes_total += 3000
-        motivos.append("6+ adultos con varias funciones.")
-        levels.append("alta")
-    elif adultos >= 5 and any(f in funciones for f in ("limpieza", "cocinar", "lavar")):
-        ajustes_total += 1500
-        motivos.append("5+ adultos con funciones del hogar.")
+    if adultos >= 4 and ("limpieza" in funciones and "lavar" in funciones):
+        ajustes_total += 1000
+        motivos.append(
+            "Hay 4 o más adultos en el hogar, lo que aumenta la carga de limpieza y lavado. Se recomienda mejorar ligeramente la oferta."
+        )
         levels.append("media")
 
     h_adj, h_mot, h_warn = _horario_adjustments(data, schedule_key)
