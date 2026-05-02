@@ -3244,8 +3244,9 @@ def _money_sanitize(raw):
     if raw is None:
         return None
     s = str(raw)
-    limpio = s.replace('RD$', '').replace('$', '').replace('.', '').replace(',', '').strip()
-    return limpio or s.strip()
+    # Defensa backend: conservar solo dígitos y descartar cualquier otro carácter.
+    digits = "".join(ch for ch in s if ch.isdigit())
+    return digits or None
 
 
 def _normalize_banos_value(raw_value):

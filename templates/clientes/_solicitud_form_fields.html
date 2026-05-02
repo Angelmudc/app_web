@@ -616,14 +616,14 @@
           <div class="invalid-feedback d-block">{{ form.modalidad_trabajo.errors[0] }}</div>
         {% endif %}
       </div>
-      <div class="public-field public-full" id="wrap_horario_inteligente">
+      <div class="public-field public-full" id="wrap_horario_inteligente" style="{{ '' if _modalidad_group_value else 'display:none;' }}">
         {% if form.horario is defined %}
           {{ form.horario(class='form-control d-none' ~ (' is-invalid' if form.horario.errors else ''), id='horario_hidden') }}
         {% else %}
           <input type="text" class="form-control d-none" id="horario_hidden" name="horario" value="">
         {% endif %}
         <label class="public-field-label">Horario de trabajo</label>
-        <div id="horario_salida_diaria_wrap">
+        <div id="horario_salida_diaria_wrap" style="display:none;">
           <div class="public-field-hint mb-2">Indica los días y el horario de entrada y salida del mismo día.</div>
           <div class="public-fields-grid">
             <div class="public-field">
@@ -1086,9 +1086,10 @@
       }
     }
 
-    function syncHorarioInteligente() {
+    function syncHorarioInteligente(fromUserEvent) {
       var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
       var group = groupNode ? norm(groupNode.value) : '';
+      var horarioWrap = byId('wrap_horario_inteligente');
       var salidaWrap = byId('horario_salida_diaria_wrap');
       var dormidaWrap = byId('horario_con_dormida_wrap');
       var horarioHidden = byId('horario_hidden');
@@ -1098,10 +1099,32 @@
       var hOut = byId('horario_hora_salida');
       var dIn = byId('horario_dormida_entrada');
       var dOut = byId('horario_dormida_salida');
+      var hasGroup = !!group;
       var isDormida = (group === 'con_dormida');
+      var isSalida = (group === 'con_salida_diaria');
+
+      if (horarioWrap) horarioWrap.style.display = hasGroup ? '' : 'none';
+      if (!hasGroup) {
+        if (salidaWrap) salidaWrap.style.display = 'none';
+        if (dormidaWrap) dormidaWrap.style.display = 'none';
+        if (horarioHidden) horarioHidden.value = '';
+        if (preview) preview.textContent = '';
+        return;
+      }
 
       if (salidaWrap) salidaWrap.style.display = isDormida ? 'none' : '';
       if (dormidaWrap) dormidaWrap.style.display = isDormida ? '' : 'none';
+
+      if (fromUserEvent) {
+        if (isDormida) {
+          if (dias) dias.value = '';
+          if (hIn) hIn.value = '';
+          if (hOut) hOut.value = '';
+        } else if (isSalida) {
+          if (dIn) dIn.value = '';
+          if (dOut) dOut.value = '';
+        }
+      }
 
       var horarioTxt = '';
       if (isDormida) {
@@ -1111,8 +1134,8 @@
       } else if (dias && hIn && hOut && norm(dias.value) && norm(hIn.value) && norm(hOut.value)) {
         horarioTxt = dias.value.trim() + ', de ' + hIn.value.trim() + ' a ' + hOut.value.trim();
       }
-      if (horarioHidden && horarioTxt) horarioHidden.value = horarioTxt;
-      if (preview) preview.textContent = horarioTxt || (horarioHidden ? (horarioHidden.value || '') : '');
+      if (horarioHidden) horarioHidden.value = horarioTxt;
+      if (preview) preview.textContent = horarioTxt;
     }
 
     function selectedByName(name, value) {
@@ -2120,7 +2143,7 @@
       }
       if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
         syncModalidadGuided(true);
-        syncHorarioInteligente();
+        syncHorarioInteligente(true);
       }
       if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
         syncNinosRules(true);
@@ -2160,9 +2183,24 @@
     if (rutaInputNode) rutaInputNode.addEventListener('input', syncSantiagoRutaNotice);
     var sueldoInputNode = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
     if (sueldoInputNode) {
+      var formatMoneyInput = function (raw) {
+        var digits = String(raw || '').replace(/\D+/g, '');
+        if (!digits) return '';
+        return digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      };
+      var syncMoneyInput = function () {
+        var before = sueldoInputNode.value || '';
+        var after = formatMoneyInput(before);
+        if (after !== before) sueldoInputNode.value = after;
+      };
+      sueldoInputNode.setAttribute('inputmode', 'numeric');
+      sueldoInputNode.setAttribute('autocomplete', 'off');
+      syncMoneyInput();
       sueldoInputNode.addEventListener('input', function () {
+        syncMoneyInput();
         if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
       });
+      sueldoInputNode.addEventListener('blur', syncMoneyInput);
     }
     var banosInputNode = hostForm.querySelector('[name="banos"]');
     if (banosInputNode) {
@@ -2171,12 +2209,14 @@
     ['horario_dias_trabajo', 'horario_hora_entrada', 'horario_hora_salida', 'horario_dormida_entrada', 'horario_dormida_salida'].forEach(function (id) {
       var node = byId(id);
       if (!node) return;
-      node.addEventListener('input', syncHorarioInteligente);
+      node.addEventListener('input', function () {
+        syncHorarioInteligente(false);
+      });
     });
 
     hostForm.addEventListener('submit', function () {
       syncModalidadGuided(false);
-      syncHorarioInteligente();
+      syncHorarioInteligente(false);
       syncNinosRules(false);
       syncAdultosRules(false);
       syncEnvejecienteSection(false);
@@ -2193,7 +2233,7 @@
     });
 
     cleanBanosDisplayValue();
-    syncHorarioInteligente();
+    syncHorarioInteligente(false);
 
     return true;
   }

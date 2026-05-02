@@ -116,6 +116,26 @@ def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optiona
     assert "name=\"horario_hora_salida\"" in partial
     assert "name=\"horario_dormida_entrada\"" in partial
     assert "name=\"horario_dormida_salida\"" in partial
+    assert "id=\"wrap_horario_inteligente\" style=\"{{ '' if _modalidad_group_value else 'display:none;' }}\"" in partial
+    assert "id=\"horario_salida_diaria_wrap\" style=\"display:none;\"" in partial
+
+
+def test_shared_partial_horario_depends_on_modalidad_and_clears_cross_fields():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "function syncHorarioInteligente(fromUserEvent)" in partial
+    assert "var horarioWrap = byId('wrap_horario_inteligente');" in partial
+    assert "if (horarioWrap) horarioWrap.style.display = hasGroup ? '' : 'none';" in partial
+    assert "if (!hasGroup) {" in partial
+    assert "if (horarioHidden) horarioHidden.value = '';" in partial
+    assert "if (preview) preview.textContent = '';" in partial
+    assert "if (isDormida) {" in partial
+    assert "if (dias) dias.value = '';" in partial
+    assert "if (hIn) hIn.value = '';" in partial
+    assert "if (hOut) hOut.value = '';" in partial
+    assert "} else if (isSalida) {" in partial
+    assert "if (dIn) dIn.value = '';" in partial
+    assert "if (dOut) dOut.value = '';" in partial
+    assert "syncHorarioInteligente(true);" in partial
 
 
 def test_shared_partial_shows_modalidad_otro_input_when_otro_option_selected():

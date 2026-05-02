@@ -264,3 +264,37 @@ def test_public_solicitud_envejeciente_encamado_solo_acompanamiento_guarda_igual
         )
     assert s_nuevo.envejeciente_solo_acompanamiento is True
     assert s_existente.envejeciente_solo_acompanamiento is True
+
+
+def test_money_sanitize_backend_strips_symbols_letters_and_emoji():
+    assert clientes_routes._money_sanitize("16000") == "16000"
+    assert clientes_routes._money_sanitize("RD$16000") == "16000"
+    assert clientes_routes._money_sanitize("16,000🔥abc") == "16000"
+    assert clientes_routes._money_sanitize("🔥abc") is None
+
+
+def test_public_solicitud_mapping_saves_clean_salary_value():
+    form = _FakeSolicitudForm()
+    form.sueldo.data = "16,000🔥abc"
+    s = _new_solicitud_ns()
+    now_ref = clientes_routes.utc_now_naive()
+    with flask_app.test_request_context(
+        "/fake",
+        method="POST",
+        data={
+            "banos": "2",
+            "modalidad_grupo": "con_salida_diaria",
+            "horario_dias_trabajo": "Lunes a viernes",
+            "horario_hora_entrada": "8:00 AM",
+            "horario_hora_salida": "5:00 PM",
+        },
+    ):
+        clientes_routes._apply_public_solicitud_fields(
+            solicitud_obj=s,
+            form=form,
+            public_pisos_value="1",
+            public_pasaje_mode="incluido",
+            public_pasaje_otro="",
+            now_ref=now_ref,
+        )
+    assert s.sueldo == "16000"

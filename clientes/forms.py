@@ -312,7 +312,13 @@ class SolicitudForm(FlaskForm):
         "Sueldo a pagar",
         validators=[DataRequired("Indica el sueldo."), Length(max=100)],
         filters=STRIP,
-        render_kw={"placeholder": "Ej. 18,000"}
+        render_kw={
+            "placeholder": "Ej. 18,000",
+            "inputmode": "numeric",
+            "autocomplete": "off",
+            "spellcheck": "false",
+            "pattern": r"[0-9,]*",
+        },
     )
     pasaje_aporte = BooleanField("Pasaje aporta")
 
