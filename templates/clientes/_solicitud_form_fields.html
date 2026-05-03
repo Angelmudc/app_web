@@ -1148,7 +1148,12 @@
       if (hOut && Object.prototype.hasOwnProperty.call(item, 'hOut')) hOut.value = item.hOut || '';
       if (dIn && Object.prototype.hasOwnProperty.call(item, 'dIn')) dIn.value = item.dIn || '';
       if (dOut && Object.prototype.hasOwnProperty.call(item, 'dOut')) dOut.value = item.dOut || '';
-      if (item.overrideText) {
+      if (
+        item.overrideText &&
+        !Object.prototype.hasOwnProperty.call(item, 'dias') &&
+        !Object.prototype.hasOwnProperty.call(item, 'hIn') &&
+        !Object.prototype.hasOwnProperty.call(item, 'hOut')
+      ) {
         if (dias) dias.value = '';
         if (hIn) hIn.value = '';
         if (hOut) hOut.value = '';
@@ -1283,10 +1288,10 @@
           { key: "sd_lv_9_6", label: "Lunes a viernes, 9:00 AM - 6:00 PM", dias: "Lunes a viernes", hIn: "9:00 AM", hOut: "6:00 PM" }
         ],
         "Salida diaria - lunes a sábado": [
-          { key: "sd_ls_8_4_s12", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 12:00 PM" },
-          { key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 1:00 PM" },
-          { key: "sd_ls_8_5_s12", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" },
-          { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" }
+          { key: "sd_ls_8_4_s12", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 12:00 PM", dias: "Lunes a viernes / sábado hasta 12:00 PM", hIn: "8:00 AM", hOut: "4:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 12:00 PM" },
+          { key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", dias: "Lunes a viernes / sábado hasta 1:00 PM", hIn: "8:00 AM", hOut: "4:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 1:00 PM" },
+          { key: "sd_ls_8_5_s12", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM", dias: "Lunes a viernes / sábado hasta 12:00 PM", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" },
+          { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", dias: "Lunes a viernes / sábado hasta 1:00 PM", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" }
         ],
         "Salida diaria - 1 día a la semana": [
           { key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
