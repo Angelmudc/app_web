@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import os
 import re
 from datetime import datetime
@@ -987,6 +987,12 @@ class Solicitud(db.Model):
                                 nullable=True,
                                 index=True,
                                 comment="Origen del formulario público: cliente_nuevo, cliente_existente, solicitud_publica."
+                             )
+    lead_source            = db.Column(
+                                db.String(30),
+                                nullable=True,
+                                index=True,
+                                comment="Fuente de captación del lead: instagram, facebook, tiktok, google, direct."
                              )
     review_status          = db.Column(
                                 db.String(20),

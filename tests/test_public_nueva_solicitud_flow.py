@@ -102,7 +102,8 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert "Correo electrónico / Gmail" in html
     assert "Número de teléfono" in html
     assert "Seccion 2 - Datos de la solicitud" in html
-    assert "Ciudad / Sector" in html
+    assert "Ciudad" in html
+    assert "Sector" in html
     assert 'name="ciudad_sector"' in html
     assert "Requisitos y perfil" in html
     assert 'name="modalidad_grupo" value="con_dormida"' in html
@@ -129,11 +130,10 @@ def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks(
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'id="publicSubmitNuevaBtn" disabled aria-disabled="true"' in html
-    assert 'id="termsAcceptedNuevaStatus"' in html
-    assert "Términos aceptados" in html
-    assert "rejectBtn.disabled = true" in html
-    assert "rejectBtn.classList.add('d-none')" in html
-    assert "acceptBtn.textContent = 'Aceptado'" in html
+    assert 'id="acepta_politica_nueva"' in html
+    assert 'id="termsAcceptedNuevaInput" value="0"' in html
+    assert "Debes aceptar los términos para continuar" in html
+    assert "function syncTermsState()" in html
 
 
 def test_new_public_post_keeps_cliente_city_sector_separate_from_solicitud_ciudad_sector():

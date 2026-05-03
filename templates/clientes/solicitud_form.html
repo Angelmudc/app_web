@@ -33,6 +33,7 @@
         <form id="solicitud-form" method="post" novalidate data-has-errors="{{ '1' if form.errors else '0' }}" data-autosave-key="solicitud_form_cliente" data-soft-wizard="1">
           {{ form.hidden_tag() }}
           <input type="hidden" id="wizard_step" name="wizard_step" value="{{ initial_wizard_step if initial_wizard_step is defined else 1 }}">
+          <input type="hidden" name="lead_source" id="lead_source" value="direct">
 
           {% if draft_meta and nuevo %}
             <div class="alert alert-warning border-0 rounded-3 mb-4 solicitud-form-draft-alert" role="status">
@@ -138,4 +139,27 @@
 </section>
 {% endblock %}
 
-{% block scripts %}{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var leadSourceInput = document.getElementById('lead_source');
+  if (!leadSourceInput) return;
+
+  function detectLeadSource() {
+    var urlParams = new URLSearchParams(window.location.search || '');
+    var source = (urlParams.get('source') || '').trim().toLowerCase();
+    if (source) return source;
+
+    var ref = (document.referrer || '').toLowerCase();
+    if (ref.indexOf('instagram') !== -1) return 'instagram';
+    if (ref.indexOf('facebook') !== -1) return 'facebook';
+    if (ref.indexOf('tiktok') !== -1) return 'tiktok';
+    if (ref.indexOf('google') !== -1) return 'google';
+
+    return 'direct';
+  }
+
+  leadSourceInput.value = detectLeadSource();
+})();
+</script>
+{% endblock %}

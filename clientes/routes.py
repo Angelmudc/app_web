@@ -177,6 +177,7 @@ BUSINESS_ACTIVE_SOLICITUD_STATES = {
 BUSINESS_MAX_CLIENTE_CREACIONES_DIA = int((os.getenv("BUSINESS_MAX_CLIENTE_CREACIONES_DIA") or "6").strip() or 6)
 BUSINESS_MAX_CLIENTE_ACTIVAS = int((os.getenv("BUSINESS_MAX_CLIENTE_ACTIVAS") or "4").strip() or 4)
 BUSINESS_MAX_PUBLIC_IP_DIA = int((os.getenv("BUSINESS_MAX_PUBLIC_IP_DIA") or "20").strip() or 20)
+LEAD_SOURCES_ALLOWED = {"instagram", "facebook", "tiktok", "google", "direct"}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -402,6 +403,11 @@ def _client_ip_for_security_layer() -> str:
         ip = (request.remote_addr or "").strip()
 
     return ip[:64]
+
+
+def _normalize_lead_source(value: str) -> str:
+    raw = str(value or "").strip().lower()[:30]
+    return raw if raw in LEAD_SOURCES_ALLOWED else "direct"
 
 
 def _get_plan_solicitud(s: 'Solicitud') -> str:
@@ -3790,6 +3796,8 @@ def nueva_solicitud():
                 fecha_solicitud=utc_now_naive(),
                 codigo_solicitud=codigo
             )
+            if hasattr(s, "lead_source"):
+                s.lead_source = _normalize_lead_source(request.form.get("lead_source"))
             form.populate_obj(s)
             _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
@@ -7443,6 +7451,17 @@ def solicitud_publica_nueva_token(token):
     if request.method == "POST":
         terms_decision = (request.form.get("terms_decision") or "").strip().lower()
         terms_accepted = (request.form.get("terms_accepted") or "").strip()
+        terms_accepted_at_raw = (request.form.get("terms_accepted_at") or "").strip()
+        terms_accepted_at_value = None
+        if terms_accepted_at_raw:
+            try:
+                iso = terms_accepted_at_raw.replace("Z", "+00:00")
+                parsed_dt = datetime.fromisoformat(iso)
+                if parsed_dt.tzinfo is not None:
+                    parsed_dt = parsed_dt.replace(tzinfo=None)
+                terms_accepted_at_value = parsed_dt
+            except Exception:
+                terms_accepted_at_value = None
         if (
             current_app.config.get("TESTING")
             and not terms_decision
@@ -7644,10 +7663,12 @@ def solicitud_publica_nueva_token(token):
                     fecha_solicitud=now_ref,
                     codigo_solicitud=codigo_solicitud
                 )
+                if hasattr(s, "lead_source"):
+                    s.lead_source = _normalize_lead_source(request.form.get("lead_source"))
                 if hasattr(s, "terms_accepted"):
                     s.terms_accepted = True
                 if hasattr(s, "terms_accepted_at"):
-                    s.terms_accepted_at = datetime.utcnow()
+                    s.terms_accepted_at = terms_accepted_at_value or datetime.utcnow()
                 if hasattr(s, "terms_version"):
                     s.terms_version = terms_evidence_version
                 if hasattr(s, "terms_ip"):
@@ -7923,6 +7944,17 @@ def solicitud_publica(token):
     if request.method == "POST":
         terms_decision = (request.form.get("terms_decision") or "").strip().lower()
         terms_accepted = (request.form.get("terms_accepted") or "").strip()
+        terms_accepted_at_raw = (request.form.get("terms_accepted_at") or "").strip()
+        terms_accepted_at_value = None
+        if terms_accepted_at_raw:
+            try:
+                iso = terms_accepted_at_raw.replace("Z", "+00:00")
+                parsed_dt = datetime.fromisoformat(iso)
+                if parsed_dt.tzinfo is not None:
+                    parsed_dt = parsed_dt.replace(tzinfo=None)
+                terms_accepted_at_value = parsed_dt
+            except Exception:
+                terms_accepted_at_value = None
         if terms_decision == "reject":
             try:
                 _consume_public_existing_token_on_terms_reject(
@@ -8180,10 +8212,12 @@ def solicitud_publica(token):
                 fecha_solicitud=now_ref,
                 codigo_solicitud=codigo
             )
+            if hasattr(s, "lead_source"):
+                s.lead_source = _normalize_lead_source(request.form.get("lead_source"))
             if hasattr(s, "terms_accepted"):
                 s.terms_accepted = True
             if hasattr(s, "terms_accepted_at"):
-                s.terms_accepted_at = datetime.utcnow()
+                s.terms_accepted_at = terms_accepted_at_value or datetime.utcnow()
             if hasattr(s, "terms_version"):
                 s.terms_version = terms_evidence_version
             if hasattr(s, "terms_ip"):
