@@ -149,7 +149,7 @@ def test_ninos_grandes_no_suben_fuerte():
     )
     assert base["can_suggest"] is True and small["can_suggest"] is True
     assert (small["suggested_min"] - base["suggested_min"]) == 2000
-    assert (base["suggested_min"] - base["base_salary"]) == 500
+    assert (base["suggested_min"] - base["base_salary"]) == 0
 
 
 def test_nino_7_anos_no_aumenta_fuerte():
@@ -988,7 +988,7 @@ def test_casa_2h_3b_no_aumenta():
     assert (r["suggested_min"] - r["base_salary"]) == 0
 
 
-def test_casa_3h_3b_no_aumenta():
+def test_casa_3h_3b_sube_1000():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1001,10 +1001,10 @@ def test_casa_3h_3b_no_aumenta():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) == 0
+    assert (r["suggested_min"] - r["base_salary"]) == 1000
 
 
-def test_casa_4h_si_aumenta():
+def test_casa_4h_mantiene_base():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1017,10 +1017,10 @@ def test_casa_4h_si_aumenta():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) > 0
+    assert (r["suggested_min"] - r["base_salary"]) == 0
 
 
-def test_casa_4b_si_aumenta():
+def test_casa_4b_mantiene_base():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1033,7 +1033,7 @@ def test_casa_4b_si_aumenta():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) > 0
+    assert (r["suggested_min"] - r["base_salary"]) == 0
 
 
 def test_apto_3h_2b_no_aumenta():
@@ -1068,7 +1068,7 @@ def test_apto_4h_2b_no_aumenta_o_minimo():
     assert (r["suggested_min"] - r["base_salary"]) <= 500
 
 
-def test_apto_4h_3b_no_aumenta_o_minimo():
+def test_apto_4h_3b_sube_500():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1081,10 +1081,10 @@ def test_apto_4h_3b_no_aumenta_o_minimo():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) <= 500
+    assert (r["suggested_min"] - r["base_salary"]) == 500
 
 
-def test_apto_4b_aumento_leve_menor_que_casa():
+def test_apto_y_casa_4h_4b_aplican_diferencia_por_tipo_solo_si_es_grande():
     apto = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1108,8 +1108,8 @@ def test_apto_4b_aumento_leve_menor_que_casa():
         )
     )
     assert apto["can_suggest"] is True and casa["can_suggest"] is True
-    assert 0 < (apto["suggested_min"] - apto["base_salary"]) <= 1000
-    assert (apto["suggested_min"] - apto["base_salary"]) < (casa["suggested_min"] - casa["base_salary"])
+    assert (apto["suggested_min"] - apto["base_salary"]) == 500
+    assert (casa["suggested_min"] - casa["base_salary"]) == 1000
 
 
 def test_casa_pequena_con_funciones_normales_mantiene_base():
@@ -1231,7 +1231,7 @@ def test_mensaje_explica_carga_adicional_por_adultos():
     )
     assert r["can_suggest"] is True
     assert "4 o más adultos" in (r.get("message") or "").lower()
-def test_casa_3h_4b_si_aumenta():
+def test_casa_3h_4b_sube_1000():
     r = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar"],
@@ -1244,4 +1244,22 @@ def test_casa_3h_4b_si_aumenta():
         )
     )
     assert r["can_suggest"] is True
-    assert (r["suggested_min"] - r["base_salary"]) > 0
+    assert (r["suggested_min"] - r["base_salary"]) == 1000
+
+
+def test_sd_4_dias_basico_limpieza_cocina_casa_pequena_sin_incremento():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - 4 días a la semana",
+            funciones=["limpieza", "cocinar"],
+            tipo_lugar="casa",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+            areas_comunes=["sala", "comedor"],
+            adultos="2",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert r["base_salary"] == 14500
+    assert r["suggested_min"] == 14500

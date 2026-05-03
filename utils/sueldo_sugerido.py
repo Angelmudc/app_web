@@ -195,26 +195,28 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
     if "limpieza" not in funciones:
         return 0, motivos, nivel
 
-    if tipo_lugar == "casa":
-        # Casa pequeña/normal: hasta 3 habitaciones y 2 baños no sube por tamaño.
+    if tipo_lugar in {"casa", "apto"}:
+        # Hogar grande: 3+ habitaciones y 3+ baños.
+        is_large_home = hab >= 3 and banos >= 3
+        if is_large_home:
+            if tipo_lugar == "casa":
+                ajustes += 1000
+                nivel = "media"
+                motivos.append("Casa grande por tamaño del hogar (3+ habitaciones y 3+ baños).")
+            elif tipo_lugar == "apto":
+                ajustes += 500
+                nivel = "media"
+                motivos.append("Apartamento grande por tamaño del hogar (3+ habitaciones y 3+ baños).")
+
+        # Reglas adicionales de carga real (más allá de tipo/tamaño base).
         if pisos == "3+":
             ajustes += 1500
             nivel = "media"
             motivos.append("La vivienda tiene más de un nivel.")
-        elif two_levels:
+        elif two_levels and hab >= 5:
             ajustes += 1000
             nivel = "media"
             motivos.append("La vivienda tiene más de un nivel.")
-
-        if hab >= 4:
-            ajustes += 1000
-            nivel = "media"
-            motivos.append("Casa grande por cantidad de habitaciones.")
-
-        if banos >= 4:
-            ajustes += 1000
-            nivel = "media"
-            motivos.append("Casa grande por cantidad de baños.")
 
         if has_all_areas:
             ajustes += 2000
@@ -222,20 +224,6 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
             motivos.append("Incluye varias áreas comunes del hogar.")
         elif some_areas_count >= 4:
             ajustes += 1000
-            motivos.append("Incluye varias áreas comunes del hogar.")
-        elif some_areas_count >= 2:
-            ajustes += 500
-            motivos.append("Incluye varias áreas comunes del hogar.")
-    elif tipo_lugar == "apto":
-        # Apartamentos suben menos que casas.
-        if banos >= 4:
-            ajustes += 500
-            motivos.append("Apartamento con varios baños.")
-        if has_all_areas:
-            ajustes += 500
-            motivos.append("Incluye varias áreas comunes del hogar.")
-        elif some_areas_count >= 4:
-            ajustes += 500
             motivos.append("Incluye varias áreas comunes del hogar.")
     return ajustes, motivos, nivel
 
