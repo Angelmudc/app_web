@@ -646,6 +646,21 @@
       font-size: .84rem;
       line-height: 1.1;
     }
+    #pisos_selector_wrap {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 9px;
+      justify-content: stretch;
+      align-items: stretch;
+    }
+    #pisos_selector_wrap .public-segmented-item {
+      width: 100%;
+      min-width: 0;
+    }
+    #pisos_selector_wrap .public-segmented-item span {
+      width: 100%;
+      justify-content: center;
+      text-align: center;
+    }
   }
 
   @media (max-width: 460px) {
