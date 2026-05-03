@@ -649,7 +649,7 @@
         <label class="public-field-label">Horario de trabajo</label>
         <div id="horario_sugerencias_wrap" class="public-suggest-wrap" style="display:none;">
           <p class="public-suggest-title">Horarios sugeridos</p>
-          <p class="public-suggest-desc">Elige una opción común o selecciona “Otro (escribir horario)”.</p>
+          <p class="public-suggest-desc">Elige una opción común de horario sugerido.</p>
           <div class="public-segmented public-segmented-grid" id="horario_sugerencias_options"></div>
         </div>
         <div id="horario_salida_diaria_wrap" style="display:none;">
@@ -1279,75 +1279,63 @@
         "Salida diaria - lunes a viernes": [
           { key: "sd_lv_8_4", label: "Lunes a viernes, 8:00 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "8:00 AM", hOut: "4:00 PM" },
           { key: "sd_lv_8_5", label: "Lunes a viernes, 8:00 AM - 5:00 PM", dias: "Lunes a viernes", hIn: "8:00 AM", hOut: "5:00 PM" },
-          { key: "sd_lv_7_4", label: "Lunes a viernes, 7:00 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "7:00 AM", hOut: "4:00 PM" },
-          { key: "sd_lv_9_6", label: "Lunes a viernes, 9:00 AM - 6:00 PM", dias: "Lunes a viernes", hIn: "9:00 AM", hOut: "6:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_lv_7_4", label: "Lunes a viernes, 7:30 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "7:30 AM", hOut: "4:00 PM" },
+          { key: "sd_lv_9_6", label: "Lunes a viernes, 9:00 AM - 6:00 PM", dias: "Lunes a viernes", hIn: "9:00 AM", hOut: "6:00 PM" }
         ],
         "Salida diaria - lunes a sábado": [
           { key: "sd_ls_8_4_s12", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 12:00 PM" },
           { key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 4:00 PM / sábado hasta 1:00 PM" },
           { key: "sd_ls_8_5_s12", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" },
-          { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" }
         ],
         "Salida diaria - 1 día a la semana": [
           { key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
           { key: "sd_1_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_1_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_1_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" }
         ],
         "Salida diaria - 2 días a la semana": [
           { key: "sd_2_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
           { key: "sd_2_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_2_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_2_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" }
         ],
         "Salida diaria - 3 días a la semana": [
           { key: "sd_3_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
           { key: "sd_3_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_3_7_3", label: "7:00 AM - 3:00 PM", hIn: "7:00 AM", hOut: "3:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_3_7_3", label: "7:30 AM - 3:00 PM", hIn: "7:30 AM", hOut: "3:00 PM" }
         ],
         "Salida diaria - 4 días a la semana": [
           { key: "sd_4_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
           { key: "sd_4_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_4_7_3", label: "7:00 AM - 3:00 PM", hIn: "7:00 AM", hOut: "3:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_4_7_3", label: "7:30 AM - 3:00 PM", hIn: "7:30 AM", hOut: "3:00 PM" }
         ],
         "Salida diaria - fin de semana": [
           { key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", overrideText: "Sábado y domingo, 8:00 AM - 5:00 PM" },
           { key: "sd_fs_9_6", label: "Sábado y domingo, 9:00 AM - 6:00 PM", overrideText: "Sábado y domingo, 9:00 AM - 6:00 PM" },
-          { key: "sd_fs_mix", label: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", overrideText: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "sd_fs_mix", label: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", overrideText: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM" }
         ]
       },
       "con_dormida": {
         "Con dormida 💤 lunes a viernes": [
-          { key: "cd_lv_1", label: "Entrada lunes 8:00 AM / salida viernes 5:00 PM", dIn: "lunes 8:00 AM", dOut: "viernes 5:00 PM" },
-          { key: "cd_lv_2", label: "Entrada lunes 7:00 AM / salida viernes 4:00 PM", dIn: "lunes 7:00 AM", dOut: "viernes 4:00 PM" },
-          { key: "cd_lv_3", label: "Entrada domingo en la tarde / salida viernes 5:00 PM", dIn: "domingo en la tarde", dOut: "viernes 5:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "cd_lv_1", label: "Entrada lunes 9:00 AM / salida viernes 4:00 PM", dIn: "lunes 9:00 AM", dOut: "viernes 4:00 PM" },
+          { key: "cd_lv_2", label: "Entrada lunes 7:30 AM / salida viernes 3:00 PM", dIn: "lunes 7:30 AM", dOut: "viernes 3:00 PM" }
         ],
         "Con dormida 💤 lunes a sábado": [
           { key: "cd_ls_1", label: "Entrada lunes 8:00 AM / salida sábado 12:00 PM", dIn: "lunes 8:00 AM", dOut: "sábado 12:00 PM" },
           { key: "cd_ls_2", label: "Entrada lunes 8:00 AM / salida sábado 1:00 PM", dIn: "lunes 8:00 AM", dOut: "sábado 1:00 PM" },
-          { key: "cd_ls_3", label: "Entrada lunes 7:00 AM / salida sábado 12:00 PM", dIn: "lunes 7:00 AM", dOut: "sábado 12:00 PM" },
-          { key: "cd_ls_4", label: "Entrada domingo en la tarde / salida sábado 12:00 PM", dIn: "domingo en la tarde", dOut: "sábado 12:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "cd_ls_3", label: "Entrada lunes 7:30 AM / salida sábado 12:00 PM", dIn: "lunes 7:30 AM", dOut: "sábado 12:00 PM" }
         ],
         "Con dormida 💤 quincenal": [
-          { key: "cd_q_1", label: "Entrada lunes 8:00 AM / salida sábado 12:00 PM cada 15 días", dIn: "lunes 8:00 AM", dOut: "sábado 12:00 PM cada 15 días" },
-          { key: "cd_q_2", label: "Entrada lunes 8:00 AM / salida sábado 1:00 PM cada 15 días", dIn: "lunes 8:00 AM", dOut: "sábado 1:00 PM cada 15 días" },
-          { key: "cd_q_3", label: "Entrada domingo en la tarde / salida sábado 12:00 PM cada 15 días", dIn: "domingo en la tarde", dOut: "sábado 12:00 PM cada 15 días" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "cd_q_1", label: "Entrada lunes 7:30 AM / salida viernes 12:00 PM", dIn: "lunes 7:30 AM", dOut: "viernes 12:00 PM" },
+          { key: "cd_q_2", label: "Entrada lunes 7:30 AM / salida viernes 1:00 PM", dIn: "lunes 7:30 AM", dOut: "viernes 1:00 PM" },
+          { key: "cd_q_3", label: "Entrada domingo 5:00 PM / salida viernes 12:00 PM", dIn: "domingo 5:00 PM", dOut: "viernes 12:00 PM" },
+          { key: "cd_q_4", label: "Entrada domingo 5:00 PM / salida viernes 1:00 PM", dIn: "domingo 5:00 PM", dOut: "viernes 1:00 PM" }
         ],
         "Con dormida 💤 fin de semana": [
-          { key: "cd_fs_1", label: "Entrada viernes en la tarde / salida lunes en la mañana", dIn: "viernes en la tarde", dOut: "lunes en la mañana" },
-          { key: "cd_fs_2", label: "Entrada viernes 8:00 AM / salida lunes en la mañana", dIn: "viernes 8:00 AM", dOut: "lunes en la mañana" },
-          { key: "cd_fs_3", label: "Entrada viernes 5:00 PM / salida lunes 8:00 AM", dIn: "viernes 5:00 PM", dOut: "lunes 8:00 AM" },
-          { key: "cd_fs_4", label: "Entrada sábado 8:00 AM / salida domingo 5:00 PM", dIn: "sábado 8:00 AM", dOut: "domingo 5:00 PM" },
-          { key: "cd_fs_5", label: "Entrada sábado 9:00 AM / salida domingo 6:00 PM", dIn: "sábado 9:00 AM", dOut: "domingo 6:00 PM" },
-          { key: "manual", label: "Otro (escribir horario)", manual: true }
+          { key: "cd_fs_1", label: "Entrada viernes 5:00 PM / salida lunes 8:00 AM", dIn: "viernes 5:00 PM", dOut: "lunes 8:00 AM" },
+          { key: "cd_fs_2", label: "Entrada viernes 8:00 AM / salida lunes 8:00 AM", dIn: "viernes 8:00 AM", dOut: "lunes 8:00 AM" },
+          { key: "cd_fs_3", label: "Entrada viernes 4:00 PM / salida lunes 8:00 AM", dIn: "viernes 4:00 PM", dOut: "lunes 8:00 AM" },
+          { key: "cd_fs_4", label: "Entrada sábado 8:00 AM / salida lunes 8:00 AM", dIn: "sábado 8:00 AM", dOut: "lunes 8:00 AM" },
+          { key: "cd_fs_5", label: "Entrada sábado 9:00 AM / salida lunes 8:00 AM", dIn: "sábado 9:00 AM", dOut: "lunes 8:00 AM" }
         ]
       }
     };
