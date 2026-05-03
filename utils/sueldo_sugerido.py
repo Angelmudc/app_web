@@ -20,7 +20,7 @@ BASE_SALARY_MAP = {
     "sd_1_dia": 5000,
     "sd_2_dias": 9500,
     "sd_3_dias": 12500,
-    "sd_4_dias": 15000,
+    "sd_4_dias": 14500,
     "sd_l_v": 16000,
     "sd_l_s": 17000,
     "sd_fin_semana": 11000,
@@ -34,7 +34,7 @@ SD_PROFILE_BASE = {
     1: {"ninera": 4500, "domestica": 5000, "envejeciente": 5500, "mixto": 6500, "mixto_alto": 7000},
     2: {"ninera": 8000, "domestica": 9000, "envejeciente": 10000, "mixto": 10000, "mixto_alto": 11000},
     3: {"ninera": 10500, "domestica": 12500, "envejeciente": 13500, "mixto": 14500, "mixto_alto": 15500},
-    4: {"ninera": 12500, "domestica": 15000, "envejeciente": 16000, "mixto": 16000, "mixto_alto": 17000},
+    4: {"ninera": 12500, "domestica": 14500, "envejeciente": 16000, "mixto": 16000, "mixto_alto": 17000},
     5: {"ninera": 15000, "domestica": 18000, "envejeciente": 19000, "mixto": 20000, "mixto_alto": 21000},
 }
 

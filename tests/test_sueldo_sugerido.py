@@ -30,7 +30,7 @@ def test_base_salary_map_expected_values():
     assert BASE_SALARY_MAP["sd_1_dia"] == 5000
     assert BASE_SALARY_MAP["sd_2_dias"] == 9500
     assert BASE_SALARY_MAP["sd_3_dias"] == 12500
-    assert BASE_SALARY_MAP["sd_4_dias"] == 15000
+    assert BASE_SALARY_MAP["sd_4_dias"] == 14500
     assert BASE_SALARY_MAP["sd_l_v"] == 16000
     assert BASE_SALARY_MAP["sd_l_s"] == 17000
     assert BASE_SALARY_MAP["sd_fin_semana"] == 11000
