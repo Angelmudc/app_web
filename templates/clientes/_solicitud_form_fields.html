@@ -426,6 +426,14 @@
     gap: 8px;
   }
 
+  .public-segmented.public-segmented-grid-compact {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .public-segmented.public-segmented-grid-pisos {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
   .public-segmented-item {
     position: relative;
     margin: 0;
@@ -441,32 +449,39 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 38px;
+    min-height: 34px;
     border: 1px solid #dbe4ef;
     border-radius: 10px;
     background: #f8fbff;
     color: var(--cl-text-primary);
-    padding: 6px 12px;
+    padding: 5px 10px;
     font-size: .87rem;
     font-weight: 600;
     cursor: pointer;
-    transition: .16s ease;
+    transition: all 0.15s ease;
   }
 
-  .public-segmented-item span:hover {
-    border-color: #9eb8d2;
-    background: #f2f8ff;
-    transform: translateY(-1px);
+  @media (hover: hover) and (pointer: fine) {
+    .public-segmented-item span:hover {
+      background: #eff6ff;
+      border-color: #3b82f6;
+      transform: translateY(-1px);
+    }
   }
 
   .public-segmented-item input[type="radio"]:checked + span {
-    border-color: #2da7f5;
-    background: #e8f4f7;
-    color: #1f4f7a;
+    background: #2563eb;
+    color: #fff;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.22);
   }
 
   .public-segmented-item input[type="radio"]:focus + span {
     box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+  }
+
+  .public-segmented-item span:active {
+    transform: scale(0.96);
   }
 
   .public-suggest-wrap {
@@ -500,6 +515,35 @@
   }
 
   .public-full { grid-column: 1 / -1; }
+  .public-field--tipo-lugar {
+    border: 1px solid #d7e3f0;
+    border-radius: 12px;
+    background: #f8fbff;
+    padding: 10px;
+  }
+
+  .public-field--tipo-lugar.is-empty {
+    border-color: #e6b66a;
+    background: linear-gradient(180deg, #fffaf1 0%, #fff4e4 100%);
+    box-shadow: inset 0 0 0 1px rgba(178, 114, 18, 0.16);
+  }
+
+  .public-field--tipo-lugar.is-empty .form-select {
+    border-color: #d69b3d;
+    background-color: #fffdfa;
+  }
+
+  .public-tipo-lugar-guide {
+    margin-top: 6px;
+    font-size: .8rem;
+    color: #8a611f;
+    display: none;
+  }
+
+  .public-field--tipo-lugar.is-empty .public-tipo-lugar-guide {
+    display: block;
+  }
+
   .public-house-grid .public-areas-field .public-choice-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .public-choice-grid--edad_requerida { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .public-choice-grid--funciones { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -576,6 +620,19 @@
     .public-choice-grid--funciones,
     .public-choice-grid--areas_comunes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .public-segmented.public-segmented-grid { grid-template-columns: 1fr; }
+    .public-segmented.public-segmented-grid-compact { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .public-segmented.public-segmented-grid-pisos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .public-segmented.public-segmented-grid-compact,
+    .public-segmented.public-segmented-grid-pisos {
+      gap: 6px;
+      padding: 7px;
+    }
+    .public-segmented-item span {
+      min-height: 32px;
+      padding: 4px 8px;
+      font-size: .84rem;
+      line-height: 1.1;
+    }
   }
 
   @media (max-width: 460px) {
@@ -609,7 +666,7 @@
             required
             aria-required="true"
             value="{{ _ciudad_sector_city }}"
-            placeholder="Ej. Santiago"
+            placeholder="Ciudad"
           >
         </div>
         <div class="public-field">
@@ -623,7 +680,7 @@
             required
             aria-required="true"
             value="{{ _ciudad_sector_sector }}"
-            placeholder="Ej. Cerros de Gurabo"
+            placeholder="Sector"
           >
           {% if form.ciudad_sector is defined and form.ciudad_sector.errors %}
             <div class="invalid-feedback d-block">{{ form.ciudad_sector.errors[0] }}</div>
@@ -798,13 +855,23 @@
     <div class="public-fields-grid public-house-grid">
       <div class="public-home-structure-wrap public-home-structure-wrap--active" id="wrap_home_structure_conditional">
         <div class="public-home-structure-grid">
-          {{ render_field(form.tipo_lugar) }}
+          <div class="public-field public-field--tipo-lugar" id="wrap_tipo_lugar_field">
+            <label class="public-field-label" for="{{ form.tipo_lugar.id }}">Tipo de lugar</label>
+            <select class="form-select{{ ' is-invalid' if form.tipo_lugar.errors else '' }}" id="{{ form.tipo_lugar.id }}" name="{{ form.tipo_lugar.name }}" required aria-required="true">
+              <option value="">Selecciona tipo de lugar</option>
+              {% for val, txt in form.tipo_lugar.choices %}
+                <option value="{{ val }}" {% if (form.tipo_lugar.data or '') == val %}selected{% endif %}>{{ txt }}</option>
+              {% endfor %}
+            </select>
+            <div class="public-tipo-lugar-guide">Selecciona si es casa o apartamento</div>
+            {{ render_errors(form.tipo_lugar) }}
+          </div>
           {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
           {% if form.habitaciones is defined %}
             <div class="public-field" id="wrap_habitaciones_selector">
               <label class="public-field-label">Habitaciones</label>
               {{ form.habitaciones(class='form-control d-none' ~ (' is-invalid' if form.habitaciones.errors else ''), id='habitaciones_hidden') }}
-              <div class="public-segmented public-segmented-grid">
+              <div class="public-segmented public-segmented-grid public-segmented-grid-compact">
                 {% for hval in ['1', '2', '3', '4', '5'] %}
                   <label class="public-segmented-item">
                     <input type="radio" name="habitaciones_selector" value="{{ hval }}">
@@ -834,7 +901,7 @@
             <div class="public-field" id="wrap_banos_selector">
               <label class="public-field-label">Baños</label>
               {{ form.banos(class='form-control d-none' ~ (' is-invalid' if form.banos.errors else ''), id='banos_hidden') }}
-              <div class="public-segmented public-segmented-grid">
+              <div class="public-segmented public-segmented-grid public-segmented-grid-compact">
                 {% for bval in ['1', '1.5', '2', '2.5', '3', '3.5', '4', '4.5', '5', '5.5'] %}
                   <label class="public-segmented-item">
                     <input type="radio" name="banos_selector" value="{{ bval }}">
@@ -864,7 +931,7 @@
           <div class="public-field">
             <label class="public-field-label">Cantidad de pisos</label>
             {{ form.dos_pisos(class='public-hidden-checkbox', id='dos_pisos_hidden') }}
-            <div class="public-segmented public-segmented-grid" id="pisos_selector_wrap">
+            <div class="public-segmented public-segmented-grid public-segmented-grid-pisos" id="pisos_selector_wrap">
               <label class="public-segmented-item">
                 <input type="radio" name="pisos_selector" value="1" {% if _pisos_value == '1' %}checked{% endif %}>
                 <span>1 piso</span>
@@ -1146,6 +1213,14 @@
         if (input.checked) labels[i].classList.add('is-selected');
         else labels[i].classList.remove('is-selected');
       }
+    }
+
+    function syncTipoLugarVisualState() {
+      var wrap = byId('wrap_tipo_lugar_field');
+      var sel = byId('{{ form.tipo_lugar.id if form.tipo_lugar is defined else "" }}');
+      if (!wrap || !sel) return;
+      var isEmpty = !norm(sel.value);
+      wrap.classList.toggle('is-empty', isEmpty);
     }
     function syncEnvejecienteSection(fromUserEvent) {
       var selected = hasSelectedValue('funciones', 'envejeciente');
@@ -2461,6 +2536,7 @@
     syncAdultosRules(false);
     syncEnvejecienteSection(false);
     initCiudadSectorComposite();
+    syncTipoLugarVisualState();
 
     hostForm.addEventListener('change', function (ev) {
       var name = (ev.target && ev.target.name) || '';
@@ -2480,6 +2556,9 @@
         syncEnvejecienteSection(true);
         if (ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
           ninosLimpiezaSmartAlertCtrl.sync();
+        }
+        if (name === 'tipo_lugar') {
+          syncTipoLugarVisualState();
         }
       }
       if (name === 'envejeciente_tipo_cuidado' || name === 'envejeciente_solo_acompanamiento') {
@@ -2591,6 +2670,7 @@
       if (mascotaGuidanceCtrl && mascotaGuidanceCtrl.sync) {
         mascotaGuidanceCtrl.sync();
       }
+      syncTipoLugarVisualState();
       var allMasterControls = hostForm.querySelectorAll('input[type="checkbox"][value="todas_anteriores"]');
       for (var mi = 0; mi < allMasterControls.length; mi++) {
         allMasterControls[mi].checked = false;
