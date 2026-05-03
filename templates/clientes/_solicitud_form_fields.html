@@ -1124,6 +1124,24 @@
       if (checked) checked.checked = false;
     }
 
+    function resetHorarioBlockState() {
+      var dias = byId('horario_dias_trabajo');
+      var hIn = byId('horario_hora_entrada');
+      var hOut = byId('horario_hora_salida');
+      var dIn = byId('horario_dormida_entrada');
+      var dOut = byId('horario_dormida_salida');
+      var hidden = byId('horario_hidden');
+      var preview = byId('horario_preview_text');
+      clearHorarioSuggestionSelection();
+      if (dias) dias.value = '';
+      if (hIn) hIn.value = '';
+      if (hOut) hOut.value = '';
+      if (dIn) dIn.value = '';
+      if (dOut) dOut.value = '';
+      if (hidden) hidden.value = '';
+      if (preview) preview.textContent = '';
+    }
+
     function getHorarioSuggestionList(group, specific) {
       if (!group || !specific) return [];
       var byGroup = (HORARIO_SUGGESTIONS || {})[group] || {};
@@ -2344,6 +2362,7 @@
         syncPisosAndPasaje();
       }
       if (name === 'modalidad_grupo' || name === 'modalidad_especifica') {
+        resetHorarioBlockState();
         syncModalidadGuided(true);
         syncHorarioSuggestions(true);
         syncHorarioInteligente(true);
