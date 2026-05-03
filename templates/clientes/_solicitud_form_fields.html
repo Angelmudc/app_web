@@ -1130,6 +1130,15 @@
       return byGroup[specific] || [];
     }
 
+    function findHorarioSuggestionByKey(group, specific, key) {
+      var list = getHorarioSuggestionList(group, specific);
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i] || {};
+        if ((it.key || ('opt_' + i)) === key) return it;
+      }
+      return null;
+    }
+
     function applyHorarioSuggestion(item) {
       var dias = byId('horario_dias_trabajo');
       var hIn = byId('horario_hora_entrada');
@@ -1148,16 +1157,6 @@
       if (hOut && Object.prototype.hasOwnProperty.call(item, 'hOut')) hOut.value = item.hOut || '';
       if (dIn && Object.prototype.hasOwnProperty.call(item, 'dIn')) dIn.value = item.dIn || '';
       if (dOut && Object.prototype.hasOwnProperty.call(item, 'dOut')) dOut.value = item.dOut || '';
-      if (
-        item.overrideText &&
-        !Object.prototype.hasOwnProperty.call(item, 'dias') &&
-        !Object.prototype.hasOwnProperty.call(item, 'hIn') &&
-        !Object.prototype.hasOwnProperty.call(item, 'hOut')
-      ) {
-        if (dias) dias.value = '';
-        if (hIn) hIn.value = '';
-        if (hOut) hOut.value = '';
-      }
       if (key) key.value = item.key || '';
       if (txt) txt.value = item.overrideText || '';
     }
@@ -1195,12 +1194,17 @@
           input.checked = true;
           matchedCurrent = true;
         }
-        input.addEventListener('change', (function (opt) {
+        input.addEventListener('change', (function (optKey) {
           return function () {
-            applyHorarioSuggestion(opt);
+            var liveGroupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
+            var liveGroup = liveGroupNode ? liveGroupNode.value : '';
+            var liveSpecificNode = byId('modalidad_especifica_select');
+            var liveSpecific = liveSpecificNode ? (liveSpecificNode.value || '') : '';
+            var selectedItem = findHorarioSuggestionByKey(liveGroup, liveSpecific, optKey);
+            applyHorarioSuggestion(selectedItem);
             syncHorarioInteligente(true);
           };
-        })(item));
+        })(key));
         var span = document.createElement('span');
         span.textContent = item.label || '';
         label.appendChild(input);
