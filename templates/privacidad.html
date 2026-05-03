@@ -1,0 +1,76 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Política de Privacidad | Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<style>
+  .legal-wrap {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.6;
+  }
+  .legal-wrap h1,
+  .legal-wrap h3 {
+    color: #19324d;
+  }
+  .legal-wrap p,
+  .legal-wrap li {
+    margin-bottom: 10px;
+  }
+  .btn-back {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 8px 12px;
+    border: 1px solid #cfe0f4;
+    border-radius: 10px;
+    background: #f7fbff;
+    color: #174774;
+    text-decoration: none;
+    font-weight: 600;
+  }
+</style>
+<section class="section">
+  <div class="container legal-wrap">
+    <a href="/" class="btn-back" onclick="if (history.length > 1) { history.back(); return false; }">← Volver</a>
+    <h1 class="section-title">Política de privacidad</h1>
+    <p class="section-subtitle">Compromiso con la protección de datos personales.</p>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>1. Datos que recopilamos</h3>
+      <p>Podemos recopilar datos de contacto y de solicitud, incluyendo:</p>
+      <ul class="card-list">
+        <li>Nombre, teléfono y correo electrónico.</li>
+        <li>Ubicación general del servicio (ciudad/sector).</li>
+        <li>Información operativa necesaria para el reclutamiento.</li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>2. Uso de la información</h3>
+      <p>Utilizamos los datos para:</p>
+      <ul class="card-list">
+        <li>Gestionar solicitudes y procesos de reclutamiento.</li>
+        <li>Contactar al cliente sobre el estado de su servicio.</li>
+        <li>Mejorar la calidad operativa y de atención.</li>
+      </ul>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>3. Compartición con terceros</h3>
+      <p>
+        No compartimos datos personales con terceros sin consentimiento del titular, salvo cuando sea estrictamente necesario para
+        ejecutar el servicio solicitado o por requerimiento legal aplicable.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>4. Seguridad de la información</h3>
+      <p>
+        Aplicamos medidas técnicas y administrativas razonables para proteger la información contra acceso no autorizado, alteración,
+        pérdida o uso indebido.
+      </p>
+    </div>
+  </div>
+</section>
+{% endblock %}

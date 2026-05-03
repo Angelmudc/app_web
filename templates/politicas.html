@@ -1,0 +1,84 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Términos y Condiciones | Doméstica del Cibao A&D{% endblock %}
+
+{% block content %}
+<style>
+  .legal-wrap {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    line-height: 1.6;
+  }
+  .legal-wrap h1,
+  .legal-wrap h3 {
+    color: #19324d;
+  }
+  .legal-wrap p,
+  .legal-wrap li {
+    margin-bottom: 10px;
+  }
+  .btn-back {
+    display: inline-block;
+    margin-bottom: 14px;
+    padding: 8px 12px;
+    border: 1px solid #cfe0f4;
+    border-radius: 10px;
+    background: #f7fbff;
+    color: #174774;
+    text-decoration: none;
+    font-weight: 600;
+  }
+</style>
+<section class="section">
+  <div class="container legal-wrap">
+    <a href="/" class="btn-back" onclick="if (history.length > 1) { history.back(); return false; }">← Volver</a>
+    <h1 class="section-title">Términos y condiciones</h1>
+    <p class="section-subtitle">Última actualización: mayo de 2026.</p>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>1. Naturaleza del servicio</h3>
+      <p>
+        Doméstica del Cibao A&amp;D S.R.L presta un servicio de reclutamiento, evaluación y preselección de personal doméstico
+        y de apoyo para hogares y oficinas. El servicio consiste en identificar perfiles compatibles según la solicitud del cliente.
+      </p>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>2. Alcance del servicio</h3>
+      <p>La agencia apoya al cliente en:</p>
+      <ul class="card-list">
+        <li>Levantamiento de la necesidad del puesto.</li>
+        <li>Búsqueda y filtrado de candidatas/os.</li>
+        <li>Presentación de perfiles según disponibilidad y criterios del cliente.</li>
+      </ul>
+      <p>
+        La decisión final de contratación y la gestión diaria de la relación laboral corresponden al cliente y al personal contratado.
+      </p>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>3. Responsabilidad de la empresa</h3>
+      <p>
+        La empresa actúa como intermediaria de reclutamiento. Se compromete a realizar procesos diligentes de evaluación conforme a
+        su metodología interna, pero no garantiza resultados idénticos en todos los casos ni continuidad indefinida de una relación laboral.
+      </p>
+    </div>
+
+    <div class="card" style="margin-bottom: 14px;">
+      <h3>4. Pagos y condiciones comerciales</h3>
+      <p>
+        Los montos, modalidad de pago, tiempos de servicio y políticas de reposición se informan al cliente durante el proceso comercial.
+        El inicio formal del servicio está sujeto a la confirmación de las condiciones acordadas y del pago correspondiente.
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>5. Aceptación</h3>
+      <p>
+        Al enviar una solicitud por nuestros canales oficiales, el cliente declara haber leído y aceptado estos términos y condiciones.
+      </p>
+    </div>
+  </div>
+</section>
+{% endblock %}
