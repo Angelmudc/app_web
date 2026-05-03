@@ -615,6 +615,19 @@
 
   @media (max-width: 767.98px) {
     .public-fields-grid { grid-template-columns: 1fr; }
+    .public-home-structure-grid {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    #wrap_tipo_lugar_field,
+    #wrap_habitaciones_selector,
+    #wrap_banos_selector,
+    #wrap_banos_selector + .public-field {
+      padding: 13px;
+      border-radius: 14px;
+      border: 1px solid #d7e3f0;
+      background: #fbfdff;
+    }
     .public-choice-grid,
     .public-choice-grid--edad_requerida,
     .public-choice-grid--funciones,
@@ -624,8 +637,8 @@
     .public-segmented.public-segmented-grid-pisos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .public-segmented.public-segmented-grid-compact,
     .public-segmented.public-segmented-grid-pisos {
-      gap: 6px;
-      padding: 7px;
+      gap: 9px;
+      padding: 9px;
     }
     .public-segmented-item span {
       min-height: 32px;
