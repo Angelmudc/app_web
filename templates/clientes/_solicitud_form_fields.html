@@ -48,6 +48,13 @@
 {% set _horario_hora_out_val = request.form.get('horario_hora_salida', (_hs.get('hora_salida', '') if _hs else '')) %}
 {% set _horario_dormida_in_val = request.form.get('horario_dormida_entrada', (_hs.get('dormida_entrada', '') if _hs else '')) %}
 {% set _horario_dormida_out_val = request.form.get('horario_dormida_salida', (_hs.get('dormida_salida', '') if _hs else '')) %}
+{% set _ciudad_sector_raw = request.form.get(form.ciudad_sector.name, (form.ciudad_sector.data if form.ciudad_sector is defined and form.ciudad_sector.data else '')) %}
+{% set _ciudad_sector_city = (_ciudad_sector_raw or '').strip() %}
+{% set _ciudad_sector_sector = '' %}
+{% if _ciudad_sector_raw and ' (' in _ciudad_sector_raw and _ciudad_sector_raw.endswith(')') %}
+  {% set _ciudad_sector_city = _ciudad_sector_raw.rsplit(' (', 1)[0].strip() %}
+  {% set _ciudad_sector_sector = _ciudad_sector_raw.rsplit(' (', 1)[1][:-1].strip() %}
+{% endif %}
 
 {% macro render_errors(field) -%}
   {% if field.errors %}
@@ -588,7 +595,40 @@
     </header>
     <div class="public-fields-grid">
       {% if not hide_ciudad_sector %}
-        {{ render_field(form.ciudad_sector) }}
+        <div class="public-field">
+          <label class="public-field-label" for="ciudad_input_ui">Ciudad</label>
+          {% if form.ciudad_sector is defined %}
+            {{ form.ciudad_sector(class='form-control d-none' ~ (' is-invalid' if form.ciudad_sector.errors else ''), id=form.ciudad_sector.id) }}
+          {% endif %}
+          <input
+            type="text"
+            class="form-control"
+            id="ciudad_input_ui"
+            name="ciudad_input_ui"
+            maxlength="80"
+            required
+            aria-required="true"
+            value="{{ _ciudad_sector_city }}"
+            placeholder="Ej. Santiago"
+          >
+        </div>
+        <div class="public-field">
+          <label class="public-field-label" for="sector_input_ui">Sector</label>
+          <input
+            type="text"
+            class="form-control"
+            id="sector_input_ui"
+            name="sector_input_ui"
+            maxlength="120"
+            required
+            aria-required="true"
+            value="{{ _ciudad_sector_sector }}"
+            placeholder="Ej. Cerros de Gurabo"
+          >
+          {% if form.ciudad_sector is defined and form.ciudad_sector.errors %}
+            <div class="invalid-feedback d-block">{{ form.ciudad_sector.errors[0] }}</div>
+          {% endif %}
+        </div>
       {% endif %}
       <div class="public-field" id="wrap_rutas_cercanas_field">
         {{ render_field(form.rutas_cercanas) }}
@@ -991,6 +1031,56 @@
     function stripAccents(v) {
       if (!v || !String.prototype.normalize) return (v || '');
       return v.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function parseCiudadSectorValue(raw) {
+      var txt = (raw || '').toString().trim();
+      var out = { ciudad: '', sector: '' };
+      if (!txt) return out;
+      var m = txt.match(/^(.*?)\s*\((.*?)\)\s*$/);
+      if (m) {
+        out.ciudad = (m[1] || '').trim();
+        out.sector = (m[2] || '').trim();
+        return out;
+      }
+      out.ciudad = txt;
+      return out;
+    }
+
+    function composeCiudadSectorValue(ciudad, sector) {
+      var c = (ciudad || '').toString().trim();
+      var s = (sector || '').toString().trim();
+      if (!c || !s) return '';
+      return c + ' (' + s + ')';
+    }
+
+    function normalizeText(str) {
+      if (!str) return "";
+
+      var lowerWords = ["de", "del", "la", "las", "los", "y", "en"];
+
+      return String(str)
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .split(" ")
+        .map(function (word, index) {
+          if (index !== 0 && lowerWords.indexOf(word) >= 0) {
+            return word;
+          }
+          return word.charAt(0).toUpperCase() + word.slice(1);
+        })
+        .join(" ");
+    }
+
+    function sanitizeInput(str) {
+      if (!str) return "";
+
+      return String(str)
+        .replace(/[()]/g, "")
+        .replace(/[-/]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function getFieldsByName(name) {
@@ -1724,15 +1814,51 @@
 
     function syncSantiagoRutaNotice() {
       var ciudadInput = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
+      var ciudadUi = byId('ciudad_input_ui');
       var rutaInput = byId('{{ form.rutas_cercanas.id if form.rutas_cercanas is defined else "" }}');
       var noticeWrap = byId('wrap_rutas_santiago_notice');
-      if (!ciudadInput || !rutaInput || !noticeWrap) return;
-      var ciudadTxt = stripAccents(norm(ciudadInput.value));
+      if (!rutaInput || !noticeWrap) return;
+      var ciudadRaw = '';
+      if (ciudadUi) ciudadRaw = ciudadUi.value || '';
+      else if (ciudadInput) ciudadRaw = (parseCiudadSectorValue(ciudadInput.value) || {}).ciudad || '';
+      var ciudadTxt = stripAccents(norm(ciudadRaw));
       var isSantiago = ciudadTxt === 'santiago' || ciudadTxt.indexOf('santiago ') === 0 || ciudadTxt.indexOf('santiago/') === 0 || ciudadTxt.indexOf('santiago -') === 0;
       var rutaVacia = !norm(rutaInput.value);
       var show = !!(isSantiago && rutaVacia);
       noticeWrap.classList.toggle('d-none', !show);
       noticeWrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+    }
+
+    function syncCiudadSectorComposite() {
+      var hidden = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
+      var ciudadInput = byId('ciudad_input_ui');
+      var sectorInput = byId('sector_input_ui');
+      if (!hidden || !ciudadInput || !sectorInput) return;
+      var ciudad = sanitizeInput(ciudadInput.value || '');
+      var sector = sanitizeInput(sectorInput.value || '');
+
+      ciudad = normalizeText(ciudad);
+      sector = normalizeText(sector);
+      hidden.value = composeCiudadSectorValue(ciudad, sector);
+      var invalidMsg = '';
+      if (!ciudad) invalidMsg = 'Selecciona la ciudad.';
+      else if (!sector) invalidMsg = 'Completa el sector.';
+      ciudadInput.setCustomValidity(!ciudad ? 'Completa la ciudad.' : '');
+      sectorInput.setCustomValidity(!sector ? 'Completa el sector.' : '');
+      if (invalidMsg && hidden) hidden.setAttribute('data-ciudad-sector-invalid', invalidMsg);
+      else if (hidden) hidden.removeAttribute('data-ciudad-sector-invalid');
+    }
+
+    function initCiudadSectorComposite() {
+      var hidden = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
+      var ciudadInput = byId('ciudad_input_ui');
+      var sectorInput = byId('sector_input_ui');
+      if (!hidden || !ciudadInput || !sectorInput) return;
+
+      var parsed = parseCiudadSectorValue(hidden.value || '');
+      if (!ciudadInput.value && parsed.ciudad) ciudadInput.value = parsed.ciudad;
+      if (!sectorInput.value && parsed.sector) sectorInput.value = parsed.sector;
+      syncCiudadSectorComposite();
     }
 
     function syncHabitacionesBanosSelectors() {
@@ -2334,6 +2460,7 @@
     setupHabitacionesBanosSelectors();
     syncAdultosRules(false);
     syncEnvejecienteSection(false);
+    initCiudadSectorComposite();
 
     hostForm.addEventListener('change', function (ev) {
       var name = (ev.target && ev.target.name) || '';
@@ -2399,6 +2526,19 @@
         ninosLimpiezaSmartAlertCtrl.sync();
       });
     }
+    var ciudadUiNode = byId('ciudad_input_ui');
+    if (ciudadUiNode) {
+      ciudadUiNode.addEventListener('input', function () {
+        syncCiudadSectorComposite();
+        syncSantiagoRutaNotice();
+      });
+    }
+    var sectorInputNode = byId('sector_input_ui');
+    if (sectorInputNode) {
+      sectorInputNode.addEventListener('input', function () {
+        syncCiudadSectorComposite();
+      });
+    }
     var ciudadInputNode = byId('{{ form.ciudad_sector.id if form.ciudad_sector is defined else "" }}');
     if (ciudadInputNode) ciudadInputNode.addEventListener('input', syncSantiagoRutaNotice);
     var rutaInputNode = byId('{{ form.rutas_cercanas.id if form.rutas_cercanas is defined else "" }}');
@@ -2438,6 +2578,7 @@
     });
 
     hostForm.addEventListener('submit', function () {
+      syncCiudadSectorComposite();
       syncModalidadGuided(false);
       syncHorarioSuggestions(false);
       syncHorarioInteligente(false);
