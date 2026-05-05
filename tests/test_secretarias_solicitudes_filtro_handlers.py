@@ -209,6 +209,45 @@ def test_secretarias_solicitudes_filtro_funciones_multiselect_or():
     assert "OR" in flat
 
 
+def test_secretarias_solicitudes_filtro_funciones_multiselect_acepta_array_brackets():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?funciones[]=limpieza&funciones[]=cocinar", follow_redirects=False)
+
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "ANY', 'limpieza'" in flat
+    assert "ANY', 'cocinar'" in flat
+
+
+def test_secretarias_solicitudes_filtro_aplica_estado_activa_como_filtro_base():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?pasaje=si", follow_redirects=False)
+
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "EQ', 'activa'" in flat
+
+
 def test_secretarias_solicitudes_filtro_funcion_otro_activa_busqueda_por_funciones_otro():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

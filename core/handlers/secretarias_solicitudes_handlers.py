@@ -66,12 +66,12 @@ def _s(v):
 
 def _funciones_choices_map():
     default_choices = {
-        "limpieza": "Limpieza",
+        "limpieza": "Limpieza general",
         "cocinar": "Cocinar",
         "lavar": "Lavar",
         "planchar": "Planchar",
-        "ninos": "Niños",
-        "envejeciente": "Envejeciente",
+        "ninos": "Cuidar niños",
+        "envejeciente": "Cuidar envejeciente",
         "otro": "Otro",
     }
     funciones_choices = {}
@@ -586,7 +586,10 @@ def secretarias_buscar_solicitudes():
 def secretarias_filtrar_solicitudes():
     ciudad_sector = (request.args.get("ciudad_sector") or "").strip()[:200]
     ruta = (request.args.get("ruta") or "").strip()[:200]
-    funciones = [str(v or "").strip().lower() for v in (request.args.getlist("funciones") or []) if str(v or "").strip()]
+    raw_funciones = (request.args.getlist("funciones") or []) + (request.args.getlist("funciones[]") or [])
+    funciones = [str(v or "").strip().lower() for v in raw_funciones if str(v or "").strip()]
+    # Evita duplicados manteniendo orden para filtros OR previsibles.
+    funciones = list(dict.fromkeys(funciones))
     experiencia = (request.args.get("experiencia") or "").strip()[:500]
     pasaje = (request.args.get("pasaje") or "").strip().lower()
     modalidad = (request.args.get("modalidad") or "").strip().lower()
@@ -660,6 +663,8 @@ def secretarias_filtrar_solicitudes():
 
     cols = _solicitud_load_only_cols()
     qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
+    # Filtro base obligatorio: solo solicitudes activas.
+    qy = qy.filter(legacy_h.Solicitud.estado == "activa")
 
     if ciudad_sector:
         qy = qy.filter(legacy_h.Solicitud.ciudad_sector.ilike(f"%{ciudad_sector}%"))

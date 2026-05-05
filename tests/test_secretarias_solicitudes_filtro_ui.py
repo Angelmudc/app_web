@@ -20,7 +20,7 @@ def test_secretarias_filtro_ui_render_estado_vacio_y_campos():
     assert 'Aplica filtros para ver resultados' in html
     assert 'name="ciudad_sector"' in html
     assert 'name="ruta"' in html
-    assert 'name="funciones"' in html
+    assert 'name="funciones[]"' in html
     assert 'name="experiencia"' in html
     assert 'name="sueldo_min"' in html
     assert 'name="sueldo_max"' in html
@@ -29,6 +29,9 @@ def test_secretarias_filtro_ui_render_estado_vacio_y_campos():
     assert 'name="pisos"' in html
     assert 'name="tipo_casa"' in html
     assert '>Buscar<' in html
+    assert 'Limpieza general' in html
+    assert 'Cuidar niños' in html
+    assert 'Cuidar envejeciente' in html
 
 
 def test_home_muestra_enlace_buscar_solicitudes_para_staff_interno():
