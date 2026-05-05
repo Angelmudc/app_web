@@ -112,9 +112,9 @@
 
       {% if hint %}<div class="public-field-hint">{{ hint }}</div>{% endif %}
       {% if field.name == 'experiencia' %}
-        <div class="public-field-counter"><span id="exp-count">0</span> caracteres</div>
+        <div class="public-field-counter" data-char-counter-for="{{ field.id }}">0 caracteres</div>
       {% elif field.name == 'nota_cliente' %}
-        <div class="public-field-counter"><span id="nota-count">0</span> caracteres</div>
+        <div class="public-field-counter" data-char-counter-for="{{ field.id }}">0 caracteres</div>
       {% endif %}
       {{ render_errors(field) }}
     </div>
@@ -1529,9 +1529,9 @@
           { key: "sd_4_7_3", label: "7:30 AM - 3:00 PM", hIn: "7:30 AM", hOut: "3:00 PM" }
         ],
         "Salida diaria - fin de semana": [
-          { key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", overrideText: "Sábado y domingo, 8:00 AM - 5:00 PM" },
-          { key: "sd_fs_9_6", label: "Sábado y domingo, 9:00 AM - 6:00 PM", overrideText: "Sábado y domingo, 9:00 AM - 6:00 PM" },
-          { key: "sd_fs_mix", label: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", overrideText: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM" }
+          { key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", dias: "Sábado y domingo", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Sábado y domingo, 8:00 AM - 5:00 PM" },
+          { key: "sd_fs_9_6", label: "Sábado y domingo, 9:00 AM - 6:00 PM", dias: "Sábado y domingo", hIn: "9:00 AM", hOut: "6:00 PM", overrideText: "Sábado y domingo, 9:00 AM - 6:00 PM" },
+          { key: "sd_fs_mix", label: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", dias: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Sábado 8:00 AM - 5:00 PM / domingo 8:00 AM - 1:00 PM" }
         ]
       },
       "con_dormida": {
@@ -2062,6 +2062,25 @@
       if (!needsAdultos && fromUserEvent) adultosInput.value = '';
     }
 
+    function setupCharCounters() {
+      var counters = hostForm.querySelectorAll('[data-char-counter-for]');
+      if (!counters.length) return;
+      for (var i = 0; i < counters.length; i++) {
+        (function (counterNode) {
+          var fieldId = (counterNode.getAttribute('data-char-counter-for') || '').trim();
+          if (!fieldId) return;
+          var input = hostForm.querySelector('#' + fieldId);
+          if (!input) return;
+          var syncCount = function () {
+            var len = (input.value || '').length;
+            counterNode.textContent = len === 1 ? '1 carácter' : (String(len) + ' caracteres');
+          };
+          input.addEventListener('input', syncCount, { passive: true });
+          syncCount();
+        })(counters[i]);
+      }
+    }
+
     function extractMarker(noteText, prefix) {
       if (!noteText || !prefix) return '';
       var lines = noteText.split('\n');
@@ -2564,6 +2583,7 @@
     syncAdultosRules(false);
     syncEnvejecienteSection(false);
     initCiudadSectorComposite();
+    setupCharCounters();
     syncTipoLugarVisualState();
 
     hostForm.addEventListener('change', function (ev) {

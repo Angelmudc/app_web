@@ -161,7 +161,7 @@ def test_nino_7_anos_no_aumenta_fuerte():
     )
     assert with_nino_7["can_suggest"] is True and with_nino_1["can_suggest"] is True
     assert with_nino_7["suggested_min"] < with_nino_1["suggested_min"]
-    assert "más de supervisión" in with_nino_7["message"].lower()
+    assert "niños mayores" in with_nino_7["message"].lower()
 
 
 def test_ninos_8_y_10_no_aumentan_fuerte():
@@ -375,7 +375,7 @@ def test_offer_status_competitiva_baja_muy_baja():
     assert r_muy_baja["offer_status"] == "muy_baja"
 
 
-def test_salary_message_includes_intro_why_warning_and_flexible_close():
+def test_salary_message_uses_short_conversion_focused_format():
     result = analyze_salary_suggestion(
         _base_payload(
             funciones=["limpieza", "cocinar", "lavar", "planchar", "ninos", "envejeciente"],
@@ -393,18 +393,20 @@ def test_salary_message_includes_intro_why_warning_and_flexible_close():
         )
     )
     msg = result["message"]
-    assert "Para este tipo de solicitud, el sueldo suele estar entre RD$" in msg
-    assert "¿Por qué este rango?" in msg
-    assert "- " in msg
-    assert "puede dificultar encontrar una candidata disponible o adecuada." in msg
-    assert "Puedes ajustar el monto según tu presupuesto" in msg
+    assert msg.startswith("Rango sugerido: RD$")
+    assert "mensual + pasaje" in msg
+    assert msg.count("Rango sugerido: RD$") == 1
+    assert "Por:" in msg
+    assert "• " in msg
+    assert "cd_" not in msg and "sd_" not in msg
+    assert msg.count("• ") <= 3
 
 
-def test_salary_message_low_load_uses_relaxed_wording():
+def test_salary_message_is_short_and_uses_closing_line_when_fits():
     result = analyze_salary_suggestion(_base_payload(funciones=["limpieza"], ninos="0", adultos="1"))
     msg = result["message"]
-    assert "Por el nivel de exigencia" not in msg
-    assert "Ofrecer menos puede dificultar encontrar una candidata disponible o adecuada." in msg
+    assert "👉 Dentro de ese rango consigues personal más rápido." in msg
+    assert len(msg) <= 220
 
 
 def test_sd_lv_10h_is_moderate():
@@ -479,8 +481,7 @@ def test_sd_lv_12h_with_heavy_loads_can_exceed_21k():
 def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
-    assert "ayuda de pasaje" in result["message"].lower()
-    assert "marcar la opción de ayuda para el pasaje" in result["message"].lower()
+    assert "+ pasaje" in result["message"]
 
 
 def test_con_dormida_lv_base_minima_20000():
@@ -1230,7 +1231,7 @@ def test_mensaje_explica_carga_adicional_por_adultos():
         )
     )
     assert r["can_suggest"] is True
-    assert "4 o más adultos" in (r.get("message") or "").lower()
+    assert "adultos" in (r.get("message") or "").lower()
 def test_casa_3h_4b_sube_1000():
     r = analyze_salary_suggestion(
         _base_payload(

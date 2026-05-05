@@ -444,40 +444,96 @@ def _sanitize_client_text(text: str) -> str:
     return out.strip()
 
 
+def _short_schedule_label(schedule_key: str) -> str:
+    mapping = {
+        "sd_1_dia": "Salida diaria 1 día/semana",
+        "sd_2_dias": "Salida diaria 2 días/semana",
+        "sd_3_dias": "Salida diaria 3 días/semana",
+        "sd_4_dias": "Salida diaria 4 días/semana",
+        "sd_l_v": "Salida diaria L-V",
+        "sd_l_s": "Salida diaria L-S",
+        "sd_fin_semana": "Salida diaria fin de semana",
+        "cd_l_v": "Dormida L-V",
+        "cd_l_s": "Dormida L-S",
+        "cd_quincenal": "Dormida quincenal",
+        "cd_fin_semana": "Dormida fin de semana",
+    }
+    return mapping.get(schedule_key, "Modalidad seleccionada")
+
+
+def _top_salary_reasons(payload: dict[str, Any]) -> list[str]:
+    public = [str(x or "").strip() for x in (payload.get("public_reasons") or []) if str(x or "").strip()]
+    internal = payload.get("internal_adjustments") or []
+
+    schedule_key = ""
+    for item in internal:
+        label = str((item or {}).get("label") or "")
+        if "Modalidad clasificada:" in label:
+            schedule_key = label.split(":", 1)[1].strip(" .")
+            break
+
+    reasons: list[tuple[int, str]] = []
+    if schedule_key:
+        reasons.append((1000, _short_schedule_label(schedule_key)))
+
+    for txt in public:
+        n = _norm(txt)
+        if "modalidad:" in n or "dias de trabajo considerados" in n:
+            continue
+        if "niños pequeños" in n:
+            reasons.append((900, "Niños pequeños"))
+        elif "más de supervisión" in n or "mas de supervision" in n:
+            reasons.append((750, "Niños mayores (supervisión)"))
+        elif "envejeciente encamado" in n:
+            reasons.append((900, "Envejeciente encamado"))
+        elif "cuidado de envejeciente" in n:
+            reasons.append((800, "Cuidado de envejeciente"))
+        elif "solicitud combina tareas del hogar con cuidado de envejeciente" in n:
+            reasons.append((850, "Funciones completas de hogar y cuidado"))
+        elif "tamaño del hogar" in n:
+            reasons.append((700, "Vivienda amplia"))
+        elif "varias áreas comunes" in n:
+            reasons.append((650, "Varias áreas comunes"))
+        elif "más de un nivel" in n:
+            reasons.append((650, "Vivienda de varios niveles"))
+        elif "4 o más adultos" in n or "varios adultos" in n:
+            reasons.append((600, "Varios adultos en el hogar"))
+        elif "planchado" in n:
+            reasons.append((550, "Incluye planchado"))
+        elif "horario es extendido" in n:
+            reasons.append((500, "Horario extendido"))
+        elif "hora de salida es tarde" in n:
+            reasons.append((500, "Salida tarde"))
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for _, reason in sorted(reasons, key=lambda x: x[0], reverse=True):
+        if reason not in seen:
+            seen.add(reason)
+            ordered.append(reason)
+        if len(ordered) >= 3:
+            break
+    if not ordered:
+        ordered = ["Modalidad seleccionada"]
+    return ordered[:3]
+
+
 def build_salary_message(payload: dict[str, Any]) -> str:
     if not payload.get("can_suggest"):
         return str(payload.get("reason_no_suggestion") or SOFT_INCOMPLETE_MESSAGE)
     min_s = int(payload.get("suggested_min") or 0)
     max_s = int(payload.get("suggested_max") or 0)
-    status = payload.get("offer_status")
-    load_level = _norm(payload.get("load_level"))
-    reasons = list(payload.get("public_reasons") or [])
-    if not reasons:
-        reasons = _reason_bullets(payload)
-    title = f"Rango sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual"
-    intro = f"Para este tipo de solicitud, el sueldo suele estar entre RD${_format_rd(min_s)} y RD${_format_rd(max_s)} mensual + ayuda de pasaje."
-    why_block = "¿Por qué este rango?\n" + "\n".join(f"- {r}" for r in reasons)
-
-    if load_level in {"normal", "media"}:
-        warning_msg = "Ofrecer menos puede dificultar encontrar una candidata disponible o adecuada."
-    else:
-        warning_msg = "Por el nivel de exigencia, ofrecer menos puede dificultar encontrar una candidata disponible o adecuada."
-
-    status_msg = {
-        "competitiva": "Tu oferta actual luce competitiva para esta solicitud.",
-        "baja": "Tu oferta actual parece algo baja frente a la carga estimada.",
-        "muy_baja": "Tu oferta actual luce bastante por debajo de lo que normalmente se requiere.",
-        "sin_sueldo": "Aún no has indicado sueldo; este rango te sirve como referencia.",
-    }.get(status, "")
-    closing = (
-        "Puedes ajustar el monto según tu presupuesto, pero este rango aumenta las probabilidades de encontrar personal.\n\n"
-        "También recomendamos marcar la opción de ayuda para el pasaje, ya que mejora el atractivo de la oferta."
-    )
-
-    parts = [title, intro, why_block, warning_msg, closing]
-    if status_msg:
-        parts.insert(3, status_msg)
-    return _sanitize_client_text("\n\n".join(parts))
+    reasons = _top_salary_reasons(payload)
+    if len(reasons) > 2 and reasons[0] == "Modalidad seleccionada":
+        reasons = reasons[:2]
+    lines = [
+        f"Rango sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual + pasaje",
+        "Por:",
+    ]
+    lines.extend(f"• {reason}" for reason in reasons[:3])
+    if len(reasons) <= 2:
+        lines.append("👉 Dentro de ese rango consigues personal más rápido.")
+    return _sanitize_client_text("\n".join(lines))
 
 
 def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:

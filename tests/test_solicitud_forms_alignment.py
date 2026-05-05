@@ -36,8 +36,8 @@ def test_client_template_includes_soft_wizard_shell_and_hidden_step_field():
 def test_shared_partial_keeps_core_order_aligned():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
 
-    idx_ciudad = partial.find("{{ render_field(form.ciudad_sector) }}")
-    idx_rutas = partial.find("{{ render_field(form.rutas_cercanas) }}")
+    idx_ciudad = partial.find("id=\"ciudad_input_ui\"")
+    idx_rutas = partial.find("id=\"wrap_rutas_cercanas_field\"")
     idx_modalidad = partial.find("id=\"wrap_modalidad_guiada\"")
     idx_horario = partial.find("id=\"wrap_horario_inteligente\"")
     assert -1 not in (idx_ciudad, idx_rutas, idx_modalidad, idx_horario)
@@ -49,7 +49,7 @@ def test_shared_partial_keeps_core_order_aligned():
     assert -1 not in (idx_edad, idx_exp, idx_func)
     assert idx_edad < idx_exp < idx_func
 
-    idx_tl = partial.find("{{ render_field(form.tipo_lugar) }}")
+    idx_tl = partial.find("id=\"wrap_tipo_lugar_field\"")
     idx_hab = partial.find("id=\"wrap_habitaciones_selector\"")
     idx_banos = partial.find("id=\"wrap_banos_selector\"")
     idx_pisos = partial.find("Cantidad de pisos")
@@ -131,7 +131,7 @@ def test_shared_partial_horario_suggestions_block_and_hooks_exist():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "id=\"horario_sugerencias_wrap\"" in partial
     assert "Horarios sugeridos" in partial
-    assert "Otro (escribir horario)" in partial
+    assert "Elige una opción común de horario sugerido." in partial
     assert "var HORARIO_SUGGESTIONS = {" in partial
     assert "function syncHorarioSuggestions(fromUserEvent)" in partial
     assert "function applyHorarioSuggestion(item)" in partial
@@ -146,8 +146,21 @@ def test_shared_partial_horario_suggestions_include_required_matrix_samples():
     assert "Lunes a viernes, 8:00 AM - 4:00 PM" in partial
     assert "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 12:00 PM" in partial
     assert "Sábado y domingo, 8:00 AM - 5:00 PM" in partial
-    assert "Entrada viernes en la tarde / salida lunes en la mañana" in partial
-    assert "Entrada sábado 8:00 AM / salida domingo 5:00 PM" in partial
+    assert "Entrada viernes 5:00 PM / salida lunes 8:00 AM" in partial
+    assert "Entrada sábado 8:00 AM / salida lunes 8:00 AM" in partial
+
+
+def test_horario_suggestion_with_explicit_days_populates_visible_days_field():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert '{ key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", dias: "Sábado y domingo", hIn: "8:00 AM", hOut: "5:00 PM"' in partial
+    assert '{ key: "sd_lv_8_4", label: "Lunes a viernes, 8:00 AM - 4:00 PM", dias: "Lunes a viernes", hIn: "8:00 AM", hOut: "4:00 PM" }' in partial
+    assert '{ key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", dias: "Lunes a viernes / sábado hasta 1:00 PM", hIn: "8:00 AM", hOut: "4:00 PM"' in partial
+
+
+def test_horario_suggestion_only_time_does_not_invent_days():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert '{ key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" }' in partial
+    assert '{ key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", dias:' not in partial
 
 
 def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optional_copy():
@@ -279,3 +292,13 @@ def test_shared_partial_salary_suggestion_is_non_blocking():
     assert "hostForm.addEventListener('submit'" in partial
     assert "No se pudo calcular la sugerencia en este momento." in partial
     assert "renderNoSuggest(result.reason_no_suggestion" in partial
+
+
+def test_shared_partial_char_counter_uses_scoped_data_binding_and_initial_zero():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "data-char-counter-for=\"{{ field.id }}\"" in partial
+    assert "0 caracteres" in partial
+    assert "function setupCharCounters()" in partial
+    assert "len === 1 ? '1 carácter'" in partial
+    assert "input.addEventListener('input', syncCount" in partial
+    assert "syncCount();" in partial

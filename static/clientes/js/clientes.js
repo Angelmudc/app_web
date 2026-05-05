@@ -818,12 +818,20 @@
     // ---------- Contadores ----------
     function bindCountBySelector(inputSel, outId) {
       const el = $(inputSel, formEl);
-      const out = d.getElementById(outId);
+      const out = formEl.querySelector('#' + outId);
       if (!el || !out) return;
 
       const upd = () => {
         try {
-          out.textContent = String((el.value || '').length);
+          const len = String((el.value || '').length);
+          const label = (len === '1') ? '1 carácter' : (len + ' caracteres');
+          if (out.tagName && out.tagName.toLowerCase() === 'span') {
+            out.textContent = len;
+            const host = out.closest('.public-field-counter, .char-counter, .form-text');
+            if (host && host.getAttribute('data-char-counter-for')) host.textContent = label;
+          } else {
+            out.textContent = label;
+          }
         } catch (_) {}
       };
 
