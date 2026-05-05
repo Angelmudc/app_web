@@ -78,6 +78,55 @@ def _s(v):
     return "" if v is None else str(v).strip()
 
 
+def _normalize_age_text(text):
+    txt = str(text or "").strip().lower()
+    if not txt:
+        return ""
+    for src, dst in (
+        ("–", "-"),
+        ("—", "-"),
+        ("−", "-"),
+        ("años", ""),
+        ("anio", ""),
+        ("año", ""),
+    ):
+        txt = txt.replace(src, dst)
+    return " ".join(txt.split())
+
+
+def _edad_rapida_tokens(value):
+    key = _normalize_age_text(value)
+    mapping = {
+        "18_25": ["18 a 25", "18-25"],
+        "20_30": ["20 a 30", "20-30"],
+        "25_35": ["25 a 35", "25-35"],
+        "30_40": ["30 a 40", "30-40"],
+        "35_45": ["35 a 45", "35-45"],
+        "40_plus": ["40 en adelante", "40+","mayor de 40"],
+        "45_plus": ["45 en adelante", "45+","mayor de 45"],
+        "50_plus": ["50 en adelante", "50+","mayor de 50"],
+    }
+    return mapping.get(key, [])
+
+
+def _edad_search_patterns(edad_rapida, edad_texto):
+    patterns = []
+    for raw in _edad_rapida_tokens(edad_rapida):
+        token = _normalize_age_text(raw)
+        if token:
+            patterns.append(f"%{token}%")
+    token_free = _normalize_age_text(edad_texto)
+    if token_free:
+        patterns.append(f"%{token_free}%")
+    dedup = []
+    seen = set()
+    for p in patterns:
+        if p not in seen:
+            seen.add(p)
+            dedup.append(p)
+    return dedup
+
+
 def _funciones_choices_map():
     default_choices = {
         "limpieza": "Limpieza general",
@@ -616,6 +665,8 @@ def secretarias_filtrar_solicitudes():
     modalidad = (request.args.get("modalidad") or "").strip().lower()
     pisos = (request.args.get("pisos") or "").strip()
     tipo_casa = (request.args.get("tipo_casa") or "").strip().lower()
+    edad_rapida = (request.args.get("edad_rapida") or "").strip()[:30]
+    edad_texto = (request.args.get("edad_texto") or "").strip()[:100]
     page = max(1, request.args.get("page", type=int, default=1))
     per_page = 20
 
@@ -637,6 +688,8 @@ def secretarias_filtrar_solicitudes():
         modalidad in {"salida_diaria", "con_dormida"},
         pisos in {"1", "2"},
         tipo_casa in {"pequena", "normal", "grande"},
+        bool(edad_rapida),
+        bool(edad_texto),
     ])
 
     funciones_opts = []
@@ -678,6 +731,8 @@ def secretarias_filtrar_solicitudes():
                 "modalidad": modalidad,
                 "pisos": pisos,
                 "tipo_casa": tipo_casa,
+                "edad_rapida": edad_rapida,
+                "edad_texto": edad_texto,
             },
             funciones_opts=funciones_opts,
         )
@@ -730,6 +785,28 @@ def secretarias_filtrar_solicitudes():
         elif tipo_casa == "grande":
             house_filter = or_(legacy_h.Solicitud.habitaciones >= 4, legacy_h.Solicitud.banos >= 4)
         qy = qy.filter(legacy_h.Solicitud.funciones.any("limpieza"), house_filter)
+    edad_patterns = _edad_search_patterns(edad_rapida, edad_texto)
+    if edad_patterns:
+        edad_flat = func.lower(
+            func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(
+                            func.array_to_string(legacy_h.Solicitud.edad_requerida, " "),
+                            "–",
+                            "-",
+                        ),
+                        "—",
+                        "-",
+                    ),
+                    "−",
+                    "-",
+                ),
+                "años",
+                "",
+            )
+        )
+        qy = qy.filter(or_(*[edad_flat.ilike(pat) for pat in edad_patterns]))
 
     order_col = getattr(legacy_h.Solicitud, "fecha_solicitud", None) or legacy_h.Solicitud.id
     qy = qy.order_by(order_col.desc())
@@ -814,6 +891,8 @@ def secretarias_filtrar_solicitudes():
             "modalidad": modalidad,
             "pisos": pisos,
             "tipo_casa": tipo_casa,
+            "edad_rapida": edad_rapida,
+            "edad_texto": edad_texto,
         },
         funciones_opts=funciones_opts,
     )

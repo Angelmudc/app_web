@@ -30,6 +30,10 @@ def test_secretarias_filtro_ui_render_estado_vacio_y_campos():
     assert 'name="modalidad"' in html
     assert 'name="pisos"' in html
     assert 'name="tipo_casa"' in html
+    assert 'name="edad_rapida"' in html
+    assert 'name="edad_texto"' in html
+    assert '40 en adelante' in html
+    assert '50 en adelante' in html
     assert '>Buscar<' in html
     assert 'Limpieza general' in html
     assert 'Cuidar niños' in html

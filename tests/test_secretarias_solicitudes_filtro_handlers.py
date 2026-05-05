@@ -129,6 +129,9 @@ def _patch_common(q, captured):
             nullif=lambda a, b: ("NULLIF", a, b),
             length=lambda a: ("LENGTH", a),
             trim=lambda a: ("TRIM", a),
+            array_to_string=lambda a, b: ("ARRAY_TO_STRING", a, b),
+            replace=lambda a, b, c: ("REPLACE", a, b, c),
+            lower=lambda a: _Expr(),
         )), \
         patch("core.handlers.secretarias_solicitudes_handlers.render_template", side_effect=_fake_render)
 
@@ -283,6 +286,9 @@ def test_secretarias_solicitudes_filtro_funcion_otro_activa_busqueda_por_funcion
              nullif=lambda a, b: ("NULLIF", a, b),
              length=lambda _a: _Expr(),
              trim=lambda a: ("TRIM", a),
+             array_to_string=lambda a, b: ("ARRAY_TO_STRING", a, b),
+             replace=lambda a, b, c: ("REPLACE", a, b, c),
+             lower=lambda a: _Expr(),
          )):
         resp = client.get("/secretarias/solicitudes/filtro?funciones=otro", follow_redirects=False)
 
@@ -331,6 +337,9 @@ def test_secretarias_solicitudes_filtro_tolera_modelo_legacy_sin_modalidad():
              nullif=lambda a, b: ("NULLIF", a, b),
              length=lambda a: ("LENGTH", a),
              trim=lambda a: ("TRIM", a),
+             array_to_string=lambda a, b: ("ARRAY_TO_STRING", a, b),
+             replace=lambda a, b, c: ("REPLACE", a, b, c),
+             lower=lambda a: _Expr(),
          )), \
          patch("core.handlers.secretarias_solicitudes_handlers.render_template", side_effect=_fake_render):
         resp = client.get("/secretarias/solicitudes/filtro?pasaje=si", follow_redirects=False)
@@ -412,3 +421,145 @@ def test_secretarias_solicitudes_filtro_paginacion_20_y_hook_copia():
     item = captured["ctx"]["items"][0]
     assert item["copy_action_endpoint"] == "secretarias_copiar_solicitud"
     assert "Disponible ( SOL-077 )" in item["order_text"]
+
+
+def test_secretarias_solicitudes_filtro_edad_texto_parcial_aplica_ilike():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?edad_texto=mayor+de+35", follow_redirects=False)
+    assert resp.status_code == 200
+    assert q.paginate_seen == {"page": 1, "per_page": 20, "error_out": False}
+    assert "%mayor de 35%" in str(q.filter_calls)
+
+
+def test_secretarias_solicitudes_filtro_edad_rapida_aplica_patrones_equivalentes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?edad_rapida=30_40", follow_redirects=False)
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "%30 a 40%" in flat
+    assert "%30-40%" in flat
+
+
+def test_secretarias_solicitudes_filtro_edad_combinada_con_ciudad():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get(
+            "/secretarias/solicitudes/filtro?ciudad_sector=santiago&edad_texto=25+en+adelante",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "%santiago%" in flat
+    assert "%25 en adelante%" in flat
+
+
+def test_secretarias_solicitudes_filtro_edad_combinada_con_modalidad():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get(
+            "/secretarias/solicitudes/filtro?modalidad=con_dormida&edad_rapida=45_plus",
+            follow_redirects=False,
+        )
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "%con dormida%" in flat
+    assert "%45 en adelante%" in flat
+
+
+def test_secretarias_solicitudes_filtro_sin_edad_se_mantiene_igual():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro", follow_redirects=False)
+    assert resp.status_code == 200
+    assert q.paginate_seen is None
+    assert captured["ctx"]["empty_state_message"] == "Aplica filtros para ver resultados"
+
+
+def test_secretarias_solicitudes_filtro_edad_null_vacio_no_rompe():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    row = SimpleNamespace(
+        id=88, codigo_solicitud="SOL-088", ciudad_sector="Santiago", rutas_cercanas="K", modalidad_trabajo="Salida diaria",
+        modalidad="", tipo_modalidad="", edad_requerida=[], experiencia="", horario="", funciones=["limpieza"],
+        funciones_otro="", adultos=1, ninos=None, edades_ninos="", mascota="", tipo_lugar="", habitaciones=1,
+        banos=1.0, dos_pisos=False, areas_comunes=[], area_otro="", direccion="", sueldo="18000", pasaje_aporte=False,
+        nota_cliente="", last_copiado_at=None, estado="activa", fecha_solicitud=None,
+    )
+    paginado = SimpleNamespace(items=[row], page=1, pages=1, total=1)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?edad_texto=30", follow_redirects=False)
+    assert resp.status_code == 200
+    assert captured["ctx"]["total"] == 1
+
+
+def test_secretarias_solicitudes_filtro_edad_lista_no_rompe_texto_copiable():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    row = SimpleNamespace(
+        id=89, codigo_solicitud="SOL-089", ciudad_sector="Santiago", rutas_cercanas="K", modalidad_trabajo="Con dormida",
+        modalidad="", tipo_modalidad="", edad_requerida=["30 en adelante", "Mayor de 45"], experiencia="", horario="", funciones=["limpieza"],
+        funciones_otro="", adultos=1, ninos=None, edades_ninos="", mascota="", tipo_lugar="", habitaciones=1,
+        banos=1.0, dos_pisos=False, areas_comunes=[], area_otro="", direccion="", sueldo="18000", pasaje_aporte=False,
+        nota_cliente="", last_copiado_at=None, estado="activa", fecha_solicitud=None,
+    )
+    paginado = SimpleNamespace(items=[row], page=1, pages=1, total=1)
+    q = _SearchQuery(paginado)
+    captured = {}
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?edad_texto=30", follow_redirects=False)
+    assert resp.status_code == 200
+    item = captured["ctx"]["items"][0]
+    assert "Edad: 30 en adelante, Mayor de 45" in item["order_text"]
+    assert item["copy_action_endpoint"] == "secretarias_copiar_solicitud"
