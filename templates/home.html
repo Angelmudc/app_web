@@ -67,6 +67,24 @@
   {% endif %}
   {% set _home_internal_staff = current_user.is_authenticated and (_role in ['owner', 'admin', 'secretaria']) %}
   {% if _home_internal_staff %}
+  {% set buscar_solicitudes_url = (url_for_safe('secretarias_filtrar_solicitudes') or '/secretarias/solicitudes/filtro') %}
+  <div class="mb-5">
+    <h2 class="section-title">
+      <i class="fa-solid fa-magnifying-glass me-2 text-primary"></i> Solicitudes
+    </h2>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+      <div class="col">
+        <div class="dashboard-card">
+          <h5>Buscar solicitudes</h5>
+          <p>Buscador interno para filtrar solicitudes rápido y copiar para publicar.</p>
+          <a href="{{ buscar_solicitudes_url }}" class="btn btn-outline-primary w-100">
+            Ir a Buscar solicitudes
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="mb-5">
     <h2 class="section-title">
       <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
