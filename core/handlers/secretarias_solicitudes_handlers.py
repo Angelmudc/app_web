@@ -737,6 +737,14 @@ def secretarias_filtrar_solicitudes():
                 "funciones_principales": base["funciones"],
                 "sueldo_valor": base["sueldo"],
                 "pasaje_label": base["pasaje"],
+                "ruta": _s(getattr(s, "rutas_cercanas", "")),
+                "experiencia": _s(getattr(s, "experiencia", "")),
+                "tipo_lugar": _s(getattr(s, "tipo_lugar", "")),
+                "habitaciones": _s(getattr(s, "habitaciones", "")),
+                "banos": _fmt_banos(getattr(s, "banos", None)),
+                "pisos_label": ("2 niveles" if bool(getattr(s, "dos_pisos", False)) else "1 nivel"),
+                "adultos": _s(getattr(s, "adultos", "")),
+                "ninos": _s(getattr(s, "ninos", "")),
                 "copy_action_endpoint": "secretarias_copiar_solicitud",
             }
         )
