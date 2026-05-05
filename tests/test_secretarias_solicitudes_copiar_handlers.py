@@ -99,8 +99,8 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
         edad_requerida="30-45",
         experiencia="Cuidado de ninos",
         horario="8am-5pm",
-        funciones=["cocinar", "otro"],
-        funciones_otro="Planchar",
+        funciones=["cocinar", "ninos", "limpieza", "lavar", "otro"],
+        funciones_otro="Mandados",
         adultos=2,
         ninos="2",
         edades_ninos="5 y 8",
@@ -109,8 +109,8 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
         habitaciones=3,
         banos=2.0,
         dos_pisos=True,
-        areas_comunes=["Patio", "otro"],
-        area_otro="Terraza",
+        areas_comunes=["salon_juegos", "jardin"],
+        area_otro="area_lavado",
         nota_cliente="Solo con referencias",
         sueldo="18000",
         pasaje_aporte=False,
@@ -156,10 +156,12 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
     salida = captured["ctx"]["solicitudes"][0]["order_text"]
     assert "Disponible ( SOL-007 )" in salida
     assert "Con dormida 💤 L-V" in salida
-    assert "Funciones: Cocinar, Planchar" in salida
+    assert "Funciones: Limpieza general, Cocinar, Lavar, Cuidar niños, Mandados" in salida
     assert "Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero." in salida
     assert "Nota sobre el envejeciente: Toma agua cada 2 horas" in salida
-    assert "Apartamento - 3 habitaciones, 2 baños, 2 pisos, Patio, Terraza" in salida
+    assert "salon_juegos" not in salida
+    assert "jardin" not in salida
+    assert "Apartamento - 3 habitaciones, 2 baños, 2 pisos, salón de juegos, jardín, área de lavado" in salida
     assert "Hogar:" not in salida
     assert "Modalidad:" not in salida
 

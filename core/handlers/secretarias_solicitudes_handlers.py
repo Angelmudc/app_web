@@ -39,9 +39,23 @@ def _fmt_banos(v):
 
 def _norm_area(s):
     txt = (s or "").strip()
-    if txt.lower() in {"otro", "otro...", "otro…"}:
+    key = txt.lower()
+    if key in {"otro", "otro...", "otro…"}:
         return ""
-    return txt
+    area_map = {
+        "salon_juegos": "salón de juegos",
+        "jardin": "jardín",
+        "area_lavado": "área de lavado",
+        "marquesina": "marquesina",
+        "patio": "patio",
+        "terraza": "terraza",
+        "piscina": "piscina",
+        "estudio": "estudio",
+        "sala": "sala",
+        "comedor": "comedor",
+        "cocina": "cocina",
+    }
+    return area_map.get(key, txt)
 
 
 def _normalize_modalidad_publicar(value):
@@ -134,11 +148,13 @@ def _solicitud_load_only_cols():
 def _build_copy_order_item(s, funciones_choices):
     funcs = []
     try:
-        seleccion = set(_as_list(getattr(s, "funciones", None)))
+        seleccion = [str(x or "").strip().lower() for x in _as_list(getattr(s, "funciones", None)) if str(x or "").strip()]
     except Exception:
-        seleccion = set()
-    for code in seleccion:
-        if code == "otro":
+        seleccion = []
+    seleccion_set = set(seleccion)
+    orden_codigos = ["limpieza", "cocinar", "lavar", "planchar", "ninos", "envejeciente"]
+    for code in orden_codigos:
+        if code not in seleccion_set:
             continue
         label = funciones_choices.get(code)
         if label:

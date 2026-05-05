@@ -104,7 +104,15 @@ class _DummyField:
 
 class _DummyForm:
     def __init__(self):
-        self.funciones = _DummyField([("limpieza", "Limpieza")])
+        self.funciones = _DummyField([
+            ("limpieza", "Limpieza general"),
+            ("cocinar", "Cocinar"),
+            ("lavar", "Lavar"),
+            ("planchar", "Planchar"),
+            ("ninos", "Cuidar niños"),
+            ("envejeciente", "Cuidar envejeciente"),
+            ("otro", "Otro"),
+        ])
         self.ninera_tareas = _DummyField([])
         self.enf_tareas = _DummyField([])
         self.enf_movilidad = _DummyField([])
@@ -232,6 +240,28 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
         self.assertIn("pasaje aparte por ruta", html)
+
+    def test_copiar_solicitudes_formatea_funciones_y_areas_humano(self):
+        self._login("Karla", "9989")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.funciones = ["cocinar", "ninos", "limpieza", "lavar"]
+        solicitud.funciones_otro = "Mandados"
+        solicitud.areas_comunes = ["salon_juegos", "jardin"]
+        solicitud.area_otro = "area_lavado"
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Funciones: Limpieza general, Cocinar, Lavar, Cuidar ni", html)
+        self.assertTrue(("Salón de juegos" in html) or ("Sal\\u00f3n de juegos" in html))
+        self.assertTrue(("Jardín" in html) or ("Jard\\u00edn" in html))
+        self.assertTrue(("Área de lavado" in html) or ("\\u00c1rea de lavado" in html))
+        self.assertNotIn("salon_juegos", html)
+        self.assertNotIn("jardin", html)
 
     def test_copiar_solicitudes_get_async_devuelve_reemplazo_parcial(self):
         self._login("Karla", "9989")

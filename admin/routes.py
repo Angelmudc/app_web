@@ -19006,10 +19006,18 @@ def _norm_area(a: str) -> str:
         "balcon": "Balcón", "balcón": "Balcón",
         "lavado": "Lavado", "terraza": "Terraza",
         "jardin": "Jardín", "salon_juegos": "Salón de juegos",
+        "area_lavado": "Área de lavado",
+        "marquesina": "Marquesina",
+        "patio": "Patio",
+        "piscina": "Piscina",
+        "estudio": "Estudio",
+        "sala": "Sala",
+        "comedor": "Comedor",
+        "cocina": "Cocina",
     }
     if k in alias:
         return alias[k]
-    return a.strip().title()
+    return a.strip().replace("_", " ").title()
 
 def _fmt_codigo_humano(codigo: str) -> str:
     c = (codigo or "").strip()
@@ -19242,11 +19250,14 @@ def copiar_solicitudes():
             reems = [r for r in (s.reemplazos or []) if bool(getattr(r, 'oportunidad_nueva', False))]
 
         # ====================== FUNCIONES (ORDEN CORRECTO) ======================
-        raw_codes = _unique_keep_order(_as_list(getattr(s, 'funciones', None)))
-        raw_codes = [c for c in raw_codes if c != 'otro']
+        raw_codes = [str(c or "").strip().lower() for c in _unique_keep_order(_as_list(getattr(s, 'funciones', None)))]
+        raw_codes = [c for c in raw_codes if c and c != 'otro']
+        orden_codigos = ['limpieza', 'cocinar', 'lavar', 'planchar', 'ninos', 'envejeciente']
 
         funcs = []
-        for code in raw_codes:
+        for code in orden_codigos:
+            if code not in raw_codes:
+                continue
             label = FUNCIONES_LABELS.get(code)
             if label:
                 funcs.append(label)
