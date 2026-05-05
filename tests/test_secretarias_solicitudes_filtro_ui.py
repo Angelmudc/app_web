@@ -101,9 +101,9 @@ def test_secretarias_filtro_tabla_compacta_con_detalle_y_copiar_visible():
     assert 'Código' in html
     assert 'Ciudad / Sector' in html
     assert 'Modalidad' in html
-    assert 'Funciones' in html
     assert 'Sueldo' in html
     assert 'Acción' in html
+    assert 'Funciones</th>' not in html
 
     assert 'Pasaje</th>' not in html
     assert 'Estado</th>' not in html
@@ -111,5 +111,8 @@ def test_secretarias_filtro_tabla_compacta_con_detalle_y_copiar_visible():
     assert 'Fecha solicitud</th>' not in html
 
     assert 'Ver detalles' in html
+    assert 'Funciones:' in html
     assert 'Ruta:' in html
+    assert 'detalles-contraste' in html
+    assert 'detalle-copy-text' in html
     assert 'Copiar' in html
