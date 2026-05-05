@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from flask import current_app, flash, jsonify, redirect, render_template, request, url_for
-from sqlalchemy import and_, func, or_
+from sqlalchemy import Integer, and_, cast, func, or_
 from sqlalchemy.orm import joinedload, load_only
 from urllib.parse import urlencode
 from datetime import datetime
@@ -64,6 +64,149 @@ def _s(v):
     return "" if v is None else str(v).strip()
 
 
+def _funciones_choices_map():
+    funciones_choices = {}
+    try:
+        form = AdminSolicitudForm() if AdminSolicitudForm else None
+        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
+            funciones_choices = dict(form.funciones.choices)
+    except Exception:
+        funciones_choices = {}
+    return funciones_choices
+
+
+def _build_copy_order_item(s, funciones_choices):
+    funcs = []
+    try:
+        seleccion = set(_as_list(getattr(s, "funciones", None)))
+    except Exception:
+        seleccion = set()
+    for code in seleccion:
+        if code == "otro":
+            continue
+        label = funciones_choices.get(code)
+        if label:
+            funcs.append(label)
+    custom_otro = (getattr(s, "funciones_otro", None) or "").strip()
+    if custom_otro:
+        funcs.append(custom_otro)
+
+    adultos = s.adultos or ""
+    ninos_line = ""
+    if getattr(s, "ninos", None):
+        ninos_line = f"Niños: {s.ninos}"
+        if getattr(s, "edades_ninos", None):
+            ninos_line += f" ({s.edades_ninos})"
+    mascota_val = (getattr(s, "mascota", None) or "").strip()
+    mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
+
+    modalidad_val = (
+        getattr(s, "modalidad_trabajo", None)
+        or getattr(s, "modalidad", None)
+        or getattr(s, "tipo_modalidad", None)
+        or ""
+    )
+    modalidad_val = _normalize_modalidad_publicar(modalidad_val)
+
+    hogar_partes = []
+    if getattr(s, "habitaciones", None):
+        hogar_partes.append(f"{s.habitaciones} habitaciones")
+    banos_txt = _fmt_banos(getattr(s, "banos", None))
+    if banos_txt:
+        hogar_partes.append(f"{banos_txt} baños")
+    if bool(getattr(s, "dos_pisos", False)):
+        hogar_partes.append("2 pisos")
+
+    areas = []
+    if getattr(s, "areas_comunes", None):
+        try:
+            for a in s.areas_comunes:
+                a = str(a).strip()
+                if a:
+                    area_norm = _norm_area(a)
+                    if area_norm:
+                        areas.append(area_norm)
+        except Exception:
+            pass
+    area_otro = (getattr(s, "area_otro", None) or "").strip()
+    if area_otro:
+        area_norm = _norm_area(area_otro)
+        if area_norm:
+            areas.append(area_norm)
+    if areas:
+        hogar_partes.append(", ".join(areas))
+
+    tipo_lugar = (getattr(s, "tipo_lugar", "") or "").strip()
+    if tipo_lugar and hogar_partes:
+        hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
+    elif tipo_lugar:
+        hogar_descr = tipo_lugar
+    else:
+        hogar_descr = ", ".join(hogar_partes)
+    hogar_val = hogar_descr.strip() if hogar_descr else ""
+
+    if isinstance(s.edad_requerida, (list, tuple, set)):
+        edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
+    else:
+        edad_req = s.edad_requerida or ""
+
+    nota_cli = (s.nota_cliente or "").strip()
+    nota_line = f"Nota: {nota_cli}" if nota_cli else ""
+    envejeciente_lines = format_envejeciente_resumen(
+        tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
+        responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
+        solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
+        nota=getattr(s, "envejeciente_nota", None),
+    )
+    sueldo_txt = (
+        f"Sueldo: ${_s(s.sueldo)} mensual"
+        f"{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
+    )
+
+    lines = [
+        f"Disponible ( {s.codigo_solicitud or ''} )",
+        f"📍 {s.ciudad_sector or ''}",
+        f"Ruta más cercana: {s.rutas_cercanas or ''}",
+        "",
+    ]
+    if modalidad_val:
+        lines += [modalidad_val, ""]
+
+    lines += [
+        f"Edad: {edad_req}",
+        "Dominicana",
+        "Que sepa leer y escribir",
+        f"Experiencia en: {s.experiencia or ''}",
+        f"Horario: {s.horario or ''}",
+        "",
+        f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
+    ]
+    if hogar_val:
+        lines += ["", hogar_val]
+    if envejeciente_lines:
+        lines += [""] + envejeciente_lines
+
+    lines += ["", f"Adultos: {adultos}"]
+    if ninos_line:
+        lines.append(ninos_line)
+    if mascota_line:
+        lines.append(mascota_line)
+    lines += ["", sueldo_txt]
+    if nota_line:
+        lines += ["", nota_line]
+
+    order_text = "\n".join(lines).strip()[:4000]
+    return {
+        "codigo_solicitud": _s(s.codigo_solicitud),
+        "ciudad_sector": _s(s.ciudad_sector),
+        "modalidad": modalidad_val,
+        "funciones": ", ".join(funcs),
+        "sueldo": _s(s.sueldo),
+        "pasaje": "Sí" if bool(getattr(s, "pasaje_aporte", False)) else "No",
+        "order_text": order_text,
+    }
+
+
 @roles_required("admin", "secretaria")
 def secretarias_copiar_solicitudes():
     """
@@ -94,145 +237,20 @@ def secretarias_copiar_solicitudes():
         current_app.logger.exception("❌ Error listando solicitudes copiables")
         raw_sols = []
 
-    funciones_choices = {}
-    try:
-        form = AdminSolicitudForm() if AdminSolicitudForm else None
-        if form and hasattr(form, "funciones") and hasattr(form.funciones, "choices"):
-            funciones_choices = dict(form.funciones.choices)
-    except Exception:
-        funciones_choices = {}
+    funciones_choices = _funciones_choices_map()
 
     solicitudes = []
     for s in raw_sols:
-        funcs = []
-        try:
-            seleccion = set(_as_list(getattr(s, "funciones", None)))
-        except Exception:
-            seleccion = set()
-        for code in seleccion:
-            if code == "otro":
-                continue
-            label = funciones_choices.get(code)
-            if label:
-                funcs.append(label)
-        custom_otro = (getattr(s, "funciones_otro", None) or "").strip()
-        if custom_otro:
-            funcs.append(custom_otro)
-
-        adultos = s.adultos or ""
-        ninos_line = ""
-        if getattr(s, "ninos", None):
-            ninos_line = f"Niños: {s.ninos}"
-            if getattr(s, "edades_ninos", None):
-                ninos_line += f" ({s.edades_ninos})"
-        mascota_val = (getattr(s, "mascota", None) or "").strip()
-        mascota_line = f"Mascota: {mascota_val}" if mascota_val else ""
-
-        modalidad_val = (
-            getattr(s, "modalidad_trabajo", None)
-            or getattr(s, "modalidad", None)
-            or getattr(s, "tipo_modalidad", None)
-            or ""
-        )
-        modalidad_val = _normalize_modalidad_publicar(modalidad_val)
-
-        hogar_partes = []
-        if getattr(s, "habitaciones", None):
-            hogar_partes.append(f"{s.habitaciones} habitaciones")
-        banos_txt = _fmt_banos(getattr(s, "banos", None))
-        if banos_txt:
-            hogar_partes.append(f"{banos_txt} baños")
-        if bool(getattr(s, "dos_pisos", False)):
-            hogar_partes.append("2 pisos")
-
-        areas = []
-        if getattr(s, "areas_comunes", None):
-            try:
-                for a in s.areas_comunes:
-                    a = str(a).strip()
-                    if a:
-                        area_norm = _norm_area(a)
-                        if area_norm:
-                            areas.append(area_norm)
-            except Exception:
-                pass
-        area_otro = (getattr(s, "area_otro", None) or "").strip()
-        if area_otro:
-            area_norm = _norm_area(area_otro)
-            if area_norm:
-                areas.append(area_norm)
-        if areas:
-            hogar_partes.append(", ".join(areas))
-
-        tipo_lugar = (getattr(s, "tipo_lugar", "") or "").strip()
-        if tipo_lugar and hogar_partes:
-            hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes)}"
-        elif tipo_lugar:
-            hogar_descr = tipo_lugar
-        else:
-            hogar_descr = ", ".join(hogar_partes)
-        hogar_val = hogar_descr.strip() if hogar_descr else ""
-
-        if isinstance(s.edad_requerida, (list, tuple, set)):
-            edad_req = ", ".join([str(x).strip() for x in s.edad_requerida if str(x).strip()])
-        else:
-            edad_req = s.edad_requerida or ""
-
-        nota_cli = (s.nota_cliente or "").strip()
-        nota_line = f"Nota: {nota_cli}" if nota_cli else ""
-        envejeciente_lines = format_envejeciente_resumen(
-            tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
-            responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
-            solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
-            nota=getattr(s, "envejeciente_nota", None),
-        )
-        sueldo_txt = (
-            f"Sueldo: ${_s(s.sueldo)} mensual"
-            f"{', más ayuda del pasaje' if bool(getattr(s, 'pasaje_aporte', False)) else ', pasaje incluido'}"
-        )
-
-        lines = [
-            f"Disponible ( {s.codigo_solicitud or ''} )",
-            f"📍 {s.ciudad_sector or ''}",
-            f"Ruta más cercana: {s.rutas_cercanas or ''}",
-            "",
-        ]
-        if modalidad_val:
-            lines += [modalidad_val, ""]
-
-        lines += [
-            f"Edad: {edad_req}",
-            "Dominicana",
-            "Que sepa leer y escribir",
-            f"Experiencia en: {s.experiencia or ''}",
-            f"Horario: {s.horario or ''}",
-            "",
-            f"Funciones: {', '.join(funcs)}" if funcs else "Funciones: ",
-        ]
-        if hogar_val:
-            lines += ["", hogar_val]
-        if envejeciente_lines:
-            lines += [""] + envejeciente_lines
-
-        lines += ["", f"Adultos: {adultos}"]
-        if ninos_line:
-            lines.append(ninos_line)
-        if mascota_line:
-            lines.append(mascota_line)
-        lines += ["", sueldo_txt]
-        if nota_line:
-            lines += ["", nota_line]
-
-        order_text = "\n".join(lines).strip()[:4000]
+        item_base = _build_copy_order_item(s, funciones_choices)
 
         solicitudes.append(
             {
                 "id": s.id,
-                "codigo_solicitud": _s(s.codigo_solicitud),
-                "ciudad_sector": _s(s.ciudad_sector),
-                "modalidad": modalidad_val,
+                "codigo_solicitud": item_base["codigo_solicitud"],
+                "ciudad_sector": item_base["ciudad_sector"],
+                "modalidad": item_base["modalidad"],
                 "copiada_hoy": False,
-                "order_text": order_text,
+                "order_text": item_base["order_text"],
             }
         )
 
@@ -540,4 +558,237 @@ def secretarias_buscar_solicitudes():
         page_links=page_links,
         prev_url=prev_url,
         next_url=next_url,
+    )
+
+
+@roles_required("admin", "secretaria")
+def secretarias_filtrar_solicitudes():
+    ciudad_sector = (request.args.get("ciudad_sector") or "").strip()[:200]
+    ruta = (request.args.get("ruta") or "").strip()[:200]
+    funciones = [str(v or "").strip().lower() for v in (request.args.getlist("funciones") or []) if str(v or "").strip()]
+    experiencia = (request.args.get("experiencia") or "").strip()[:500]
+    pasaje = (request.args.get("pasaje") or "").strip().lower()
+    modalidad = (request.args.get("modalidad") or "").strip().lower()
+    pisos = (request.args.get("pisos") or "").strip()
+    tipo_casa = (request.args.get("tipo_casa") or "").strip().lower()
+    page = max(1, request.args.get("page", type=int, default=1))
+    per_page = 20
+
+    sueldo_min = request.args.get("sueldo_min", type=int)
+    sueldo_max = request.args.get("sueldo_max", type=int)
+    if sueldo_min is not None and sueldo_min < 0:
+        sueldo_min = None
+    if sueldo_max is not None and sueldo_max < 0:
+        sueldo_max = None
+
+    has_useful_filters = any([
+        bool(ciudad_sector),
+        bool(ruta),
+        bool(funciones),
+        bool(experiencia),
+        sueldo_min is not None,
+        sueldo_max is not None,
+        pasaje in {"si", "no"},
+        modalidad in {"salida_diaria", "con_dormida"},
+        pisos in {"1", "2"},
+        tipo_casa in {"pequena", "normal", "grande"},
+    ])
+
+    funciones_opts = []
+    try:
+        funciones_opts = sorted(list((_funciones_choices_map() or {}).items()), key=lambda x: str(x[1] or x[0]))
+    except Exception:
+        funciones_opts = []
+
+    if not has_useful_filters:
+        return render_template(
+            "secretarias_solicitudes_buscar.html",
+            items=[],
+            page=1,
+            pages=1,
+            total=0,
+            per_page=per_page,
+            q="",
+            estado="",
+            estados_opts=["proceso", "activa", "pagada", "cancelada", "reemplazo"],
+            desde="",
+            hasta="",
+            modalidad="",
+            mascota="",
+            con_ninos="",
+            page_links=[{"n": 1, "url": url_for("secretarias_filtrar_solicitudes"), "active": True}],
+            prev_url=None,
+            next_url=None,
+            endpoint="secretarias_filtrar_solicitudes",
+            empty_state_message="Aplica filtros para ver resultados",
+            filtros_aplicados=False,
+            filtro_vals={
+                "ciudad_sector": ciudad_sector,
+                "ruta": ruta,
+                "funciones": funciones,
+                "experiencia": experiencia,
+                "sueldo_min": sueldo_min if sueldo_min is not None else "",
+                "sueldo_max": sueldo_max if sueldo_max is not None else "",
+                "pasaje": pasaje,
+                "modalidad": modalidad,
+                "pisos": pisos,
+                "tipo_casa": tipo_casa,
+            },
+            funciones_opts=funciones_opts,
+        )
+
+    cols = (
+        legacy_h.Solicitud.id,
+        legacy_h.Solicitud.fecha_solicitud,
+        legacy_h.Solicitud.codigo_solicitud,
+        legacy_h.Solicitud.ciudad_sector,
+        legacy_h.Solicitud.rutas_cercanas,
+        legacy_h.Solicitud.modalidad_trabajo,
+        legacy_h.Solicitud.modalidad,
+        legacy_h.Solicitud.tipo_modalidad,
+        legacy_h.Solicitud.edad_requerida,
+        legacy_h.Solicitud.experiencia,
+        legacy_h.Solicitud.horario,
+        legacy_h.Solicitud.funciones,
+        legacy_h.Solicitud.funciones_otro,
+        legacy_h.Solicitud.adultos,
+        legacy_h.Solicitud.ninos,
+        legacy_h.Solicitud.edades_ninos,
+        legacy_h.Solicitud.mascota,
+        legacy_h.Solicitud.tipo_lugar,
+        legacy_h.Solicitud.habitaciones,
+        legacy_h.Solicitud.banos,
+        legacy_h.Solicitud.dos_pisos,
+        legacy_h.Solicitud.areas_comunes,
+        legacy_h.Solicitud.area_otro,
+        legacy_h.Solicitud.direccion,
+        legacy_h.Solicitud.sueldo,
+        legacy_h.Solicitud.pasaje_aporte,
+        legacy_h.Solicitud.nota_cliente,
+        legacy_h.Solicitud.last_copiado_at,
+        legacy_h.Solicitud.estado,
+    )
+    qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
+
+    if ciudad_sector:
+        qy = qy.filter(legacy_h.Solicitud.ciudad_sector.ilike(f"%{ciudad_sector}%"))
+    if ruta:
+        qy = qy.filter(legacy_h.Solicitud.rutas_cercanas.ilike(f"%{ruta}%"))
+    if funciones:
+        funciones_predicates = [legacy_h.Solicitud.funciones.any(fcode) for fcode in funciones]
+        if "otro" in funciones:
+            funciones_predicates.append(legacy_h.Solicitud.funciones_otro.isnot(None))
+            funciones_predicates.append(func.length(func.trim(legacy_h.Solicitud.funciones_otro)) > 0)
+        qy = qy.filter(or_(*funciones_predicates))
+    if experiencia:
+        qy = qy.filter(legacy_h.Solicitud.experiencia.ilike(f"%{experiencia}%"))
+    if sueldo_min is not None:
+        qy = qy.filter(cast(func.nullif(legacy_h.Solicitud.sueldo, ""), Integer) >= sueldo_min)
+    if sueldo_max is not None:
+        qy = qy.filter(cast(func.nullif(legacy_h.Solicitud.sueldo, ""), Integer) <= sueldo_max)
+    if pasaje == "si":
+        qy = qy.filter(legacy_h.Solicitud.pasaje_aporte.is_(True))
+    elif pasaje == "no":
+        qy = qy.filter(or_(legacy_h.Solicitud.pasaje_aporte.is_(False), legacy_h.Solicitud.pasaje_aporte.is_(None)))
+    if modalidad == "salida_diaria":
+        qy = qy.filter(legacy_h.Solicitud.modalidad_trabajo.ilike("%salida diaria%"))
+    elif modalidad == "con_dormida":
+        qy = qy.filter(
+            or_(
+                legacy_h.Solicitud.modalidad_trabajo.ilike("%con dormida%"),
+                legacy_h.Solicitud.modalidad_trabajo.ilike("%dormida%"),
+                legacy_h.Solicitud.modalidad_trabajo.ilike("%interna%"),
+            )
+        )
+    if pisos == "1":
+        qy = qy.filter(legacy_h.Solicitud.dos_pisos.is_(False))
+    elif pisos == "2":
+        qy = qy.filter(legacy_h.Solicitud.dos_pisos.is_(True))
+    if tipo_casa in {"pequena", "normal", "grande"}:
+        house_filter = None
+        if tipo_casa == "pequena":
+            house_filter = and_(legacy_h.Solicitud.habitaciones <= 2, legacy_h.Solicitud.banos <= 2)
+        elif tipo_casa == "normal":
+            house_filter = and_(legacy_h.Solicitud.habitaciones == 3, legacy_h.Solicitud.banos <= 3)
+        elif tipo_casa == "grande":
+            house_filter = or_(legacy_h.Solicitud.habitaciones >= 4, legacy_h.Solicitud.banos >= 4)
+        qy = qy.filter(legacy_h.Solicitud.funciones.any("limpieza"), house_filter)
+
+    order_col = getattr(legacy_h.Solicitud, "fecha_solicitud", None) or legacy_h.Solicitud.id
+    qy = qy.order_by(order_col.desc())
+
+    try:
+        paginado = qy.paginate(page=page, per_page=per_page, error_out=False)
+    except AttributeError:
+        paginado = db.paginate(qy, page=page, per_page=per_page, error_out=False)
+
+    funciones_choices = _funciones_choices_map()
+    items = []
+    for s in paginado.items:
+        base = _build_copy_order_item(s, funciones_choices)
+        items.append(
+            {
+                "id": s.id,
+                "codigo_solicitud": base["codigo_solicitud"],
+                "ciudad_sector": base["ciudad_sector"],
+                "modalidad": base["modalidad"],
+                "estado": _s(s.estado),
+                "fecha_solicitud": (
+                    format_rd_datetime(s.fecha_solicitud, "%Y-%m-%d %H:%M", "") if s.fecha_solicitud else ""
+                ),
+                "copiada_ciclo": (s.last_copiado_at is not None),
+                "order_text": base["order_text"],
+                "funciones_principales": base["funciones"],
+                "sueldo_valor": base["sueldo"],
+                "pasaje_label": base["pasaje"],
+                "copy_action_endpoint": "secretarias_copiar_solicitud",
+            }
+        )
+
+    current_params = request.args.to_dict(flat=True)
+
+    def page_url(p):
+        d = current_params.copy()
+        d["page"] = p
+        return url_for("secretarias_filtrar_solicitudes") + ("?" + urlencode(d) if d else "")
+
+    total_pages = paginado.pages or 1
+    page_links = [{"n": p, "url": page_url(p), "active": (p == paginado.page)} for p in range(1, total_pages + 1)]
+    prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
+    next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
+
+    return render_template(
+        "secretarias_solicitudes_buscar.html",
+        items=items,
+        page=paginado.page,
+        pages=total_pages,
+        total=paginado.total,
+        per_page=per_page,
+        q="",
+        estado="",
+        estados_opts=["proceso", "activa", "pagada", "cancelada", "reemplazo"],
+        desde="",
+        hasta="",
+        modalidad="",
+        mascota="",
+        con_ninos="",
+        page_links=page_links,
+        prev_url=prev_url,
+        next_url=next_url,
+        endpoint="secretarias_filtrar_solicitudes",
+        empty_state_message="",
+        filtros_aplicados=True,
+        filtro_vals={
+            "ciudad_sector": ciudad_sector,
+            "ruta": ruta,
+            "funciones": funciones,
+            "experiencia": experiencia,
+            "sueldo_min": sueldo_min if sueldo_min is not None else "",
+            "sueldo_max": sueldo_max if sueldo_max is not None else "",
+            "pasaje": pasaje,
+            "modalidad": modalidad,
+            "pisos": pisos,
+            "tipo_casa": tipo_casa,
+        },
+        funciones_opts=funciones_opts,
     )

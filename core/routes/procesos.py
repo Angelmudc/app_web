@@ -28,6 +28,7 @@ RULES = [
     ('/secretarias/solicitudes/copiar', 'secretarias_copiar_solicitudes', secretarias_solicitudes_h.secretarias_copiar_solicitudes, ['GET']),
     ('/secretarias/solicitudes/<int:id>/copiar', 'secretarias_copiar_solicitud', secretarias_solicitudes_h.secretarias_copiar_solicitud, ['POST']),
     ('/secretarias/solicitudes/buscar', 'secretarias_buscar_solicitudes', secretarias_solicitudes_h.secretarias_buscar_solicitudes, ['GET']),
+    ('/secretarias/solicitudes/filtro', 'secretarias_filtrar_solicitudes', secretarias_solicitudes_h.secretarias_filtrar_solicitudes, ['GET']),
     ('/finalizar_proceso/buscar', 'finalizar_proceso_buscar', finalizar_h.finalizar_proceso_buscar, ['GET']),
     ('/finalizar_proceso', 'finalizar_proceso', finalizar_h.finalizar_proceso, ['GET', 'POST']),
 ]

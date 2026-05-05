@@ -2833,6 +2833,13 @@ def secretarias_buscar_solicitudes():
     from core.handlers import secretarias_solicitudes_handlers as secretarias_solicitudes_h
     return secretarias_solicitudes_h.secretarias_buscar_solicitudes()
 
+
+@app.route('/secretarias/solicitudes/filtro', methods=['GET'])
+@roles_required('admin', 'secretaria')
+def secretarias_filtrar_solicitudes():
+    from core.handlers import secretarias_solicitudes_handlers as secretarias_solicitudes_h
+    return secretarias_solicitudes_h.secretarias_filtrar_solicitudes()
+
 # ==== FINALIZAR PROCESO + PERFIL (con vuelta SIEMPRE al BUSCADOR) ====
 from flask import (
     request, render_template, redirect, url_for, flash, abort,

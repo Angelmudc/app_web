@@ -73,8 +73,10 @@ def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():
         resp = client.get("/home", follow_redirects=False)
         assert resp.status_code == 200
         html = resp.get_data(as_text=True)
-        assert "/admin/solicitudes/nueva-publica/link" in html
-        assert "Nueva solicitud pública (cliente nuevo)" in html
+        assert 'href="/admin/solicitudes/nueva-publica/link"' not in html
+        assert "Nueva solicitud pública (cliente nuevo)" not in html
+        assert "Publicar Hoy" not in html
+        assert "Buscar Solicitudes" not in html
         link_page = client.get("/admin/solicitudes/nueva-publica/link", follow_redirects=False)
         assert link_page.status_code == 200
         link_html = link_page.get_data(as_text=True)
