@@ -86,6 +86,11 @@ def _funciones_choices_map():
     return funciones_choices
 
 
+def _solicitud_disponible_para_secretaria_filter():
+    """Criterio operativo de solicitud usable para secretarias."""
+    return legacy_h.Solicitud.estado.in_(("activa", "reemplazo"))
+
+
 def _solicitud_load_only_cols():
     names = (
         "id",
@@ -663,8 +668,8 @@ def secretarias_filtrar_solicitudes():
 
     cols = _solicitud_load_only_cols()
     qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
-    # Filtro base obligatorio: solo solicitudes activas.
-    qy = qy.filter(legacy_h.Solicitud.estado == "activa")
+    # Filtro base obligatorio: solicitudes vigentes/usables para secretarias.
+    qy = qy.filter(_solicitud_disponible_para_secretaria_filter())
 
     if ciudad_sector:
         qy = qy.filter(legacy_h.Solicitud.ciudad_sector.ilike(f"%{ciudad_sector}%"))

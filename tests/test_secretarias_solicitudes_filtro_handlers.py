@@ -6,6 +6,7 @@ from unittest.mock import patch
 from flask import url_for
 
 from app import app as flask_app
+from core.handlers import secretarias_solicitudes_handlers as handlers
 
 
 def _login_secretaria(client):
@@ -27,6 +28,9 @@ class _Expr:
 
     def any(self, value):
         return ("ANY", value)
+
+    def in_(self, values):
+        return ("IN", values)
 
     def __eq__(self, other):
         return ("EQ", other)
@@ -141,6 +145,18 @@ def test_secretarias_solicitudes_filtro_endpoint_contract():
     )
 
 
+def test_estado_disponible_para_secretaria_no_incluye_cerradas_ni_espera_pago():
+    with patch("core.handlers.secretarias_solicitudes_handlers.legacy_h.Solicitud", new=SimpleNamespace(estado=_Expr())):
+        expr = handlers._solicitud_disponible_para_secretaria_filter()
+    txt = str(expr)
+    assert "proceso" not in txt
+    assert "activa" in txt
+    assert "reemplazo" in txt
+    assert "espera_pago" not in txt
+    assert "pagada" not in txt
+    assert "cancelada" not in txt
+
+
 def test_secretarias_solicitudes_filtro_sin_filtros_no_devuelve_resultados():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -229,7 +245,7 @@ def test_secretarias_solicitudes_filtro_funciones_multiselect_acepta_array_brack
     assert "ANY', 'cocinar'" in flat
 
 
-def test_secretarias_solicitudes_filtro_aplica_estado_activa_como_filtro_base():
+def test_secretarias_solicitudes_filtro_aplica_estado_disponible_como_filtro_base():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -245,7 +261,10 @@ def test_secretarias_solicitudes_filtro_aplica_estado_activa_como_filtro_base():
 
     assert resp.status_code == 200
     flat = str(q.filter_calls)
-    assert "EQ', 'activa'" in flat
+    assert "IN" in flat
+    assert "proceso" not in flat
+    assert "activa" in flat
+    assert "reemplazo" in flat
 
 
 def test_secretarias_solicitudes_filtro_funcion_otro_activa_busqueda_por_funciones_otro():
