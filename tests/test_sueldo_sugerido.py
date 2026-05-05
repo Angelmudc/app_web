@@ -393,20 +393,22 @@ def test_salary_message_uses_short_conversion_focused_format():
         )
     )
     msg = result["message"]
-    assert msg.startswith("Rango sugerido: RD$")
+    assert msg.startswith("Sueldo sugerido: RD$")
     assert "mensual + pasaje" in msg
-    assert msg.count("Rango sugerido: RD$") == 1
-    assert "Por:" in msg
+    assert msg.count("Rango sugerido: RD$") == 0
+    assert "Basado en:" in msg
     assert "• " in msg
+    assert "basada en los datos seleccionados" in msg.lower()
+    assert "Puedes elegir el sueldo que prefieras" in msg
     assert "cd_" not in msg and "sd_" not in msg
     assert msg.count("• ") <= 3
 
 
-def test_salary_message_is_short_and_uses_closing_line_when_fits():
+def test_salary_message_contains_flexible_non_mandatory_closing():
     result = analyze_salary_suggestion(_base_payload(funciones=["limpieza"], ninos="0", adultos="1"))
     msg = result["message"]
-    assert "👉 Dentro de ese rango consigues personal más rápido." in msg
-    assert len(msg) <= 220
+    assert "Esta es una sugerencia basada en los datos seleccionados." in msg
+    assert "Puedes elegir el sueldo que prefieras" in msg
 
 
 def test_sd_lv_10h_is_moderate():

@@ -285,6 +285,9 @@ def test_shared_partial_contains_salary_suggestion_box_and_actions():
     assert "id=\"salarySuggestionManualBtn\">Escribir otro monto</button>" in partial
     assert "function setupSalarySuggestion()" in partial
     assert "fetch('/clientes/api/sueldo-sugerido?'" in partial
+    assert "rangeNode.textContent = '';" in partial
+    assert "reasonsNode.textContent = '';" in partial
+    assert "Motivos:\\n" not in partial
 
 
 def test_shared_partial_salary_suggestion_is_non_blocking():

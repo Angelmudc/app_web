@@ -2444,14 +2444,9 @@
         }
         showBox();
         if (useBtn) useBtn.classList.remove('d-none');
-        rangeNode.textContent = 'Rango sugerido: RD$' + formatMoney(result.suggested_min) + ' - RD$' + formatMoney(result.suggested_max) + ' mensual';
+        rangeNode.textContent = '';
         statusNode.textContent = result.message || '';
-        var reasons = result.adjustments || [];
-        var top = [];
-        for (var i = 0; i < reasons.length && top.length < 4; i++) {
-          if (reasons[i] && reasons[i].label) top.push('- ' + reasons[i].label);
-        }
-        reasonsNode.textContent = top.length ? ('Motivos:\n' + top.join('\n')) : '';
+        reasonsNode.textContent = '';
         var warnings = result.warnings || [];
         warningNode.textContent = warnings.length ? warnings[0] : '';
         warningNode.classList.toggle('d-none', !warnings.length);
