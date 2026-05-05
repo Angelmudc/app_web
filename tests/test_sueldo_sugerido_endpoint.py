@@ -134,7 +134,7 @@ def test_endpoint_no_rompe_con_valores_raros_y_nunca_500():
     assert data.get("can_suggest") is False
 
 
-def test_endpoint_ninera_sin_limpieza_ni_estructura_requiere_tipo_lugar():
+def test_endpoint_ninera_sin_limpieza_ni_estructura_si_sugiere():
     flask_app.config["TESTING"] = True
     client = flask_app.test_client()
     resp = _get(
@@ -154,11 +154,12 @@ def test_endpoint_ninera_sin_limpieza_ni_estructura_requiere_tipo_lugar():
     )
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["can_suggest"] is False
-    assert "servicio será en casa o apartamento" in (data.get("message", "").lower())
+    assert data["can_suggest"] is True
+    assert data["suggested_min"] is not None
+    assert data["suggested_max"] is not None
 
 
-def test_endpoint_envejeciente_sin_limpieza_ni_estructura_requiere_tipo_lugar():
+def test_endpoint_envejeciente_sin_limpieza_ni_estructura_si_sugiere():
     flask_app.config["TESTING"] = True
     client = flask_app.test_client()
     resp = _get(
@@ -177,5 +178,6 @@ def test_endpoint_envejeciente_sin_limpieza_ni_estructura_requiere_tipo_lugar():
     )
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["can_suggest"] is False
-    assert "servicio será en casa o apartamento" in (data.get("message", "").lower())
+    assert data["can_suggest"] is True
+    assert data["suggested_min"] is not None
+    assert data["suggested_max"] is not None

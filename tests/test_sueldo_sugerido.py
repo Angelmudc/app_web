@@ -806,7 +806,75 @@ def test_sin_tipo_lugar_no_sugiere():
         )
     )
     assert r["can_suggest"] is False
-    assert "servicio será en casa o apartamento" in (r.get("message") or "").lower()
+
+
+def test_solo_ninos_sin_limpieza_sin_estructura_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            tipo_lugar="",
+            habitaciones="",
+            banos="",
+            ninos="1",
+            edades_ninos="7",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_solo_envejeciente_sin_limpieza_sin_estructura_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["envejeciente"],
+            tipo_lugar="",
+            habitaciones="",
+            banos="",
+            envejeciente_tipo_cuidado="independiente",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_ninos_cocinar_sin_limpieza_sin_estructura_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "cocinar"],
+            tipo_lugar="",
+            habitaciones="",
+            banos="",
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_ninos_lavar_sin_limpieza_sin_estructura_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "lavar"],
+            tipo_lugar="",
+            habitaciones="",
+            banos="",
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    assert r["can_suggest"] is True
+
+
+def test_ninos_planchar_sin_limpieza_sin_estructura_si_sugiere():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos", "planchar"],
+            tipo_lugar="",
+            habitaciones="",
+            banos="",
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    assert r["can_suggest"] is True
 
 
 def test_todas_las_areas_comunes_ajuste_max_2000():

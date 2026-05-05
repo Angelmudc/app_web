@@ -554,6 +554,7 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     funciones = [_norm(x) for x in _as_list(data.get("funciones"))]
     principal_funcs = {"ninos", "envejeciente", "limpieza", "cocinar", "lavar", "planchar"}
     has_principal_function = any(f in principal_funcs for f in funciones)
+    needs_house_context = "limpieza" in funciones
     tipo_lugar = _norm(data.get("tipo_lugar"))
     schedule_key, schedule_state = classify_schedule(data)
     horario = _norm(data.get("horario"))
@@ -563,7 +564,7 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         out["message"] = SOFT_INCOMPLETE_MESSAGE
         return out
 
-    if not tipo_lugar:
+    if needs_house_context and not tipo_lugar:
         out = dict(base_out)
         out["reason_no_suggestion"] = PLACE_INCOMPLETE_MESSAGE
         out["message"] = PLACE_INCOMPLETE_MESSAGE
@@ -571,7 +572,7 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
 
     if (
         schedule_state == "ambigua"
-        or tipo_lugar in {"oficina", "otro"}
+        or (needs_house_context and tipo_lugar in {"oficina", "otro"})
         or "otro" in funciones
         or not horario
     ):
