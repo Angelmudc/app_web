@@ -394,7 +394,9 @@ def test_salary_message_uses_short_conversion_focused_format():
     )
     msg = result["message"]
     assert msg.startswith("Sueldo sugerido: RD$")
-    assert "incluye ayuda para el transporte" in msg
+    assert "+ ayuda para el pasaje" in msg
+    assert "incluye" not in msg.lower()
+    assert "incluyendo" not in msg.lower()
     assert msg.count("Rango sugerido: RD$") == 0
     assert "Basado en:" in msg
     assert "•" not in msg
@@ -499,7 +501,10 @@ def test_sd_lv_12h_with_heavy_loads_can_exceed_21k():
 def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
-    assert "ayuda para el transporte" in result["message"]
+    msg = result["message"]
+    assert "+ ayuda para el pasaje" in msg
+    assert "incluye" not in msg.lower()
+    assert "incluyendo" not in msg.lower()
 
 
 def test_con_dormida_lv_base_minima_20000():

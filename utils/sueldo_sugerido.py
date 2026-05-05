@@ -377,7 +377,7 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
         n = _norm(txt)
         bullet = ""
         if "incluye planchado" in n:
-            bullet = "Incluye planchado dentro de las funciones del hogar."
+            bullet = "Con planchado dentro de las funciones del hogar."
         elif "casa muy grande" in n or "casa grande" in n or "casa mediana" in n or "apartamento amplio" in n:
             bullet = "El tamaño del hogar y sus espacios también influyen en la carga."
         elif "areas comunes" in n:
@@ -399,9 +399,9 @@ def _reason_bullets(payload: dict[str, Any]) -> list[str]:
         elif "cuidado suele ser mas de supervision" in n or "cuidado suele ser más de supervisión" in n:
             bullet = "Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión."
         elif "envejeciente encamado" in n:
-            bullet = "Incluye cuidado de envejeciente encamado, que exige mayor responsabilidad."
+            bullet = "Cuidado de envejeciente encamado, que exige mayor responsabilidad."
         elif "envejeciente independiente" in n:
-            bullet = "Incluye cuidado de envejeciente con acompañamiento o supervisión."
+            bullet = "Cuidado de envejeciente con acompañamiento o supervisión."
         elif "cuidado de envejeciente requiere atencion y responsabilidad adicional" in n or "cuidado de envejeciente requiere atención y responsabilidad adicional" in n:
             bullet = "Cuidado de envejeciente requiere atención y responsabilidad adicional."
         elif "4 o más adultos" in n or "4 o mas adultos" in n or "más de 4 adultos" in n or "mas de 4 adultos" in n:
@@ -499,7 +499,7 @@ def _top_salary_reasons(payload: dict[str, Any]) -> list[str]:
         elif "4 o más adultos" in n or "varios adultos" in n:
             reasons.append((600, "Varios adultos en el hogar"))
         elif "planchado" in n:
-            reasons.append((550, "Incluye planchado"))
+            reasons.append((550, "Con planchado"))
         elif "horario es extendido" in n:
             reasons.append((500, "Horario extendido"))
         elif "hora de salida es tarde" in n:
@@ -528,7 +528,7 @@ def build_salary_message(payload: dict[str, Any]) -> str:
         reasons = reasons[:2]
     reason_text = ", ".join(reasons[:3]) if reasons else "Modalidad seleccionada"
     lines = [
-        f"Sueldo sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual (incluye ayuda para el transporte)",
+        f"Sueldo sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual + ayuda para el pasaje",
         "Basado en:",
         reason_text,
         (
