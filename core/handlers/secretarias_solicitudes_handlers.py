@@ -65,6 +65,15 @@ def _s(v):
 
 
 def _funciones_choices_map():
+    default_choices = {
+        "limpieza": "Limpieza",
+        "cocinar": "Cocinar",
+        "lavar": "Lavar",
+        "planchar": "Planchar",
+        "ninos": "Niños",
+        "envejeciente": "Envejeciente",
+        "otro": "Otro",
+    }
     funciones_choices = {}
     try:
         form = AdminSolicitudForm() if AdminSolicitudForm else None
@@ -72,7 +81,49 @@ def _funciones_choices_map():
             funciones_choices = dict(form.funciones.choices)
     except Exception:
         funciones_choices = {}
+    for code, label in default_choices.items():
+        funciones_choices.setdefault(code, label)
     return funciones_choices
+
+
+def _solicitud_load_only_cols():
+    names = (
+        "id",
+        "fecha_solicitud",
+        "codigo_solicitud",
+        "ciudad_sector",
+        "rutas_cercanas",
+        "modalidad_trabajo",
+        "modalidad",
+        "tipo_modalidad",
+        "edad_requerida",
+        "experiencia",
+        "horario",
+        "funciones",
+        "funciones_otro",
+        "adultos",
+        "ninos",
+        "edades_ninos",
+        "mascota",
+        "tipo_lugar",
+        "habitaciones",
+        "banos",
+        "dos_pisos",
+        "areas_comunes",
+        "area_otro",
+        "direccion",
+        "sueldo",
+        "pasaje_aporte",
+        "nota_cliente",
+        "last_copiado_at",
+        "estado",
+    )
+    cols = []
+    for name in names:
+        col = getattr(legacy_h.Solicitud, name, None)
+        if col is not None:
+            cols.append(col)
+    return tuple(cols)
 
 
 def _build_copy_order_item(s, funciones_choices):
@@ -296,37 +347,7 @@ def secretarias_buscar_solicitudes():
     page = max(1, request.args.get("page", type=int, default=1))
     per_page = min(100, max(10, request.args.get("per_page", type=int, default=20)))
 
-    cols = (
-        legacy_h.Solicitud.id,
-        legacy_h.Solicitud.fecha_solicitud,
-        legacy_h.Solicitud.codigo_solicitud,
-        legacy_h.Solicitud.ciudad_sector,
-        legacy_h.Solicitud.rutas_cercanas,
-        legacy_h.Solicitud.modalidad_trabajo,
-        legacy_h.Solicitud.modalidad,
-        legacy_h.Solicitud.tipo_modalidad,
-        legacy_h.Solicitud.edad_requerida,
-        legacy_h.Solicitud.experiencia,
-        legacy_h.Solicitud.horario,
-        legacy_h.Solicitud.funciones,
-        legacy_h.Solicitud.funciones_otro,
-        legacy_h.Solicitud.adultos,
-        legacy_h.Solicitud.ninos,
-        legacy_h.Solicitud.edades_ninos,
-        legacy_h.Solicitud.mascota,
-        legacy_h.Solicitud.tipo_lugar,
-        legacy_h.Solicitud.habitaciones,
-        legacy_h.Solicitud.banos,
-        legacy_h.Solicitud.dos_pisos,
-        legacy_h.Solicitud.areas_comunes,
-        legacy_h.Solicitud.area_otro,
-        legacy_h.Solicitud.direccion,
-        legacy_h.Solicitud.sueldo,
-        legacy_h.Solicitud.pasaje_aporte,
-        legacy_h.Solicitud.nota_cliente,
-        legacy_h.Solicitud.last_copiado_at,
-        legacy_h.Solicitud.estado,
-    )
+    cols = _solicitud_load_only_cols()
 
     qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
 
@@ -345,8 +366,8 @@ def secretarias_buscar_solicitudes():
         qy = qy.filter(
             or_(
                 legacy_h.Solicitud.modalidad_trabajo.ilike(f"%{modalidad}%"),
-                legacy_h.Solicitud.modalidad.ilike(f"%{modalidad}%"),
-                legacy_h.Solicitud.tipo_modalidad.ilike(f"%{modalidad}%"),
+                getattr(legacy_h.Solicitud, "modalidad", legacy_h.Solicitud.modalidad_trabajo).ilike(f"%{modalidad}%"),
+                getattr(legacy_h.Solicitud, "tipo_modalidad", legacy_h.Solicitud.modalidad_trabajo).ilike(f"%{modalidad}%"),
             )
         )
 
@@ -637,37 +658,7 @@ def secretarias_filtrar_solicitudes():
             funciones_opts=funciones_opts,
         )
 
-    cols = (
-        legacy_h.Solicitud.id,
-        legacy_h.Solicitud.fecha_solicitud,
-        legacy_h.Solicitud.codigo_solicitud,
-        legacy_h.Solicitud.ciudad_sector,
-        legacy_h.Solicitud.rutas_cercanas,
-        legacy_h.Solicitud.modalidad_trabajo,
-        legacy_h.Solicitud.modalidad,
-        legacy_h.Solicitud.tipo_modalidad,
-        legacy_h.Solicitud.edad_requerida,
-        legacy_h.Solicitud.experiencia,
-        legacy_h.Solicitud.horario,
-        legacy_h.Solicitud.funciones,
-        legacy_h.Solicitud.funciones_otro,
-        legacy_h.Solicitud.adultos,
-        legacy_h.Solicitud.ninos,
-        legacy_h.Solicitud.edades_ninos,
-        legacy_h.Solicitud.mascota,
-        legacy_h.Solicitud.tipo_lugar,
-        legacy_h.Solicitud.habitaciones,
-        legacy_h.Solicitud.banos,
-        legacy_h.Solicitud.dos_pisos,
-        legacy_h.Solicitud.areas_comunes,
-        legacy_h.Solicitud.area_otro,
-        legacy_h.Solicitud.direccion,
-        legacy_h.Solicitud.sueldo,
-        legacy_h.Solicitud.pasaje_aporte,
-        legacy_h.Solicitud.nota_cliente,
-        legacy_h.Solicitud.last_copiado_at,
-        legacy_h.Solicitud.estado,
-    )
+    cols = _solicitud_load_only_cols()
     qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
 
     if ciudad_sector:

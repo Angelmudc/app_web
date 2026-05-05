@@ -102,6 +102,13 @@ def _fake_solicitud_model(query_obj):
     )
 
 
+def _fake_solicitud_model_legacy_sin_modalidad(query_obj):
+    model = _fake_solicitud_model(query_obj)
+    delattr(model, "modalidad")
+    delattr(model, "tipo_modalidad")
+    return model
+
+
 def _patch_common(q, captured):
     def _fake_render(template_name, **ctx):
         captured["template"] = template_name
@@ -200,6 +207,78 @@ def test_secretarias_solicitudes_filtro_funciones_multiselect_or():
     assert "ANY', 'limpieza'" in flat
     assert "ANY', 'cocinar'" in flat
     assert "OR" in flat
+
+
+def test_secretarias_solicitudes_filtro_funcion_otro_activa_busqueda_por_funciones_otro():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[7], \
+         patch("core.handlers.secretarias_solicitudes_handlers.func", new=SimpleNamespace(
+             nullif=lambda a, b: ("NULLIF", a, b),
+             length=lambda _a: _Expr(),
+             trim=lambda a: ("TRIM", a),
+         )):
+        resp = client.get("/secretarias/solicitudes/filtro?funciones=otro", follow_redirects=False)
+
+    assert resp.status_code == 200
+    flat = str(q.filter_calls)
+    assert "ANY', 'otro'" in flat
+    assert "ISNOT', None" in flat
+    assert "GT', 0" in flat
+
+
+def test_secretarias_solicitudes_filtro_ui_funciones_incluye_codigos_esperados():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    resp = client.get("/secretarias/solicitudes/filtro", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    for code in ("limpieza", "cocinar", "lavar", "planchar", "ninos", "envejeciente", "otro"):
+        assert f'value="{code}"' in html
+
+
+def test_secretarias_solicitudes_filtro_tolera_modelo_legacy_sin_modalidad():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    def _fake_render(template_name, **ctx):
+        captured["template"] = template_name
+        captured["ctx"] = ctx
+        return "ok"
+
+    with patch("core.handlers.secretarias_solicitudes_handlers.legacy_h.Solicitud", new=_fake_solicitud_model_legacy_sin_modalidad(q)), \
+         patch("core.handlers.secretarias_solicitudes_handlers.db", new=SimpleNamespace(session=SimpleNamespace(query=lambda *_a, **_k: q))), \
+         patch("core.handlers.secretarias_solicitudes_handlers.load_only", side_effect=lambda *a: a), \
+         patch("core.handlers.secretarias_solicitudes_handlers.or_", side_effect=lambda *a: ("OR", a)), \
+         patch("core.handlers.secretarias_solicitudes_handlers.and_", side_effect=lambda *a: ("AND", a)), \
+         patch("core.handlers.secretarias_solicitudes_handlers.cast", side_effect=lambda _expr, _typ: _Expr()), \
+         patch("core.handlers.secretarias_solicitudes_handlers.func", new=SimpleNamespace(
+             nullif=lambda a, b: ("NULLIF", a, b),
+             length=lambda a: ("LENGTH", a),
+             trim=lambda a: ("TRIM", a),
+         )), \
+         patch("core.handlers.secretarias_solicitudes_handlers.render_template", side_effect=_fake_render):
+        resp = client.get("/secretarias/solicitudes/filtro?pasaje=si", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert captured["template"] == "secretarias_solicitudes_buscar.html"
 
 
 def test_secretarias_solicitudes_filtro_tipo_casa_solo_con_limpieza():
