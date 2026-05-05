@@ -401,7 +401,23 @@ def test_salary_message_uses_short_conversion_focused_format():
     assert "basada en los datos seleccionados" in msg.lower()
     assert "Puedes elegir el sueldo que prefieras" in msg
     assert "cd_" not in msg and "sd_" not in msg
+    assert "L-V" not in msg and "L-S" not in msg
     assert msg.count("• ") <= 3
+
+
+def test_salary_message_uses_human_schedule_wording():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Con dormida - lunes a viernes",
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="8",
+        )
+    )
+    msg = r["message"]
+    assert "Con dormida de lunes a viernes" in msg
+    assert "L-V" not in msg and "L-S" not in msg
+    assert "cd_" not in msg and "sd_" not in msg
 
 
 def test_salary_message_contains_flexible_non_mandatory_closing():

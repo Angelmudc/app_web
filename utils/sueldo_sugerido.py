@@ -446,17 +446,17 @@ def _sanitize_client_text(text: str) -> str:
 
 def _short_schedule_label(schedule_key: str) -> str:
     mapping = {
-        "sd_1_dia": "Salida diaria 1 día/semana",
-        "sd_2_dias": "Salida diaria 2 días/semana",
-        "sd_3_dias": "Salida diaria 3 días/semana",
-        "sd_4_dias": "Salida diaria 4 días/semana",
-        "sd_l_v": "Salida diaria L-V",
-        "sd_l_s": "Salida diaria L-S",
-        "sd_fin_semana": "Salida diaria fin de semana",
-        "cd_l_v": "Dormida L-V",
-        "cd_l_s": "Dormida L-S",
-        "cd_quincenal": "Dormida quincenal",
-        "cd_fin_semana": "Dormida fin de semana",
+        "sd_1_dia": "Salida diaria 1 día a la semana",
+        "sd_2_dias": "Salida diaria 2 días a la semana",
+        "sd_3_dias": "Salida diaria 3 días a la semana",
+        "sd_4_dias": "Salida diaria 4 días a la semana",
+        "sd_l_v": "Salida diaria de lunes a viernes",
+        "sd_l_s": "Salida diaria de lunes a sábado",
+        "sd_fin_semana": "Salida diaria de fin de semana",
+        "cd_l_v": "Con dormida de lunes a viernes",
+        "cd_l_s": "Con dormida de lunes a sábado",
+        "cd_quincenal": "Con dormida con salida quincenal",
+        "cd_fin_semana": "Con dormida de fin de semana",
     }
     return mapping.get(schedule_key, "Modalidad seleccionada")
 
