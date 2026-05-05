@@ -526,21 +526,16 @@ def build_salary_message(payload: dict[str, Any]) -> str:
     reasons = _top_salary_reasons(payload)
     if len(reasons) > 2 and reasons[0] == "Modalidad seleccionada":
         reasons = reasons[:2]
+    reason_text = ", ".join(reasons[:3]) if reasons else "Modalidad seleccionada"
     lines = [
-        f"Sueldo sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual + pasaje",
-        "",
+        f"Sueldo sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual (incluye ayuda para el transporte)",
         "Basado en:",
+        reason_text,
+        (
+            "Este monto es una referencia basada en lo que seleccionaste. "
+            "Puedes ofrecer el sueldo que prefieras, pero dentro de este rango suele ser más fácil encontrar personal disponible."
+        ),
     ]
-    lines.extend(f"• {reason}" for reason in reasons[:3])
-    lines.extend(
-        [
-            "",
-            (
-                "Esta es una sugerencia basada en los datos seleccionados. "
-                "Puedes elegir el sueldo que prefieras, pero una oferta dentro de este rango suele ayudar a conseguir personal más rápido."
-            ),
-        ]
-    )
     return _sanitize_client_text("\n".join(lines))
 
 

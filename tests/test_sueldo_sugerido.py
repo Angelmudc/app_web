@@ -394,15 +394,15 @@ def test_salary_message_uses_short_conversion_focused_format():
     )
     msg = result["message"]
     assert msg.startswith("Sueldo sugerido: RD$")
-    assert "mensual + pasaje" in msg
+    assert "incluye ayuda para el transporte" in msg
     assert msg.count("Rango sugerido: RD$") == 0
     assert "Basado en:" in msg
-    assert "• " in msg
-    assert "basada en los datos seleccionados" in msg.lower()
-    assert "Puedes elegir el sueldo que prefieras" in msg
+    assert "•" not in msg
+    assert "referencia basada en lo que seleccionaste" in msg.lower()
+    assert "Puedes ofrecer el sueldo que prefieras" in msg
     assert "cd_" not in msg and "sd_" not in msg
     assert "L-V" not in msg and "L-S" not in msg
-    assert msg.count("• ") <= 3
+    assert len(msg) <= 420
 
 
 def test_salary_message_uses_human_schedule_wording():
@@ -423,8 +423,8 @@ def test_salary_message_uses_human_schedule_wording():
 def test_salary_message_contains_flexible_non_mandatory_closing():
     result = analyze_salary_suggestion(_base_payload(funciones=["limpieza"], ninos="0", adultos="1"))
     msg = result["message"]
-    assert "Esta es una sugerencia basada en los datos seleccionados." in msg
-    assert "Puedes elegir el sueldo que prefieras" in msg
+    assert "Este monto es una referencia basada en lo que seleccionaste." in msg
+    assert "Puedes ofrecer el sueldo que prefieras" in msg
 
 
 def test_sd_lv_10h_is_moderate():
@@ -499,7 +499,7 @@ def test_sd_lv_12h_with_heavy_loads_can_exceed_21k():
 def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
-    assert "+ pasaje" in result["message"]
+    assert "ayuda para el transporte" in result["message"]
 
 
 def test_con_dormida_lv_base_minima_20000():
