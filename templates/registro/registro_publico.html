@@ -1,20 +1,37 @@
 {% extends "registro/base_registro.html" %}
 
-{% block title %}Registro de Candidata{% endblock %}
+{% block title %}Registro para empleo | Doméstica del Cibao A&amp;D{% endblock %}
+
+{% block head_extra %}
+  <link rel="canonical" href="https://domesticadelcibao.com/registro/registro_publico">
+  <meta property="og:title" content="Registro para empleo | Doméstica del Cibao A&amp;D">
+  <meta property="og:description" content="Regístrate de forma segura para aplicar a oportunidades de empleo doméstico.">
+  <meta property="og:image" content="https://domesticadelcibao.com/static/img/domestica-preview.png">
+  <meta property="og:url" content="https://domesticadelcibao.com/registro/registro_publico">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Registro para empleo | Doméstica del Cibao A&amp;D">
+  <meta name="twitter:description" content="Regístrate de forma segura para aplicar a oportunidades de empleo doméstico.">
+  <meta name="twitter:image" content="https://domesticadelcibao.com/static/img/domestica-preview.png">
+{% endblock %}
 
 {% block content %}
 <main class="card-glass" role="main">
   <div class="form-head">
     <div class="form-head__left">
-      <h1 class="title">Solicitud de empleo doméstico</h1>
+      <div class="trust-brand-row" aria-label="Identidad oficial">
+        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&amp;D" class="trust-brand-logo">
+        <span class="trust-brand-name">Doméstica del Cibao A&amp;D</span>
+      </div>
+      <h1 class="title">Registro para personas interesadas en empleo</h1>
       <p class="subtitle">
-        Este formulario nos ayuda a conocer tu perfil y ofrecerte vacantes adecuadas. Los campos con <strong>*</strong> son obligatorios.
+        Completa tus datos para que podamos contactarte cuando haya una oportunidad disponible.
       </p>
     </div>
 
     <div class="form-head__badge" aria-hidden="true">
       <span class="badge-dot"></span>
-      <span>Solicitud pública</span>
+      <span>Formulario oficial</span>
     </div>
   </div>
 
@@ -25,10 +42,14 @@
     <ul class="intro-note__list">
       <li>Completarlo te tomará de 5 a 8 minutos.</li>
       <li>Si no recuerdas un dato exacto, escribe la información más aproximada posible.</li>
-      <li>Tus datos se usan solo para fines de evaluación y colocación laboral.</li>
+      <li>Tus datos serán usados únicamente para fines de evaluación y contacto laboral.</li>
+      <li>Este enlace oficial funciona bajo HTTPS para proteger tu información durante el envío.</li>
       <li>Si necesitas ayuda para completar el formulario: <a href="tel:+18494604501">+18494604501</a>.</li>
     </ul>
   </div>
+  <p class="trust-disclaimer">
+    Este registro no garantiza empleo inmediato. Nuestro equipo revisará tu información y podrá contactarte cuando exista una oportunidad acorde a tu perfil.
+  </p>
 
   <!-- RESUMEN DE ERRORES (lo llena el JS si falta algo) -->
   <div class="error-summary d-none" id="errorSummary" role="alert" aria-live="polite">
@@ -84,7 +105,7 @@
             <input type="tel" inputmode="tel" class="input" id="numero_telefono" name="numero_telefono" required maxlength="30"
                    value="{{ f.get('numero_telefono','') }}" placeholder="Ejemplo: 809-123-4567">
           </div>
-          <div class="help">Debe tener 10 dígitos. Si es número de un familiar, puedes aclararlo en el campo de motivación.</div>
+          <div class="help">Lo usamos únicamente para contacto laboral sobre vacantes. Debe tener 10 dígitos.</div>
         </div>
 
         <div class="field full">
@@ -104,7 +125,7 @@
             <input type="text" class="input" id="cedula" name="cedula" required maxlength="20"
                    value="{{ f.get('cedula','') }}" placeholder="000-0000000-0">
           </div>
-          <div class="help">Se formatea automáticamente al salir del campo.</div>
+          <div class="help">La usamos para validación de identidad y evitar registros duplicados. Se formatea automáticamente al salir del campo.</div>
         </div>
 
         <div class="field">
@@ -474,6 +495,10 @@
 
       <div class="actions__note">
         Al enviar, confirmas que los datos suministrados son reales y están actualizados.
+      </div>
+      <div class="actions__note">
+        Al continuar aceptas nuestra <a href="/privacidad" target="_blank" rel="noopener noreferrer">Política de privacidad</a> y los
+        <a href="/politicas" target="_blank" rel="noopener noreferrer">Términos y condiciones</a>.
       </div>
       <div class="actions__note">
         ¿Tienes dudas antes de enviar? Llámanos al <a href="tel:+18494604501">+18494604501</a> o escribe por

@@ -88,6 +88,41 @@ def test_web_comercial_y_reclutamiento_quedan_separadas_en_navegacion():
     assert "/admin/" not in html_reclu
 
 
+def test_registro_publico_domestica_renderiza_metadata_open_graph_y_twitter():
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    resp = client.get("/registro/registro_publico/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'property="og:title" content="Registro para empleo | Doméstica del Cibao A&amp;D"' in html
+    assert 'property="og:description" content="Regístrate de forma segura para aplicar a oportunidades de empleo doméstico."' in html
+    assert 'property="og:image" content="https://domesticadelcibao.com/static/img/domestica-preview.png"' in html
+    assert 'property="og:url" content="https://domesticadelcibao.com/registro/registro_publico"' in html
+    assert 'property="og:type" content="website"' in html
+    assert 'name="twitter:card" content="summary_large_image"' in html
+    assert 'name="twitter:title" content="Registro para empleo | Doméstica del Cibao A&amp;D"' in html
+    assert 'name="twitter:description" content="Regístrate de forma segura para aplicar a oportunidades de empleo doméstico."' in html
+    assert 'name="twitter:image" content="https://domesticadelcibao.com/static/img/domestica-preview.png"' in html
+
+
+def test_registro_publico_domestica_muestra_textos_de_confianza_y_enlaces_legales():
+    flask_app.config["TESTING"] = True
+    client = flask_app.test_client()
+
+    resp = client.get("/registro/registro_publico/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert "Registro para personas interesadas en empleo" in html
+    assert "Tus datos serán usados únicamente para fines de evaluación y contacto laboral." in html
+    assert "Este registro no garantiza empleo inmediato." in html
+    assert "https://domesticadelcibao.com/registro/registro_publico" in html
+    assert 'href="/privacidad"' in html
+    assert 'href="/politicas"' in html
+
+
 def test_formulario_domestica_valido_redirige_gracias():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -175,6 +210,66 @@ def test_formulario_domestica_guarda_campos_nuevos_en_columnas_reales():
     assert cand.creado_por_staff is None
     assert cand.creado_desde_ruta == "/registro/registro_publico/"
     assert "Datos complementarios" not in (cand.empleo_anterior or "")
+
+
+def test_formulario_domestica_sanitiza_html_y_script_en_campos_texto():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    captured = {"candidate": None}
+
+    def _fake_robust(**kwargs):
+        candidate = kwargs["build_candidate"](1)
+        captured["candidate"] = candidate
+        return (
+            RobustSaveResult(ok=True, attempts=1, error_message=""),
+            CandidateCreateState(candidate=SimpleNamespace(fila=701), candidate_id=701),
+        )
+
+    payload = _domestica_base_data(
+        nombre_completo="STRESS <b>Ana</b> Perez",
+        direccion_completa="<script>alert(1)</script> Santiago",
+        empleo_anterior="<b>Limpieza</b> y <script>alert(2)</script> cocina",
+        contactos_referencias_laborales='Ref "A" <img src=x onerror=1>',
+        referencias_familiares_detalle="Ref 'B' <div>ok</div>",
+        sueldo_esperado="<script>12000</script>",
+        motivacion_trabajo="<script>alert('x')</script> Necesito trabajar",
+    )
+
+    with patch("registro.routes.find_duplicate_candidata_by_cedula", return_value=(None, "00112345678")), \
+         patch("registro.routes.robust_create_candidata", side_effect=_fake_robust):
+        resp = client.post("/registro/registro_publico/", data=payload, follow_redirects=False)
+
+    assert resp.status_code in (302, 303)
+    cand = captured["candidate"]
+    assert cand is not None
+    assert "<" not in (cand.nombre_completo or "")
+    assert "<script" not in (cand.direccion_completa or "").lower()
+    assert "<script" not in (cand.empleo_anterior or "").lower()
+    assert "<script" not in (cand.sueldo_esperado or "").lower()
+    assert "<script" not in (cand.motivacion_trabajo or "").lower()
+    assert "<" not in (cand.contactos_referencias_laborales or "")
+    assert ">" not in (cand.referencias_familiares_detalle or "")
+
+
+def test_formulario_domestica_doble_submit_no_duplica_por_cedula():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    fake_candidate = SimpleNamespace(fila=808, cedula="001-1234567-8", nombre_completo="Maria Fernanda Perez")
+    with patch("registro.routes.find_duplicate_candidata_by_cedula", side_effect=[(None, "00112345678"), (SimpleNamespace(fila=808), "00112345678")]), \
+         patch(
+             "registro.routes.robust_create_candidata",
+             return_value=(RobustSaveResult(ok=True, attempts=1, error_message=""), CandidateCreateState(candidate=fake_candidate, candidate_id=808)),
+         ):
+        first = client.post("/registro/registro_publico/", data=_domestica_base_data(), follow_redirects=False)
+        second = client.post("/registro/registro_publico/", data=_domestica_base_data(), follow_redirects=False)
+
+    assert first.status_code in (302, 303)
+    assert second.status_code == 400
+    assert "cédula" in second.get_data(as_text=True).lower()
 
 
 def test_formulario_domestica_rechaza_nombre_corto():

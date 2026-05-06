@@ -1,5 +1,6 @@
 # --- Registro público de candidatas -----------------------------------------
 
+import re
 from typing import Optional
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
@@ -31,6 +32,7 @@ from utils.staff_notifications import create_staff_notification
 # Blueprint dedicado (NO es el "public" del website)
 # OJO: el nombre del blueprint es "registro_publico" para que los url_for queden estables.
 registro_bp = Blueprint("registro_publico", __name__)
+_TAG_RE = re.compile(r"<[^>]*>")
 
 
 def _yn_to_bool(value: str) -> Optional[bool]:
@@ -40,6 +42,17 @@ def _yn_to_bool(value: str) -> Optional[bool]:
     if v in {"no", "0", "false"}:
         return False
     return None
+
+
+def _sanitize_plain_text(value: str, *, max_len: int) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    # Evita almacenar markup/script literal desde payloads públicos.
+    no_tags = _TAG_RE.sub(" ", raw)
+    no_angles = no_tags.replace("<", " ").replace(">", " ")
+    compact = " ".join(no_angles.split())
+    return compact[:max_len]
 
 
 def _safe_dispose_pool():
@@ -94,27 +107,27 @@ def registro_publico():
             return render_template('registro/registro_publico.html'), 429
 
     # --- POST: recoger datos del formulario (limitando tamaños) ---
-    nombre       = normalize_person_name(request.form.get('nombre_completo'))
+    nombre       = normalize_person_name(_sanitize_plain_text(request.form.get('nombre_completo'), max_len=150))
     edad_raw     = (request.form.get('edad') or '').strip()[:10]
     telefono     = normalize_phone_for_store(request.form.get('numero_telefono'))
-    direccion    = (request.form.get('direccion_completa') or '').strip()[:250]
+    direccion    = _sanitize_plain_text(request.form.get('direccion_completa'), max_len=250)
     modalidad    = clean_spaces(request.form.get('modalidad_trabajo_preferida'), max_len=100)
-    rutas        = (request.form.get('rutas_cercanas') or '').strip()[:150]
-    empleo_prev  = (request.form.get('empleo_anterior') or '').strip()[:1200]
+    rutas        = _sanitize_plain_text(request.form.get('rutas_cercanas'), max_len=150)
+    empleo_prev  = _sanitize_plain_text(request.form.get('empleo_anterior'), max_len=1200)
     anos_exp     = (request.form.get('anos_experiencia') or '').strip()[:50]
     areas_list   = request.form.getlist('areas_experiencia')  # checkboxes
     planchar_raw = (request.form.get('sabe_planchar') or '').strip().lower()[:3]
     planchar_raw = planchar_raw.replace('í', 'i')
-    ref_lab      = (request.form.get('contactos_referencias_laborales') or '').strip()[:500]
-    ref_fam      = (request.form.get('referencias_familiares_detalle') or '').strip()[:500]
+    ref_lab      = _sanitize_plain_text(request.form.get('contactos_referencias_laborales'), max_len=500)
+    ref_fam      = _sanitize_plain_text(request.form.get('referencias_familiares_detalle'), max_len=500)
     acepta_raw   = (request.form.get('acepta_porcentaje_sueldo') or '').strip()[:1]
     cedula_raw   = (request.form.get('cedula') or '').strip()[:50]
     disponibilidad = clean_spaces(request.form.get('disponibilidad_inicio'), max_len=80)
     convive_ninos = clean_spaces(request.form.get('trabajo_con_ninos'), max_len=32).lower()
     convive_mascotas = clean_spaces(request.form.get('trabajo_con_mascotas'), max_len=32).lower()
     puede_dormir = clean_spaces(request.form.get('puede_dormir_fuera'), max_len=32).lower()
-    sueldo_esperado = clean_spaces(request.form.get('sueldo_esperado'), max_len=80)
-    motivacion = clean_spaces(request.form.get('motivacion_trabajo'), max_len=350)
+    sueldo_esperado = _sanitize_plain_text(clean_spaces(request.form.get('sueldo_esperado'), max_len=80), max_len=80)
+    motivacion = _sanitize_plain_text(clean_spaces(request.form.get('motivacion_trabajo'), max_len=350), max_len=350)
 
     def _fail(message: str, category: str, status_code: int, *, error_message: str, attempts: int = 0):
         flash(message, category)

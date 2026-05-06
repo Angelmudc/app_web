@@ -314,6 +314,40 @@
     line-height: 1.45;
   }
 
+  .salary-suggest-amount {
+    margin: 0 0 6px;
+    font-size: .98rem;
+    font-weight: 800;
+    color: #1f507b;
+    line-height: 1.25;
+  }
+
+  .salary-suggest-label {
+    margin: 8px 0 3px;
+    font-size: .82rem;
+    font-weight: 700;
+    color: #3f587b;
+  }
+
+  .salary-suggest-value {
+    margin: 0;
+    font-size: .83rem;
+    color: #6b5534;
+    line-height: 1.4;
+  }
+
+  .salary-suggest-list {
+    margin: 4px 0 0 0;
+    padding-left: 18px;
+  }
+
+  .salary-suggest-list li {
+    margin: 0 0 2px;
+    font-size: .83rem;
+    color: #6b5534;
+    line-height: 1.35;
+  }
+
   .public-smart-warning-actions {
     margin-top: 9px;
     display: flex;
@@ -1017,7 +1051,7 @@
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
       <div class="public-field public-full">
         <div id="salarySuggestionBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
-          <p class="public-smart-warning-title">Analisis de sueldo sugerido</p>
+          <p class="public-smart-warning-title">Sueldo sugerido</p>
           <p class="public-smart-warning-text mb-1" id="salarySuggestionRange"></p>
           <p class="public-smart-warning-text mb-1" id="salarySuggestionStatus"></p>
           <div class="public-smart-warning-text mb-1" id="salarySuggestionReasons"></div>
@@ -1824,27 +1858,58 @@
     function parseNinosAgesFromFreeText(rawText) {
       var txt = stripAccents((rawText || '').toString().toLowerCase()).replace(/\s+/g, ' ').trim();
       if (!txt) return [];
-      var ages = {};
-      var direct = txt.match(/\b(\d{1,2})\s*anos?\b/g) || [];
-      for (var i = 0; i < direct.length; i++) {
-        var m = /(\d{1,2})/.exec(direct[i] || '');
-        if (m) ages[m[1]] = true;
+      var ages = [];
+      var consumed = [];
+
+      function isConsumed(start, end) {
+        for (var i = 0; i < consumed.length; i++) {
+          var c = consumed[i];
+          if (start < c[1] && end > c[0]) return true;
+        }
+        return false;
       }
-      var unitRegex = /\banos?\b/g;
-      var unitMatch;
-      while ((unitMatch = unitRegex.exec(txt)) !== null) {
-        var start = Math.max(0, unitMatch.index - 28);
-        var chunk = txt.slice(start, unitMatch.index);
-        if (!/(,|\by\b)/.test(chunk)) continue;
-        var nums = chunk.match(/\b\d{1,2}\b/g) || [];
-        for (var j = 0; j < nums.length; j++) ages[nums[j]] = true;
+
+      var ymRegex = /\b(\d{1,2})\s*anos?\s*(?:,|\by\b)?\s*(\d{1,2})\s*mes(?:es)?\b/g;
+      var ym;
+      while ((ym = ymRegex.exec(txt)) !== null) {
+        var y = parseInt(ym[1], 10);
+        var m = parseInt(ym[2], 10);
+        if (isFinite(y) && y >= 0 && y <= 17 && isFinite(m) && m >= 0 && m <= 11) {
+          ages.push(y);
+          consumed.push([ym.index, ym.index + ym[0].length]);
+        }
       }
-      var out = [];
-      Object.keys(ages).forEach(function (k) {
-        var n = parseInt(k, 10);
-        if (isFinite(n)) out.push(n);
-      });
-      return out;
+
+      var monthRegex = /\b(\d{1,2})\s*mes(?:es)?\b/g;
+      var mm;
+      while ((mm = monthRegex.exec(txt)) !== null) {
+        if (isConsumed(mm.index, mm.index + mm[0].length)) continue;
+        var mo = parseInt(mm[1], 10);
+        if (isFinite(mo) && mo >= 0 && mo <= 11) {
+          ages.push(0);
+          consumed.push([mm.index, mm.index + mm[0].length]);
+        }
+      }
+
+      var yearRegex = /\b(\d{1,2})\s*anos?\b/g;
+      var yy;
+      while ((yy = yearRegex.exec(txt)) !== null) {
+        if (isConsumed(yy.index, yy.index + yy[0].length)) continue;
+        var yr = parseInt(yy[1], 10);
+        if (isFinite(yr)) ages.push(yr);
+      }
+
+      var hasContext = /\b(nin(?:o|a)s?|hij(?:o|a)s?|edad(?:es)?|ano?s?|mes(?:es)?|bebe)\b/.test(txt);
+      if (ages.length === 0) {
+        if ((txt.length <= 40 || hasContext) && /^[\d\s,./y]+$/.test(txt)) {
+          var nums = txt.match(/\b\d{1,2}\b/g) || [];
+          for (var j = 0; j < nums.length; j++) {
+            var n = parseInt(nums[j], 10);
+            if (isFinite(n)) ages.push(n);
+          }
+        }
+      }
+      return ages;
     }
 
     function hasNinoAgeFiveOrLess(rawText) {
@@ -2444,9 +2509,43 @@
         }
         showBox();
         if (useBtn) useBtn.classList.remove('d-none');
-        rangeNode.textContent = '';
-        statusNode.textContent = result.message || '';
-        reasonsNode.textContent = '';
+        var minText = 'RD$' + formatMoney(result.suggested_min || 0);
+        var maxText = 'RD$' + formatMoney(result.suggested_max || 0);
+        var factors = (result.public_reasons || []).slice(0, 3);
+        if (!factors.length) factors = ['Modalidad seleccionada'];
+
+        rangeNode.textContent = (
+          parseInt(result.suggested_min || 0, 10) === parseInt(result.suggested_max || 0, 10)
+            ? (minText + ' mensual')
+            : (minText + ' - ' + maxText + ' mensual')
+        );
+        rangeNode.className = 'salary-suggest-amount';
+
+        statusNode.innerHTML = '';
+        var includeValue = document.createElement('p');
+        includeValue.className = 'salary-suggest-value';
+        includeValue.textContent = 'Se recomienda ofrecer ayuda con el pasaje aparte.';
+        statusNode.appendChild(includeValue);
+
+        reasonsNode.innerHTML = '';
+        var factorsLabel = document.createElement('p');
+        factorsLabel.className = 'salary-suggest-label';
+        factorsLabel.textContent = 'Factores considerados:';
+        var list = document.createElement('ul');
+        list.className = 'salary-suggest-list';
+        for (var i = 0; i < factors.length; i++) {
+          var li = document.createElement('li');
+          li.textContent = factors[i];
+          list.appendChild(li);
+        }
+        var note = document.createElement('p');
+        note.className = 'salary-suggest-value';
+        note.style.marginTop = '8px';
+        note.textContent = 'Este rango puede facilitar encontrar personal disponible más rápido.';
+        reasonsNode.appendChild(factorsLabel);
+        reasonsNode.appendChild(list);
+        reasonsNode.appendChild(note);
+
         var warnings = result.warnings || [];
         warningNode.textContent = warnings.length ? warnings[0] : '';
         warningNode.classList.toggle('d-none', !warnings.length);

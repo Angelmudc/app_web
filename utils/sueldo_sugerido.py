@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 import math
+from utils.child_age_parser import parse_child_age_summary
 
 
 NO_SUGGESTION_MESSAGE = (
@@ -237,11 +238,16 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
     if "ninos" not in funciones or ninos <= 0:
         return ajustes, motivos, nivel
 
-    ages = [int(x) for x in re.findall(r"\b(\d{1,2})\b", edades)]
-    small = len([a for a in ages if a <= 5])
-    has_older_only = bool(ninos > 0 and ages and small == 0 and all(a >= 6 for a in ages))
-    known_ages = bool(ages)
-    if small == 0 and ninos > 0 and not ages:
+    summary = parse_child_age_summary(edades)
+    small = int(summary.get("small_count") or 0)
+    known_ages = bool(summary.get("ages_years"))
+    has_older_only = bool(
+        ninos > 0
+        and known_ages
+        and small == 0
+        and (int(summary.get("big_count") or 0) + int(summary.get("teen_count") or 0)) > 0
+    )
+    if small == 0 and ninos > 0 and not known_ages:
         small = 1
 
     if has_older_only:
@@ -523,18 +529,25 @@ def build_salary_message(payload: dict[str, Any]) -> str:
         return str(payload.get("reason_no_suggestion") or SOFT_INCOMPLETE_MESSAGE)
     min_s = int(payload.get("suggested_min") or 0)
     max_s = int(payload.get("suggested_max") or 0)
+    amount_text = (
+        f"RD${_format_rd(min_s)} mensual"
+        if min_s == max_s
+        else f"RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual"
+    )
     reasons = _top_salary_reasons(payload)
     if len(reasons) > 2 and reasons[0] == "Modalidad seleccionada":
         reasons = reasons[:2]
-    reason_text = ", ".join(reasons[:3]) if reasons else "Modalidad seleccionada"
+    reason_lines = [f"- {r}" for r in (reasons[:3] or ["Modalidad seleccionada"])]
     lines = [
-        f"Sueldo sugerido: RD${_format_rd(min_s)} - RD${_format_rd(max_s)} mensual + ayuda para el pasaje",
-        "Basado en:",
-        reason_text,
-        (
-            "Este monto es una referencia basada en lo que seleccionaste. "
-            "Puedes ofrecer el sueldo que prefieras, pero dentro de este rango suele ser más fácil encontrar personal disponible."
-        ),
+        "Sueldo sugerido",
+        amount_text,
+        "",
+        "Se recomienda ofrecer ayuda con el pasaje aparte.",
+        "",
+        "Factores considerados:",
+        *reason_lines,
+        "",
+        "Este rango puede facilitar encontrar personal disponible más rápido.",
     ]
     return _sanitize_client_text("\n".join(lines))
 
@@ -677,17 +690,23 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         or ("planchar" in funciones and len(funciones) >= 3)
     )
     if schedule_key == "sd_l_v" and not strong_non_schedule and suggested_max > 21000:
-        suggested_max = 21000
-        if suggested_min > suggested_max:
-            suggested_min = max(base, suggested_max - 1500)
+        if suggested_min >= 21000:
+            if child_adj > 0:
+                suggested_max = suggested_min
+            else:
+                suggested_max = 21000
+                suggested_min = max(base, suggested_max - 1500)
+        else:
+            suggested_max = 21000
 
     # Si solo hay ninos mayores (sin ninos pequenos), evitar picos exagerados.
     has_small_children_signal = any("nino pequeno" in _norm(m) or "ninos pequenos" in _norm(m) for m in child_mot)
     has_older_only_signal = any("mas de supervision que de atencion directa" in _norm(m) for m in child_mot)
     if schedule_key == "sd_l_v" and has_older_only_signal and not has_small_children_signal and suggested_max > 23000:
-        suggested_max = 23000
-        if suggested_min > suggested_max:
-            suggested_min = max(base, suggested_max - 1500)
+        if suggested_min >= 23000:
+            suggested_max = suggested_min
+        else:
+            suggested_max = 23000
     # Nunca bajar por debajo de la base fija de la modalidad.
     if suggested_min < base:
         suggested_min = base

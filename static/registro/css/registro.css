@@ -155,6 +155,27 @@ body.registro-page{
   font-size: 1rem;
   max-width: 62ch;
 }
+.trust-brand-row{
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  margin-bottom: .55rem;
+  padding: .25rem .55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(46,58,140,.16);
+  background: rgba(255,255,255,.85);
+}
+.trust-brand-logo{
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+.trust-brand-name{
+  font-size: .86rem;
+  font-weight: 850;
+  color: var(--brand-navy);
+}
 
 .form-head__badge{
   display:flex;
@@ -201,6 +222,15 @@ body.registro-page{
   color: var(--text);
   display: grid;
   gap: .22rem;
+  font-size: .92rem;
+}
+.trust-disclaimer{
+  margin: 0 0 1rem 0;
+  padding: .85rem .95rem;
+  border-radius: 14px;
+  border: 1px solid rgba(46,58,140,.18);
+  background: rgba(255,255,255,.9);
+  color: #0f2f4f;
   font-size: .92rem;
 }
 

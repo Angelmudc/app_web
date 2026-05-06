@@ -172,6 +172,15 @@ def test_smart_alert_dom_interactions(dom_env):
             _set_form_state(page, funciones=["ninos", "limpieza"], edades="1 año y 5 meses")
             assert _smart_alert_visible(page) is True
 
+            _set_form_state(page, funciones=["ninos", "limpieza"], edades="2")
+            assert _smart_alert_visible(page) is True
+
+            _set_form_state(page, funciones=["ninos", "limpieza"], edades="14")
+            assert _smart_alert_visible(page) is False
+
+            _set_form_state(page, funciones=["ninos", "limpieza"], edades="2 y 4")
+            assert _smart_alert_visible(page) is True
+
             _set_form_state(page, funciones=["ninos"], edades="1 año y 5 meses")
             assert _smart_alert_visible(page) is False
 

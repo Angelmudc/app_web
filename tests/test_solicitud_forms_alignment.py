@@ -257,7 +257,7 @@ def test_shared_partial_smart_alert_requires_exact_three_conditions():
 def test_shared_partial_smart_alert_uses_age_parser_for_free_text():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "function parseNinosAgesFromFreeText(rawText)" in partial
-    assert "var direct = txt.match(/\\b(\\d{1,2})\\s*anos?\\b/g) || [];" in partial
+    assert "var ymRegex = /\\b(\\d{1,2})\\s*anos?\\s*(?:,|\\by\\b)?\\s*(\\d{1,2})\\s*mes(?:es)?\\b/g;" in partial
     assert "function hasNinoAgeFiveOrLess(rawText)" in partial
 
 
@@ -279,14 +279,15 @@ def test_shared_partial_mascota_secondary_note_is_conditional_and_does_not_edit_
 
 def test_shared_partial_contains_salary_suggestion_box_and_actions():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
-    assert "Analisis de sueldo sugerido" in partial
+    assert "<p class=\"public-smart-warning-title\">Sueldo sugerido</p>" in partial
     assert "id=\"salarySuggestionBox\"" in partial
     assert "id=\"salarySuggestionUseBtn\">Usar sueldo sugerido</button>" in partial
     assert "id=\"salarySuggestionManualBtn\">Escribir otro monto</button>" in partial
     assert "function setupSalarySuggestion()" in partial
     assert "fetch('/clientes/api/sueldo-sugerido?'" in partial
-    assert "rangeNode.textContent = '';" in partial
-    assert "reasonsNode.textContent = '';" in partial
+    assert "parseInt(result.suggested_min || 0, 10) === parseInt(result.suggested_max || 0, 10)" in partial
+    assert "includeValue.textContent = 'Se recomienda ofrecer ayuda con el pasaje aparte.';" in partial
+    assert "factorsLabel.textContent = 'Factores considerados:';" in partial
     assert "Motivos:\\n" not in partial
 
 

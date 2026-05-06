@@ -393,18 +393,19 @@ def test_salary_message_uses_short_conversion_focused_format():
         )
     )
     msg = result["message"]
-    assert msg.startswith("Sueldo sugerido: RD$")
-    assert "+ ayuda para el pasaje" in msg
+    assert msg.startswith("Sueldo sugerido\nRD$")
+    assert "Se recomienda ofrecer ayuda con el pasaje aparte." in msg
+    assert "Factores considerados:" in msg
+    assert "- " in msg
+    assert "+ ayuda para el pasaje Basado en:" not in msg
+    assert "Basado en:" not in msg
     assert "incluye" not in msg.lower()
-    assert "incluyendo" not in msg.lower()
-    assert msg.count("Rango sugerido: RD$") == 0
-    assert "Basado en:" in msg
+    assert "incluido" not in msg.lower()
     assert "•" not in msg
-    assert "referencia basada en lo que seleccionaste" in msg.lower()
-    assert "Puedes ofrecer el sueldo que prefieras" in msg
+    assert "Este rango puede facilitar encontrar personal disponible más rápido." in msg
     assert "cd_" not in msg and "sd_" not in msg
     assert "L-V" not in msg and "L-S" not in msg
-    assert len(msg) <= 420
+    assert len(msg) <= 560
 
 
 def test_salary_message_uses_human_schedule_wording():
@@ -425,8 +426,7 @@ def test_salary_message_uses_human_schedule_wording():
 def test_salary_message_contains_flexible_non_mandatory_closing():
     result = analyze_salary_suggestion(_base_payload(funciones=["limpieza"], ninos="0", adultos="1"))
     msg = result["message"]
-    assert "Este monto es una referencia basada en lo que seleccionaste." in msg
-    assert "Puedes ofrecer el sueldo que prefieras" in msg
+    assert "Este rango puede facilitar encontrar personal disponible más rápido." in msg
 
 
 def test_sd_lv_10h_is_moderate():
@@ -502,9 +502,47 @@ def test_salary_message_always_mentions_pasaje():
     result = analyze_salary_suggestion(_base_payload())
     assert result["can_suggest"] is True
     msg = result["message"]
-    assert "+ ayuda para el pasaje" in msg
+    assert "Se recomienda ofrecer ayuda con el pasaje aparte." in msg
     assert "incluye" not in msg.lower()
-    assert "incluyendo" not in msg.lower()
+    assert "+ ayuda para el pasaje Basado en:" not in msg
+
+
+def test_salary_message_shows_single_amount_when_min_equals_max():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - lunes a viernes",
+            funciones=["ninos", "limpieza"],
+            ninos="1",
+            edades_ninos="2",
+            adultos="2",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    msg = r["message"]
+    first_two = "\n".join(msg.splitlines()[:2])
+    assert "RD$21,000 mensual" in first_two
+    assert "RD$21,000 - RD$21,000 mensual" not in first_two
+
+
+def test_salary_message_shows_range_when_min_differs_from_max():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - 3 días a la semana",
+            funciones=["ninos", "limpieza", "cocinar", "lavar"],
+            ninos="2",
+            edades_ninos="2 y 4",
+            adultos="2",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    msg = r["message"]
+    first_two = "\n".join(msg.splitlines()[:2])
+    assert " - " in first_two
+    assert "mensual" in first_two
 
 
 def test_con_dormida_lv_base_minima_20000():
@@ -672,6 +710,23 @@ def test_ninos_pequenos_mas_limpieza_cocinar_lavar_si_sube():
     )
     assert r["can_suggest"] is True
     assert r["suggested_min"] >= (r["base_salary"] + 2000)
+
+
+def test_sd_lv_ninos_pequenos_con_limpieza_no_pierde_ajuste_por_cap():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            modalidad_trabajo="Salida diaria - lunes a viernes",
+            funciones=["ninos", "limpieza"],
+            ninos="2",
+            edades_ninos="2 y 4",
+            adultos="2",
+            habitaciones="2",
+            banos="2",
+            pisos="1",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) == 2000
 
 
 def test_ninos_grandes_mas_limpieza_cocinar_lavar_sube_max_500():
@@ -1010,6 +1065,42 @@ def test_mezcla_dos_pequenos_un_grande_ajuste_2000():
     )
     assert r["can_suggest"] is True
     assert (r["suggested_min"] - r["base_salary"]) == 2000
+
+
+def test_edad_sola_14_no_aplica_ajuste_nino_pequeno():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="1",
+            edades_ninos="14",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) == 0
+
+
+def test_edades_6_y_8_no_aplica_ajuste_nino_pequeno():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="2",
+            edades_ninos="6 y 8",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) == 0
+
+
+def test_edades_2_7_14_aplica_un_solo_ajuste_nino_pequeno():
+    r = analyze_salary_suggestion(
+        _base_payload(
+            funciones=["ninos"],
+            ninos="3",
+            edades_ninos="2, 7 y 14",
+        )
+    )
+    assert r["can_suggest"] is True
+    assert (r["suggested_min"] - r["base_salary"]) == 1000
 
 
 def test_envejeciente_encamado_ajuste_max_1500():
