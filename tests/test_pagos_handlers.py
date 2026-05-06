@@ -10,8 +10,8 @@ from flask import url_for
 from app import app as flask_app
 
 
-def _login_secretaria(client):
-    return client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+def _login_admin(client):
+    return client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
 
 
 def test_pagos_endpoint_and_route_contract():
@@ -27,7 +27,7 @@ def test_pagos_render_basico_busqueda_y_seleccion():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
     search_rows = [
@@ -62,7 +62,7 @@ def test_pagos_submit_valido_descuenta_porciento_y_actualiza_campos():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
     candidata = SimpleNamespace(
@@ -101,7 +101,7 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     casos = [
         ("10000", Decimal("10000.00")),
@@ -144,7 +144,7 @@ def test_pagos_redirects_fallbacks_contrato_actual():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     resp_invalid = client.post("/pagos", data={"fila": "1", "monto_pagado": "", "calificacion": ""}, follow_redirects=False)
     assert resp_invalid.status_code in (302, 303)

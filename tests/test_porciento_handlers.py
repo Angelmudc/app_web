@@ -10,8 +10,8 @@ from flask import url_for
 from app import app as flask_app
 
 
-def _login_secretaria(client):
-    return client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+def _login_admin(client):
+    return client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
 
 
 def test_porciento_endpoint_and_route_contract():
@@ -27,7 +27,7 @@ def test_porciento_render_basico_busqueda_y_seleccion():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
     resultados = [SimpleNamespace(fila=11, nombre_completo="Ana", cedula="001", numero_telefono="8090000001")]
@@ -58,7 +58,7 @@ def test_porciento_submit_sin_asignacion_activa_devuelve_redirect_conflict():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
     candidata = SimpleNamespace(
@@ -103,7 +103,7 @@ def test_porciento_redirects_fallbacks_contratos_actuales():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     resp_invalid_fila = client.post("/porciento", data={"fila_id": "abc"}, follow_redirects=False)
     assert resp_invalid_fila.status_code in (302, 303)

@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 from urllib.parse import unquote
+import pytest
+from werkzeug.exceptions import Forbidden
 
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -1004,3 +1006,51 @@ def test_public_shortlist_continue_whatsapp_with_temporary_access():
             flask_app.config.pop("SUPPORT_WHATSAPP_NUMBER", None)
         else:
             flask_app.config["SUPPORT_WHATSAPP_NUMBER"] = prev_phone
+
+
+def test_shortlist_public_without_grant_returns_403():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=0, is_authenticated=False, role=None)
+    solicitud = _make_solicitud()
+    endpoint = _unwrap_cliente_view(clientes_routes.solicitud_shortlist)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]},
+    )
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist", method="GET"):
+                with pytest.raises(Forbidden):
+                    endpoint(10)
+
+
+def test_shortlist_public_grant_expires_by_ttl():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    fake_user = SimpleNamespace(id=0, is_authenticated=False, role=None)
+    solicitud = _make_solicitud()
+    endpoint = _unwrap_cliente_view(clientes_routes.solicitud_shortlist)
+    fake_service = _FakeRecommendationService(
+        shortlist_payload={"state": {"code": "ready", "message": "ok"}, "items": [_shortlist_item(101, "Ana")]},
+    )
+    with flask_app.app_context():
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service), \
+             patch("clientes.routes.time.time", return_value=1_000):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist", method="GET"):
+                clientes_routes._grant_public_recommendation_access(solicitud_id=10)
+                ok_resp, ok_status = endpoint(10)
+                assert ok_status == 200
+                assert (ok_resp.get_json() or {}).get("state", {}).get("code") == "ready"
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes.Solicitud, "query", _SolicitudQueryOne(solicitud)), \
+             patch.object(clientes_routes, "SolicitudRecommendationService", return_value=fake_service), \
+             patch("clientes.routes.time.time", return_value=5_000):
+            with flask_app.test_request_context("/clientes/solicitudes/10/shortlist", method="GET"):
+                clientes_routes.session[clientes_routes._PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = [10]
+                clientes_routes.session[clientes_routes._PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY] = {"10": 1200}
+                with pytest.raises(Forbidden):
+                    endpoint(10)

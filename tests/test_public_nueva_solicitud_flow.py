@@ -117,6 +117,28 @@ def test_new_public_form_token_get_renders_personal_block_and_shared_request_bod
     assert 'domestica-preview.png' in html
 
 
+def test_new_public_form_hides_salary_suggestion_block_when_feature_flag_off():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    previous = flask_app.config.get("SALARY_SUGGESTION_ENABLED", True)
+    flask_app.config["SALARY_SUGGESTION_ENABLED"] = False
+    client = flask_app.test_client()
+
+    try:
+        with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+             patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+             patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+            resp = client.get("/clientes/solicitudes/nueva-publica/tok123")
+    finally:
+        flask_app.config["SALARY_SUGGESTION_ENABLED"] = previous
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Sueldo sugerido" not in html
+    assert "id=\"salarySuggestionBox\"" not in html
+    assert "/clientes/api/sueldo-sugerido?" not in html
+
+
 def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -592,7 +614,7 @@ def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_e
             },
         )
 
-    assert post_resp.status_code == 200
+    assert post_resp.status_code == 400
     html = post_resp.get_data(as_text=True)
     assert modalidad_norm in html
     assert modalidad_value not in html

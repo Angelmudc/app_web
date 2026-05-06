@@ -194,7 +194,7 @@ def reporte_inscripciones():
     )
 
 
-@roles_required("admin", "secretaria")
+@roles_required("owner", "admin")
 @cache.cached(
     timeout=int(os.getenv("CACHE_REPORTE_PAGOS_SECONDS", "45")),
     key_prefix=lambda: _cache_key_with_role("reporte_pagos"),

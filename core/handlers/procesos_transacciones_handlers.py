@@ -115,7 +115,7 @@ def inscripcion():
     )
 
 
-@roles_required("admin", "secretaria")
+@roles_required("owner", "admin")
 def porciento():
     resultados, candidata = [], None
 
@@ -193,7 +193,7 @@ def porciento():
     return render_template("porciento.html", resultados=resultados, candidata=candidata)
 
 
-@roles_required("admin", "secretaria")
+@roles_required("owner", "admin")
 def pagos():
     resultados, candidata = [], None
 

@@ -111,7 +111,7 @@ def test_live_observability_ingest_updates_fallback_and_refetch_metrics():
         assert float(row.get("avg_ms") or 0.0) >= 1.0
 
 
-def test_live_observability_ingest_keeps_working_when_csrf_enabled():
+def test_live_observability_ingest_rejects_post_without_csrf_when_enabled():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -123,10 +123,7 @@ def test_live_observability_ingest_keeps_working_when_csrf_enabled():
         json={"event": "sse_open"},
         follow_redirects=False,
     )
-    assert resp.status_code == 200
-    data = resp.get_json() or {}
-    assert data.get("ok") is True
-    assert data.get("accepted") is True
+    assert resp.status_code == 400
 
 
 def test_degraded_outbox_poll_updates_operational_counter():

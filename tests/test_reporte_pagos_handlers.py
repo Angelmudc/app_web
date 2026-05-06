@@ -8,8 +8,8 @@ from flask import url_for
 from app import app as flask_app
 
 
-def _login_secretaria(client):
-    return client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+def _login_admin(client):
+    return client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
 
 
 class _Expr:
@@ -62,7 +62,7 @@ def test_reporte_pagos_render_basico_y_paginacion_visible():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
     rows = [
@@ -110,7 +110,7 @@ def test_reporte_pagos_fallback_db_mantiene_mensaje_y_200():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
-    assert _login_secretaria(client).status_code in (302, 303)
+    assert _login_admin(client).status_code in (302, 303)
 
     captured = {}
 

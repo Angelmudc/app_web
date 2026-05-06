@@ -7000,7 +7000,6 @@ def admin_health_operational_trends():
 
 
 @admin_bp.route('/live/observability', methods=['POST'])
-@csrf.exempt
 @login_required
 @staff_required
 def live_observability_ingest():
@@ -20763,19 +20762,22 @@ def marcar_pagada_desde_copiar(id):
                 "monto_pagado": s.monto_pagado,
             },
         )
-        _set_idempotency_response(idem_row, status=200, code="ok")
-        db.session.commit()
         try:
-            _notify_cliente_candidata_asignada(s, candidata_id=int(getattr(cand, "fila", 0) or 0))
-            db.session.commit()
+            # Notificación best-effort aislada en savepoint para no romper la operación principal.
+            with db.session.begin_nested():
+                _notify_cliente_candidata_asignada(
+                    s, candidata_id=int(getattr(cand, "fila", 0) or 0)
+                )
         except Exception:
-            db.session.rollback()
+            # Solo revierte el savepoint de notificación; conserva la transacción principal.
             current_app.logger.warning(
                 "marcar_pagada_desde_copiar notify_cliente_candidata_asignada_failed solicitud_id=%s candidata_id=%s",
                 int(getattr(s, "id", 0) or 0),
                 int(getattr(cand, "fila", 0) or 0),
                 exc_info=True,
             )
+        _set_idempotency_response(idem_row, status=200, code="ok")
+        db.session.commit()
         _audit_log(
             action_type="SOLICITUD_MARCAR_PAGADA_DESDE_COPIAR",
             entity_type="Solicitud",

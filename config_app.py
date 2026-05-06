@@ -306,6 +306,11 @@ def create_app():
             "ADMIN_LIVE_SSE_ENABLED": _is_true(
                 os.getenv("ADMIN_LIVE_SSE_ENABLED", "0" if prod else "1")
             ),
+            # Recomendacion de sueldo en formulario publico/cliente.
+            # Produccion debe iniciar desactivada hasta validacion de negocio.
+            "SALARY_SUGGESTION_ENABLED": _is_true(
+                os.getenv("SALARY_SUGGESTION_ENABLED", "0")
+            ),
         }
     )
 

@@ -134,6 +134,27 @@ def test_endpoint_no_rompe_con_valores_raros_y_nunca_500():
     assert data.get("can_suggest") is False
 
 
+def test_endpoint_permanece_disponible_aun_si_ui_feature_flag_esta_off():
+    flask_app.config["TESTING"] = True
+    previous = flask_app.config.get("SALARY_SUGGESTION_ENABLED", True)
+    flask_app.config["SALARY_SUGGESTION_ENABLED"] = False
+    client = flask_app.test_client()
+    try:
+        resp = _get(
+            client,
+            {
+                "modalidad_trabajo": "Salida diaria - lunes a viernes",
+                "horario": "Lunes a viernes, de 8:00 AM a 5:00 PM",
+                "funciones": ["limpieza"],
+                "tipo_lugar": "casa",
+            },
+        )
+    finally:
+        flask_app.config["SALARY_SUGGESTION_ENABLED"] = previous
+    assert resp.status_code == 200
+    assert isinstance(resp.get_json(), dict)
+
+
 def test_endpoint_ninera_sin_limpieza_ni_estructura_si_sugiere():
     flask_app.config["TESTING"] = True
     client = flask_app.test_client()

@@ -1,7 +1,10 @@
 # app_web/public/routes.py
 
 import os
+import json
 import urllib.parse
+import time
+from threading import Lock
 
 from flask import (
     render_template,
@@ -24,6 +27,20 @@ from utils.timezone import iso_utc_z, utc_now_naive
 
 # Límite de paginación pública
 PUBLIC_MAX_PAGE = 50
+PUBLIC_LIVE_PING_MAX_BODY_BYTES = int(os.getenv("PUBLIC_LIVE_PING_MAX_BODY_BYTES", "4096"))
+PUBLIC_LIVE_PING_PATH_MAX_LEN = int(os.getenv("PUBLIC_LIVE_PING_PATH_MAX_LEN", "180"))
+PUBLIC_LIVE_PING_RATE_LIMIT_PER_MIN = int(os.getenv("PUBLIC_LIVE_PING_RATE_LIMIT_PER_MIN", "90"))
+PUBLIC_LIVE_ALLOWED_EVENT_TYPES = {
+    "heartbeat",
+    "pageview",
+    "cta_click",
+    "form_start",
+    "form_submit",
+}
+_PUBLIC_LIVE_RL_LOCK = Lock()
+_PUBLIC_LIVE_RL_LOCAL: dict[str, tuple[int, float]] = {}
+
+
 def _safe_page(value, default=1):
     """
     Convierte a int, fuerza mínimo 1 y máximo PUBLIC_MAX_PAGE.
@@ -52,6 +69,42 @@ def _json_no_cache(payload: dict, status: int = 200):
     resp.headers['Pragma'] = 'no-cache'
     resp.headers['Expires'] = '0'
     return resp
+
+
+def _public_client_ip() -> str:
+    raw = (
+        (request.headers.get("CF-Connecting-IP") or "").strip()
+        or (request.headers.get("X-Real-IP") or "").strip()
+        or (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+        or (request.remote_addr or "").strip()
+        or "0.0.0.0"
+    )
+    return raw[:64]
+
+
+def _public_live_rate_limited(ip: str) -> bool:
+    minute_key = utc_now_naive().strftime("%Y%m%d%H%M")
+    key = f"public_live_rl:{minute_key}:{ip}"
+    limit = max(10, int(PUBLIC_LIVE_PING_RATE_LIMIT_PER_MIN or 90))
+    timeout = 75
+    count = None
+    try:
+        count = int(bp_get(key, default=0, context="public_live_rl_get") or 0) + 1
+        bp_set(key, count, timeout=timeout, context="public_live_rl_set")
+    except Exception:
+        count = None
+
+    if count is None:
+        now = time.time()
+        with _PUBLIC_LIVE_RL_LOCK:
+            val = _PUBLIC_LIVE_RL_LOCAL.get(key)
+            if val and val[1] > now:
+                c = int(val[0]) + 1
+            else:
+                c = 1
+            _PUBLIC_LIVE_RL_LOCAL[key] = (c, now + float(timeout))
+            count = c
+    return int(count) > limit
 
 
 def _public_external_url(endpoint: str, **values) -> str:
@@ -213,9 +266,30 @@ def public_ping():
 
 @public_bp.route('/live/ping', methods=['POST'])
 def public_live_ping():
-    payload = request.get_json(silent=True) or {}
-    current_path = (payload.get('current_path') or request.path or '').strip()[:255]
-    event_type = (payload.get('event_type') or 'heartbeat').strip().lower()[:32]
+    content_length = int(request.content_length or 0)
+    if content_length > int(PUBLIC_LIVE_PING_MAX_BODY_BYTES):
+        return _json_no_cache({"ok": False, "error": "payload_too_large"}, status=413)
+
+    ip = _public_client_ip()
+    if _public_live_rate_limited(ip):
+        return _json_no_cache({"ok": False, "error": "rate_limited"}, status=429)
+
+    if not request.is_json:
+        return _json_no_cache({"ok": False, "error": "invalid_json"}, status=400)
+
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return _json_no_cache({"ok": False, "error": "invalid_json"}, status=400)
+
+    event_type = str(payload.get('event_type') or '').strip().lower()[:32]
+    if event_type not in PUBLIC_LIVE_ALLOWED_EVENT_TYPES:
+        return _json_no_cache({"ok": False, "error": "invalid_event_type"}, status=400)
+
+    current_path = str(payload.get('current_path') or "").strip()
+    if (not current_path) or (not current_path.startswith("/")):
+        return _json_no_cache({"ok": False, "error": "invalid_current_path"}, status=400)
+    current_path = current_path[:int(PUBLIC_LIVE_PING_PATH_MAX_LEN)]
+
     page_title = (payload.get('page_title') or '').strip()[:160]
     ua = (request.headers.get("User-Agent") or "").strip().lower()
     is_bot = any(tok in ua for tok in ("bot", "crawler", "spider", "curl", "python-requests"))
@@ -257,7 +331,6 @@ def public_live_ping():
             },
             success=True,
         )
-
     return _json_no_cache({'ok': True, 'sampled': True, 'route_hits_minute': count})
 
 

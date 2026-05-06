@@ -253,11 +253,13 @@ def test_public_link_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'id="publicSubmitBtn" disabled aria-disabled="true"' in html
-    assert 'id="termsAcceptedStatus"' in html
-    assert "Términos aceptados" in html
-    assert "rejectBtn.disabled = true" in html
-    assert "rejectBtn.classList.add('d-none')" in html
-    assert "acceptBtn.textContent = 'Aceptado'" in html
+    assert 'id="termsAcceptedInput" value="0"' in html
+    assert 'id="termsDecisionInput" value=""' in html
+    assert 'id="termsAcceptedAtInput" value=""' in html
+    assert 'id="termsInlineError"' in html
+    assert "syncTermsState" in html
+    assert "termsInlineError.classList.toggle('d-none', accepted)" in html
+    assert "btn.setAttribute('aria-disabled', accepted ? 'false' : 'true')" in html
 
 
 def test_public_link_form_renders_guided_modalidad_with_two_main_groups():

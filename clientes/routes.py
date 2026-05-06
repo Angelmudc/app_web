@@ -213,21 +213,53 @@ def _trigger_recommendation_generation_safe(*, solicitud_id: int, trigger_source
 
 
 _PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY = "public_recommendation_access_ids"
+_PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY = "public_recommendation_access_exp"
 _PUBLIC_RECOMMENDATION_ACCESS_MAX_IDS = 8
+_PUBLIC_RECOMMENDATION_ACCESS_TTL_SECONDS = int((os.getenv("PUBLIC_RECOMMENDATION_ACCESS_TTL_SECONDS") or "900").strip() or 900)
 
 
 def _public_recommendation_access_ids() -> set[int]:
+    """
+    Modelo de acceso temporal público (post-link-submit):
+    - Se guarda una lista corta de solicitud_id en sesión.
+    - Cada id tiene expiración independiente (TTL corto).
+    - Sin grant vigente, shortlist pública responde 403.
+    """
+    now_ts = int(time.time())
     raw = session.get(_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY)
+    raw_exp = session.get(_PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY)
     if not isinstance(raw, list):
         return set()
+    exp_map = raw_exp if isinstance(raw_exp, dict) else {}
     out = set()
+    out_keep = []
+    exp_keep = {}
+    changed = False
     for item in raw:
         try:
             sid = int(item or 0)
         except Exception:
             sid = 0
-        if sid > 0:
-            out.add(sid)
+        if sid <= 0:
+            changed = True
+            continue
+        exp_at = 0
+        try:
+            exp_at = int(exp_map.get(str(sid)) or 0)
+        except Exception:
+            exp_at = 0
+        # Compatibilidad con grants legacy sin timestamp: se permiten por esta sesión.
+        if exp_at > 0 and exp_at <= now_ts:
+            changed = True
+            continue
+        out.add(sid)
+        out_keep.append(sid)
+        if exp_at > 0:
+            exp_keep[str(sid)] = exp_at
+    if changed:
+        session[_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = out_keep[-int(_PUBLIC_RECOMMENDATION_ACCESS_MAX_IDS):]
+        session[_PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY] = exp_keep
+        session.modified = True
     return out
 
 
@@ -236,10 +268,17 @@ def _grant_public_recommendation_access(*, solicitud_id: int) -> None:
     if sid <= 0:
         return
     ids = list(_public_recommendation_access_ids())
+    exp_map_raw = session.get(_PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY)
+    exp_map = exp_map_raw if isinstance(exp_map_raw, dict) else {}
     if sid not in ids:
         ids.append(sid)
     ids = [int(x) for x in ids if int(x or 0) > 0][-int(_PUBLIC_RECOMMENDATION_ACCESS_MAX_IDS):]
+    expires_at = int(time.time()) + max(60, int(_PUBLIC_RECOMMENDATION_ACCESS_TTL_SECONDS or 900))
+    exp_map[str(sid)] = expires_at
+    allowed = {str(x) for x in ids}
+    exp_map = {k: v for k, v in exp_map.items() if k in allowed}
     session[_PUBLIC_RECOMMENDATION_ACCESS_SESSION_KEY] = ids
+    session[_PUBLIC_RECOMMENDATION_ACCESS_EXP_SESSION_KEY] = exp_map
     session.modified = True
 
 
@@ -445,7 +484,7 @@ def _cliente_active_solicitudes_count(cliente_id: int) -> Optional[int]:
             )
         except Exception:
             pass
-        return None
+        return 0
     except Exception:
         try:
             current_app.logger.exception(
@@ -454,7 +493,7 @@ def _cliente_active_solicitudes_count(cliente_id: int) -> Optional[int]:
             )
         except Exception:
             pass
-        return None
+        return 0
 
 
 def _cliente_tiene_banco_domesticas(cliente_id: int) -> bool:
@@ -6255,19 +6294,26 @@ def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
     if SolicitudRecommendationSelection is None or Candidata is None:
         return empty
 
-    rows = (
-        SolicitudRecommendationSelection.query
-        .outerjoin(Candidata, Candidata.fila == SolicitudRecommendationSelection.candidata_id)
-        .filter(
-            SolicitudRecommendationSelection.solicitud_id == int(solicitud_id),
-            SolicitudRecommendationSelection.status == "valid",
+    try:
+        rows = (
+            SolicitudRecommendationSelection.query
+            .outerjoin(Candidata, Candidata.fila == SolicitudRecommendationSelection.candidata_id)
+            .filter(
+                SolicitudRecommendationSelection.solicitud_id == int(solicitud_id),
+                SolicitudRecommendationSelection.status == "valid",
+            )
+            .order_by(
+                SolicitudRecommendationSelection.validated_at.desc(),
+                SolicitudRecommendationSelection.id.desc(),
+            )
+            .all()
         )
-        .order_by(
-            SolicitudRecommendationSelection.validated_at.desc(),
-            SolicitudRecommendationSelection.id.desc(),
-        )
-        .all()
-    )
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return empty
     if not rows:
         return empty
 
@@ -6309,10 +6355,18 @@ def _get_saved_shortlist_selection_summary(*, solicitud_id: int) -> dict:
     }
 
 
-def _build_shortlist_chat_message(*, solicitud: Solicitud, candidate_details: list[dict]) -> str:
+def _build_shortlist_chat_message(
+    *,
+    solicitud: Solicitud,
+    candidate_details: Optional[list] = None,
+    candidate_names: Optional[list] = None,
+) -> str:
     codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
+    details = list(candidate_details or [])
+    if not details and candidate_names:
+        details = [{"codigo": "(sin código)", "nombre": str(n or "")} for n in (candidate_names or [])]
     rows = []
-    for item in (candidate_details or []):
+    for item in details:
         codigo_candidata = re.sub(r"\s+", " ", str((item or {}).get("codigo") or "")).strip()[:40] or "(sin código)"
         nombre_candidata = re.sub(r"\s+", " ", str((item or {}).get("nombre") or "")).strip()[:80] or "Sin nombre"
         rows.append(f"- Código: {codigo_candidata} | Nombre: {nombre_candidata}")
@@ -6327,10 +6381,18 @@ def _build_shortlist_chat_message(*, solicitud: Solicitud, candidate_details: li
     )
 
 
-def _build_shortlist_whatsapp_message(*, solicitud: Solicitud, candidate_details: list[dict]) -> str:
+def _build_shortlist_whatsapp_message(
+    *,
+    solicitud: Solicitud,
+    candidate_details: Optional[list] = None,
+    candidate_names: Optional[list] = None,
+) -> str:
     codigo = str(getattr(solicitud, "codigo_solicitud", "") or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}").strip()
+    details = list(candidate_details or [])
+    if not details and candidate_names:
+        details = [{"codigo": "(sin código)", "nombre": str(n or "")} for n in (candidate_names or [])]
     rows = []
-    for item in (candidate_details or []):
+    for item in details:
         codigo_candidata = re.sub(r"\s+", " ", str((item or {}).get("codigo") or "")).strip()[:40] or "(sin código)"
         nombre_candidata = re.sub(r"\s+", " ", str((item or {}).get("nombre") or "")).strip()[:80] or "Sin nombre"
         rows.append(f"- Código: {codigo_candidata} | Nombre: {nombre_candidata}")
@@ -7520,7 +7582,8 @@ def solicitud_publica_nueva_token(token):
     terms_evidence_user_agent = (request.headers.get("User-Agent") or "").strip() or None
     terms_evidence_version = "v1"
 
-    if form.validate_on_submit():
+    is_valid_submit = form.validate_on_submit()
+    if is_valid_submit:
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
         blocked_ip_day, _ = enforce_business_limit(
             cache_obj=cache,
@@ -7813,6 +7876,7 @@ def solicitud_publica_nueva_token(token):
     elif request.method == 'POST':
         flash('Revisa los campos marcados en rojo.', 'danger')
 
+    response_status = 400 if (request.method == "POST" and request.form and not is_valid_submit) else 200
     return render_template(
         'clientes/solicitud_form_publica_nueva.html',
         form=form,
@@ -7824,7 +7888,7 @@ def solicitud_publica_nueva_token(token):
         service_section_desc="Completa los detalles del servicio y la ubicacion especifica donde se trabajara.",
         og_url=short_share_url,
         canonical_url=short_share_url,
-    )
+    ), response_status
 
 
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])

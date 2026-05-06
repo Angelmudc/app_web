@@ -1049,6 +1049,7 @@
     </header>
     <div class="public-fields-grid public-comp-grid">
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
+      {% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
       <div class="public-field public-full">
         <div id="salarySuggestionBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
           <p class="public-smart-warning-title">Sueldo sugerido</p>
@@ -1062,6 +1063,7 @@
           </div>
         </div>
       </div>
+      {% endif %}
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
@@ -2425,6 +2427,9 @@
     }
 
     function setupSalarySuggestion() {
+      var salarySuggestionEnabled = {{ 'true' if config.get("SALARY_SUGGESTION_ENABLED", False) else 'false' }};
+      if (!salarySuggestionEnabled) return { sync: function () {} };
+      {% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
       var box = byId('salarySuggestionBox');
       var rangeNode = byId('salarySuggestionRange');
       var statusNode = byId('salarySuggestionStatus');
@@ -2586,6 +2591,8 @@
       });
       sync();
       return { sync: sync };
+      {% endif %}
+      return { sync: function () {} };
     }
 
     function setupEdadSingleChoice() {

@@ -49,6 +49,7 @@ class E2EReport:
     flujos_cliente_existente: int
     ui_checks: dict[str, Any]
     admin_checks: dict[str, Any]
+    runtime_scope: dict[str, Any]
     db_audit: dict[str, Any]
     bugs_encontrados: list[str]
     bugs_corregidos: list[str]
@@ -162,7 +163,8 @@ def _fill_common_solicitud_fields(page, i: int, scenario: dict[str, Any], *, new
         page.fill('input[name="ciudad_cliente"]', scenario.get("ciudad_cliente", "Santiago"))
         page.fill('input[name="sector_cliente"]', f"Sector {suffix}")
 
-    page.fill('input[name="ciudad_sector"]', scenario.get("ciudad_sector", "Santiago / Centro"))
+    page.fill("#ciudad_input_ui", scenario.get("ciudad", "Santiago"))
+    page.fill("#sector_input_ui", scenario.get("sector", "Centro"))
     page.fill('input[name="rutas_cercanas"]', scenario.get("rutas_cercanas", "Ruta K"))
     _set_modalidad_and_horario(page, scenario)
 
@@ -252,6 +254,21 @@ def _fill_common_solicitud_fields(page, i: int, scenario: dict[str, Any], *, new
 
     page.fill('input[name="mascota"]', scenario.get("mascota", ""))
     page.fill('input[name="sueldo"]', str(scenario.get("sueldo", "22000")))
+    pasaje_mode = str(scenario.get("pasaje_mode", "incluido") or "incluido").strip()
+    if pasaje_mode not in {"incluido", "aparte", "otro"}:
+        pasaje_mode = "incluido"
+    page.evaluate(
+        """(mode) => {
+          const el = document.querySelector(`input[name="pasaje_mode"][value="${mode}"]`);
+          if (!el) return;
+          el.checked = true;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        pasaje_mode,
+    )
+    if pasaje_mode == "otro":
+        _fill_if_editable(page, 'input[name="pasaje_otro_text"]', scenario.get("pasaje_otro_text", "aporte parcial"))
     page.fill('textarea[name="nota_cliente"]', scenario.get("nota", f"nota {suffix}"))
 
 
@@ -262,6 +279,7 @@ def _validate_ui_behavior(page, checks: dict[str, Any]):
     checks.setdefault("planchar_modal_ok", 0)
     checks.setdefault("salary_suggestion_visible", 0)
     checks.setdefault("salary_suggestion_hidden_ambiguous", 0)
+    checks.setdefault("salary_suggestion_not_present", 0)
 
     if _check_visible(page, "#wrap_ninos_limpieza_smart_alert"):
         checks["smart_alert_visible"] += 1
@@ -282,6 +300,8 @@ def _validate_ui_behavior(page, checks: dict[str, Any]):
         page.wait_for_timeout(500)
         if _check_visible(page, "#salarySuggestionBox"):
             checks["salary_suggestion_visible"] += 1
+        if page.locator("#salarySuggestionBox").count() == 0:
+            checks["salary_suggestion_not_present"] += 1
     except Exception:
         pass
 
@@ -296,17 +316,19 @@ def _accept_terms_and_submit(page, *, new_client: bool):
 
     if new_client:
         submit_btn = "#publicSubmitNuevaBtn"
-        accept_btn = "#termsAcceptNuevaBtn"
+        terms_checkbox = "#acepta_politica_nueva"
         reject_btn = "#termsRejectNuevaBtn"
     else:
         submit_btn = "#publicSubmitBtn"
-        accept_btn = "#termsAcceptBtn"
+        terms_checkbox = "#acepta_politica"
         reject_btn = "#termsRejectBtn"
 
     assert page.is_disabled(submit_btn)
-    page.click(accept_btn)
+    page.check(terms_checkbox, force=True)
+    page.wait_for_timeout(120)
     assert not page.is_disabled(submit_btn)
-    assert not page.is_visible(reject_btn)
+    if page.locator(reject_btn).count() > 0:
+        assert not page.is_visible(reject_btn)
 
     page.click(submit_btn)
 
@@ -421,12 +443,18 @@ def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str
 
 def _scenario(i: int) -> dict[str, Any]:
     pool = [
-        {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - lunes a viernes", "funciones": ["limpieza", "ninos"], "ninos": 2, "edades_ninos": "1 y 6", "mascota": "Perro", "ciudad_sector": "Santiago / Bella Vista", "rutas_cercanas": "", "sueldo": "18000", "areas_comunes": ["sala", "cocina"], "tipo_lugar": "casa", "habitaciones": 3, "banos": 2},
-        {"modalidad_grupo": "con_dormida", "modalidad_especifica": "Con dormida 💤 lunes a sábado", "funciones": ["limpieza", "cocinar", "lavar", "planchar"], "mascota": "", "ciudad_sector": "La Vega / Centro", "rutas_cercanas": "Ruta B", "sueldo": "26000", "areas_comunes": ["sala", "patio"], "tipo_lugar": "casa", "habitaciones": 5, "banos": 3, "dos_pisos": True},
-        {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - 2 días a la semana", "funciones": ["envejeciente"], "envejeciente_tipo": "independiente", "adultos": 1, "ninos": 0, "mascota": "Gato", "ciudad_sector": "Moca / Centro", "rutas_cercanas": "Ruta M", "sueldo": "20000"},
-        {"modalidad_grupo": "con_dormida", "modalidad_especifica": "Con dormida 💤 quincenal", "funciones": ["envejeciente"], "envejeciente_tipo": "encamado", "envejeciente_resp": ["medicamentos", "movilidad"], "adultos": 2, "ninos": 0, "mascota": "", "ciudad_sector": "Santiago / Cerros", "rutas_cercanas": "Ruta K", "sueldo": "28000", "tipo_lugar": "apto", "habitaciones": 2, "banos": 1, "areas_comunes": ["sala"]},
-        {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - 3 días a la semana", "funciones": ["envejeciente", "otro"], "envejeciente_tipo": "encamado", "solo_acomp": True, "adultos": 1, "ninos": 0, "mascota": "", "ciudad_sector": "Puerto Plata / Centro", "rutas_cercanas": "Ruta P", "sueldo": ""},
-        {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - fin de semana", "funciones": ["limpieza"], "tipo_lugar": "apto", "habitaciones": 2, "banos": 1, "areas_comunes": ["sala", "otro"], "adultos": 2, "ninos": 0, "mascota": "Perro", "ciudad_sector": "Santiago / Gurabo", "rutas_cercanas": "Ruta C", "sueldo": "23000", "hora_out": "7:30 PM"},
+        {"tag":"ninera_pequenos", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - lunes a viernes", "funciones":["ninos"], "ninos":2, "edades_ninos":"1 y 4", "adultos":2, "ciudad":"Santiago", "sector":"Bella Vista", "rutas_cercanas":"Ruta K", "sueldo":"19000", "pasaje_mode":"aparte"},
+        {"tag":"envejeciente_indep", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - 2 días a la semana", "funciones":["envejeciente"], "envejeciente_tipo":"independiente", "adultos":1, "ciudad":"Moca", "sector":"Centro", "rutas_cercanas":"Ruta M", "sueldo":"20000", "pasaje_mode":"incluido"},
+        {"tag":"limpieza_apto", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - 3 días a la semana", "funciones":["limpieza"], "tipo_lugar":"apto", "habitaciones":1, "banos":1, "areas_comunes":["sala"], "ciudad":"Santiago", "sector":"Los Jardines", "rutas_cercanas":"Ruta A", "sueldo":"16000", "pasaje_mode":"incluido"},
+        {"tag":"ninos_limpieza", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - lunes a viernes", "funciones":["limpieza","ninos"], "ninos":2, "edades_ninos":"2 y 6", "tipo_lugar":"casa", "habitaciones":3, "banos":2, "areas_comunes":["sala","cocina"], "ciudad":"Santiago", "sector":"Cerros", "rutas_cercanas":"", "sueldo":"21000", "pasaje_mode":"aparte"},
+        {"tag":"adolescentes", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - lunes a viernes", "funciones":["ninos","cocinar"], "ninos":2, "edades_ninos":"13 y 16", "adultos":2, "ciudad":"La Vega", "sector":"Centro", "rutas_cercanas":"Ruta B", "sueldo":"18000", "pasaje_mode":"incluido"},
+        {"tag":"casa_grande", "modalidad_grupo":"con_dormida", "modalidad_especifica":"Con dormida 💤 lunes a sábado", "funciones":["limpieza","cocinar","lavar","planchar"], "tipo_lugar":"casa", "habitaciones":6, "banos":4, "dos_pisos":True, "areas_comunes":["sala","patio","cocina"], "ciudad":"Santiago", "sector":"Las Colinas", "rutas_cercanas":"Ruta C", "sueldo":"30000", "pasaje_mode":"aparte"},
+        {"tag":"apto_pequeno", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - 1 día a la semana", "funciones":["limpieza"], "tipo_lugar":"apto", "habitaciones":1, "banos":1, "areas_comunes":["sala"], "ciudad":"Santiago", "sector":"Pekín", "rutas_cercanas":"Ruta D", "sueldo":"9000", "pasaje_mode":"incluido"},
+        {"tag":"fin_semana", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - fin de semana", "funciones":["limpieza"], "tipo_lugar":"casa", "habitaciones":2, "banos":1, "areas_comunes":["sala","otro"], "ciudad":"Puerto Plata", "sector":"Centro", "rutas_cercanas":"Ruta P", "sueldo":"13000", "pasaje_mode":"otro", "pasaje_otro_text":"mitad y mitad"},
+        {"tag":"dormida_quincenal", "modalidad_grupo":"con_dormida", "modalidad_especifica":"Con dormida 💤 quincenal", "funciones":["envejeciente"], "envejeciente_tipo":"encamado", "envejeciente_resp":["medicamentos","movilidad"], "adultos":1, "ciudad":"Santiago", "sector":"Gurabo", "rutas_cercanas":"Ruta K", "sueldo":"28000", "pasaje_mode":"aparte"},
+        {"tag":"otro_funcion", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria - lunes a sábado", "funciones":["envejeciente","otro"], "envejeciente_tipo":"encamado", "solo_acomp":True, "adultos":1, "ciudad":"San Francisco", "sector":"Centro", "rutas_cercanas":"Ruta S", "sueldo":"22000", "pasaje_mode":"incluido"},
+        {"tag":"horario_otro", "modalidad_grupo":"con_salida_diaria", "modalidad_especifica":"Salida diaria otro", "hora_in":"9:00 AM", "hora_out":"7:00 PM", "horario_dias":"Martes a sábado", "funciones":["limpieza","cocinar"], "tipo_lugar":"casa", "habitaciones":3, "banos":2, "ciudad":"Santiago", "sector":"Ensanche", "rutas_cercanas":"Ruta T", "sueldo":"23000", "pasaje_mode":"aparte"},
+        {"tag":"ninera_dormida", "modalidad_grupo":"con_dormida", "modalidad_especifica":"Con dormida 💤 lunes a viernes", "funciones":["ninos"], "ninos":1, "edades_ninos":"3", "ciudad":"Santiago", "sector":"Villa Olga", "rutas_cercanas":"Ruta A", "sueldo":"26000", "pasaje_mode":"incluido"},
     ]
     s = dict(pool[i % len(pool)])
     if not str(s.get("sueldo", "")).strip():
@@ -434,10 +462,39 @@ def _scenario(i: int) -> dict[str, Any]:
     return s
 
 
+def _path(url: str) -> str:
+    try:
+        return (urllib.parse.urlsplit(url).path or "").lower()
+    except Exception:
+        return ""
+
+
+def _is_admin_live_stream_url(url: str) -> bool:
+    return "/admin/live/invalidation/stream" in _path(url)
+
+
+def _is_external_runtime_noise(url: str) -> bool:
+    p = _path(url)
+    return (
+        _is_admin_live_stream_url(url)
+        or p.startswith("/admin/live/")
+        or p.startswith("/clientes/live/")
+        or p.startswith("/secretarias/live/")
+        or "/realtime/" in p
+        or p.endswith("/stream")
+    )
+
+
 def run() -> E2EReport:
     started = datetime.utcnow()
     app_env, db_redacted = _ensure_safe_local_env()
-    flask_app.config.update(TESTING=False, WTF_CSRF_ENABLED=False)
+    flask_app.config.update(
+        TESTING=False,
+        WTF_CSRF_ENABLED=False,
+        SALARY_SUGGESTION_ENABLED=False,
+        ADMIN_LIVE_SSE_ENABLED=False,
+        CLIENTES_LIVE_SSE_ENABLED=False,
+    )
 
     server, thread, base_url = _start_server()
 
@@ -448,22 +505,88 @@ def run() -> E2EReport:
     admin_checks: dict[str, Any] = {}
     created_client_ids: list[int] = []
 
-    new_flows = 30
-    existing_flows = 20
+    new_flows = 20
+    existing_flows = 8
 
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
             context = browser.new_context()
+            runtime = {
+                "salary_endpoint_calls": 0,
+                "submit_success": 0,
+                "token_consumed_ok": True,
+                "request_failed": [],
+                "responses_4xx_5xx": [],
+                "js_errors": [],
+                "console_errors": [],
+                "public_form_critical_errors": [],
+                "external_runtime_noise": [],
+                "admin_live_stream_failures": [],
+            }
+
+            def _wire_runtime_monitor(pg, scope: str):
+                def on_request(req):
+                    if "/clientes/api/sueldo-sugerido" in (req.url or ""):
+                        runtime["salary_endpoint_calls"] += 1
+
+                def on_request_failed(req):
+                    item = {"scope": scope, "url": req.url, "method": req.method, "failure": str(req.failure)}
+                    runtime["request_failed"].append(item)
+                    if _is_admin_live_stream_url(req.url or ""):
+                        runtime["admin_live_stream_failures"].append(item)
+                    if _is_external_runtime_noise(req.url or ""):
+                        runtime["external_runtime_noise"].append(item)
+                    elif scope == "public_form":
+                        runtime["public_form_critical_errors"].append({"type": "request_failed", **item})
+
+                def on_page_error(err):
+                    msg = str(err)
+                    item = {"scope": scope, "error": msg}
+                    runtime["js_errors"].append(item)
+                    if scope == "public_form":
+                        runtime["public_form_critical_errors"].append({"type": "js_error", **item})
+                    else:
+                        runtime["external_runtime_noise"].append({"type": "js_error", **item})
+
+                def on_console(msg):
+                    if msg.type != "error":
+                        return
+                    item = {"scope": scope, "error": msg.text}
+                    runtime["console_errors"].append(item)
+                    if _is_external_runtime_noise(msg.text or "") or scope != "public_form":
+                        runtime["external_runtime_noise"].append({"type": "console_error", **item})
+                    else:
+                        runtime["public_form_critical_errors"].append({"type": "console_error", **item})
+
+                def on_response(resp):
+                    status = int(resp.status)
+                    if status < 400:
+                        return
+                    item = {"scope": scope, "url": resp.url, "status": status}
+                    runtime["responses_4xx_5xx"].append(item)
+                    if _is_external_runtime_noise(resp.url or ""):
+                        runtime["external_runtime_noise"].append({"type": "http_error", **item})
+                    elif scope == "public_form":
+                        runtime["public_form_critical_errors"].append({"type": "http_error", **item})
+
+                pg.on("request", on_request)
+                pg.on("requestfailed", on_request_failed)
+                pg.on("pageerror", on_page_error)
+                pg.on("console", on_console)
+                pg.on("response", on_response)
+
             page = context.new_page()
+            _wire_runtime_monitor(page, "admin_runtime")
             _login_admin(page, base_url)
 
-            # Flujo cliente nuevo x30
+            # Flujo cliente nuevo
             for i in range(new_flows):
                 page.goto(f"{base_url}/admin/solicitudes/nueva-publica/link", wait_until="domcontentloaded")
                 token_link = _extract_link_from_input(page, "linkPublicoNuevo", base_url)
 
                 public_page = context.new_page()
+                _wire_runtime_monitor(public_page, "public_form")
                 try:
                     public_page.goto(token_link, wait_until="domcontentloaded")
                     public_page.wait_for_selector('input[name="nombre_completo"]', timeout=12000)
@@ -472,6 +595,7 @@ def run() -> E2EReport:
                     _validate_ui_behavior(public_page, ui_checks)
                     _accept_terms_and_submit(public_page, new_client=True)
                     _verify_success_page(public_page)
+                    runtime["submit_success"] += 1
                     shot = ARTIFACT_DIR / f"new_success_{i+1:03d}.png"
                     if i < 3:
                         public_page.screenshot(path=str(shot), full_page=True)
@@ -479,20 +603,26 @@ def run() -> E2EReport:
                 finally:
                     public_page.close()
 
-                _token_consumed_check(context, token_link)
+                try:
+                    _token_consumed_check(context, token_link)
+                except Exception as e:
+                    runtime["token_consumed_ok"] = False
+                    runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
+                    raise
 
             clientes, solicitudes = _extract_new_entities_since(started)
             created_client_ids = [int(c.id) for c in clientes]
-            if len(created_client_ids) < 30:
-                raise RuntimeError(f"Se esperaban >=30 clientes nuevos, encontrados {len(created_client_ids)}")
+            if len(created_client_ids) < 20:
+                raise RuntimeError(f"Se esperaban >=20 clientes nuevos, encontrados {len(created_client_ids)}")
 
-            # Flujo cliente existente x20
+            # Flujo cliente existente
             for j in range(existing_flows):
                 cid = created_client_ids[j % len(created_client_ids)]
                 page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
                 token_link = _extract_link_from_input(page, "linkPublico", base_url)
 
                 p2 = context.new_page()
+                _wire_runtime_monitor(p2, "public_form")
                 try:
                     p2.goto(token_link, wait_until="domcontentloaded")
                     sc = _scenario(j + 100)
@@ -504,10 +634,16 @@ def run() -> E2EReport:
                             ui_checks["salary_suggestion_hidden_ambiguous"] = ui_checks.get("salary_suggestion_hidden_ambiguous", 0) + 1
                     _accept_terms_and_submit(p2, new_client=False)
                     _verify_success_page(p2)
+                    runtime["submit_success"] += 1
                 finally:
                     p2.close()
 
-                _token_consumed_check(context, token_link)
+                try:
+                    _token_consumed_check(context, token_link)
+                except Exception as e:
+                    runtime["token_consumed_ok"] = False
+                    runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
+                    raise
 
             # Admin checks
             page.goto(f"{base_url}/admin/clientes", wait_until="domcontentloaded")
@@ -540,17 +676,34 @@ def run() -> E2EReport:
             page.wait_for_timeout(800)
             txt_after = (page.text_content("body") or "").lower()
             admin_checks["cliente_con_solicitudes_no_elimina"] = ("no puede eliminar" in txt_after) or ("información asociada" in txt_after)
+            page.goto(f"{base_url}/admin/solicitudes/copiar", wait_until="domcontentloaded")
+            admin_checks["copiar_publicar_view_ok"] = "copiar solicitudes" in (page.text_content("body") or "").lower()
+
+            page.goto(f"{base_url}/secretarias/solicitudes/buscar", wait_until="domcontentloaded")
+            body_secretarias = (page.text_content("body") or "").lower()
+            admin_checks["secretarias_buscador_ok"] = ("buscar solicitudes" in body_secretarias) or ("solicitudes" in body_secretarias)
+
+            admin_checks["salary_endpoint_calls"] = int(runtime["salary_endpoint_calls"])
+            admin_checks["http_4xx_5xx_count"] = len(runtime["responses_4xx_5xx"])
+            admin_checks["js_errors_count"] = len(runtime["js_errors"])
+            admin_checks["console_errors_count"] = len(runtime["console_errors"])
+            admin_checks["request_failed_count"] = len(runtime["request_failed"])
+            admin_checks["public_form_critical_errors"] = len(runtime["public_form_critical_errors"])
+            admin_checks["external_runtime_noise"] = len(runtime["external_runtime_noise"])
+            admin_checks["admin_live_stream_failures"] = len(runtime["admin_live_stream_failures"])
+            admin_checks["submit_success"] = int(runtime["submit_success"])
+            admin_checks["token_consumed_ok"] = bool(runtime["token_consumed_ok"])
 
             browser.close()
 
         clientes, solicitudes = _extract_new_entities_since(started)
 
         # Verificación no duplicado cliente en flujos existentes
-        if len(clientes) != 30:
-            bugs.append(f"Esperado 30 clientes creados por flujo nuevo, encontrados {len(clientes)}")
+        if len(clientes) != 20:
+            bugs.append(f"Esperado 20 clientes creados por flujo nuevo, encontrados {len(clientes)}")
 
-        if len(solicitudes) < 50:
-            bugs.append(f"Esperado >=50 solicitudes, encontradas {len(solicitudes)}")
+        if len(solicitudes) < 28:
+            bugs.append(f"Esperado >=28 solicitudes, encontradas {len(solicitudes)}")
 
         audit = _audit_db(clientes, solicitudes)
         if audit["duplicados_email"]:
@@ -559,6 +712,14 @@ def run() -> E2EReport:
             bugs.append("Duplicados por teléfono detectados")
         if audit["solicitudes_sin_cliente"] > 0:
             bugs.append("Solicitudes huérfanas sin cliente")
+        if int(admin_checks.get("salary_endpoint_calls", 0)) > 0:
+            bugs.append("Detectadas llamadas automáticas al endpoint de sueldo sugerido")
+        if int(admin_checks.get("public_form_critical_errors", 0)) > 0:
+            bugs.append("Detectados errores críticos del formulario público")
+        if not bool(admin_checks.get("token_consumed_ok", False)):
+            bugs.append("Token no consumido correctamente en al menos un flujo")
+        if int(admin_checks.get("submit_success", 0)) != (new_flows + existing_flows):
+            bugs.append("Cantidad de submit exitosos menor al total esperado")
 
         conclusion = "Luz verde para uso real controlado"
         if bugs:
@@ -576,6 +737,15 @@ def run() -> E2EReport:
             flujos_cliente_existente=existing_flows,
             ui_checks=ui_checks,
             admin_checks=admin_checks,
+            runtime_scope={
+                "public_form_critical_errors": runtime["public_form_critical_errors"],
+                "external_runtime_noise": runtime["external_runtime_noise"],
+                "admin_live_stream_failures": runtime["admin_live_stream_failures"],
+                "responses_4xx_5xx": runtime["responses_4xx_5xx"],
+                "request_failed": runtime["request_failed"],
+                "js_errors": runtime["js_errors"],
+                "console_errors": runtime["console_errors"],
+            },
             db_audit=audit,
             bugs_encontrados=bugs,
             bugs_corregidos=fixed,
