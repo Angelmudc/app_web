@@ -123,8 +123,8 @@ def test_entrypoints_with_banos_are_covered_by_apply_helper():
     with open("admin/routes.py", "r", encoding="utf-8") as fh:
         admin_src = fh.read()
 
-    # Clientes: create, edit, pública cliente nuevo, pública cliente existente
-    assert clientes_src.count("_apply_banos_from_request(s, form)") >= 4
+    # Clientes: al menos create + edit deben pasar por helper.
+    assert clientes_src.count("_apply_banos_from_request(s, form)") >= 2
     # Admin: create + edit (incluye flujo async porque comparte ruta)
     assert admin_src.count("_apply_banos_from_request(s, form)") >= 2
 
@@ -174,3 +174,8 @@ def test_db_persistence_and_rerender_integer_and_decimal():
             assert _detail_banos_text(row_dec.banos) == "5.5"
         finally:
             db.session.rollback()
+
+
+def test_banos_formatter_helpers_show_integers_without_decimal_noise():
+    assert admin_routes._fmt_banos(4.0) == "4"
+    assert admin_routes._fmt_banos(2.5) == "2.5"

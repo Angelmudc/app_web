@@ -137,7 +137,7 @@ def test_secretarias_solicitudes_buscar_render_base_y_order_text_contrato_visibl
         mascota="Gato",
         tipo_lugar="Casa",
         habitaciones=4,
-        banos=2.0,
+        banos=4.0,
         dos_pisos=True,
         areas_comunes=["Patio", "otro"],
         area_otro="Terraza",
@@ -182,7 +182,7 @@ def test_secretarias_solicitudes_buscar_render_base_y_order_text_contrato_visibl
     assert "Disponible ( SOL-055 )" in order_text
     assert "Con dormida 💤 L-V" in order_text
     assert "Funciones: Limpiar, Planchar" in order_text
-    assert "Casa - 4 habitaciones, 2 baños, 2 pisos, Patio, Terraza" in order_text
+    assert "Casa - 4 habitaciones, 4 baños, 2 pisos, Patio, Terraza" in order_text
     assert "Modalidad:" not in order_text
     assert "Hogar:" not in order_text
 

@@ -238,6 +238,15 @@ def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     assert 'id="wrap_pasaje_otro"' in content
     assert "function getFieldsByName(name)" in content
     assert "function syncOtherFields(fromUserEvent)" in content
+
+
+def test_shared_partial_normaliza_banos_y_habitaciones_decimal_cero_antes_de_selector():
+    path = "clientes/_solicitud_form_fields.html"
+    content = flask_app.jinja_env.loader.get_source(flask_app.jinja_env, path)[0]
+
+    assert "function normalizeNumericSelectorValue(raw)" in content
+    assert "var habVal = normalizeNumericSelectorValue(habHidden.value);" in content
+    assert "var banVal = normalizeNumericSelectorValue(banHidden.value);" in content
     assert "modalidadHiddenInRoot" in content
     assert "document.querySelector('#solicitud-form')" in content
     assert "if (allRegularChecked()) setAll(false);" in content

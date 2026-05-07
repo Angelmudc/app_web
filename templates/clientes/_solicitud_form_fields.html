@@ -1185,6 +1185,15 @@
       return c + ' (' + s + ')';
     }
 
+    function normalizeNumericSelectorValue(raw) {
+      var val = (raw || '').toString().trim();
+      if (!val || !/^\d+(\.\d+)?$/.test(val)) return val;
+      if (val.indexOf('.') >= 0) {
+        val = val.replace(/\.0+$/g, '').replace(/(\.\d*?)0+$/g, '$1').replace(/\.$/, '');
+      }
+      return val;
+    }
+
     function normalizeText(str) {
       if (!str) return "";
 
@@ -2041,7 +2050,7 @@
       var allowedHab = { '1': true, '2': true, '3': true, '4': true, '5': true };
       var allowedBan = { '1': true, '1.5': true, '2': true, '2.5': true, '3': true, '3.5': true, '4': true, '4.5': true, '5': true, '5.5': true };
       if (habHidden) {
-        var habVal = (habHidden.value || '').toString().trim();
+        var habVal = normalizeNumericSelectorValue(habHidden.value);
         var habRadioVal = allowedHab[habVal] ? habVal : (habVal ? 'otro' : '');
         var habRadio = hostForm.querySelector('input[name="habitaciones_selector"][value="' + habRadioVal + '"]');
         if (habRadio) habRadio.checked = true;
@@ -2049,7 +2058,7 @@
         if (habOtroInput && habRadioVal === 'otro') habOtroInput.value = habVal;
       }
       if (banHidden) {
-        var banVal = (banHidden.value || '').toString().trim();
+        var banVal = normalizeNumericSelectorValue(banHidden.value);
         var banRadioVal = allowedBan[banVal] ? banVal : (banVal ? 'otro' : '');
         var banRadio = hostForm.querySelector('input[name="banos_selector"][value="' + banRadioVal + '"]');
         if (banRadio) banRadio.checked = true;

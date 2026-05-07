@@ -107,7 +107,7 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
         mascota="Perro",
         tipo_lugar="Apartamento",
         habitaciones=3,
-        banos=2.0,
+        banos=4.0,
         dos_pisos=True,
         areas_comunes=["salon_juegos", "jardin"],
         area_otro="area_lavado",
@@ -161,7 +161,7 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
     assert "Nota sobre el envejeciente: Toma agua cada 2 horas" in salida
     assert "salon_juegos" not in salida
     assert "jardin" not in salida
-    assert "Apartamento - 3 habitaciones, 2 baños, 2 pisos, salón de juegos, jardín, área de lavado" in salida
+    assert "Apartamento - 3 habitaciones, 4 baños, 2 pisos, salón de juegos, jardín, área de lavado" in salida
     assert "Hogar:" not in salida
     assert "Modalidad:" not in salida
 
