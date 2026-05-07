@@ -13,9 +13,19 @@
   const reemplazoModalAncestorState = new WeakMap();
   const reemplazoModalTeleportState = new WeakMap();
   const rowHighlightTimers = new WeakMap();
+  const targetResponseCache = new Map();
+  const TARGET_CACHE_TTL_MS = 90000;
   let globalRequestSeq = 0;
   const latestRequestByTarget = new Map();
+  const activeRequestControllerByTarget = new Map();
   let lastResponseMeta = null;
+  let secondaryBound = false;
+  const scheduleIdle = (cb, timeout = 700) => {
+    if (typeof window.requestIdleCallback === "function") {
+      return window.requestIdleCallback(cb, { timeout });
+    }
+    return window.setTimeout(cb, 60);
+  };
 
   function wantsJsonHeaders(extra) {
     const headers = {
@@ -118,15 +128,28 @@
       container.removeAttribute("aria-busy");
     }
 
-    const buttons = container.querySelectorAll('button, input[type="submit"], a[data-admin-async-link]');
-    buttons.forEach((btn) => {
+    const controls = container.querySelectorAll('button, input, select, textarea, a[data-admin-async-link]');
+    controls.forEach((btn) => {
+      const isAnchor = btn.tagName === "A";
+      const isHiddenInput = btn.tagName === "INPUT" && String(btn.type || "").toLowerCase() === "hidden";
+      if (isHiddenInput) return;
       if (isBusy) {
         btn.dataset._adminAsyncPrevDisabled = btn.disabled ? "1" : "0";
-        btn.disabled = true;
+        if (!isAnchor) {
+          btn.disabled = true;
+        } else {
+          btn.setAttribute("aria-disabled", "true");
+          btn.classList.add("disabled");
+        }
         btn.classList.add("is-loading");
       } else {
         const prev = btn.dataset._adminAsyncPrevDisabled;
-        if (prev === "0") btn.disabled = false;
+        if (!isAnchor) {
+          if (prev === "0") btn.disabled = false;
+        } else {
+          btn.removeAttribute("aria-disabled");
+          btn.classList.remove("disabled");
+        }
         btn.classList.remove("is-loading");
         delete btn.dataset._adminAsyncPrevDisabled;
       }
@@ -335,6 +358,7 @@
     const openCollapseIds = rememberCollapse
       ? Array.from(target.querySelectorAll(".collapse.show[id]")).map((el) => String(el.id || "").trim()).filter(Boolean)
       : [];
+    const snapshot = captureVisualSnapshot(target);
     const beforeRect = target.getBoundingClientRect();
     const beforeScrollY = window.scrollY || window.pageYOffset || 0;
     const beforeHeight = Math.max(0, target.offsetHeight || 0);
@@ -351,6 +375,7 @@
       if (openCollapseIds.length) {
         restoreOpenCollapses(target, openCollapseIds);
       }
+      restoreVisualSnapshot(target, snapshot);
       if (options && options.focusRowId) {
         highlightSolicitudRow(target, options.focusRowId, options.flashRow !== false);
       }
@@ -370,6 +395,86 @@
     }));
     cleanupModalState(false);
     return true;
+  }
+
+  function cacheKeyFor(url, targetSelector) {
+    const u = String(url || "").trim();
+    const t = normalizeSelector(targetSelector);
+    if (!u || !t) return "";
+    return `${u}::${t}`;
+  }
+
+  function setTargetCache(url, targetSelector, html) {
+    const key = cacheKeyFor(url, targetSelector);
+    if (!key || typeof html !== "string") return;
+    targetResponseCache.set(key, { html, ts: Date.now() });
+    if (targetResponseCache.size > 40) {
+      let oldestKey = "";
+      let oldestTs = Infinity;
+      targetResponseCache.forEach((entry, k) => {
+        const ts = Number(entry && entry.ts) || 0;
+        if (ts < oldestTs) {
+          oldestTs = ts;
+          oldestKey = k;
+        }
+      });
+      if (oldestKey) targetResponseCache.delete(oldestKey);
+    }
+  }
+
+  function getTargetCache(url, targetSelector) {
+    const key = cacheKeyFor(url, targetSelector);
+    if (!key) return null;
+    const hit = targetResponseCache.get(key);
+    if (!hit) return null;
+    const age = Date.now() - (Number(hit.ts) || 0);
+    if (age > TARGET_CACHE_TTL_MS) {
+      targetResponseCache.delete(key);
+      return null;
+    }
+    return hit;
+  }
+
+  function captureVisualSnapshot(target) {
+    if (!target || !target.querySelectorAll) return null;
+    const openQuickViews = [];
+    target.querySelectorAll(".collapse.show[id]").forEach((panel) => {
+      const id = String(panel.id || "").trim();
+      if (!id.startsWith("sol-quick-view-")) return;
+      const slot = panel.querySelector("[data-quick-view-slot='1']");
+      if (!slot) return;
+      openQuickViews.push({
+        id,
+        loaded: slot.dataset.loaded === "1",
+        html: String(slot.innerHTML || ""),
+      });
+    });
+    return { openQuickViews };
+  }
+
+  function restoreVisualSnapshot(target, snapshot) {
+    const rows = Array.from(target.querySelectorAll("[id^='sol-']"));
+    if (!rows.length) return;
+    const firstVisible = rows.find((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > 0 && rect.top < window.innerHeight;
+    });
+    if (firstVisible) {
+      try {
+        firstVisible.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
+      } catch (_) {}
+    }
+    const quick = Array.isArray(snapshot && snapshot.openQuickViews) ? snapshot.openQuickViews : [];
+    quick.forEach((entry) => {
+      const panel = target.querySelector(`#${escapeCssToken(entry.id)}`);
+      if (!panel || !panel.classList.contains("show")) return;
+      const slot = panel.querySelector("[data-quick-view-slot='1']");
+      if (!slot) return;
+      if (entry.loaded && entry.html) {
+        slot.innerHTML = entry.html;
+        slot.dataset.loaded = "1";
+      }
+    });
   }
 
   function restoreOpenCollapses(target, openCollapseIds) {
@@ -448,6 +553,76 @@
   function normalizeSelector(raw) {
     const selector = String(raw || "").trim();
     return selector.startsWith("#") ? selector : "";
+  }
+
+  function tryPushHistoryState(state, url) {
+    if (!window.history || typeof window.history.pushState !== "function") return;
+    try {
+      window.history.pushState(state, "", url);
+    } catch (_) {}
+  }
+
+  function scheduleDebouncedFormSubmit(form, triggerKey) {
+    if (!form) return;
+    const msRaw = Number(form.getAttribute("data-async-debounce-ms") || "0");
+    const ms = Number.isFinite(msRaw) && msRaw > 0 ? msRaw : 0;
+    if (!ms) return;
+    const lastKey = String(form.dataset.asyncDebounceLastKey || "");
+    if (triggerKey && lastKey === triggerKey) return;
+    form.dataset.asyncDebounceLastKey = triggerKey || "";
+    const prev = Number(form.dataset.asyncDebounceTimerId || "0");
+    if (prev) window.clearTimeout(prev);
+    const timerId = window.setTimeout(() => {
+      if (typeof form.requestSubmit === "function") {
+        form.requestSubmit();
+      } else {
+        const btn = form.querySelector('button[type="submit"],input[type="submit"]');
+        if (btn) btn.click();
+        else form.submit();
+      }
+    }, ms);
+    form.dataset.asyncDebounceTimerId = String(timerId);
+  }
+
+  function onAsyncDebouncedInput(ev) {
+    const input = ev.target;
+    if (!(input instanceof HTMLElement)) return;
+    const form = input.closest("form[data-admin-async-form][data-async-debounce-ms]");
+    if (!form) return;
+    const fieldsRaw = (form.getAttribute("data-async-debounce-fields") || "").trim();
+    if (!fieldsRaw) return;
+    const fields = fieldsRaw.split(",").map((x) => x.trim()).filter(Boolean);
+    const name = String(input.getAttribute("name") || "").trim();
+    if (!name || !fields.includes(name)) return;
+    const value = String(input.value || "");
+    scheduleDebouncedFormSubmit(form, `${name}:${value}`);
+  }
+
+  function syncFormFieldsFromUrl(form, urlString) {
+    if (!form || !urlString) return;
+    try {
+      const url = new URL(urlString, window.location.origin);
+      const params = url.searchParams;
+      const elements = form.querySelectorAll("input[name], select[name], textarea[name]");
+      elements.forEach((el) => {
+        const name = String(el.getAttribute("name") || "").trim();
+        if (!name || String(el.type || "").toLowerCase() === "hidden") return;
+        const nextValue = params.get(name);
+        if (el.tagName === "SELECT") {
+          el.value = nextValue !== null ? nextValue : "";
+          return;
+        }
+        if (String(el.type || "").toLowerCase() === "checkbox") {
+          el.checked = nextValue !== null;
+          return;
+        }
+        if (String(el.type || "").toLowerCase() === "radio") {
+          el.checked = nextValue !== null && String(el.value || "") === nextValue;
+          return;
+        }
+        el.value = nextValue !== null ? nextValue : "";
+      });
+    } catch (_) {}
   }
 
   function registerRequestClaim(targetSelector, requestId) {
@@ -914,6 +1089,10 @@
     noLoader,
     headers,
     preserveScroll,
+    pushHistory,
+    historyFormSelector,
+    historyMode,
+    allowCached,
   }) {
     const container = busyContainer || sourceEl;
     if (!container || container.dataset[BUSY_KEY] === "1") {
@@ -922,6 +1101,25 @@
     }
     const requestId = ++globalRequestSeq;
     registerRequestClaim(updateTarget, requestId);
+
+    const normalizedTarget = normalizeSelector(updateTarget);
+    const isGetForTarget = method === "GET" && normalizedTarget;
+    if (isGetForTarget && allowCached) {
+      const cached = getTargetCache(url, normalizedTarget);
+      if (cached && typeof cached.html === "string") {
+        replaceTargetHtml(normalizedTarget, cached.html, { preserveScroll });
+        return true;
+      }
+    }
+    let requestController = null;
+    if (method === "GET" && normalizedTarget && window.AbortController) {
+      const prevController = activeRequestControllerByTarget.get(normalizedTarget);
+      if (prevController && typeof prevController.abort === "function") {
+        prevController.abort();
+      }
+      requestController = new AbortController();
+      activeRequestControllerByTarget.set(normalizedTarget, requestController);
+    }
 
     setBusyState(container, submitter, true);
     if (!noLoader && window.AppLoader && typeof window.AppLoader.show === "function") {
@@ -935,6 +1133,7 @@
         body,
         credentials: "same-origin",
         headers: wantsJsonHeaders(headers || {}),
+        signal: requestController ? requestController.signal : undefined,
       });
 
       const parsed = await parseResponse(resp);
@@ -959,6 +1158,19 @@
         if (!resp.ok && !payload.message && !Array.isArray(payload.errors)) {
           showToast(statusMessage(resp.status), "danger");
         }
+        if (ok && method === "GET" && pushHistory && historyMode !== "pop") {
+          tryPushHistoryState({
+            adminAsync: true,
+            url: String(url || ""),
+            updateTarget: normalizedTarget,
+            busyContainerSelector: container && container.id ? `#${container.id}` : "",
+            formSelector: historyFormSelector || "",
+          }, String(url || ""));
+        }
+        if (ok && isGetForTarget) {
+          const liveTarget = document.querySelector(normalizedTarget);
+          if (liveTarget) setTargetCache(url, normalizedTarget, String(liveTarget.innerHTML || ""));
+        }
         return ok;
       }
 
@@ -968,6 +1180,9 @@
         const node = doc.querySelector(updateTarget);
         if (node) {
           replaceTargetHtml(updateTarget, node.innerHTML, { preserveScroll });
+          if (isGetForTarget) {
+            setTargetCache(url, normalizedTarget, String(node.innerHTML || ""));
+          }
           closeEnclosingModal(sourceEl);
           return true;
         }
@@ -990,6 +1205,9 @@
       }
       return resp.status >= 500 ? null : false;
     } catch (_err) {
+      if (_err && _err.name === "AbortError") {
+        return false;
+      }
       showToast("No se pudo conectar con el servidor. Intenta nuevamente.", "danger");
       lastResponseMeta = {
         ok: false,
@@ -1001,6 +1219,12 @@
       };
       return null;
     } finally {
+      if (requestController && normalizedTarget) {
+        const current = activeRequestControllerByTarget.get(normalizedTarget);
+        if (current === requestController) {
+          activeRequestControllerByTarget.delete(normalizedTarget);
+        }
+      }
       setBusyState(container, submitter, false);
       clearGlobalLoaders();
     }
@@ -1069,6 +1293,8 @@
     const containerSel = (form.getAttribute("data-async-busy-container") || "").trim();
     const busyContainer = containerSel ? document.querySelector(containerSel) : form;
     const preserveScroll = form.getAttribute("data-async-preserve-scroll") === "true";
+    const pushHistory = form.getAttribute("data-async-history") === "true";
+    const formSelector = form.id ? `#${form.id}` : "";
 
     const result = await handleAsyncRequest({
       ...req,
@@ -1076,6 +1302,10 @@
       busyContainer,
       submitter,
       preserveScroll,
+      pushHistory,
+      historyFormSelector: formSelector,
+      historyMode: "push",
+      allowCached: false,
     });
 
     if (result === null && form.getAttribute("data-async-fallback") === "native") {
@@ -1104,6 +1334,8 @@
     const busyContainer = containerSel ? document.querySelector(containerSel) : (link.closest("[data-admin-async-scope]") || link);
     const updateTarget = (link.getAttribute("data-async-target") || "").trim();
     const preserveScroll = link.getAttribute("data-async-preserve-scroll") === "true";
+    const pushHistory = link.getAttribute("data-async-history") === "true";
+    const historyFormSelector = (link.getAttribute("data-async-history-form") || "").trim();
 
     await handleAsyncRequest({
       url: href,
@@ -1116,12 +1348,52 @@
       noLoader: link.hasAttribute("data-no-loader"),
       headers: { "X-CSRFToken": getCSRFToken(null) },
       preserveScroll,
+      pushHistory,
+      historyFormSelector,
+      historyMode: "push",
+      allowCached: true,
     });
   }
 
-  function init() {
+  async function onHistoryPopState(ev) {
+    const state = ev && ev.state ? ev.state : null;
+    if (!state || state.adminAsync !== true) return;
+    if (!window.fetch) return;
+    const target = normalizeSelector(state.updateTarget);
+    if (!target) return;
+    const busyContainerSelector = String(state.busyContainerSelector || "").trim();
+    const busyContainer = busyContainerSelector ? document.querySelector(busyContainerSelector) : document.querySelector(target);
+    const formSelector = String(state.formSelector || "").trim();
+    const form = formSelector ? document.querySelector(formSelector) : null;
+    syncFormFieldsFromUrl(form, state.url);
+    await handleAsyncRequest({
+      url: String(state.url || window.location.href),
+      method: "GET",
+      body: null,
+      sourceEl: form || (busyContainer || document.body),
+      busyContainer: busyContainer || (form || document.body),
+      submitter: null,
+      updateTarget: target,
+      noLoader: true,
+      headers: { "X-CSRFToken": getCSRFToken(form) },
+      preserveScroll: true,
+      pushHistory: false,
+      historyFormSelector: formSelector,
+      historyMode: "pop",
+      allowCached: true,
+    });
+  }
+
+  function bindSecondaryListeners() {
+    if (secondaryBound) return;
+    secondaryBound = true;
     document.addEventListener("submit", onSubmit, true);
     document.addEventListener("click", onClick, true);
+    document.addEventListener("input", onAsyncDebouncedInput, true);
+    window.addEventListener("popstate", onHistoryPopState);
+    document.addEventListener("input", onReemplazoSearchInput, true);
+    document.addEventListener("keydown", onReemplazoSearchKeydown, true);
+    document.addEventListener("click", onReemplazoSearchTrigger, true);
     document.addEventListener("shown.bs.collapse", (ev) => {
       const target = ev && ev.target;
       if (!target || !target.id) return;
@@ -1138,13 +1410,14 @@
       toggle.setAttribute("aria-expanded", "false");
       updateCollapseToggleLabel(toggle, false);
     });
-    document.addEventListener("input", onReemplazoSearchInput, true);
-    document.addEventListener("keydown", onReemplazoSearchKeydown, true);
-    document.addEventListener("click", onReemplazoSearchTrigger, true);
     document.addEventListener("admin:content-updated", (ev) => {
       const container = ev && ev.detail ? ev.detail.container : null;
       syncCollapseToggleLabels(container || document);
     });
+  }
+
+  function init() {
+    bindSecondaryListeners();
     syncCollapseToggleLabels(document);
     bindReemplazoModalGuards();
   }
@@ -1157,8 +1430,8 @@
   };
 
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", init, { once: true });
+    document.addEventListener("DOMContentLoaded", () => scheduleIdle(init, 900), { once: true });
   } else {
-    init();
+    scheduleIdle(init, 900);
   }
 })();

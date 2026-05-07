@@ -299,6 +299,56 @@ def test_secretarias_solicitudes_filtro_funcion_otro_activa_busqueda_por_funcion
     assert "GT', 0" in flat
 
 
+def test_secretarias_solicitudes_filtro_async_devuelve_fragmento_y_preserva_querystring_en_paginacion():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    row = SimpleNamespace(
+        id=1, codigo_solicitud="SOL-1", ciudad_sector="Santiago", rutas_cercanas="K", modalidad_trabajo="Salida diaria",
+        modalidad="", tipo_modalidad="", edad_requerida="", experiencia="", horario="", funciones=["limpieza"],
+        funciones_otro="", adultos=1, ninos=None, edades_ninos="", mascota="", tipo_lugar="", habitaciones=1,
+        banos=1.0, dos_pisos=False, areas_comunes=[], area_otro="", direccion="", sueldo="18000", pasaje_aporte=False,
+        nota_cliente="", last_copiado_at=None, estado="activa", fecha_solicitud=None,
+    )
+    paginado = SimpleNamespace(items=[row], page=2, pages=3, total=42)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get(
+            "/secretarias/solicitudes/filtro?ciudad_sector=santiago&ruta=k&page=2",
+            headers={"X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 200
+    assert captured["template"] == "secretarias/_secretarias_solicitudes_results.html"
+    assert captured["ctx"]["page"] == 2
+    assert "ciudad_sector=santiago" in captured["ctx"]["page_links"][0]["url"]
+    assert "ruta=k" in captured["ctx"]["page_links"][0]["url"]
+
+
+def test_secretarias_solicitudes_filtro_fallback_html_completo_sin_headers_async():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    paginado = SimpleNamespace(items=[], page=1, pages=1, total=0)
+    q = _SearchQuery(paginado)
+    captured = {}
+
+    patches = _patch_common(q, captured)
+    with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patches[6], patches[7]:
+        resp = client.get("/secretarias/solicitudes/filtro?ciudad_sector=santiago", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert captured["template"] == "secretarias_solicitudes_buscar.html"
+
+
 def test_secretarias_solicitudes_filtro_ui_funciones_incluye_codigos_esperados():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

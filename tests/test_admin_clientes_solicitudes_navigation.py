@@ -91,6 +91,8 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+        self._presence_patcher = patch("admin.routes._touch_staff_presence", return_value=None)
+        self._presence_patcher.start()
 
         login_resp = self.client.post(
             "/admin/login",
@@ -98,6 +100,9 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
             follow_redirects=False,
         )
         self.assertIn(login_resp.status_code, (302, 303))
+
+    def tearDown(self):
+        self._presence_patcher.stop()
 
     def test_boton_solicitudes_desde_clientes_apunta_a_copiar_y_panel(self):
         with flask_app.app_context():

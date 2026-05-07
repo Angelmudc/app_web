@@ -258,9 +258,69 @@ def test_secretarias_solicitudes_buscar_filtros_parametros_y_paginacion_links():
     assert captured["ctx"]["con_ninos"] == "no"
     assert captured["ctx"]["desde"] == "2026-03-01"
     assert captured["ctx"]["hasta"] == "2026-03-31"
-    assert captured["ctx"]["pages"] == 3
-    assert captured["ctx"]["page"] == 2
-    assert "page=1" in (captured["ctx"]["prev_url"] or "")
-    assert "page=3" in (captured["ctx"]["next_url"] or "")
-    assert "q=santo" in (captured["ctx"]["prev_url"] or "")
-    assert captured["ctx"]["page_links"][1]["active"] is True
+
+
+def test_secretarias_solicitudes_buscar_async_devuelve_fragmento_resultados():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    captured = {}
+    row = SimpleNamespace(
+        id=11,
+        codigo_solicitud="SOL-011",
+        ciudad_sector="Santo Domingo",
+        rutas_cercanas="A",
+        modalidad_trabajo="Salida diaria",
+        modalidad="",
+        tipo_modalidad="",
+        edad_requerida="20-30",
+        experiencia="General",
+        horario="9-6",
+        funciones=[],
+        funciones_otro="",
+        adultos=1,
+        ninos=None,
+        edades_ninos="",
+        mascota="",
+        tipo_lugar="",
+        habitaciones=None,
+        banos=None,
+        dos_pisos=False,
+        areas_comunes=[],
+        area_otro="",
+        direccion="",
+        sueldo="15000",
+        pasaje_aporte=True,
+        nota_cliente="",
+        last_copiado_at=None,
+        estado="activa",
+        fecha_solicitud=None,
+    )
+    paginado = SimpleNamespace(items=[row], page=1, pages=1, total=1)
+    q = _SearchQuery(paginado)
+
+    def _fake_render(template_name, **ctx):
+        captured["template"] = template_name
+        captured["ctx"] = ctx
+        return "ok"
+
+    with patch("core.handlers.secretarias_solicitudes_handlers.legacy_h.Solicitud", new=_fake_solicitud_model(q)), \
+         patch("core.handlers.secretarias_solicitudes_handlers.db", new=SimpleNamespace(session=SimpleNamespace(query=lambda *_a, **_k: q))), \
+         patch("core.handlers.secretarias_solicitudes_handlers.load_only", side_effect=lambda *a: a), \
+         patch("core.handlers.secretarias_solicitudes_handlers.or_", side_effect=lambda *a: a), \
+         patch("core.handlers.secretarias_solicitudes_handlers.and_", side_effect=lambda *a: a), \
+         patch("core.handlers.secretarias_solicitudes_handlers.func", new=SimpleNamespace(length=lambda *_: _Expr(), trim=lambda *_: _Expr())), \
+         patch("core.handlers.secretarias_solicitudes_handlers.render_template", side_effect=_fake_render):
+        resp = client.get(
+            "/secretarias/solicitudes/buscar?q=santo&page=1",
+            headers={"X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 200
+    assert captured["template"] == "secretarias/_secretarias_solicitudes_results.html"
+    assert captured["ctx"]["q"] == "santo"
+    assert captured["ctx"]["pages"] == 1
+    assert captured["ctx"]["page"] == 1

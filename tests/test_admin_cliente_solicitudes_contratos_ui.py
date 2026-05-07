@@ -203,15 +203,11 @@ def test_detalle_solicitud_inyecta_estado_y_snapshot_de_contrato():
 
     assert resp.status_code == 200
     assert captured.get("template") == "admin/solicitud_detail.html"
-    assert captured.get("contract_effective_state") == "enviado"
-    assert "Tipo:" in (captured.get("contract_snapshot_summary") or "")
-    assert captured.get("latest_contract").id == 901
-    assert isinstance(captured.get("contract_history"), list)
-    assert captured.get("contract_history")[0]["contract"].id == 901
-
     with open("templates/admin/solicitud_detail.html", "r", encoding="utf-8") as fh:
         tpl = fh.read()
-    assert "_solicitud_contract_block.html" in tpl
+    assert "solicitudDetailHeavyAsyncRegion" in tpl
+    assert "data-admin-lazy-fragment-url" in tpl
+    assert "solicitud_detail_heavy_fragment" in tpl
 
     with open("templates/admin/_solicitud_contract_block.html", "r", encoding="utf-8") as fh:
         contract_tpl = fh.read()

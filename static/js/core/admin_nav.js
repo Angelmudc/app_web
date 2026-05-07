@@ -12,6 +12,17 @@
   const PROGRESS_ID = "adminNavProgressBar";
   const PROGRESS_ACTIVE_CLASS = "is-active";
   const FALLBACK_EVENT = "admin:navigation-fallback";
+  const SNAPSHOT_TTL_MS = 120000;
+  const SNAPSHOT_LIMIT = 12;
+  const SNAPSHOT_STORAGE_PREFIX = "__admin_pjax_snapshot__::";
+
+  const snapshotCache = new Map();
+  const metrics = (window.__adminNavMetrics = window.__adminNavMetrics || {
+    snapshotHits: 0,
+    fetchLoads: 0,
+    snapshotStores: 0,
+  });
+
   let isNavigating = false;
   let pendingPopstate = null;
 
@@ -40,9 +51,175 @@
     return Math.max(0, Number(window.scrollY || window.pageYOffset || 0));
   }
 
+  function toSafeSelector(el) {
+    if (!el || !el.tagName) return "";
+    if (el.id) return `#${el.id}`;
+    const name = String(el.getAttribute && el.getAttribute("name") || "").trim();
+    if (name) return `${el.tagName.toLowerCase()}[name="${name.replace(/"/g, '\\"')}"]`;
+    return "";
+  }
+
+  function captureUiState(viewport) {
+    if (!viewport || !viewport.querySelectorAll) return null;
+    const openCollapseIds = Array.from(viewport.querySelectorAll(".collapse.show[id]"))
+      .map((el) => String(el.id || "").trim())
+      .filter(Boolean);
+    const activeTabs = Array.from(viewport.querySelectorAll("[data-bs-toggle='tab'], [data-bs-toggle='pill']"))
+      .filter((el) => el.classList.contains("active"))
+      .map((el) => String(el.getAttribute("data-bs-target") || el.getAttribute("href") || "").trim())
+      .filter((v) => v.startsWith("#"));
+    const values = {};
+    viewport.querySelectorAll("input[name], select[name], textarea[name]").forEach((el) => {
+      const name = String(el.getAttribute("name") || "").trim();
+      if (!name) return;
+      const type = String(el.type || "").toLowerCase();
+      if (type === "password" || type === "file") return;
+      if (type === "checkbox") {
+        if (!Array.isArray(values[name])) values[name] = [];
+        if (el.checked) values[name].push(String(el.value || "1"));
+        return;
+      }
+      if (type === "radio") {
+        if (el.checked) values[name] = String(el.value || "");
+        return;
+      }
+      values[name] = String(el.value || "");
+    });
+    return {
+      openCollapseIds,
+      activeTabs,
+      values,
+      activeSel: toSafeSelector(document.activeElement),
+    };
+  }
+
+  function applyUiState(viewport, state) {
+    if (!viewport || !state) return;
+
+    const values = state.values && typeof state.values === "object" ? state.values : {};
+    viewport.querySelectorAll("input[name], select[name], textarea[name]").forEach((el) => {
+      const name = String(el.getAttribute("name") || "").trim();
+      if (!name || !(name in values)) return;
+      const type = String(el.type || "").toLowerCase();
+      const value = values[name];
+      if (type === "checkbox") {
+        const arr = Array.isArray(value) ? value.map(String) : [];
+        el.checked = arr.includes(String(el.value || "1"));
+        return;
+      }
+      if (type === "radio") {
+        el.checked = String(el.value || "") === String(value || "");
+        return;
+      }
+      el.value = String(value || "");
+    });
+
+    const cssEscape = (v) => {
+      try {
+        if (window.CSS && typeof window.CSS.escape === "function") return window.CSS.escape(String(v || ""));
+      } catch (_) {}
+      return String(v || "").replace(/[^a-zA-Z0-9_-]/g, "\\$&");
+    };
+
+    const collapseIds = Array.isArray(state.openCollapseIds) ? state.openCollapseIds : [];
+    collapseIds.forEach((id) => {
+      const safe = cssEscape(id);
+      const panel = viewport.querySelector(`#${safe}`);
+      if (!panel) return;
+      panel.classList.add("show");
+      panel.setAttribute("aria-expanded", "true");
+      const toggle = viewport.querySelector(`[data-bs-target="#${safe}"], a[href="#${safe}"]`);
+      if (toggle) toggle.setAttribute("aria-expanded", "true");
+    });
+
+    const activeTabs = Array.isArray(state.activeTabs) ? state.activeTabs : [];
+    activeTabs.forEach((selector) => {
+      const toggle = viewport.querySelector(`[data-bs-target="${selector}"], a[href="${selector}"]`);
+      if (!toggle) return;
+      if (window.bootstrap && window.bootstrap.Tab) {
+        try {
+          window.bootstrap.Tab.getOrCreateInstance(toggle).show();
+          return;
+        } catch (_) {}
+      }
+      toggle.classList.add("active");
+      const pane = viewport.querySelector(selector);
+      if (pane) pane.classList.add("active", "show");
+    });
+  }
+
+  function snapshotStorageKey(url) {
+    return SNAPSHOT_STORAGE_PREFIX + String(url || "");
+  }
+
+  function saveSnapshot(url, payload) {
+    const key = String(url || "").trim();
+    if (!key || !payload || typeof payload.html !== "string") return;
+    const entry = {
+      html: payload.html,
+      title: String(payload.title || ""),
+      uiState: payload.uiState || null,
+      ts: Date.now(),
+    };
+    snapshotCache.set(key, entry);
+    if (snapshotCache.size > SNAPSHOT_LIMIT) {
+      let oldestKey = "";
+      let oldestTs = Infinity;
+      snapshotCache.forEach((value, k) => {
+        const ts = Number(value && value.ts) || 0;
+        if (ts < oldestTs) {
+          oldestTs = ts;
+          oldestKey = k;
+        }
+      });
+      if (oldestKey) snapshotCache.delete(oldestKey);
+    }
+    try {
+      sessionStorage.setItem(snapshotStorageKey(key), JSON.stringify(entry));
+    } catch (_) {}
+    metrics.snapshotStores += 1;
+  }
+
+  function loadSnapshot(url) {
+    const key = String(url || "").trim();
+    if (!key) return null;
+    const mem = snapshotCache.get(key);
+    if (mem && (Date.now() - Number(mem.ts || 0)) <= SNAPSHOT_TTL_MS) return mem;
+    try {
+      const raw = sessionStorage.getItem(snapshotStorageKey(key));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed.html !== "string") return null;
+      if ((Date.now() - Number(parsed.ts || 0)) > SNAPSHOT_TTL_MS) {
+        sessionStorage.removeItem(snapshotStorageKey(key));
+        return null;
+      }
+      snapshotCache.set(key, parsed);
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function captureEntryState(viewport) {
+    return {
+      scrollY: getCurrentScrollY(),
+      uiState: captureUiState(viewport),
+    };
+  }
+
   function updateCurrentHistoryScrollY() {
     const state = (history.state && typeof history.state === "object") ? history.state : {};
-    history.replaceState({ ...state, scrollY: getCurrentScrollY() }, "", window.location.href);
+    const viewport = getViewport(document);
+    const nextState = { ...state, ...captureEntryState(viewport) };
+    history.replaceState(nextState, "", window.location.href);
+    if (viewport) {
+      saveSnapshot(window.location.href, {
+        html: String(viewport.innerHTML || ""),
+        title: document.title,
+        uiState: nextState.uiState || null,
+      });
+    }
   }
 
   function ensureProgressBar() {
@@ -200,6 +377,12 @@
     if (hasActiveEditableElement()) return;
     const focusTarget = resolveFocusTarget(viewport, hashTarget);
     setFocusTemporarily(focusTarget);
+    if (opts.restoreActiveSel && viewport && viewport.querySelector) {
+      const active = viewport.querySelector(String(opts.restoreActiveSel));
+      if (active && typeof active.focus === "function") {
+        try { active.focus({ preventScroll: true }); } catch (_) {}
+      }
+    }
   }
 
   function emitFallback(reason, toUrl) {
@@ -227,6 +410,29 @@
     return hasLoginForm;
   }
 
+  function restoreFromSnapshot(viewport, snapshot, finalUrl, opts) {
+    if (!viewport || !snapshot || typeof snapshot.html !== "string") return false;
+    clearModalState();
+    viewport.innerHTML = snapshot.html;
+    if (snapshot.title) document.title = snapshot.title;
+    const uiState = (opts && opts.restoreUiState) || snapshot.uiState || null;
+    applyUiState(viewport, uiState);
+    applyScrollPolicy(finalUrl, viewport, {
+      fromPopstate: !!(opts && opts.fromPopstate),
+      restoreScrollY: opts && opts.restoreScrollY,
+      restoreActiveSel: uiState && uiState.activeSel,
+    });
+    dispatchNavigationComplete({
+      url: finalUrl,
+      title: document.title,
+      viewport,
+      fromPopstate: !!(opts && opts.fromPopstate),
+      restoredFromSnapshot: true,
+    });
+    metrics.snapshotHits += 1;
+    return true;
+  }
+
   async function navigateTo(url, options) {
     const opts = options || {};
     const requestedUrl = String(url || "").trim();
@@ -237,6 +443,7 @@
         pendingPopstate = {
           url: requestedUrl,
           restoreScrollY: opts.restoreScrollY,
+          restoreUiState: opts.restoreUiState || null,
         };
       }
       return false;
@@ -252,6 +459,13 @@
         return false;
       }
 
+      if (opts.fromPopstate) {
+        const snapshot = loadSnapshot(requestedUrl);
+        if (snapshot && restoreFromSnapshot(currentViewport, snapshot, requestedUrl, opts)) {
+          return true;
+        }
+      }
+
       const response = await fetch(requestedUrl, {
         method: "GET",
         credentials: "same-origin",
@@ -265,6 +479,7 @@
       const finalUrl = response.url || requestedUrl;
       const text = await response.text();
       const nextDoc = parseHtml(text);
+      metrics.fetchLoads += 1;
 
       if (shouldForceFullRedirect(response, nextDoc)) {
         const reason = response.status === 401
@@ -297,6 +512,8 @@
         document.title = nextTitle;
       }
 
+      applyUiState(currentViewport, opts.restoreUiState || null);
+
       const state = {
         ...(history.state && typeof history.state === "object" ? history.state : {}),
         [STATE_KEY]: true,
@@ -304,10 +521,9 @@
         scrollY: opts.fromPopstate && Number.isFinite(opts.restoreScrollY)
           ? Math.max(0, Number(opts.restoreScrollY) || 0)
           : 0,
+        uiState: captureUiState(currentViewport),
       };
-      if (opts.fromPopstate) {
-        history.replaceState(state, "", finalUrl);
-      } else if (opts.replaceState) {
+      if (opts.fromPopstate || opts.replaceState) {
         history.replaceState(state, "", finalUrl);
       } else {
         history.pushState(state, "", finalUrl);
@@ -316,12 +532,21 @@
       applyScrollPolicy(finalUrl, currentViewport, {
         fromPopstate: !!opts.fromPopstate,
         restoreScrollY: opts.restoreScrollY,
+        restoreActiveSel: state.uiState && state.uiState.activeSel,
       });
+
+      saveSnapshot(finalUrl, {
+        html: String(currentViewport.innerHTML || ""),
+        title: document.title,
+        uiState: state.uiState || null,
+      });
+
       dispatchNavigationComplete({
         url: finalUrl,
         title: document.title,
         viewport: currentViewport,
         fromPopstate: !!opts.fromPopstate,
+        restoredFromSnapshot: false,
       });
       return true;
     } catch (_) {
@@ -339,6 +564,7 @@
           fromPopstate: true,
           replaceState: true,
           restoreScrollY: queued.restoreScrollY,
+          restoreUiState: queued.restoreUiState || null,
         });
       }
     }
@@ -385,6 +611,7 @@
       fromPopstate: true,
       replaceState: true,
       restoreScrollY: Number(state.scrollY),
+      restoreUiState: state.uiState || null,
     });
   }
 
@@ -392,13 +619,21 @@
     const here = new URL(window.location.href);
     if (!isPilotPath(here.pathname)) return;
 
+    const viewport = getViewport(document);
     const state = {
       ...(history.state && typeof history.state === "object" ? history.state : {}),
       [STATE_KEY]: true,
       url: here.href,
-      scrollY: getCurrentScrollY(),
+      ...captureEntryState(viewport),
     };
     history.replaceState(state, "", here.href);
+    if (viewport) {
+      saveSnapshot(here.href, {
+        html: String(viewport.innerHTML || ""),
+        title: document.title,
+        uiState: state.uiState || null,
+      });
+    }
 
     document.addEventListener("click", onClick, true);
     window.addEventListener("popstate", onPopstate);

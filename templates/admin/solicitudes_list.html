@@ -57,12 +57,16 @@
     <div class="col-md-6">
       <div class="glass-card p-3">
         <form method="get"
+              id="solicitudesFilterForm"
               class="row g-2 align-items-end"
               action="{{ url_for('admin.listar_solicitudes') }}"
               data-admin-async-form
               data-async-target="#solicitudesAsyncRegion"
               data-async-busy-container="#solicitudesAsyncScope"
               data-async-preserve-scroll="true"
+              data-async-history="true"
+              data-async-debounce-ms="300"
+              data-async-debounce-fields="q"
               data-async-fallback="native">
           <input type="hidden" name="triage" value="{{ triage or '' }}">
           <div class="col-md-5">
@@ -94,4 +98,20 @@
     </div>
   </div>
 </div>
+<script>
+document.addEventListener('shown.bs.collapse', async (ev) => {
+  const slot = ev.target && ev.target.querySelector('[data-quick-view-slot="1"]');
+  if (!slot || slot.dataset.loaded === '1') return;
+  const url = slot.dataset.quickViewUrl || '';
+  if (!url) return;
+  try {
+    const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    if (!resp.ok) throw new Error('quick_view_fetch_failed');
+    slot.innerHTML = await resp.text();
+    slot.dataset.loaded = '1';
+  } catch (_e) {
+    slot.textContent = 'No se pudo cargar el resumen rápido.';
+  }
+});
+</script>
 {% endblock %}

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import secrets
 import unittest
 from datetime import date, datetime
 from types import SimpleNamespace
@@ -146,6 +147,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
             "Accept": "application/json",
             "X-Requested-With": "XMLHttpRequest",
             "X-Admin-Async": "1",
+            "Idempotency-Key": f"test-{secrets.token_hex(12)}",
         }
 
     def test_filtros_async_devuelven_json_con_html_parcial(self):
@@ -183,6 +185,24 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIn('id="solicitudesSummaryAsyncRegion"', html)
         self.assertIn("En proceso", html)
         self.assertIn("Copiables", html)
+        self.assertIn('id="solicitudesFilterForm"', html)
+        self.assertIn('data-async-debounce-ms="300"', html)
+        self.assertIn('data-async-history="true"', html)
+
+    def test_paginacion_async_conserva_querystring_en_links(self):
+        rows = [_solicitud_stub(i, f"SOL-{i:03d}", "activa") for i in range(1, 26)]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                resp = self.client.get(
+                    "/admin/solicitudes?q=SOL&estado=activa&triage=todas&page=2&per_page=10",
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("q=SOL", html)
+        self.assertIn("estado=activa", html)
+        self.assertIn("triage=todas", html)
 
     def test_paginacion_async_devuelve_pagina_sin_recarga(self):
         rows = [_solicitud_stub(i, f"SOL-{i:03d}", "activa") for i in range(1, 26)]
@@ -650,7 +670,10 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/poner_espera_pago",
-                    data={"next": "/admin/solicitudes?page=1"},
+                    data={
+                        "next": "/admin/solicitudes?page=1",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
+                    },
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -697,7 +720,10 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/quitar_espera_pago",
-                    data={"next": "/admin/solicitudes?page=1"},
+                    data={
+                        "next": "/admin/solicitudes?page=1",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
+                    },
                     headers=self._async_headers(),
                     follow_redirects=False,
                 )
@@ -903,6 +929,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     data={
                         "next": "/admin/solicitudes?page=1",
                         "_async_target": "#solicitudReemplazoActionsAsyncRegion-10",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
                     },
                     headers=self._async_headers(),
                     follow_redirects=False,
@@ -946,6 +973,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     data={
                         "next": "/admin/clientes/7#sol-10",
                         "_async_target": "#clienteSolicitudReemplazoActionsAsyncRegion-10",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
                     },
                     headers=self._async_headers(),
                     follow_redirects=False,

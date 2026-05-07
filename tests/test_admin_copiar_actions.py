@@ -81,6 +81,14 @@ class _QueryChain:
     def filter(self, *args, **kwargs):
         return self
 
+    def filter_by(self, **kwargs):
+        if not kwargs:
+            return self
+        rows = self.rows
+        for k, v in kwargs.items():
+            rows = [r for r in rows if getattr(r, k, None) == v]
+        return _QueryChain(rows)
+
     def order_by(self, *args, **kwargs):
         return self
 
@@ -95,6 +103,14 @@ class _QueryChain:
 
     def all(self):
         return self.rows
+
+    def first(self):
+        return self.rows[0] if self.rows else None
+
+    def first_or_404(self):
+        if not self.rows:
+            raise RuntimeError("404")
+        return self.rows[0]
 
 
 class _DummyField:
@@ -139,6 +155,11 @@ class _CandidataQueryChain:
 
     def first(self):
         return self.rows[0] if self.rows else None
+
+    def first_or_404(self):
+        if not self.rows:
+            raise RuntimeError("404")
+        return self.rows[0]
 
 
 class _LookupCandidataQueryChain:
@@ -213,8 +234,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("data-order-text", html)
-        self.assertIn("Dominicana", html)
+        self.assertIn("data-text-url=", html)
         self.assertIn("Acciones", html)
         self.assertIn('data-no-loader="true"', html)
         self.assertIn('id="contextActionPanel"', html)
@@ -225,9 +245,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('<textarea class="form-control" name="motivo" rows="2" minlength="5" required></textarea>', html)
         self.assertIn('<button type="submit" class="btn btn-danger" data-no-loader="true">Confirmar cancelación</button>', html)
         self.assertIn('id="contextActionPanelClose"', html)
+        self.assertIn('id="copiarSolicitudesSearchForm"', html)
+        self.assertIn('data-async-debounce-ms="300"', html)
+        self.assertIn('data-async-history="true"', html)
 
     def test_copiar_solicitudes_respeta_pasaje_texto_libre(self):
-        self._login("Karla", "9989")
+        self._login("Owner", "admin123")
         solicitud = _SolicitudStub(estado="activa")
         solicitud.pasaje_aporte = False
         solicitud.detalles_servicio = {"pasaje": {"mode": "otro", "text": "pasaje aparte por ruta"}}
@@ -238,11 +261,16 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 200)
-        html = resp.get_data(as_text=True)
-        self.assertIn("pasaje aparte por ruta", html)
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                text_resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
+        self.assertEqual(text_resp.status_code, 200)
+        payload = text_resp.get_json() or {}
+        self.assertIn("pasaje aparte por ruta", payload.get("order_text") or "")
 
     def test_copiar_solicitudes_formatea_funciones_y_areas_humano(self):
-        self._login("Karla", "9989")
+        self._login("Owner", "admin123")
         solicitud = _SolicitudStub(estado="activa")
         solicitud.funciones = ["cocinar", "ninos", "limpieza", "lavar"]
         solicitud.funciones_otro = "Mandados"
@@ -252,10 +280,10 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
                  patch("admin.routes.AdminSolicitudForm", _DummyForm):
-                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
+                resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
 
         self.assertEqual(resp.status_code, 200)
-        html = resp.get_data(as_text=True)
+        html = (resp.get_json() or {}).get("order_text", "")
         self.assertIn("Funciones: Limpieza general, Cocinar, Lavar, Cuidar ni", html)
         self.assertTrue(("Salón de juegos" in html) or ("Sal\\u00f3n de juegos" in html))
         self.assertTrue(("Jardín" in html) or ("Jard\\u00edn" in html))
@@ -341,7 +369,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         )
 
     def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
-        self._login("Karla", "9989")
+        self._login("Owner", "admin123")
         s = _SolicitudStub(estado="activa")
         s.envejeciente_tipo_cuidado = "encamado"
         s.envejeciente_responsabilidades = ["pampers", "higiene", "medicamentos"]
@@ -349,8 +377,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _QueryChain([s])), \
                  patch("admin.routes.AdminSolicitudForm", _DummyForm):
-                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
-        html = resp.get_data(as_text=True)
+                resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
+        html = (resp.get_json() or {}).get("order_text", "")
         expected = format_envejeciente_resumen(
             tipo_cuidado="encamado",
             responsabilidades=["pampers", "higiene", "medicamentos"],
@@ -366,15 +394,15 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("Nota sobre el envejeciente:", html)
 
     def test_copiar_solicitudes_incluye_envejeciente_solo_acompanamiento(self):
-        self._login("Karla", "9989")
+        self._login("Owner", "admin123")
         s = _SolicitudStub(estado="activa")
         s.envejeciente_tipo_cuidado = "encamado"
         s.envejeciente_solo_acompanamiento = True
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _QueryChain([s])), \
                  patch("admin.routes.AdminSolicitudForm", _DummyForm):
-                resp = self.client.get("/admin/solicitudes/copiar", follow_redirects=False)
-        html = resp.get_data(as_text=True)
+                resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
+        html = (resp.get_json() or {}).get("order_text", "")
         expected = format_envejeciente_resumen(
             tipo_cuidado="encamado",
             responsabilidades=[],
@@ -425,8 +453,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('id="paidModalSharedForm" class="d-none" data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup" data-no-loader="true"', html)
         self.assertIn('<button type="submit" class="btn btn-success" data-no-loader="true">Guardar pago</button>', html)
         self.assertIn('data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup"', html)
-        self.assertIn("paidSearchBtn.addEventListener('click', () => lookupPaidCandidates(true, true, false));", html)
-        self.assertIn('function clearUiLoaders()', html)
+        self.assertIn('src="/static/js/admin/solicitudes_copiar.js"', html)
 
     def test_candidatas_lookup_copiar_busca_fuera_de_subconjunto_inicial(self):
         self._login("Cruz", "8998")

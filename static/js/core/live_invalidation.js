@@ -58,6 +58,7 @@
     const REGION_THROTTLE_MS = 1800;
     const POLL_INTERVAL_MS = 45000;
     const SSE_RETRY_MS = 60000;
+    const SSE_FAIL_COOLDOWN_MS = 5 * 60 * 1000;
 
     const seenEvents = new Map();
     const pendingByEntity = new Map(); // entityKey -> { regions:Set, timer:number|null }
@@ -72,6 +73,8 @@
     let sseDisabledByMode = false;
     let stopped = false;
     const SSE_MODE_STORAGE_KEY = "admin_live_invalidation_mode";
+    const SSE_COOLDOWN_STORAGE_KEY = "admin_live_invalidation_sse_cooldown_until";
+    let sseErrorStreak = 0;
 
     function readStoredSseMode() {
       try {
@@ -86,6 +89,33 @@
       try {
         window.sessionStorage.setItem(SSE_MODE_STORAGE_KEY, "poll_only");
       } catch (_e) {}
+    }
+
+    function readSseCooldownUntil() {
+      try {
+        return Math.max(0, Number(window.sessionStorage.getItem(SSE_COOLDOWN_STORAGE_KEY) || 0) || 0);
+      } catch (_e) {
+        return 0;
+      }
+    }
+
+    function setSseCooldown(ms) {
+      const until = nowMs() + Math.max(1000, Number(ms || 0) || 0);
+      try {
+        window.sessionStorage.setItem(SSE_COOLDOWN_STORAGE_KEY, String(until));
+      } catch (_e) {}
+    }
+
+    function clearSseCooldown() {
+      try {
+        window.sessionStorage.removeItem(SSE_COOLDOWN_STORAGE_KEY);
+      } catch (_e) {}
+    }
+
+    function isSseCoolingDown() {
+      const until = readSseCooldownUntil();
+      if (until <= 0) return false;
+      return until > nowMs();
     }
 
     if (readStoredSseMode() === "poll_only") {
@@ -107,6 +137,12 @@
     function reportObservability(eventName, payload) {
       if (!observabilityUrl || !eventName || !isViewActive()) return;
       const body = JSON.stringify(Object.assign({ event: String(eventName) }, payload || {}));
+      try {
+        if (navigator.sendBeacon && window.Blob) {
+          const blob = new Blob([body], { type: "application/json" });
+          if (navigator.sendBeacon(observabilityUrl, blob)) return;
+        }
+      } catch (_) {}
       fetch(observabilityUrl, {
         method: "POST",
         credentials: "same-origin",
@@ -117,14 +153,7 @@
           ...(csrfToken ? { "X-CSRFToken": csrfToken } : {}),
         },
         body,
-      }).catch(function () {
-        try {
-          if (navigator.sendBeacon && window.Blob) {
-            const blob = new Blob([body], { type: "application/json" });
-            navigator.sendBeacon(observabilityUrl, blob);
-          }
-        } catch (_) {}
-      });
+      }).catch(function () {});
     }
 
     function normalizeSolicitudId(value) {
@@ -493,6 +522,7 @@
     function ensureSseRetry() {
       if (sseDisabledByMode) return;
       if (sseRetryTimer) return;
+      if (isSseCoolingDown()) return;
       sseRetryTimer = window.setTimeout(function () {
         sseRetryTimer = null;
         startSSE();
@@ -517,6 +547,10 @@
 
     function startSSE() {
       if (!isViewActive()) return;
+      if (isSseCoolingDown()) {
+        startPolling();
+        return;
+      }
       if (sseDisabledByMode || !streamUrl || !window.EventSource) {
         startPolling();
         return;
@@ -561,18 +595,27 @@
         });
 
         eventSource.onopen = function () {
+          sseErrorStreak = 0;
+          clearSseCooldown();
           stopPolling();
           stopSseRetry();
           reportObservability("sse_open", {});
         };
 
         eventSource.onerror = function () {
+          sseErrorStreak += 1;
           closeSSE();
           startPolling();
+          if (sseErrorStreak >= 2) {
+            setSseCooldown(SSE_FAIL_COOLDOWN_MS);
+            stopSseRetry();
+          }
           probePollOnlyOrUnauthorized().then(function (isDisabled) {
             if (isDisabled) {
               stopSseRetry();
+              return;
             }
+            if (!isSseCoolingDown()) ensureSseRetry();
           }).catch(function () {});
         };
       }).catch(function () {

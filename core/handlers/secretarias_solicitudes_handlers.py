@@ -13,6 +13,7 @@ from utils.timezone import format_rd_datetime, rd_today
 from utils.envejeciente import format_envejeciente_resumen
 
 from core import legacy_handlers as legacy_h
+from utils.admin_async import wants_json
 
 try:
     from forms import AdminSolicitudForm
@@ -47,8 +48,6 @@ def _norm_area(s):
         "jardin": "jardín",
         "area_lavado": "área de lavado",
         "marquesina": "marquesina",
-        "patio": "patio",
-        "terraza": "terraza",
         "piscina": "piscina",
         "estudio": "estudio",
         "sala": "sala",
@@ -76,6 +75,13 @@ def _normalize_modalidad_publicar(value):
 
 def _s(v):
     return "" if v is None else str(v).strip()
+
+
+def _secretarias_async_requested() -> bool:
+    try:
+        return wants_json(request)
+    except Exception:
+        return False
 
 
 def _normalize_age_text(text):
@@ -372,6 +378,7 @@ def secretarias_copiar_solicitudes():
                 "modalidad": item_base["modalidad"],
                 "copiada_hoy": False,
                 "order_text": item_base["order_text"],
+                "copy_text_url": url_for("secretarias_solicitud_texto", id=s.id),
             }
         )
 
@@ -403,6 +410,18 @@ def secretarias_copiar_solicitud(id):
 
     flash(f"Solicitud {_s(s.codigo_solicitud)} copiada. Ya no se mostrará hasta mañana.", "success")
     return redirect(url_for("secretarias_copiar_solicitudes"))
+
+
+@roles_required("admin", "secretaria")
+def secretarias_solicitud_texto(id):
+    s = (
+        legacy_h.Solicitud.query
+        .options(load_only(*_solicitud_load_only_cols()))
+        .filter(legacy_h.Solicitud.id == id)
+        .first_or_404()
+    )
+    base = _build_copy_order_item(s, _funciones_choices_map())
+    return jsonify({"ok": True, "id": id, "order_text": base["order_text"]}), 200
 
 
 @roles_required("admin", "secretaria")
@@ -616,6 +635,7 @@ def secretarias_buscar_solicitudes():
                 ),
                 "copiada_ciclo": (s.last_copiado_at is not None),
                 "order_text": order_text,
+                "copy_text_url": url_for("secretarias_solicitud_texto", id=s.id),
             }
         )
 
@@ -631,8 +651,7 @@ def secretarias_buscar_solicitudes():
     prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
     next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
 
-    return render_template(
-        "secretarias_solicitudes_buscar.html",
+    ctx = dict(
         items=items,
         page=paginado.page,
         pages=total_pages,
@@ -650,6 +669,9 @@ def secretarias_buscar_solicitudes():
         prev_url=prev_url,
         next_url=next_url,
     )
+    if _secretarias_async_requested():
+        return render_template("secretarias/_secretarias_solicitudes_results.html", **ctx)
+    return render_template("secretarias_solicitudes_buscar.html", **ctx)
 
 
 @roles_required("admin", "secretaria")
@@ -699,8 +721,7 @@ def secretarias_filtrar_solicitudes():
         funciones_opts = []
 
     if not has_useful_filters:
-        return render_template(
-            "secretarias_solicitudes_buscar.html",
+        ctx = dict(
             items=[],
             page=1,
             pages=1,
@@ -736,6 +757,9 @@ def secretarias_filtrar_solicitudes():
             },
             funciones_opts=funciones_opts,
         )
+        if _secretarias_async_requested():
+            return render_template("secretarias/_secretarias_solicitudes_results.html", **ctx)
+        return render_template("secretarias_solicitudes_buscar.html", **ctx)
 
     cols = _solicitud_load_only_cols()
     qy = db.session.query(legacy_h.Solicitud).options(load_only(*cols)).execution_options(stream_results=True)
@@ -844,6 +868,8 @@ def secretarias_filtrar_solicitudes():
                 "adultos": _s(getattr(s, "adultos", "")),
                 "ninos": _s(getattr(s, "ninos", "")),
                 "copy_action_endpoint": "secretarias_copiar_solicitud",
+                "order_text": base["order_text"],
+                "copy_text_url": url_for("secretarias_solicitud_texto", id=s.id),
             }
         )
 
@@ -859,8 +885,7 @@ def secretarias_filtrar_solicitudes():
     prev_url = page_url(paginado.page - 1) if paginado.page > 1 else None
     next_url = page_url(paginado.page + 1) if paginado.page < total_pages else None
 
-    return render_template(
-        "secretarias_solicitudes_buscar.html",
+    ctx = dict(
         items=items,
         page=paginado.page,
         pages=total_pages,
@@ -896,3 +921,6 @@ def secretarias_filtrar_solicitudes():
         },
         funciones_opts=funciones_opts,
     )
+    if _secretarias_async_requested():
+        return render_template("secretarias/_secretarias_solicitudes_results.html", **ctx)
+    return render_template("secretarias_solicitudes_buscar.html", **ctx)

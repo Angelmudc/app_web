@@ -45,19 +45,13 @@
           <button
             type="button"
             class="btn btn-sm btn-primary copy-btn"
-            data-order-text='{{ s.order_text | tojson | safe }}'
+            data-text-url="{{ s.copy_text_url }}"
             data-solicitud-id="{{ s.id }}"
+            data-copy-action="{{ url_for('admin.copiar_solicitud', id=s.id) }}"
             aria-label="Copiar texto de la solicitud {{ s.codigo_solicitud or '' }}"
           >
             <i class="bi bi-clipboard-check me-1"></i> Copiar
           </button>
-
-          <form method="post" action="{{ url_for('admin.copiar_solicitud', id=s.id) }}" class="d-none copy-form js-inline-async-action" data-success-message="Solicitud copiada." data-remove-card="1">
-            {% if csrf_token is defined %}
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            {% endif %}
-            <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-          </form>
 
           <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" data-no-loader="true">
@@ -66,27 +60,27 @@
             <ul class="dropdown-menu dropdown-menu-end">
               {% if s.estado != 'espera_pago' %}
               <li>
-                <form method="post" action="{{ url_for('admin.pausar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud pausada por espera de perfil." data-remove-card="1">
-                  {% if csrf_token is defined %}
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {% endif %}
-                  <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                  <button type="submit" class="dropdown-item px-0">
-                    ⏸️ Pausa por espera de perfil
-                  </button>
-                </form>
+                <button
+                  type="button"
+                  class="dropdown-item js-inline-async-action-btn"
+                  data-action="{{ url_for('admin.pausar_espera_perfil_desde_copiar', id=s.id) }}"
+                  data-solicitud-id="{{ s.id }}"
+                  data-no-loader="true"
+                >
+                  ⏸️ Pausa por espera de perfil
+                </button>
               </li>
               {% else %}
               <li>
-                <form method="post" action="{{ url_for('admin.reanudar_espera_perfil_desde_copiar', id=s.id) }}" class="px-3 py-1 js-inline-async-action" data-success-message="Solicitud reanudada." data-remove-card="0">
-                  {% if csrf_token is defined %}
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  {% endif %}
-                  <input type="hidden" name="next" value="{{ request.full_path }}#sol-{{ s.id }}">
-                  <button type="submit" class="dropdown-item px-0 text-success">
-                    ▶️ Reanudar solicitud
-                  </button>
-                </form>
+                <button
+                  type="button"
+                  class="dropdown-item text-success js-inline-async-action-btn"
+                  data-action="{{ url_for('admin.reanudar_espera_perfil_desde_copiar', id=s.id) }}"
+                  data-solicitud-id="{{ s.id }}"
+                  data-no-loader="true"
+                >
+                  ▶️ Reanudar solicitud
+                </button>
               </li>
               {% endif %}
 
@@ -145,6 +139,8 @@
              {% if page > 1 %}data-admin-async-link
              data-async-target="#copiarSolicitudesResults"
              data-async-busy-container="#copiarSolicitudesScope"
+             data-async-history="true"
+             data-async-history-form="#copiarSolicitudesSearchForm"
              data-async-preserve-scroll="true"{% endif %}>Anterior</a>
         </li>
         <li class="page-item disabled">
@@ -156,6 +152,8 @@
              {% if has_more %}data-admin-async-link
              data-async-target="#copiarSolicitudesResults"
              data-async-busy-container="#copiarSolicitudesScope"
+             data-async-history="true"
+             data-async-history-form="#copiarSolicitudesSearchForm"
              data-async-preserve-scroll="true"{% endif %}>Siguiente</a>
         </li>
       </ul>
@@ -174,6 +172,8 @@
        data-admin-async-link
        data-async-target="#copiarSolicitudesResults"
        data-async-busy-container="#copiarSolicitudesScope"
+       data-async-history="true"
+       data-async-history-form="#copiarSolicitudesSearchForm"
        data-async-preserve-scroll="true">Limpiar búsqueda</a>
   {% else %}
     <div class="small mt-1">Cuando existan solicitudes copiables, aparecerán aquí.</div>

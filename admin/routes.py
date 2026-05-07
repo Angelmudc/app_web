@@ -488,6 +488,7 @@ def _claim_idempotency(*, scope: str, entity_type: str, entity_id: int | str, ac
         request_hash=req_hash,
     )
     try:
+        _maybe_assign_sqlite_pk(row, RequestIdempotencyKey)
         db.session.add(row)
         db.session.flush()
         setattr(row, "request_hash_conflict", False)
@@ -1455,14 +1456,14 @@ def live_invalidation_stream():
         if wants_json_probe:
             response = jsonify(
                 {
-                    "ok": False,
-                    "error": "stream_disabled",
+                    "ok": True,
+                    "error": None,
                     "mode": "poll_only",
                     "replaced_by": {"poll_url": url_for("admin.live_invalidation_poll")},
                     "ts": iso_utc_z(),
                 }
             )
-            response.status_code = 503
+            response.status_code = 200
             response.headers["X-Live-Invalidation-Mode"] = "poll_only"
             return response
 
@@ -1519,11 +1520,14 @@ def live_invalidation_stream():
             except Exception as exc:
                 redis_client = None
                 stream_key = ""
-                current_app.logger.warning(
-                    "[f4-live] redis stream unavailable; using heartbeat-only mode (%s: %s)",
-                    type(exc).__name__,
-                    str(exc),
-                )
+                dedupe_key = f"f4_live_warn_boot:{type(exc).__name__}"
+                if not bp_get(dedupe_key, default=0, context="f4_live_warn_boot_get"):
+                    current_app.logger.warning(
+                        "[f4-live] redis stream unavailable; using heartbeat-only mode (%s: %s)",
+                        type(exc).__name__,
+                        str(exc),
+                    )
+                    bp_set(dedupe_key, 1, timeout=120, context="f4_live_warn_boot_set")
 
             while True:
                 now_ts = time.time()
@@ -1557,11 +1561,14 @@ def live_invalidation_stream():
                             pass
                             continue
                         redis_client = None
-                        current_app.logger.warning(
-                            "[f4-live] stream read failed; switching to heartbeat-only mode (%s: %s)",
-                            type(exc).__name__,
-                            str(exc),
-                        )
+                        dedupe_key = f"f4_live_warn_read:{type(exc).__name__}"
+                        if not bp_get(dedupe_key, default=0, context="f4_live_warn_read_get"):
+                            current_app.logger.warning(
+                                "[f4-live] stream read failed; switching to heartbeat-only mode (%s: %s)",
+                                type(exc).__name__,
+                                str(exc),
+                            )
+                            bp_set(dedupe_key, 1, timeout=120, context="f4_live_warn_read_set")
 
                 if (now_ts - last_heartbeat_at) >= heartbeat_every_sec:
                     _live_stream_refresh(stream_slot_id)
@@ -13901,42 +13908,13 @@ def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
 @staff_required
 def detalle_solicitud(cliente_id, id):
     with _p1c1_perf_scope("solicitud_detail") as perf_done:
-        # Carga completa para evitar N+1 en plantilla
+        # Carga base para primer render liviano; bloques pesados se cargan en fragmento async.
         s = (Solicitud.query
              .options(
-                 joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new),
                  joinedload(Solicitud.candidata)
              )
              .filter_by(id=id, cliente_id=cliente_id)
              .first_or_404())
-
-        # Historial de envíos (inicial + reemplazos válidos)
-        envios = []
-        if s.candidata:
-            envios.append({
-                'tipo':     'Envío inicial',
-                'candidata': s.candidata,
-                'fecha':     s.fecha_solicitud
-            })
-
-        reemplazos_ordenados = sorted(list(s.reemplazos or []),
-                                      key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min)
-        reemplazo_activo = _active_reemplazo_for_solicitud(s)
-        for idx, r in enumerate(reemplazos_ordenados, start=1):
-            if r.candidata_new:
-                envios.append({
-                    'tipo':     f'Reemplazo {idx}',
-                    'candidata': r.candidata_new,
-                    'fecha':     r.fecha_inicio_reemplazo or r.created_at
-                })
-
-        # Cancelaciones
-        cancelaciones = []
-        if s.estado == 'cancelada' and s.fecha_cancelacion:
-            cancelaciones.append({
-                'fecha':  s.fecha_cancelacion,
-                'motivo': s.motivo_cancelacion
-            })
 
         # 👉 Resumen listo para enviar al cliente (helper que ya te di antes)
         resumen_cliente = build_resumen_cliente_solicitud(s)
@@ -13951,114 +13929,75 @@ def detalle_solicitud(cliente_id, id):
             or str(session.get("role", "") or "").strip().lower()
         )
         is_admin_role = role in ("owner", "admin")
-        contracts_schema_ready = True
-        latest_contract = None
-        contract_history = []
-        latest_signed_contract = None
-        try:
-            contract_rows = (
-                ContratoDigital.query.options(
-                    load_only(
-                        ContratoDigital.id,
-                        ContratoDigital.solicitud_id,
-                        ContratoDigital.cliente_id,
-                        ContratoDigital.version,
-                        ContratoDigital.estado,
-                        ContratoDigital.snapshot_fijado_at,
-                        ContratoDigital.token_expira_at,
-                        ContratoDigital.enviado_at,
-                        ContratoDigital.primer_visto_at,
-                        ContratoDigital.firmado_at,
-                        ContratoDigital.pdf_final_size_bytes,
-                        ContratoDigital.contenido_snapshot_json,
-                        ContratoDigital.anulado_at,
-                        ContratoDigital.created_at,
-                        ContratoDigital.updated_at,
-                    )
-                )
-                .filter_by(solicitud_id=s.id)
-                .order_by(ContratoDigital.version.desc(), ContratoDigital.id.desc())
-                .all()
-            )
-            if contract_rows:
-                latest_contract = contract_rows[0]
-                latest_signed_contract = next(
-                    (
-                        row for row in contract_rows
-                        if (row.firmado_at is not None) or (str(row.estado or "").strip().lower() == "firmado")
-                    ),
-                    None,
-                )
-
-                links = session.get("contract_links")
-                links = links if isinstance(links, dict) else {}
-                for idx, row in enumerate(contract_rows):
-                    is_expired = _is_contract_expired(row)
-                    effective_state = _contract_effective_state(row, contrato_expirado=is_expired)
-                    contract_history.append({
-                        "contract": row,
-                        "effective_state": effective_state,
-                        "is_expired": is_expired,
-                        "has_pdf": bool(getattr(row, "pdf_final_size_bytes", 0)),
-                        "is_current": idx == 0,
-                        "is_latest_signed": bool(latest_signed_contract and latest_signed_contract.id == row.id),
-                        "is_active": effective_state in {"borrador", "enviado", "visto"},
-                        "session_link": links.get(str(row.id), ""),
-                    })
-        except OperationalError as exc:
-            db.session.rollback()
-            if _is_missing_contract_table_error(exc):
-                contracts_schema_ready = False
-            else:
-                raise
-        contrato_expirado = _is_contract_expired(latest_contract)
-        latest_contract_link = None
-        if latest_contract is not None:
-            links = session.get("contract_links")
-            if isinstance(links, dict):
-                latest_contract_link = links.get(str(latest_contract.id))
-        now_utc = utc_now_naive()
-        _score, priority_label, is_stagnant, _hours = _solicitud_priority_snapshot(s, now_dt=now_utc)
-        needs_followup_today = _solicitud_needs_followup_today(
-            is_stagnant=is_stagnant,
-            priority_label=priority_label,
-        )
-        manual_followup = _manual_followup_snapshot(
-            getattr(s, "fecha_seguimiento_manual", None),
-            today_rd=rd_today(),
-        )
         solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
 
         html = render_template(
             'admin/solicitud_detail.html',
             solicitud      = s,
-            envios         = envios,
-            cancelaciones  = cancelaciones,
-            reemplazos     = reemplazos_ordenados,
-            reemplazo_activo=reemplazo_activo,
             resumen_cliente=resumen_cliente,
             pasaje_copy_text=pasaje_copy_text,
             pasaje_copy_mode=pasaje_copy_mode,
             pasaje_copy_other_text=pasaje_copy_other_text,
             is_admin_role=is_admin_role,
-            latest_contract=latest_contract,
-            contract_history=contract_history,
-            latest_signed_contract=latest_signed_contract,
-            contracts_schema_ready=contracts_schema_ready,
-            contrato_expirado=contrato_expirado,
-            contract_effective_state=_contract_effective_state(latest_contract, contrato_expirado=contrato_expirado),
-            contract_snapshot_summary=_contract_snapshot_summary(
-                getattr(latest_contract, "contenido_snapshot_json", None) if latest_contract else None
-            ),
-            latest_contract_link=latest_contract_link,
-            now_utc=now_utc,
-            priority_label_operativa=priority_label,
-            needs_followup_today=needs_followup_today,
-            manual_followup=manual_followup,
             solicitud_detail_url=solicitud_detail_url,
             chat_feature_enabled=_chat_enabled(),
         )
         return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
+
+
+@admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/_heavy')
+@login_required
+@staff_required
+def solicitud_detail_heavy_fragment(cliente_id, id):
+    with _p1c1_perf_scope("solicitud_detail_heavy_fragment") as perf_done:
+        solicitud = (
+            Solicitud.query
+            .options(
+                joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_new),
+                joinedload(Solicitud.reemplazos).joinedload(Reemplazo.candidata_old),
+                joinedload(Solicitud.candidata),
+            )
+            .filter_by(id=id, cliente_id=cliente_id)
+            .first_or_404()
+        )
+
+        envios = []
+        if solicitud.candidata:
+            envios.append({
+                "tipo": "Envío inicial",
+                "candidata": solicitud.candidata,
+                "fecha": solicitud.fecha_solicitud,
+            })
+
+        reemplazos = sorted(
+            list(solicitud.reemplazos or []),
+            key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min,
+        )
+        for idx, row in enumerate(reemplazos, start=1):
+            if row.candidata_new:
+                envios.append({
+                    "tipo": f"Reemplazo {idx}",
+                    "candidata": row.candidata_new,
+                    "fecha": row.fecha_inicio_reemplazo or row.created_at,
+                })
+        pasaje_mode, pasaje_other_text = read_pasaje_mode_text(
+            pasaje_aporte=getattr(solicitud, "pasaje_aporte", False),
+            detalles_servicio=getattr(solicitud, "detalles_servicio", None),
+            nota_cliente=getattr(solicitud, "nota_cliente", ""),
+        )
+
+        html = render_template(
+            "admin/_solicitud_detail_heavy_region.html",
+            solicitud=solicitud,
+            envios=envios,
+            reemplazos=reemplazos,
+            pasaje_copy_mode=pasaje_mode,
+            pasaje_copy_other_text=pasaje_other_text,
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "solicitudDetailHeavyAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_heavy"})
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/_summary')
@@ -15989,6 +15928,70 @@ def solicitudes_summary_fragment():
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["X-Async-Fragment-Region"] = "solicitudesSummaryAsyncRegion"
         return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_summary"})
+
+
+@admin_bp.route('/solicitudes/<int:id>/quick-view', methods=['GET'])
+@login_required
+@staff_required
+def solicitud_quick_view_fragment(id: int):
+    with _p1c1_perf_scope("solicitud_quick_view_fragment") as perf_done:
+        load_cols = [
+            Solicitud.id,
+            Solicitud.cliente_id,
+            Solicitud.codigo_solicitud,
+            Solicitud.ciudad_sector,
+            Solicitud.modalidad_trabajo,
+            Solicitud.horario,
+            Solicitud.estado,
+            Solicitud.fecha_solicitud,
+        ]
+        for attr in ("estado_actual_desde", "fecha_seguimiento_manual", "updated_at", "fecha_ultima_modificacion", "fecha_ultima_actividad"):
+            if hasattr(Solicitud, attr):
+                load_cols.append(getattr(Solicitud, attr))
+
+        s = (
+            Solicitud.query
+            .options(
+                load_only(*load_cols),
+                joinedload(Solicitud.cliente),
+            )
+            .filter(Solicitud.id == id)
+            .first_or_404()
+        )
+        now_utc = utc_now_naive()
+        today_rd = rd_today()
+        sid = int(getattr(s, "id", 0) or 0)
+        actor_label = "Sin responsable"
+        if sid > 0:
+            actor_map = _resolve_solicitud_last_actor_user_ids([sid])
+            actor_id = actor_map.get(sid)
+            if actor_id is not None:
+                try:
+                    actor_id = int(actor_id)
+                except Exception:
+                    actor_id = None
+            if actor_id is not None and actor_id > 0:
+                actor_label = _staff_username_map([actor_id]).get(actor_id, f"Staff #{actor_id}")
+
+        vm = _SolicitudOperativaListVM(
+            s,
+            now_dt=now_utc,
+            today_rd=today_rd,
+            last_actor_label=actor_label,
+            has_active_reemplazo=False,
+        )
+        detail_url = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
+        cliente_url = url_for('admin.detalle_cliente', cliente_id=s.cliente_id) if s.cliente_id else ''
+        html = render_template(
+            'admin/_solicitud_quick_view_region.html',
+            s=vm,
+            detail_url=detail_url,
+            cliente_url=cliente_url,
+            chat_feature_enabled=_chat_enabled(),
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_quick_view"})
 
 
 def _solicitudes_summary_counts() -> tuple[int, int, str]:
@@ -19115,6 +19118,239 @@ def _fmt_codigo_solicitud(codigo: str) -> str:
     return c[:m.start(1)] + formatted + c[m.end(1):]
 
 
+def _admin_copiar_form_label_maps():
+    form = AdminSolicitudForm()
+    return {
+        "funciones": {k: v for k, v in list(getattr(form, "funciones", None).choices or [])},
+        "ninera_tareas": {k: v for k, v in list(getattr(form, "ninera_tareas", None).choices or [])},
+        "enf_tareas": {k: v for k, v in list(getattr(form, "enf_tareas", None).choices or [])},
+        "enf_movilidad": {k: v for k, v in list(getattr(form, "enf_movilidad", None).choices or [])},
+    }
+
+
+def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = None) -> str:
+    labels = label_maps or _admin_copiar_form_label_maps()
+    FUNCIONES_LABELS = dict(labels.get("funciones") or {})
+    NINERA_TAREAS_LABELS = dict(labels.get("ninera_tareas") or {})
+    ENF_TAREAS_LABELS = dict(labels.get("enf_tareas") or {})
+    ENF_MOV_LABELS = dict(labels.get("enf_movilidad") or {})
+
+    raw_codes = [str(c or "").strip().lower() for c in _unique_keep_order(_as_list(getattr(s, "funciones", None)))]
+    raw_codes = [c for c in raw_codes if c and c != "otro"]
+    orden_codigos = ["limpieza", "cocinar", "lavar", "planchar", "ninos", "envejeciente"]
+
+    funcs = []
+    for code in orden_codigos:
+        if code not in raw_codes:
+            continue
+        label = FUNCIONES_LABELS.get(code)
+        if label:
+            funcs.append(label)
+    custom_f = _s(getattr(s, "funciones_otro", None))
+    if custom_f:
+        funcs.append(custom_f)
+
+    adultos_val = _s(getattr(s, "adultos", None))
+    ninos_line = ""
+    ninos_raw = getattr(s, "ninos", None)
+    if ninos_raw not in (None, "", 0, "0"):
+        ninos_line = f"Niños: {_s(ninos_raw)}"
+        ed = _s(getattr(s, "edades_ninos", None))
+        if ed:
+            ninos_line += f" ({ed})"
+
+    modalidad = _first_nonempty_attr(s, ["modalidad_trabajo", "modalidad", "tipo_modalidad"], "")
+    modalidad_line = canonicalize_modalidad_trabajo(modalidad) if modalidad else ""
+
+    hogar_partes_detalle = []
+    habitaciones = getattr(s, "habitaciones", None)
+    if habitaciones not in (None, "", 0, "0"):
+        hogar_partes_detalle.append(f"{_s(habitaciones)} habitaciones")
+    banos_txt = _fmt_banos(getattr(s, "banos", None))
+    if banos_txt:
+        hogar_partes_detalle.append(f"{banos_txt} baños")
+    if bool(getattr(s, "dos_pisos", False)):
+        hogar_partes_detalle.append("2 pisos")
+
+    areas = []
+    for a in _as_list(getattr(s, "areas_comunes", None)):
+        area_norm = _norm_area(a)
+        if area_norm:
+            areas.append(area_norm)
+    area_otro = _s(getattr(s, "area_otro", None))
+    if area_otro:
+        area_norm = _norm_area(area_otro)
+        if area_norm:
+            areas.append(area_norm)
+    if areas:
+        hogar_partes_detalle.append(", ".join(areas))
+
+    tipo_lugar = _s(getattr(s, "tipo_lugar", None))
+    if hogar_partes_detalle:
+        hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}" if tipo_lugar else ", ".join(hogar_partes_detalle)
+    else:
+        hogar_descr = ""
+
+    mascota_val = _s(getattr(s, "mascota", None))
+    mascota_line = f"Mascotas: {mascota_val}" if mascota_val else ""
+
+    codigo = _s(getattr(s, "codigo_solicitud", None))
+    ciudad_sector = _s(getattr(s, "ciudad_sector", None))
+    rutas_cercanas = _s(getattr(s, "rutas_cercanas", None))
+
+    edad_req_val = getattr(s, "edad_requerida", None)
+    if isinstance(edad_req_val, (list, tuple, set, dict, str)):
+        edad_req = ", ".join([_s(x) for x in _as_list(edad_req_val)])
+    else:
+        edad_req = _s(edad_req_val)
+
+    experiencia = _s(getattr(s, "experiencia", None))
+    experiencia_it = f"*{experiencia}*" if experiencia else ""
+    horario = _s(getattr(s, "horario", None))
+    sueldo_final = _format_money_usd(getattr(s, "sueldo", None))
+    pasaje_texto = _pasaje_operativo_phrase_from_solicitud(s)
+    nota_cli = _s(getattr(s, "nota_cliente", None))
+
+    detalles = getattr(s, "detalles_servicio", None) or {}
+    ts_det = detalles.get("tipo") or _s(getattr(s, "tipo_servicio", None))
+    ninera_block = ""
+    enf_block = ""
+    chofer_block = ""
+
+    if ts_det == "NINERA":
+        cant_ninos = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
+        edades_n = detalles.get("edades_ninos") or detalles.get("edades")
+        tareas_cd = detalles.get("tareas") or []
+        cond_esp = detalles.get("condicion_especial") or detalles.get("condicion")
+        lineas_nin = []
+        if cant_ninos or edades_n:
+            base = "Niños a cuidar: "
+            if cant_ninos:
+                base += str(cant_ninos)
+            if edades_n:
+                base += f" ({edades_n})"
+            lineas_nin.append(base)
+        if tareas_cd:
+            etiquetas = []
+            for code in _as_list(tareas_cd):
+                etiquetas.append(NINERA_TAREAS_LABELS.get(code) or str(code))
+            lineas_nin.append("Tareas con los niños: " + ", ".join(etiquetas))
+        if cond_esp:
+            lineas_nin.append(f"Condición especial: {cond_esp}")
+        ninera_block = "\n".join(lineas_nin) if lineas_nin else ""
+    elif ts_det == "ENFERMERA":
+        a_quien = detalles.get("a_quien_cuida") or detalles.get("a_quien")
+        cond_prin = detalles.get("condicion_principal") or detalles.get("condicion")
+        movilidad = detalles.get("movilidad") or ""
+        tareas_cd = detalles.get("tareas") or []
+        lineas_enf = []
+        if a_quien:
+            lineas_enf.append(f"A quién cuida: {a_quien}")
+        if movilidad:
+            mov_lbl = ENF_MOV_LABELS.get(movilidad, movilidad)
+            if mov_lbl:
+                lineas_enf.append(f"Movilidad: {mov_lbl}")
+        if cond_prin:
+            lineas_enf.append(f"Condición principal: {cond_prin}")
+        if tareas_cd:
+            etiquetas = []
+            for code in _as_list(tareas_cd):
+                etiquetas.append(ENF_TAREAS_LABELS.get(code) or str(code))
+            lineas_enf.append("Tareas de cuidado: " + ", ".join(etiquetas))
+        enf_block = "\n".join(lineas_enf) if lineas_enf else ""
+    elif ts_det == "CHOFER":
+        vehiculo = detalles.get("vehiculo")
+        tipo_veh = detalles.get("tipo_vehiculo")
+        tipo_otro = detalles.get("tipo_vehiculo_otro")
+        rutas = detalles.get("rutas")
+        viajes_larg = detalles.get("viajes_largos")
+        lic_det = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
+        lineas_ch = []
+        if vehiculo:
+            if vehiculo == "cliente":
+                lineas_ch.append("Vehículo: del cliente")
+            elif vehiculo == "empleado":
+                lineas_ch.append("Vehículo: propio del chofer")
+            else:
+                lineas_ch.append(f"Vehículo: {vehiculo}")
+        if tipo_veh or tipo_otro:
+            lineas_ch.append(f"Tipo de vehículo: {tipo_otro or tipo_veh}")
+        if rutas:
+            lineas_ch.append(f"Rutas habituales: {rutas}")
+        if viajes_larg is not None:
+            lineas_ch.append("Viajes largos / fuera de la ciudad: Sí" if viajes_larg else "Viajes largos / fuera de la ciudad: No")
+        if lic_det:
+            lineas_ch.append(f"Licencia / experiencia: {lic_det}")
+        chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
+
+    envejeciente_lines = format_envejeciente_resumen(
+        tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
+        responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
+        solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
+        nota=getattr(s, "envejeciente_nota", None),
+    )
+    envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
+    cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
+    header_block = "\n".join([
+        f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
+        f"📍 {ciudad_sector}" if ciudad_sector else "📍",
+        f"Ruta más cercana: {rutas_cercanas}" if rutas_cercanas else "Ruta más cercana: ",
+    ])
+
+    info_lines = []
+    if modalidad_line:
+        info_lines.append(modalidad_line)
+    if edad_req:
+        info_lines.append("")
+        info_lines.append(f"Edad: {edad_req}")
+    info_lines.extend(["", "Dominicana", "Que sepa leer y escribir"])
+    if experiencia_it:
+        info_lines.append(f"Experiencia en: {experiencia_it}")
+    if horario:
+        info_lines.append(f"Horario: {horario}")
+    info_block = "\n".join([x for x in info_lines])
+    funciones_block = f"Funciones: {', '.join(funcs)}" if funcs else ""
+    familia_parts = []
+    if adultos_val:
+        familia_parts.append(f"Adultos: {adultos_val}")
+    if ninos_line:
+        familia_parts.append(ninos_line)
+    if mascota_line:
+        familia_parts.append(mascota_line)
+    familia_block = "\n".join(familia_parts) if familia_parts else ""
+    sueldo_block = f"Sueldo: {sueldo_final} mensual, {pasaje_texto}" if sueldo_final else ""
+
+    parts = [
+        header_block,
+        "",
+        info_block.strip() if info_block.strip() else None,
+        "",
+        funciones_block if funciones_block else None,
+        "",
+        hogar_descr if hogar_descr else None,
+        "",
+        envejeciente_block if envejeciente_block else None,
+        "" if envejeciente_block else None,
+        ninera_block if ninera_block else None,
+        enf_block if enf_block else None,
+        chofer_block if chofer_block else None,
+        "" if (ninera_block or enf_block or chofer_block) else None,
+        familia_block if familia_block else None,
+        "",
+        sueldo_block if sueldo_block else None,
+        "",
+        (nota_cli if nota_cli else None),
+    ]
+    cleaned = []
+    for p in parts:
+        if p is None:
+            continue
+        if p == "" and (not cleaned or cleaned[-1] == ""):
+            continue
+        cleaned.append(p)
+    return "\n".join(cleaned).rstrip()
+
+
 @admin_bp.route('/solicitudes/copiar')
 @login_required
 @staff_required
@@ -19226,20 +19462,8 @@ def copiar_solicitudes():
         .all()
     )
 
-    # Form temporal para leer choices y labels
-    form = AdminSolicitudForm()
-
-    FUNCIONES_CHOICES      = list(getattr(form, 'funciones',      None).choices or [])
-    FUNCIONES_LABELS       = {k: v for k, v in FUNCIONES_CHOICES}
-
-    NINERA_TAREAS_CHOICES  = list(getattr(form, 'ninera_tareas',  None).choices or [])
-    NINERA_TAREAS_LABELS   = {k: v for k, v in NINERA_TAREAS_CHOICES}
-
-    ENF_TAREAS_CHOICES     = list(getattr(form, 'enf_tareas',     None).choices or [])
-    ENF_TAREAS_LABELS      = {k: v for k, v in ENF_TAREAS_CHOICES}
-
-    ENF_MOV_CHOICES        = list(getattr(form, 'enf_movilidad',  None).choices or [])
-    ENF_MOV_LABELS         = {k: v for k, v in ENF_MOV_CHOICES}
+    label_maps = _admin_copiar_form_label_maps()
+    FUNCIONES_LABELS = dict(label_maps.get("funciones") or {})
 
     solicitudes = []
     for s in raw_sols:
@@ -19265,264 +19489,10 @@ def copiar_solicitudes():
         if custom_f:
             funcs.append(custom_f)
 
-        # ====================== ADULTOS / NIÑOS ======================
-        adultos_val = _s(getattr(s, 'adultos', None))
-        ninos_line = ""
-        ninos_raw = getattr(s, 'ninos', None)
-        if ninos_raw not in (None, "", 0, "0"):
-            ninos_line = f"Niños: {_s(ninos_raw)}"
-            ed = _s(getattr(s, 'edades_ninos', None))
-            if ed:
-                ninos_line += f" ({ed})"
-
         # ====================== MODALIDAD ======================
         modalidad = _first_nonempty_attr(s, ['modalidad_trabajo', 'modalidad', 'tipo_modalidad'], '')
-        modalidad_line = canonicalize_modalidad_trabajo(modalidad) if modalidad else ""
-
-        # ====================== HOGAR ======================
-        hogar_partes_detalle = []
-        habitaciones = getattr(s, 'habitaciones', None)
-        if habitaciones not in (None, "", 0, "0"):
-            hogar_partes_detalle.append(f"{_s(habitaciones)} habitaciones")
-        banos_txt = _fmt_banos(getattr(s, 'banos', None))
-        if banos_txt:
-            hogar_partes_detalle.append(f"{banos_txt} baños")
-        if bool(getattr(s, 'dos_pisos', False)):
-            hogar_partes_detalle.append("2 pisos")
-
-        areas = []
-        for a in _as_list(getattr(s, 'areas_comunes', None)):
-            area_norm = _norm_area(a)
-            if area_norm:
-                areas.append(area_norm)
-        area_otro = _s(getattr(s, 'area_otro', None))
-        if area_otro:
-            area_norm = _norm_area(area_otro)
-            if area_norm:
-                areas.append(area_norm)
-        if areas:
-            hogar_partes_detalle.append(", ".join(areas))
-
-        tipo_lugar = _s(getattr(s, 'tipo_lugar', None))
-        # Solo imprimimos algo del hogar si hay detalles reales (habitaciones, baños o áreas).
-        if hogar_partes_detalle:
-            if tipo_lugar:
-                hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}"
-            else:
-                hogar_descr = ", ".join(hogar_partes_detalle)
-        else:
-            hogar_descr = ""
-
-        # ====================== MASCOTAS ======================
-        mascota_val = _s(getattr(s, 'mascota', None))
-        mascota_line = f"Mascotas: {mascota_val}" if mascota_val else ""
-
-        # ====================== CAMPOS BASE ======================
         codigo         = _s(getattr(s, 'codigo_solicitud', None))
         ciudad_sector  = _s(getattr(s, 'ciudad_sector', None))
-        rutas_cercanas = _s(getattr(s, 'rutas_cercanas', None))
-
-        # Edad requerida
-        edad_req_val = getattr(s, 'edad_requerida', None)
-        if isinstance(edad_req_val, (list, tuple, set, dict, str)):
-            edad_req = ", ".join([_s(x) for x in _as_list(edad_req_val)])
-        else:
-            edad_req = _s(edad_req_val)
-
-        experiencia    = _s(getattr(s, 'experiencia', None))
-        experiencia_it = f"*{experiencia}*" if experiencia else ""
-        horario        = _s(getattr(s, 'horario', None))
-
-        # Sueldo
-        sueldo_final  = _format_money_usd(getattr(s, 'sueldo', None))
-        pasaje_texto = _pasaje_operativo_phrase_from_solicitud(s)
-
-        # Nota del cliente (al final, sin prefijo)
-        nota_cli = _s(getattr(s, 'nota_cliente', None))
-
-        # ====================== DETALLES SERVICIO (NIÑERA / ENFERMERA / CHOFER) ======================
-        detalles = getattr(s, 'detalles_servicio', None) or {}
-        ts_det   = detalles.get("tipo") or _s(getattr(s, 'tipo_servicio', None))
-
-        ninera_block = ""
-        enf_block    = ""
-        chofer_block = ""
-
-        # ---- NIÑERA ----
-        if ts_det == 'NINERA':
-            cant_ninos = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
-            edades_n   = detalles.get("edades_ninos")   or detalles.get("edades")
-            tareas_cd  = detalles.get("tareas") or []
-            cond_esp   = detalles.get("condicion_especial") or detalles.get("condicion")
-
-            lineas_nin = []
-
-            if cant_ninos or edades_n:
-                base = "Niños a cuidar: "
-                if cant_ninos:
-                    base += str(cant_ninos)
-                if edades_n:
-                    base += f" ({edades_n})"
-                lineas_nin.append(base)
-
-            if tareas_cd:
-                etiquetas = []
-                for code in _as_list(tareas_cd):
-                    lbl = NINERA_TAREAS_LABELS.get(code)
-                    if lbl:
-                        etiquetas.append(lbl)
-                    else:
-                        etiquetas.append(str(code))
-                lineas_nin.append("Tareas con los niños: " + ", ".join(etiquetas))
-
-            if cond_esp:
-                lineas_nin.append(f"Condición especial: {cond_esp}")
-
-            ninera_block = "\n".join(lineas_nin) if lineas_nin else ""
-
-        # ---- ENFERMERA / CUIDADORA ----
-        elif ts_det == 'ENFERMERA':
-            a_quien   = detalles.get("a_quien_cuida") or detalles.get("a_quien")
-            cond_prin = detalles.get("condicion_principal") or detalles.get("condicion")
-            movilidad = detalles.get("movilidad") or ""
-            tareas_cd = detalles.get("tareas") or []
-
-            lineas_enf = []
-            if a_quien:
-                lineas_enf.append(f"A quién cuida: {a_quien}")
-
-            if movilidad:
-                mov_lbl = ENF_MOV_LABELS.get(movilidad, movilidad)
-                if mov_lbl:
-                    lineas_enf.append(f"Movilidad: {mov_lbl}")
-
-            if cond_prin:
-                lineas_enf.append(f"Condición principal: {cond_prin}")
-
-            if tareas_cd:
-                etiquetas = []
-                for code in _as_list(tareas_cd):
-                    lbl = ENF_TAREAS_LABELS.get(code)
-                    if lbl:
-                        etiquetas.append(lbl)
-                    else:
-                        etiquetas.append(str(code))
-                lineas_enf.append("Tareas de cuidado: " + ", ".join(etiquetas))
-
-            enf_block = "\n".join(lineas_enf) if lineas_enf else ""
-
-        # ---- CHOFER ----
-        elif ts_det == 'CHOFER':
-            vehiculo    = detalles.get("vehiculo")
-            tipo_veh    = detalles.get("tipo_vehiculo")
-            tipo_otro   = detalles.get("tipo_vehiculo_otro")
-            rutas       = detalles.get("rutas")
-            viajes_larg = detalles.get("viajes_largos")
-            lic_det     = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
-
-            lineas_ch = []
-            if vehiculo:
-                if vehiculo == 'cliente':
-                    lineas_ch.append("Vehículo: del cliente")
-                elif vehiculo == 'empleado':
-                    lineas_ch.append("Vehículo: propio del chofer")
-                else:
-                    lineas_ch.append(f"Vehículo: {vehiculo}")
-
-            if tipo_veh or tipo_otro:
-                tv = tipo_otro or tipo_veh
-                lineas_ch.append(f"Tipo de vehículo: {tv}")
-
-            if rutas:
-                lineas_ch.append(f"Rutas habituales: {rutas}")
-
-            if viajes_larg is not None:
-                lineas_ch.append("Viajes largos / fuera de la ciudad: Sí" if viajes_larg else "Viajes largos / fuera de la ciudad: No")
-
-            if lic_det:
-                lineas_ch.append(f"Licencia / experiencia: {lic_det}")
-
-            chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
-
-        # ===== Texto final =====
-        envejeciente_lines = format_envejeciente_resumen(
-            tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
-            responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
-            solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
-            nota=getattr(s, "envejeciente_nota", None),
-        )
-        envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
-        cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
-        header_block = "\n".join([
-            f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
-            f"📍 {ciudad_sector}" if ciudad_sector else "📍",
-            f"Ruta más cercana: {rutas_cercanas}" if rutas_cercanas else "Ruta más cercana: ",
-        ])
-
-        info_lines = []
-        if modalidad_line:
-            info_lines.append(modalidad_line)
-        if edad_req:
-            info_lines.append("")
-            info_lines.append(f"Edad: {edad_req}")
-        info_lines.extend(["", "Dominicana", "Que sepa leer y escribir"])
-        if experiencia_it:
-            info_lines.append(f"Experiencia en: {experiencia_it}")
-        if horario:
-            info_lines.append(f"Horario: {horario}")
-        info_block = "\n".join([x for x in info_lines])
-
-        funciones_block = f"Funciones: {', '.join(funcs)}" if funcs else ""
-        hogar_line      = hogar_descr
-
-        familia_parts = []
-        if adultos_val:
-            familia_parts.append(f"Adultos: {adultos_val}")
-        if ninos_line:
-            familia_parts.append(ninos_line)
-        if mascota_line:
-            familia_parts.append(mascota_line)
-        familia_block = "\n".join(familia_parts) if familia_parts else ""
-
-        sueldo_block = ""
-        if sueldo_final:
-            sueldo_block = (
-                f"Sueldo: {sueldo_final} mensual"
-                + f", {pasaje_texto}"
-            )
-
-        # Armamos el orden final SIN cambiar el modelo original,
-        # solo metiendo los bloques de detalles donde corresponde.
-        parts = [
-            header_block,
-            "",
-            info_block.strip() if info_block.strip() else None,
-            "",
-            funciones_block if funciones_block else None,
-            "",
-            hogar_line if hogar_line else None,
-            "",
-            envejeciente_block if envejeciente_block else None,
-            "" if envejeciente_block else None,
-            ninera_block if ninera_block else None,
-            enf_block if enf_block else None,
-            chofer_block if chofer_block else None,
-            "" if (ninera_block or enf_block or chofer_block) else None,
-            familia_block if familia_block else None,
-            "",
-            sueldo_block if sueldo_block else None,
-            "",
-            (nota_cli if nota_cli else None),
-        ]
-
-        cleaned = []
-        for p in parts:
-            if p is None:
-                continue
-            if p == "" and (not cleaned or cleaned[-1] == ""):
-                continue
-            cleaned.append(p)
-        order_text = "\n".join(cleaned).rstrip()
 
         solicitudes.append({
             'id': s.id,
@@ -19534,7 +19504,7 @@ def copiar_solicitudes():
             'reemplazos': reems,
             'funcs': funcs,
             'modalidad': modalidad,
-            'order_text': order_text
+            'copy_text_url': url_for('admin.solicitud_copiar_texto', id=s.id),
         })
 
     has_more = (page * per_page) < total
@@ -19570,6 +19540,55 @@ def copiar_solicitudes():
         'admin/solicitudes_copiar.html',
         **partial_ctx
     )
+
+
+@admin_bp.route('/solicitudes/<int:id>/texto')
+@login_required
+@admin_required
+def solicitud_copiar_texto(id):
+    s = (
+        Solicitud.query
+        .options(load_only(
+            Solicitud.id,
+            Solicitud.estado,
+            Solicitud.codigo_solicitud,
+            Solicitud.ciudad_sector,
+            Solicitud.modalidad_trabajo,
+            Solicitud.rutas_cercanas,
+            Solicitud.funciones,
+            Solicitud.funciones_otro,
+            Solicitud.tipo_lugar,
+            Solicitud.habitaciones,
+            Solicitud.banos,
+            Solicitud.dos_pisos,
+            Solicitud.areas_comunes,
+            Solicitud.area_otro,
+            Solicitud.adultos,
+            Solicitud.ninos,
+            Solicitud.edades_ninos,
+            Solicitud.mascota,
+            Solicitud.edad_requerida,
+            Solicitud.experiencia,
+            Solicitud.horario,
+            Solicitud.sueldo,
+            Solicitud.pasaje_aporte,
+            Solicitud.nota_cliente,
+            Solicitud.detalles_servicio,
+            Solicitud.tipo_servicio,
+            Solicitud.envejeciente_tipo_cuidado,
+            Solicitud.envejeciente_responsabilidades,
+            Solicitud.envejeciente_solo_acompanamiento,
+            Solicitud.envejeciente_nota,
+        ))
+        .filter_by(id=id)
+        .first_or_404()
+    )
+    label_maps = _admin_copiar_form_label_maps()
+    return jsonify({
+        "ok": True,
+        "id": int(getattr(s, "id", 0) or 0),
+        "order_text": _admin_build_order_text_for_copiar(s, label_maps=label_maps),
+    }), 200
 
 
 

@@ -293,12 +293,12 @@ const darkTheme = {
 };
 
 const datasets = {
-  NewWeekly:    { labels: {{ trend_new_weekly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_new_weekly|map(attribute=1)|list|tojson }} },
-  NewMonthly:   { labels: {{ trend_new_monthly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_new_monthly|map(attribute=1)|list|tojson }} },
-  PaidWeekly:   { labels: {{ trend_paid_weekly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_paid_weekly|map(attribute=1)|list|tojson }} },
-  PaidMonthly:  { labels: {{ trend_paid_monthly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_paid_monthly|map(attribute=1)|list|tojson }} },
-  CancelWeekly: { labels: {{ trend_cancel_weekly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_cancel_weekly|map(attribute=1)|list|tojson }} },
-  CancelMonthly:{ labels: {{ trend_cancel_monthly|map(attribute=0)|map('strftime', '%Y-%m-%d')|list|tojson }}, data: {{ trend_cancel_monthly|map(attribute=1)|list|tojson }} }
+  NewWeekly:    { labels: [{% for p, _ in trend_new_weekly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_new_weekly|map(attribute=1)|list|tojson }} },
+  NewMonthly:   { labels: [{% for p, _ in trend_new_monthly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_new_monthly|map(attribute=1)|list|tojson }} },
+  PaidWeekly:   { labels: [{% for p, _ in trend_paid_weekly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_paid_weekly|map(attribute=1)|list|tojson }} },
+  PaidMonthly:  { labels: [{% for p, _ in trend_paid_monthly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_paid_monthly|map(attribute=1)|list|tojson }} },
+  CancelWeekly: { labels: [{% for p, _ in trend_cancel_weekly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_cancel_weekly|map(attribute=1)|list|tojson }} },
+  CancelMonthly:{ labels: [{% for p, _ in trend_cancel_monthly %}"{{ p|rd_datetime('%Y-%m-%d') }}"{% if not loop.last %}, {% endif %}{% endfor %}], data: {{ trend_cancel_monthly|map(attribute=1)|list|tojson }} }
 };
 
 Object.entries(datasets).forEach(([key, set]) => {

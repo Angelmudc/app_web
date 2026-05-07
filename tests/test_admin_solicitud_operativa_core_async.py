@@ -470,6 +470,9 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
             txt = fh.read()
         self.assertIn('id="solicitudSummaryAsyncScope"', txt)
         self.assertIn('id="solicitudSummaryAsyncRegion"', txt)
+        self.assertIn('id="solicitudDetailHeavyAsyncRegion"', txt)
+        self.assertIn("data-admin-lazy-fragment-url", txt)
+        self.assertIn("solicitud_detail_heavy_fragment", txt)
 
     def test_solicitud_detail_fragment_summary_headers_baseline(self):
         solicitud = _solicitud_stub(10, "activa")
@@ -496,6 +499,21 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         self.assertIn("Solicitud Operativa Core", html)
         self.assertNotIn("Resumen para enviar al cliente", html)
         self.assertEqual(resp.headers.get("X-Async-Fragment-Region"), "solicitudOperativaCoreAsyncRegion")
+        self.assertIn("X-P1C1-Perf-DB-Queries", resp.headers)
+        self.assertIn("X-P1C1-Perf-HTML-Bytes", resp.headers)
+
+    def test_solicitud_detail_fragment_heavy_headers_baseline(self):
+        solicitud = _solicitud_stub(10, "activa")
+        solicitud.reemplazos = []
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])):
+                resp = self.client.get("/admin/clientes/7/solicitudes/10/_heavy", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Resumen interno", html)
+        self.assertIn("Historial de Envíos", html)
+        self.assertEqual(resp.headers.get("X-Async-Fragment-Region"), "solicitudDetailHeavyAsyncRegion")
         self.assertIn("X-P1C1-Perf-DB-Queries", resp.headers)
         self.assertIn("X-P1C1-Perf-HTML-Bytes", resp.headers)
 

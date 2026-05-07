@@ -130,7 +130,9 @@ class AdminPjaxPilotTest(unittest.TestCase):
 
         self.assertIn("Vista rápida", solicitudes_txt)
         self.assertIn("sol-quick-view-", solicitudes_txt)
-        self.assertIn("{% include 'admin/_solicitud_quick_view_region.html' %}", solicitudes_txt)
+        self.assertIn("data-quick-view-slot=\"1\"", solicitudes_txt)
+        self.assertIn("url_for('admin.solicitud_quick_view_fragment', id=s.id)", solicitudes_txt)
+        self.assertNotIn("{% include 'admin/_solicitud_quick_view_region.html' %}", solicitudes_txt)
 
         quick_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_quick_view_region.html")
         with open(quick_tpl, "r", encoding="utf-8") as f:

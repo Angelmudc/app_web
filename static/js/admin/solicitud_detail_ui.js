@@ -151,6 +151,50 @@
     });
   }
 
+  async function fetchLazyFragment(url) {
+    const resp = await fetch(String(url || ""), {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        "X-Requested-With": "XMLHttpRequest",
+        "Accept": "text/html,*/*",
+      },
+    });
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    return resp.text();
+  }
+
+  function bindLazyFragments(root) {
+    const scope = root && root.querySelector ? root : document;
+    scope.querySelectorAll("[data-admin-lazy-fragment-url]").forEach((region) => {
+      if (!region.id) return;
+      if (region.dataset.lazyLoaded === "1" || region.dataset.lazyInflight === "1") return;
+      const url = String(region.getAttribute("data-admin-lazy-fragment-url") || "").trim();
+      if (!url) return;
+      region.dataset.lazyInflight = "1";
+      window.setTimeout(function () {
+        fetchLazyFragment(url).then(function (html) {
+          const selector = "#" + region.id;
+          if (window.AdminAsync && typeof window.AdminAsync.replaceTargetHtml === "function") {
+            window.AdminAsync.replaceTargetHtml(selector, html, { preserveScroll: true });
+          } else {
+            region.innerHTML = html;
+            document.dispatchEvent(new CustomEvent("admin:content-updated", {
+              detail: { targetSelector: selector, container: region },
+            }));
+          }
+          region.dataset.lazyLoaded = "1";
+          region.removeAttribute("data-admin-lazy-fragment-url");
+        }).catch(function () {
+          region.dataset.lazyLoaded = "0";
+        }).finally(function () {
+          region.dataset.lazyInflight = "0";
+        });
+      }, 60);
+    });
+  }
+
   function boot(root) {
     const scope = root && root.querySelector ? root : document;
     if (!scope.querySelector("#resumenCliente") && !scope.querySelector(".copy-btn-interno") && !scope.querySelector(".js-copy-contract-link")) {
@@ -159,6 +203,7 @@
     bindResumenCopyButtons(scope);
     bindInternalCopyButtons(scope);
     bindContractCopyButtons(scope);
+    bindLazyFragments(scope);
   }
 
   function init() {

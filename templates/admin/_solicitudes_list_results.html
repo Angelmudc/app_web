@@ -11,6 +11,8 @@
          data-admin-async-link
          data-async-target="#solicitudesAsyncRegion"
          data-async-preserve-scroll="true"
+         data-async-history="true"
+         data-async-history-form="#solicitudesFilterForm"
          data-async-busy-container="#solicitudesAsyncScope">
         {{ opt.label }} <span class="badge text-bg-light ms-1">{{ opt.count }}</span>
       </a>
@@ -128,10 +130,22 @@
                 data-collapse-closed-label="Más acciones">
           Más acciones
         </button>
+        {% if chat_enabled and s.cliente_id %}
+        <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-none" aria-hidden="true">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="cliente_id" value="{{ s.cliente_id }}">
+          <input type="hidden" name="solicitud_id" value="{{ s.id }}">
+        </form>
+        <a href="{{ cliente_url }}" class="d-none" aria-hidden="true" tabindex="-1">Cliente</a>
+        {% endif %}
       </div>
 
       <div class="collapse mt-3" id="{{ quick_view_id }}">
-        {% include 'admin/_solicitud_quick_view_region.html' %}
+        <div class="small text-muted"
+             data-quick-view-slot="1"
+             data-quick-view-url="{{ url_for('admin.solicitud_quick_view_fragment', id=s.id) }}">
+          Cargando resumen...
+        </div>
       </div>
 
       <div class="collapse mt-3" id="{{ row_collapse_id }}">
@@ -200,6 +214,8 @@
              data-admin-async-link
              data-async-target="#solicitudesAsyncRegion"
              data-async-busy-container="#solicitudesAsyncScope"
+             data-async-history="true"
+             data-async-history-form="#solicitudesFilterForm"
              data-async-preserve-scroll="true">Limpiar filtros</a>
         {% else %}
           <div class="small mt-1">Cuando existan solicitudes activas, aparecerán aquí.</div>
@@ -222,6 +238,8 @@
            {% if page|int > 1 %}data-admin-async-link
            data-async-target="#solicitudesAsyncRegion"
            data-async-preserve-scroll="true"
+           data-async-history="true"
+           data-async-history-form="#solicitudesFilterForm"
            data-async-busy-container="#solicitudesAsyncScope"{% endif %}>Anterior</a>
       </li>
       <li class="page-item disabled">
@@ -233,6 +251,8 @@
            {% if has_more %}data-admin-async-link
            data-async-target="#solicitudesAsyncRegion"
            data-async-preserve-scroll="true"
+           data-async-history="true"
+           data-async-history-form="#solicitudesFilterForm"
            data-async-busy-container="#solicitudesAsyncScope"{% endif %}>Siguiente</a>
       </li>
     </ul>

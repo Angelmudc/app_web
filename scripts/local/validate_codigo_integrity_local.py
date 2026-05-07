@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 import re
 import threading
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -22,6 +23,8 @@ from config_app import db
 from models import Cliente, Solicitud, PublicSolicitudClienteNuevoTokenUso
 from admin.routes import _next_codigo_solicitud
 from clientes.routes import generar_token_publico_cliente_nuevo
+
+CSRF_RE = re.compile(r'name="csrf_token"[^>]*value="([^"]+)"', re.I)
 
 
 def _require_local() -> str:
@@ -50,26 +53,27 @@ def _mk_public_payload(i: int, run: str) -> dict[str, Any]:
         ["envejeciente"],
         ["ninos", "envejeciente", "cocinar"],
     ]
-    modalidad_group = "con_dormida" if i % 5 == 0 else "con_salida_diaria"
-    modalidad_txt = "Con dormida - lunes a sabado" if modalidad_group == "con_dormida" else "Salida diaria - lunes a viernes"
+    modalidad_group = "con_salida_diaria"
+    modalidad_txt = "Salida diaria - lunes a viernes"
+    modalidad_spec = "Salida diaria - lunes a viernes"
     funcs = funcs_variants[i % len(funcs_variants)]
     data: dict[str, Any] = {
         "nombre_completo": f"Cliente Publico {run} {i:03d}",
-        "email_contacto": f"pub.{run}.{i:03d}@local.test",
-        "telefono_contacto": f"809{(7000000 + i):07d}",
+        "email_contacto": f"pub.{run}.{i:03d}@example.com",
+        "telefono_contacto": f"809{int(hashlib.sha256(f'{run}-{i}'.encode()).hexdigest(), 16) % 10_000_000:07d}",
         "ciudad_cliente": "Santiago",
         "sector_cliente": f"Sector {i:03d}",
         "ciudad_sector": "Santiago / Centro",
         "rutas_cercanas": "Ruta K",
         "modalidad_trabajo": modalidad_txt,
         "modalidad_grupo": modalidad_group,
-        "modalidad_especifica": "l-v",
+        "modalidad_especifica": modalidad_spec,
         "horario": "Lunes a viernes, de 8:00 AM a 5:00 PM",
         "horario_dias_trabajo": "Lunes a viernes",
         "horario_hora_entrada": "8:00 AM",
         "horario_hora_salida": "5:00 PM",
-        "dormida_entrada": "Lunes 8:00 AM" if modalidad_group == "con_dormida" else "",
-        "dormida_salida": "Sabado 12:00 PM" if modalidad_group == "con_dormida" else "",
+        "dormida_entrada": "",
+        "dormida_salida": "",
         "edad_requerida": ["26-35"],
         "experiencia": "Experiencia validada en hogar.",
         "funciones": funcs,
@@ -96,8 +100,27 @@ def _mk_public_payload(i: int, run: str) -> dict[str, Any]:
     return data
 
 
+def _csrf_from_html(html: str) -> str:
+    m = CSRF_RE.search(html or "")
+    return (m.group(1) if m else "").strip()
+
+
+def _get_csrf_for_url(client, url: str) -> str:
+    page = client.get(url, follow_redirects=False)
+    return _csrf_from_html(page.get_data(as_text=True))
+
+
 def _submit_public(client, token: str, payload: dict[str, Any]):
-    return client.post(f"/clientes/solicitudes/nueva-publica/{token}", data=payload, follow_redirects=False)
+    url = f"/clientes/solicitudes/nueva-publica/{token}"
+    data = dict(payload or {})
+    if not data.get("csrf_token"):
+        data["csrf_token"] = _get_csrf_for_url(client, url)
+    return client.post(
+        url,
+        data=data,
+        headers={"Referer": f"http://localhost{url}"},
+        follow_redirects=False,
+    )
 
 
 @dataclass
@@ -111,8 +134,7 @@ def main() -> None:
     run_id = datetime.now().strftime("%Y%m%d%H%M%S")
     with app.app_context():
         db_name = _require_local()
-        app.config["TESTING"] = True
-        app.config["WTF_CSRF_ENABLED"] = False
+        app.config["TESTING"] = False
         rep = Report(db_name=db_name, run_id=run_id)
 
         before_clients = db.session.query(func.count(Cliente.id)).scalar() or 0
@@ -180,8 +202,8 @@ def main() -> None:
                 target = Cliente.query.order_by(Cliente.id.desc()).first()
                 code = _next_codigo_solicitud(target)
                 s = Solicitud(cliente_id=target.id, codigo_solicitud=code)
-                s.modalidad_trabajo = "Con dormida - lunes a sabado" if i % 5 == 0 else "Salida diaria - lunes a viernes"
-                s.horario = "Entrada: Lunes 8:00 AM / Salida: Sabado 12:00 PM" if i % 5 == 0 else "Lunes a viernes, de 8:00 AM a 5:00 PM"
+                s.modalidad_trabajo = "Salida diaria - lunes a viernes"
+                s.horario = "Lunes a viernes, de 8:00 AM a 5:00 PM"
                 s.funciones = ["limpieza", "ninos"] if i % 4 == 0 else (["envejeciente"] if i % 7 == 0 else ["limpieza"])
                 s.tipo_lugar = "Casa"
                 s.habitaciones = 2
@@ -215,11 +237,13 @@ def main() -> None:
         t2 = threading.Thread(target=_worker, args=(2,))
         t1.start(); t2.start(); t1.join(); t2.join()
 
-        # double submit same token
+        # double submit same token (first submit consumes token, second must be blocked)
         dup_token = generar_token_publico_cliente_nuevo(created_by=f"dup-{run_id}")
         dup_payload = _mk_public_payload(999, run_id)
-        r1 = _submit_public(app.test_client(), dup_token, dup_payload)
-        r2 = _submit_public(app.test_client(), dup_token, dup_payload)
+        dup_client = app.test_client()
+        r1 = _submit_public(dup_client, dup_token, dup_payload)
+        _ = dup_client.get(f"/clientes/solicitudes/nueva-publica/{dup_token}?estado=enviado", follow_redirects=False)
+        r2 = dup_client.get(f"/clientes/solicitudes/nueva-publica/{dup_token}", follow_redirects=False)
 
         after_clients = db.session.query(func.count(Cliente.id)).scalar() or 0
         after_sols = db.session.query(func.count(Solicitud.id)).scalar() or 0
@@ -239,7 +263,7 @@ def main() -> None:
         dup_client_codes = db.session.query(Cliente.codigo, func.count(Cliente.id)).group_by(Cliente.codigo).having(func.count(Cliente.id) > 1).all()
         dup_sol_codes = db.session.query(Solicitud.codigo_solicitud, func.count(Solicitud.id)).group_by(Solicitud.codigo_solicitud).having(func.count(Solicitud.id) > 1).all()
 
-        token_hash = __import__("hashlib").sha256(dup_token.encode("utf-8")).hexdigest()
+        token_hash = hashlib.sha256(dup_token.encode("utf-8")).hexdigest()
         tok_use = PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=token_hash).first()
 
         print("VALIDATION_REPORT_START")

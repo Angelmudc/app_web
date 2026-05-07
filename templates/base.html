@@ -31,6 +31,21 @@
   {% set _needs_datatables_vendor = _vendor_flags.needs_datatables %}
   {% set _needs_select2_vendor = _select2_opt_in %}
   {% set _needs_jquery_vendor = _needs_datatables_vendor or _needs_select2_vendor %}
+  {% set _base_staff_role = ((session.get('role') if session else '') or (current_user.role if current_user.is_authenticated and current_user.role is defined else ''))|string|lower %}
+  {% if _base_staff_role in ['secretary', 'secre', 'secretaría'] %}
+    {% set _base_staff_role = 'secretaria' %}
+  {% endif %}
+  {% set _base_is_internal_surface = current_user.is_authenticated and (_base_staff_role in ['owner', 'admin', 'secretaria']) and not (
+    _vendor_path.startswith('/clientes/')
+    or _vendor_path == '/clientes'
+    or _vendor_path.startswith('/cliente/')
+    or _vendor_path == '/cliente'
+    or _vendor_path.startswith('/login')
+    or _vendor_path.startswith('/admin/login')
+    or _vendor_path.startswith('/mfa')
+    or _vendor_path.startswith('/admin/mfa/')
+    or _vendor_path == '/'
+  ) %}
 
   <!-- Performance -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
@@ -71,9 +86,18 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/themes.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  {% if _base_is_internal_surface %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_surface.css') }}">
+  {% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/animations.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+  {% if _base_is_internal_surface %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/secretarias_styles.css') }}">
+  {% endif %}
+  {% if _base_is_internal_surface and _vendor_path.startswith('/admin/') %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_styles.css') }}">
+  {% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/performance.css') }}">
 
   {# Bloques extra en el <head> (deja los dos por compatibilidad con templates viejos) #}
@@ -133,6 +157,12 @@
 {% set _is_admin_light_runtime_view = _is_admin_runtime_page and (request.endpoint in _admin_light_runtime_endpoints) %}
 {% set _admin_core_runtime_enabled = _is_admin_runtime_page and (not _is_admin_light_runtime_view) %}
 {% set _admin_lazy_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _requires_live_refresh) %}
+{% set _admin_nav_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes/')) %}
+{% set _live_invalidation_enabled = _admin_core_runtime_enabled and (
+  _ui_path.startswith('/admin/solicitudes')
+  or _ui_path.startswith('/admin/clientes/')
+  or _ui_path.startswith('/admin/seguimiento-candidatas')
+) %}
 {% set _presence_operational_path = false %}
 {% if _presence_path.startswith('/buscar') %}
   {% set _presence_operational_path = true %}
@@ -657,7 +687,9 @@
   <script src="{{ url_for('static', filename='js/core/modal.js') }}" defer></script>
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/admin_async.js') }}" defer></script>
+  {% if _admin_nav_enabled %}
   <script src="{{ url_for('static', filename='js/core/admin_nav.js') }}" defer></script>
+  {% endif %}
   {% endif %}
   <script src="{{ url_for('static', filename='js/ui/theme.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/ui/ui.js') }}" defer></script>
@@ -674,7 +706,9 @@
   {% if _admin_lazy_enabled %}
   <script src="{{ url_for('static', filename='js/core/admin_lazy_scripts.js') }}" defer></script>
   {% endif %}
+  {% if _live_invalidation_enabled %}
   <script src="{{ url_for('static', filename='js/core/live_invalidation.js') }}" defer></script>
+  {% endif %}
   {% endif %}
   {% if _admin_core_runtime_enabled and _is_admin_entrevistas_path %}
   <script src="{{ url_for('static', filename='js/entrevistas/entrevistas.js') }}" defer></script>
@@ -695,28 +729,8 @@
   {% endif %}
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='js/core/perf_toggle.js') }}" defer></script>
   {% endif %}
-
-<script defer>
-  (function(){
-    const KEY = 'perf_mode';
-    const body = document.body;
-    const btn = document.getElementById('perfToggle');
-    if(!btn) return;
-
-    // restore
-    if (localStorage.getItem(KEY) === 'on') {
-      body.classList.add('perf');
-      btn.classList.add('active');
-    }
-
-    btn.addEventListener('click', function(){
-      const on = body.classList.toggle('perf');
-      localStorage.setItem(KEY, on ? 'on' : 'off');
-      btn.classList.toggle('active', on);
-    });
-  })();
-</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

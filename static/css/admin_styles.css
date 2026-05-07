@@ -1,0 +1,14 @@
+/* static/css/admin_styles.css */
+/* Ajustes exclusivos de admin */
+
+.matching-checklist-card{
+  background: var(--surface-2);
+  color: var(--text-color);
+  border-color: var(--border-color);
+}
+
+.matching-checklist-card ul,
+.matching-checklist-card li,
+.matching-checklist-card strong{
+  color: inherit;
+}

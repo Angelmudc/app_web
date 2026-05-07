@@ -1,0 +1,419 @@
+/* static/css/admin_surface.css
+   Estilos exclusivos de superficies internas (admin/secretarias). */
+
+/* Floating island — Candidatas por finalizar (staff only, render guarded in template) */
+.candidatas-finalizar-island{
+  position: fixed;
+  right: 16px;
+  bottom: 132px;
+  z-index: 1100;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(168, 190, 232, .38);
+  background: linear-gradient(145deg, rgba(8, 14, 30, .88), rgba(14, 24, 48, .74));
+  backdrop-filter: blur(10px);
+  color: #eaf3ff;
+  box-shadow: 0 12px 30px rgba(3, 8, 20, .45);
+  text-decoration: none;
+}
+
+.candidatas-finalizar-island:hover{
+  color: #ffffff;
+  border-color: rgba(136, 201, 255, .65);
+  background: linear-gradient(145deg, rgba(11, 21, 42, .95), rgba(16, 30, 58, .82));
+}
+
+.candidatas-finalizar-island .cfi-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(110, 187, 255, .22);
+  color: #cde9ff;
+  border: 1px solid rgba(153, 214, 255, .42);
+}
+
+.candidatas-finalizar-island .cfi-label{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .92rem;
+}
+
+.candidatas-finalizar-island .cfi-count{
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 900;
+  background: rgba(255, 98, 134, .24);
+  color: #ffabc0;
+  border: 1px solid rgba(255, 151, 176, .46);
+}
+
+.candidatas-finalizar-island.is-active{
+  border-color: rgba(255, 151, 176, .52);
+}
+
+@media (max-width: 768px){
+  .candidatas-finalizar-island{
+    right: 12px;
+    left: 12px;
+    bottom: 122px;
+    justify-content: space-between;
+  }
+}
+
+:where(body.clientes, [data-portal="clientes"]) .candidatas-finalizar-island{
+  display: none !important;
+}
+
+/* Floating island + drawer — Seguimiento candidatas */
+.seg-candidatas-island{
+  position: fixed;
+  right: 16px;
+  bottom: 74px;
+  z-index: 1110;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(128, 201, 255, .44);
+  background: linear-gradient(145deg, rgba(8, 14, 30, .88), rgba(12, 28, 52, .76));
+  backdrop-filter: blur(10px);
+  color: #eaf3ff;
+  box-shadow: 0 12px 30px rgba(3, 8, 20, .45);
+}
+.seg-candidatas-island:hover{
+  color: #fff;
+  border-color: rgba(124, 220, 255, .7);
+}
+.seg-candidatas-island .sci-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(93, 200, 255, .24);
+  color: #cbebff;
+  border: 1px solid rgba(152, 227, 255, .5);
+}
+.seg-candidatas-island .sci-label{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .92rem;
+}
+.seg-candidatas-island .sci-count{
+  min-width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  font-weight: 900;
+  background: rgba(255, 106, 106, .24);
+  color: #ffb5b5;
+  border: 1px solid rgba(255, 158, 158, .42);
+}
+.seg-candidatas-island.is-active{
+  border-color: rgba(124, 220, 255, .7);
+}
+
+.seg-candidatas-backdrop{
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 7, 16, .48);
+  z-index: 1188;
+}
+.seg-drawer-open{
+  overflow: hidden;
+}
+
+.seg-candidatas-drawer{
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(460px, 96vw);
+  height: 100vh;
+  z-index: 1189;
+  border-left: 1px solid rgba(144, 201, 255, .3);
+  background: linear-gradient(180deg, rgba(10, 19, 36, .96), rgba(9, 21, 37, .96));
+  color: #e7f3ff;
+  box-shadow: -12px 0 34px rgba(3, 9, 19, .5);
+  display: flex;
+  flex-direction: column;
+}
+.seg-drawer-head,
+.seg-drawer-foot{
+  padding: 12px 14px;
+  border-color: rgba(142, 181, 226, .24);
+}
+.seg-drawer-head{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(142, 181, 226, .24);
+}
+.seg-drawer-title{
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 800;
+}
+.seg-drawer-body{
+  padding: 12px 14px;
+  overflow: auto;
+  flex: 1;
+}
+.seg-drawer-foot{
+  border-top: 1px solid rgba(142, 181, 226, .24);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.seg-kpis{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.seg-kpi{
+  border: 1px solid rgba(144, 201, 255, .24);
+  background: rgba(16, 33, 58, .6);
+  border-radius: 12px;
+  padding: 10px;
+}
+.seg-kpi-label{
+  color: #b6cfe8;
+  font-size: .78rem;
+}
+.seg-kpi-value{
+  font-size: 1.08rem;
+  font-weight: 900;
+  color: #fff;
+}
+.seg-list-wrap{
+  margin-top: 12px;
+}
+.seg-tabs{
+  margin-top: 12px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.seg-tab{
+  border: 1px solid rgba(144, 201, 255, .28);
+  background: rgba(13, 26, 46, .7);
+  color: #cfe5fb;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: .82rem;
+  font-weight: 700;
+}
+.seg-tab.is-active{
+  background: rgba(74, 181, 255, .24);
+  border-color: rgba(141, 220, 255, .62);
+  color: #fff;
+}
+.seg-tab-pane{
+  display: none;
+}
+.seg-tab-pane.is-active{
+  display: block;
+}
+.seg-list-title{
+  font-size: .86rem;
+  color: #b6cfe8;
+  margin-bottom: 8px;
+}
+.seg-case{
+  border: 1px solid rgba(144, 201, 255, .2);
+  background: rgba(18, 33, 57, .56);
+  border-radius: 12px;
+  padding: 9px;
+  margin-bottom: 8px;
+}
+.seg-case-top{
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.seg-case-name{
+  font-weight: 700;
+  color: #f3f9ff;
+}
+.seg-case-due{
+  color: #ffc8c8;
+  font-size: .8rem;
+}
+.seg-case-meta{
+  font-size: .82rem;
+  color: #b7cde3;
+}
+.seg-actions{
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.seg-actions .btn{
+  border-color: rgba(148, 201, 248, .38);
+  color: #e9f4ff;
+}
+.seg-inline-form{
+  margin-top: 12px;
+}
+.seg-inline-form .form-control,
+.seg-inline-form .form-select{
+  background: rgba(8, 19, 34, .68);
+  border-color: rgba(156, 201, 238, .28);
+  color: #eef7ff;
+}
+.seg-inline-form .form-label{
+  color: #b7cee4;
+}
+.seg-case-feedback{
+  margin-top: 8px;
+  margin-bottom: 0;
+  padding: 6px 8px;
+  font-size: .8rem;
+}
+.seg-inline-action{
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(148, 201, 248, .22);
+}
+.seg-loading{
+  display: grid;
+  gap: 8px;
+}
+.seg-skeleton{
+  height: 16px;
+  border-radius: 10px;
+  background: linear-gradient(100deg, rgba(133, 169, 209, .2) 30%, rgba(185, 213, 240, .34) 45%, rgba(133, 169, 209, .2) 60%);
+  background-size: 220% 100%;
+  animation: segSkeleton 1.2s linear infinite;
+}
+.seg-skeleton-lg{ height: 56px; }
+@keyframes segSkeleton{
+  to { background-position-x: -220%; }
+}
+
+@media (max-width: 768px){
+  .seg-candidatas-island{
+    right: 12px;
+    left: 12px;
+    bottom: 68px;
+    justify-content: space-between;
+  }
+  .seg-candidatas-drawer{
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    width: 100vw;
+    height: 82vh;
+    border-left: none;
+    border-top: 1px solid rgba(144, 201, 255, .3);
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-island,
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-drawer,
+:where(body.clientes, [data-portal="clientes"]) .seg-candidatas-backdrop{
+  display: none !important;
+}
+
+/* Floating island — Copiar mensaje formulario cliente (owner/admin) */
+.client-public-message-island{
+  position: fixed;
+  right: 16px;
+  bottom: 190px;
+  z-index: 1105;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(136, 212, 193, .42);
+  background: linear-gradient(145deg, rgba(7, 24, 25, .9), rgba(9, 44, 45, .78));
+  backdrop-filter: blur(10px);
+  color: #e8fffb;
+  box-shadow: 0 12px 30px rgba(3, 20, 20, .45);
+}
+.client-public-message-island:hover{
+  color: #fff;
+  border-color: rgba(141, 241, 218, .68);
+}
+.client-public-message-island .cpmi-icon{
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(82, 229, 193, .23);
+  color: #d5fff4;
+  border: 1px solid rgba(142, 248, 223, .45);
+}
+.client-public-message-island .cpmi-label{
+  font-weight: 800;
+  letter-spacing: .2px;
+  font-size: .92rem;
+}
+.client-public-message-feedback{
+  position: fixed;
+  right: 18px;
+  bottom: 242px;
+  z-index: 1115;
+  background: rgba(8, 16, 26, .95);
+  color: #fff;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font-size: .86rem;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(6px);
+  transition: opacity .2s ease, transform .2s ease;
+}
+.client-public-message-feedback.is-visible{
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (max-width: 768px){
+  .client-public-message-island{
+    right: 12px;
+    left: 12px;
+    bottom: 176px;
+    justify-content: space-between;
+  }
+  .client-public-message-feedback{
+    right: 12px;
+    bottom: 228px;
+  }
+}
+
+:where(body.clientes, [data-portal="clientes"]) .client-public-message-island,
+:where(body.clientes, [data-portal="clientes"]) .client-public-message-feedback{
+  display: none !important;
+}
+
+/* Guard defensivo: si el drawer de seguimiento quedó a medio estado, no debe tapar modales */
+.seg-candidatas-backdrop[hidden],
+.seg-candidatas-drawer[hidden]{
+  display: none !important;
+}
+
+.admin-async-row-updated {
+  box-shadow: 0 0 0 2px rgba(25, 135, 84, 0.28);
+  transition: box-shadow 180ms ease;
+}

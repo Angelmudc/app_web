@@ -7,6 +7,13 @@
 
   const loaded = new Set();
   const pending = new Map();
+  const scheduleIdle = (cb, timeout = 900) => {
+    if (typeof window.requestIdleCallback === "function") {
+      return window.requestIdleCallback(cb, { timeout });
+    }
+    return window.setTimeout(cb, 80);
+  };
+  let observer = null;
 
   function scriptAlreadyInDom(src) {
     const scripts = document.querySelectorAll("script[src]");
@@ -74,16 +81,37 @@
   }
 
   function boot() {
-    evaluate(document);
+    scheduleIdle(() => evaluate(document), 1400);
+
+    if (typeof window.IntersectionObserver === "function") {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          evaluate(entry.target);
+          observer.unobserve(entry.target);
+        });
+      }, { rootMargin: "180px 0px" });
+      document.querySelectorAll("[data-admin-lazy-fragment-url], [data-live-refresh='1']").forEach((node) => observer.observe(node));
+    }
 
     document.addEventListener("admin:content-updated", function (ev) {
       const detail = ev && ev.detail && typeof ev.detail === "object" ? ev.detail : {};
       evaluate(detail.container || document);
+      if (observer && detail.container && detail.container.querySelectorAll) {
+        detail.container.querySelectorAll("[data-admin-lazy-fragment-url], [data-live-refresh='1']").forEach((node) => observer.observe(node));
+      }
     });
 
     document.addEventListener("admin:navigation-complete", function (ev) {
       const detail = ev && ev.detail && typeof ev.detail === "object" ? ev.detail : {};
-      evaluate(detail.viewport || document);
+      const scope = detail.viewport || document;
+      evaluate(scope);
+      if (observer && scope && scope.querySelectorAll) {
+        scope.querySelectorAll("[data-admin-lazy-fragment-url], [data-live-refresh='1']").forEach((node) => observer.observe(node));
+      }
+    });
+    window.addEventListener("beforeunload", function () {
+      if (observer) observer.disconnect();
     });
   }
 

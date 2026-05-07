@@ -95,6 +95,9 @@
   let afterId = initialAfterId;
   let lastStreamId = "$";
   const SSE_MODE_STORAGE_KEY = "admin_live_invalidation_mode";
+  const SSE_COOLDOWN_STORAGE_KEY = "admin_live_invalidation_sse_cooldown_until";
+  const SSE_FAIL_COOLDOWN_MS = 5 * 60 * 1000;
+  let sseErrorStreak = 0;
 
   function readStoredSseMode() {
     try {
@@ -109,6 +112,32 @@
     try {
       window.sessionStorage.setItem(SSE_MODE_STORAGE_KEY, "poll_only");
     } catch (_e) {}
+  }
+
+  function readSseCooldownUntil() {
+    try {
+      return Math.max(0, Number(window.sessionStorage.getItem(SSE_COOLDOWN_STORAGE_KEY) || 0) || 0);
+    } catch (_e) {
+      return 0;
+    }
+  }
+
+  function setSseCooldown(ms) {
+    const until = Date.now() + Math.max(1000, Number(ms || 0) || 0);
+    try {
+      window.sessionStorage.setItem(SSE_COOLDOWN_STORAGE_KEY, String(until));
+    } catch (_e) {}
+  }
+
+  function clearSseCooldown() {
+    try {
+      window.sessionStorage.removeItem(SSE_COOLDOWN_STORAGE_KEY);
+    } catch (_e) {}
+  }
+
+  function isSseCoolingDown() {
+    const until = readSseCooldownUntil();
+    return until > Date.now();
   }
 
   if (readStoredSseMode() === "poll_only") {
@@ -1482,6 +1511,7 @@
 
   function scheduleReconnect() {
     if (sseDisabledByMode) return;
+    if (isSseCoolingDown()) return;
     clearReconnectTimer();
     reconnectTimer = window.setTimeout(function () {
       startSSE();
@@ -1490,6 +1520,10 @@
 
   function startSSE() {
     closeSSE();
+    if (isSseCoolingDown()) {
+      startPolling();
+      return;
+    }
     if (sseDisabledByMode || !("EventSource" in window) || !streamUrl) {
       startPolling();
       return;
@@ -1509,6 +1543,8 @@
       u.searchParams.set("last_stream_id", String(lastStreamId || "$"));
       eventSource = new EventSource(u.toString(), { withCredentials: true });
       eventSource.onopen = function () {
+        sseErrorStreak = 0;
+        clearSseCooldown();
         pollErrorStreak = 0;
         pollCooldownUntil = 0;
         stopPolling();
@@ -1531,8 +1567,12 @@
         } catch (_e) {}
       });
       eventSource.onerror = function () {
+        sseErrorStreak += 1;
         closeSSE();
         startPolling();
+        if (sseErrorStreak >= 2) {
+          setSseCooldown(SSE_FAIL_COOLDOWN_MS);
+        }
         probePollOnlyMode().then(function (isPollOnly) {
           if (isPollOnly) {
             clearReconnectTimer();

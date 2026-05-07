@@ -46,7 +46,22 @@
   let lastCriticalSig = "";
   let lastMineSig = "";
   let suppressInvalidationUntilMs = 0;
+  let globalListenersBound = false;
   const queueQuickUrl = queueUrl ? (queueUrl + (queueUrl.indexOf("?") >= 0 ? "&" : "?") + "quick=1&limit=80") : "";
+  const onGlobalKeydown = function (ev) {
+    if (ev.key === "Escape" && open) {
+      ev.preventDefault();
+      closeDrawer();
+    }
+  };
+  const onLiveInvalidation = function (ev) {
+    const detail = (ev && ev.detail && ev.detail.event) || null;
+    const t = String((detail && detail.event_type) || "").toLowerCase();
+    if (t.indexOf("staff.case_tracking.") !== 0) return;
+    if (Date.now() < suppressInvalidationUntilMs) return;
+    refreshBadge().catch(function () {});
+    if (open) loadQueue().catch(function () {});
+  };
 
   function esc(text) {
     return String(text || "")
@@ -372,6 +387,7 @@
     backdrop.hidden = false;
     document.body.classList.add("seg-drawer-open");
     btn.setAttribute("aria-expanded", "true");
+    bindGlobalListeners();
     closeBtn.focus();
     setTab("pendientes");
     loadQueue().catch(function () {});
@@ -386,8 +402,23 @@
     document.body.classList.remove("seg-drawer-open");
     btn.setAttribute("aria-expanded", "false");
     stopOpenRefresh();
+    unbindGlobalListeners();
     if (previousActive && typeof previousActive.focus === "function") previousActive.focus();
     else btn.focus();
+  }
+
+  function bindGlobalListeners() {
+    if (globalListenersBound) return;
+    globalListenersBound = true;
+    document.addEventListener("keydown", onGlobalKeydown);
+    document.addEventListener("admin:live-invalidation-event", onLiveInvalidation);
+  }
+
+  function unbindGlobalListeners() {
+    if (!globalListenersBound) return;
+    globalListenersBound = false;
+    document.removeEventListener("keydown", onGlobalKeydown);
+    document.removeEventListener("admin:live-invalidation-event", onLiveInvalidation);
   }
 
   async function onQuickCreateSubmit(ev) {
@@ -564,21 +595,14 @@
     hideCaseForms(caseId);
   });
 
-  document.addEventListener("keydown", function (ev) {
-    if (ev.key === "Escape" && open) {
-      ev.preventDefault();
-      closeDrawer();
-    }
+  window.addEventListener("beforeunload", function () {
+    stopOpenRefresh();
+    unbindGlobalListeners();
   });
 
-  document.addEventListener("admin:live-invalidation-event", function (ev) {
-    const detail = (ev && ev.detail && ev.detail.event) || null;
-    const t = String((detail && detail.event_type) || "").toLowerCase();
-    if (t.indexOf("staff.case_tracking.") !== 0) return;
-    if (Date.now() < suppressInvalidationUntilMs) return;
-    refreshBadge().catch(function () {});
-    if (open) loadQueue().catch(function () {});
-  });
-
-  refreshBadge().catch(function () {});
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(function () { refreshBadge().catch(function () {}); }, { timeout: 1800 });
+  } else {
+    window.setTimeout(function () { refreshBadge().catch(function () {}); }, 120);
+  }
 })();
