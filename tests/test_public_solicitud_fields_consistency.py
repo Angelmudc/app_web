@@ -298,3 +298,31 @@ def test_public_solicitud_mapping_saves_clean_salary_value():
             now_ref=now_ref,
         )
     assert s.sueldo == "16000"
+
+
+def test_public_solicitud_horario_lunes_a_sabado_con_sabado_corto_se_guarda_correcto():
+    form = _FakeSolicitudForm()
+    s = _new_solicitud_ns()
+    now_ref = clientes_routes.utc_now_naive()
+    with flask_app.test_request_context(
+        "/fake",
+        method="POST",
+        data={
+            "banos": "2",
+            "modalidad_grupo": "con_salida_diaria",
+            "modalidad_especifica": "Salida diaria - lunes a sábado",
+            "horario_dias_trabajo": "Lunes a viernes / sábado hasta 1:00 PM",
+            "horario_hora_entrada": "7:30 AM",
+            "horario_hora_salida": "6:00 PM",
+        },
+    ):
+        clientes_routes._apply_public_solicitud_fields(
+            solicitud_obj=s,
+            form=form,
+            public_pisos_value="1",
+            public_pasaje_mode="incluido",
+            public_pasaje_otro="",
+            now_ref=now_ref,
+        )
+    assert s.horario == "Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM"
+    assert s.horario != "Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM"

@@ -98,7 +98,7 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
         tipo_modalidad="",
         edad_requerida="30-45",
         experiencia="Cuidado de ninos",
-        horario="8am-5pm",
+        horario="Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM",
         funciones=["cocinar", "ninos", "limpieza", "lavar", "otro"],
         funciones_otro="Mandados",
         adultos=2,
@@ -156,6 +156,8 @@ def test_secretarias_solicitudes_copiar_render_y_salida_visible_no_regresion():
     salida = captured["ctx"]["solicitudes"][0]["order_text"]
     assert "Disponible ( SOL-007 )" in salida
     assert "Con dormida 💤 L-V" in salida
+    assert "Horario: Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM" in salida
+    assert "Horario: Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM" not in salida
     assert "Funciones: Limpieza general, Cocinar, Lavar, Cuidar niños, Mandados" in salida
     assert "Envejeciente: independiente. Requiere acompañamiento, supervisión o apoyo ligero." in salida
     assert "Nota sobre el envejeciente: Toma agua cada 2 horas" in salida

@@ -50,3 +50,34 @@ def test_apply_horario_guarda_en_horario_y_detalles():
     )
     assert s.horario == "Lunes a viernes, de 8:00 AM a 5:00 PM"
     assert (s.detalles_servicio or {}).get("dias_trabajo") == "Lunes a viernes"
+
+
+def test_horario_lunes_a_sabado_con_sabado_corto_compone_texto_requerido():
+    horario, _payload, errors = build_horario_from_form(
+        modalidad_group="con_salida_diaria",
+        modalidad_trabajo="Salida diaria - lunes a sábado",
+        dias_trabajo="Lunes a viernes / sábado hasta 1:00 PM",
+        hora_entrada="7:30 AM",
+        hora_salida="6:00 PM",
+        dormida_entrada="",
+        dormida_salida="",
+        horario_legacy="",
+    )
+    assert not errors
+    assert horario == "Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM"
+    assert horario != "Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM"
+
+
+def test_horario_lunes_a_sabado_sin_sabado_especial_mantiene_formato_simple():
+    horario, _payload, errors = build_horario_from_form(
+        modalidad_group="con_salida_diaria",
+        modalidad_trabajo="Salida diaria - lunes a sábado",
+        dias_trabajo="Lunes a sábado",
+        hora_entrada="8:00 AM",
+        hora_salida="5:00 PM",
+        dormida_entrada="",
+        dormida_salida="",
+        horario_legacy="",
+    )
+    assert not errors
+    assert horario == "Lunes a sábado de 8:00 AM a 5:00 PM"

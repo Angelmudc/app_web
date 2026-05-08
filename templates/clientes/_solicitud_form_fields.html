@@ -1194,6 +1194,28 @@
       return val;
     }
 
+    function composeSalidaDiariaHorario(modalidadSpecific, diasValue, horaEntrada, horaSalida) {
+      var specific = (modalidadSpecific || '').toString().trim().toLowerCase();
+      var dias = (diasValue || '').toString().trim();
+      var hIn = (horaEntrada || '').toString().trim();
+      var hOut = (horaSalida || '').toString().trim();
+      if (!dias || !hIn || !hOut) return '';
+
+      var isLunesSabado = (specific === 'salida diaria - lunes a sábado' || specific === 'salida diaria - lunes a sabado');
+      if (isLunesSabado) {
+        var m = dias.match(/^\s*lunes a viernes\s*\/\s*s[áa]bado\s+hasta\s+(.+?)\s*$/i);
+        if (m && (m[1] || '').trim()) {
+          return 'Lunes a viernes de ' + hIn + ' a ' + hOut + ' / sábado hasta ' + (m[1] || '').trim();
+        }
+        var diasNorm = dias.toLowerCase();
+        if (diasNorm === 'lunes a sábado' || diasNorm === 'lunes a sabado') {
+          return 'Lunes a sábado de ' + hIn + ' a ' + hOut;
+        }
+      }
+
+      return dias + ', de ' + hIn + ' a ' + hOut;
+    }
+
     function normalizeText(str) {
       if (!str) return "";
 
@@ -1522,7 +1544,14 @@
           horarioTxt = 'Entrada: ' + dIn.value.trim() + ' / Salida: ' + dOut.value.trim();
         }
       } else if (dias && hIn && hOut && norm(dias.value) && norm(hIn.value) && norm(hOut.value)) {
-        horarioTxt = dias.value.trim() + ', de ' + hIn.value.trim() + ' a ' + hOut.value.trim();
+        var modalidadSpecificNode = byId('modalidad_especifica_select');
+        var modalidadSpecificValue = modalidadSpecificNode ? (modalidadSpecificNode.value || '') : '';
+        horarioTxt = composeSalidaDiariaHorario(
+          modalidadSpecificValue,
+          dias.value,
+          hIn.value,
+          hOut.value
+        );
       }
       if (horarioHidden) horarioHidden.value = horarioTxt;
       if (preview) preview.textContent = horarioTxt;

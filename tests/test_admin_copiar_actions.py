@@ -291,6 +291,22 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertNotIn("salon_juegos", html)
         self.assertNotIn("jardin", html)
 
+    def test_copiar_solicitudes_horario_lunes_a_sabado_con_sabado_corto_se_muestra_correcto(self):
+        self._login("Owner", "admin123")
+        solicitud = _SolicitudStub(estado="activa")
+        solicitud.modalidad_trabajo = "Salida diaria - lunes a sábado"
+        solicitud.horario = "Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM"
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _QueryChain([solicitud])), \
+                 patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = (resp.get_json() or {}).get("order_text", "")
+        self.assertIn("Horario: Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM", html)
+        self.assertNotIn("Horario: Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM", html)
+
     def test_copiar_solicitudes_get_async_devuelve_reemplazo_parcial(self):
         self._login("Karla", "9989")
         solicitud = _SolicitudStub(estado="activa")

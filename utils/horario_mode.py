@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 
@@ -16,6 +17,29 @@ def infer_horario_tipo(*, modalidad_group: Any, modalidad_trabajo: Any) -> str:
     if "dormida" in mod:
         return "con_dormida"
     return "salida_diaria"
+
+
+def _compose_salida_diaria_horario(
+    *,
+    modalidad_trabajo: Any,
+    dias_trabajo: Any,
+    hora_entrada: str,
+    hora_salida: str,
+) -> str:
+    dias = _txt(dias_trabajo)
+    if not (dias and hora_entrada and hora_salida):
+        return ""
+
+    dias_low = dias.lower()
+    m = re.match(r"^\s*lunes a viernes\s*/\s*s[áa]bado\s+hasta\s+(.+?)\s*$", dias, flags=re.IGNORECASE)
+    if m:
+        sabado_salida = _txt(m.group(1), 60)
+        if sabado_salida:
+            return f"Lunes a viernes de {hora_entrada} a {hora_salida} / sábado hasta {sabado_salida}"
+    if dias_low in {"lunes a sábado", "lunes a sabado"}:
+        return f"Lunes a sábado de {hora_entrada} a {hora_salida}"
+
+    return f"{dias}, de {hora_entrada} a {hora_salida}"
 
 
 def build_horario_from_form(
@@ -60,7 +84,12 @@ def build_horario_from_form(
             errors.append("Indica la hora de entrada.")
         if not h_out:
             errors.append("Indica la hora de salida.")
-        horario = f"{dias}, de {h_in} a {h_out}" if (dias and h_in and h_out) else legacy
+        horario = _compose_salida_diaria_horario(
+            modalidad_trabajo=modalidad_trabajo,
+            dias_trabajo=dias,
+            hora_entrada=h_in,
+            hora_salida=h_out,
+        ) or legacy
     else:
         if not d_in:
             errors.append("Indica el día y hora de entrada.")

@@ -128,7 +128,7 @@ def test_secretarias_solicitudes_buscar_render_base_y_order_text_contrato_visibl
         tipo_modalidad="",
         edad_requerida="25-45",
         experiencia="Limpieza",
-        horario="8am-5pm",
+        horario="Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM",
         funciones=["limpiar", "otro"],
         funciones_otro="Planchar",
         adultos=2,
@@ -181,6 +181,8 @@ def test_secretarias_solicitudes_buscar_render_base_y_order_text_contrato_visibl
     order_text = captured["ctx"]["items"][0]["order_text"]
     assert "Disponible ( SOL-055 )" in order_text
     assert "Con dormida 💤 L-V" in order_text
+    assert "Horario: Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM" in order_text
+    assert "Horario: Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM" not in order_text
     assert "Funciones: Limpiar, Planchar" in order_text
     assert "Casa - 4 habitaciones, 4 baños, 2 pisos, Patio, Terraza" in order_text
     assert "Modalidad:" not in order_text
