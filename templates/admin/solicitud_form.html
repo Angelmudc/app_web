@@ -81,6 +81,33 @@
     background: #ecf3fb;
   }
 
+  /* Override del partial compartido que deja "Tipo de lugar" con fondo claro */
+  .admin-solicitud-form .public-field--tipo-lugar,
+  .admin-solicitud-form .public-field--tipo-lugar.is-empty {
+    border-color: var(--asf-border);
+    background: rgba(15, 22, 31, 0.55);
+  }
+
+  .admin-solicitud-form .public-field--tipo-lugar .form-select,
+  .admin-solicitud-form .public-field--tipo-lugar.is-empty .form-select {
+    background: var(--asf-input-bg);
+    border-color: var(--asf-input-border);
+    color: var(--asf-input-text);
+  }
+
+  .admin-solicitud-form .public-field--tipo-lugar .public-tipo-lugar-guide {
+    color: #b7cae0;
+  }
+
+  .admin-solicitud-form .public-field--tipo-lugar .form-select:hover {
+    border-color: #78a9d0;
+  }
+
+  .admin-solicitud-form .public-field--tipo-lugar .form-select:focus {
+    border-color: #6ca6d0;
+    box-shadow: 0 0 0 .24rem var(--asf-focus);
+  }
+
   .admin-solicitud-form .form-control:focus,
   .admin-solicitud-form .form-select:focus,
   .admin-solicitud-form .form-check-input:focus {
