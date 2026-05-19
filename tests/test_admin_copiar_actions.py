@@ -304,7 +304,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("order_text", "")
-        self.assertIn("Horario: Lunes a viernes de 7:30 AM a 6:00 PM / sábado hasta 1:00 PM", html)
+        self.assertIn("Horario:", html)
+        self.assertIn("Lunes a viernes: 7:30 AM - 6:00 PM", html)
+        self.assertIn("Sábado: 7:30 AM - 1:00 PM", html)
         self.assertNotIn("Horario: Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM", html)
 
     def test_copiar_solicitudes_get_async_devuelve_reemplazo_parcial(self):

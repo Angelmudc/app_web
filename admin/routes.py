@@ -1881,7 +1881,7 @@ def _get_pending_staff_user() -> StaffUser | None:
         return None
     if sid <= 0:
         return None
-    return StaffUser.query.get(sid)
+    return db.session.get(StaffUser, sid)
 
 
 def _begin_pending_staff_mfa(*, staff_user: StaffUser, source: str, next_url: str) -> str:
@@ -11705,7 +11705,7 @@ def eliminar_solicitud_admin(cliente_id, id):
             if int(deleted_rows.get("solicitud") or 0) != 1:
                 raise SQLAlchemyError("No se pudo confirmar la eliminación de la solicitud.")
             db.session.flush()
-            cliente = Cliente.query.get(cid)
+            cliente = db.session.get(Cliente, cid)
             if cliente is not None:
                 total_restante = int(
                     db.session.query(func.count(Solicitud.id))
@@ -12080,7 +12080,7 @@ def registrar_pago(cliente_id, id):
         choices = [(c.fila, c.nombre_completo) for c in candidatas]
 
         if s.candidata_id:
-            cand_actual = Candidata.query.get(s.candidata_id)
+            cand_actual = db.session.get(Candidata, s.candidata_id)
             if cand_actual and cand_actual.fila not in [x[0] for x in choices]:
                 choices.insert(0, (cand_actual.fila, cand_actual.nombre_completo))
 
@@ -12129,7 +12129,7 @@ def registrar_pago(cliente_id, id):
             flash('Esta solicitud no admite pagos.', 'warning')
             return _render_pago_page()
 
-        cand = Candidata.query.get(form.candidata_id.data)
+        cand = db.session.get(Candidata, form.candidata_id.data)
         if not cand:
             if _admin_async_wants_json():
                 return _async_pago_response(
@@ -12784,7 +12784,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
         cand_actual_id_int = None
 
     if cand_actual_id_int:
-        cand_actual = Candidata.query.get(cand_actual_id_int)
+        cand_actual = db.session.get(Candidata, cand_actual_id_int)
         if cand_actual:
             nombre = (cand_actual.nombre_completo or '').strip()
             ced = (cand_actual.cedula or '').strip()
@@ -12828,7 +12828,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
             selected_id = 0
 
         if selected_id > 0 and all(int(v) != selected_id for v, _ in (pick_field.choices or [])):
-            selected_obj = Candidata.query.get(selected_id)
+            selected_obj = db.session.get(Candidata, selected_id)
             selected_choice = _choice_tuple_for_candidata(selected_obj)
             if selected_choice is not None:
                 pick_field.choices = list(pick_field.choices or []) + [selected_choice]
@@ -12959,7 +12959,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     form_idempotency_key=form_idempotency_key,
                 )
 
-            cand_new = Candidata.query.get(cand_new_id)
+            cand_new = db.session.get(Candidata, cand_new_id)
             if not cand_new:
                 flash('La candidata seleccionada no existe.', 'danger')
                 return render_template(
@@ -19307,7 +19307,7 @@ def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = N
     if experiencia_it:
         info_lines.append(f"Experiencia en: {experiencia_it}")
     if horario:
-        info_lines.append(f"Horario: {horario}")
+        info_lines.extend(_format_horario_block_for_copy(horario))
     info_block = "\n".join([x for x in info_lines])
     funciones_block = f"Funciones: {', '.join(funcs)}" if funcs else ""
     familia_parts = []
@@ -19349,6 +19349,48 @@ def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = N
             continue
         cleaned.append(p)
     return "\n".join(cleaned).rstrip()
+
+
+def _format_horario_block_for_copy(horario_raw: str) -> list[str]:
+    horario = _s(horario_raw)
+    if not horario:
+        return []
+
+    # Formato correcto actual: "Lunes a viernes de X a Y / sábado hasta Z"
+    m = re.match(
+        r"^\s*Lunes a viernes\s+de\s+(.+?)\s+a\s+(.+?)\s*/\s*s[áa]bado\s+hasta\s+(.+?)\s*$",
+        horario,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        h_in = _s(m.group(1))[:60]
+        h_out = _s(m.group(2))[:60]
+        sab_out = _s(m.group(3))[:60]
+        if h_in and h_out and sab_out:
+            return [
+                "Horario:",
+                f"Lunes a viernes: {h_in} - {h_out}",
+                f"Sábado: {h_in} - {sab_out}",
+            ]
+
+    # Formato legado defectuoso: "Lunes a viernes / sábado hasta Z, de X a Y"
+    m_legacy = re.match(
+        r"^\s*Lunes a viernes\s*/\s*s[áa]bado\s+hasta\s+(.+?)\s*,\s*de\s+(.+?)\s+a\s+(.+?)\s*$",
+        horario,
+        flags=re.IGNORECASE,
+    )
+    if m_legacy:
+        sab_out = _s(m_legacy.group(1))[:60]
+        h_in = _s(m_legacy.group(2))[:60]
+        h_out = _s(m_legacy.group(3))[:60]
+        if h_in and h_out and sab_out:
+            return [
+                "Horario:",
+                f"Lunes a viernes: {h_in} - {h_out}",
+                f"Sábado: {h_in} - {sab_out}",
+            ]
+
+    return [f"Horario: {horario}"]
 
 
 @admin_bp.route('/solicitudes/copiar')
