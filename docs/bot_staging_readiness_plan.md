@@ -1,5 +1,8 @@
 # Bot WhatsApp + IA + Candidatas: Staging Readiness Plan
 
+## 0) Regla base obligatoria para trabajo con Codex
+Antes de cualquier tarea operativa o de scripts en este proyecto, aplicar de forma estricta: [`docs/CODEX_PROJECT_RULES.md`](docs/CODEX_PROJECT_RULES.md).
+
 ## 1) Objetivo de staging
 Validar el sistema en un entorno lo más parecido posible a producción, manteniendo una postura de seguridad estricta en la fase inicial.
 

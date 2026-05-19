@@ -1,5 +1,8 @@
 # Migración de usuarios internos a PostgreSQL (Render)
 
+## Lectura obligatoria para Codex
+- Antes de ejecutar scripts, migraciones o cambios con potencial impacto en datos, revisar y cumplir: [`docs/CODEX_PROJECT_RULES.md`](docs/CODEX_PROJECT_RULES.md)
+
 ## Objetivo
 Mover el acceso interno del panel admin (`admin/secretaria`) desde `config.USUARIOS` a tabla `staff_users`, sin tocar tablas de negocio (`candidatas`, `clientes`, `solicitudes`) y manteniendo compatibilidad legacy.
 
