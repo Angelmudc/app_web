@@ -3,3 +3,8 @@ service_account.json
 .env
 venv/
 **/__pycache__/
+logs/
+data/
+*.sqlite
+*.db
+*.log
