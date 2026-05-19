@@ -1,0 +1,645 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Conversación #{{ conversation.id }}{% endblock %}
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_bot_chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 bot-wa-page">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-sm btn-link px-0">&larr; Volver</a>
+      <h1 class="h4 mb-1">Conversación #{{ conversation.id }}</h1>
+      <p class="text-muted mb-0">{{ conversation.contact_name or 'Sin nombre' }} · {{ conversation.phone_e164 }}</p>
+      {% if conversation.identity %}
+      <div class="small mt-1">
+        {% set identity_status = conversation.identity.identity_status %}
+        {% if identity_status == 'ambiguous' %}
+          <span class="badge text-bg-danger">ambiguous</span>
+          <span class="text-danger ms-1">Revisión manual requerida por coincidencias múltiples.</span>
+          <span class="ms-2 text-muted">Ambiguo / requiere revisión</span>
+        {% elif identity_status == 'new_contact' %}
+          <span class="badge text-bg-secondary">new_contact</span>
+          <span class="ms-2 text-muted">Contacto nuevo</span>
+        {% elif identity_status == 'client_identified' %}
+          <span class="badge text-bg-primary">client_identified</span>
+          <span class="ms-2 text-muted">Cliente identificado</span>
+        {% elif identity_status == 'candidate_identified' %}
+          <span class="badge text-bg-info">candidate_identified</span>
+          <span class="ms-2 text-muted">Candidata identificada</span>
+        {% elif identity_status == 'client_and_candidate' %}
+          <span class="badge text-bg-warning">client_and_candidate</span>
+          <span class="ms-2 text-muted">Cliente y candidata</span>
+        {% else %}
+          <span class="badge text-bg-light border">{{ identity_status }}</span>
+        {% endif %}
+        <span class="ms-2 text-muted">confianza: {{ conversation.identity.confidence_score }}</span>
+      </div>
+      {% endif %}
+    </div>
+    <div class="d-flex gap-2">
+      <span class="badge text-bg-light border">estado: {{ conversation.status }}</span>
+      {% if conversation.bot_paused %}<span class="badge text-bg-warning">bot pausado</span>{% endif %}
+    </div>
+  </div>
+  {% include 'admin/bot/_safety_alert.html' %}
+
+  <div class="row g-3">
+    <div class="col-lg-8">
+      <div class="card border-0 shadow-sm mb-3 bot-chat-shell">
+        <div class="card-header bg-white"><strong>Mensajes</strong></div>
+        <div class="card-body bot-chat-wrap p-0">
+          <div id="bot-chat-log" class="bot-chat">
+          {% for msg in messages %}
+          {% set row_kind = 'system' if msg.source == 'system' else ('inbound' if msg.direction == 'inbound' else 'outbound') %}
+          {% set actor = 'Sistema' if row_kind == 'system' else ('Contacto' if row_kind == 'inbound' else 'Admin') %}
+          <div class="msg-row {{ row_kind }}">
+            <div class="msg-bubble {{ row_kind }}">
+              <div class="msg-head">
+                <small><strong>{{ actor }}</strong></small>
+                <small class="msg-meta">{{ msg.created_at }}</small>
+              </div>
+              <div>{{ msg.text_body or '[sin texto]' }}</div>
+              <div class="msg-meta mt-1">{{ msg.direction }} · {{ msg.source }} · {{ msg.status }}</div>
+              {% if row_kind == 'inbound' %}
+              {% set sug = ai_suggestion_by_message_id.get(msg.id) %}
+              {% set msg_decisions = ai_decisions_by_message_id.get(msg.id, []) %}
+              {% set proto_dec = protocol_auto_decision_by_message_id.get(msg.id) %}
+              <div class="ia-card p-2 mt-2" data-inbound-message-id="{{ msg.id }}">
+                {% if proto_dec %}
+                {% set proto_facts = proto_dec.facts_json or {} %}
+                {% set proto_validation = proto_facts.get('validation_result') or {} %}
+                {% set detected = proto_facts.get('entities_detected') or {} %}
+                {% set future_detected = proto_facts.get('future_entities_detected') or {} %}
+                {% set missing = proto_facts.get('missing_fields') or [] %}
+                <div class="small"><strong>Validación de etapa:</strong>
+                  {% if proto_dec.rule_code == 'PROTOCOL_PENDING_CORRECTION_DETECTED' %}
+                    corrección pendiente
+                  {% elif proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_BLOCKED_HUMAN' %}
+                    requiere humano
+                  {% elif proto_dec.rule_code in ['PROTOCOL_AUTO_ADVANCE_DISABLED', 'PROTOCOL_AUTO_ADVANCE_LOCAL_ONLY'] and proto_validation.get('matched') %}
+                    válido
+                  {% elif proto_validation.get('matched') %}
+                    válido
+                  {% else %}
+                    inválido
+                  {% endif %}
+                </div>
+                {% if proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_LOCAL' %}
+                <div class="small text-success"><strong>Etapa completada automáticamente en modo local/dry-run.</strong></div>
+                <div class="small"><strong>Nueva etapa:</strong> {{ proto_facts.get('new_step') or 'N/A' }}</div>
+                {% elif proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_BLOCKED_HUMAN' %}
+                <div class="small text-warning">Etapa marcada para revisión humana; sin auto-avance.</div>
+                {% elif proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_INVALID_ANSWER' %}
+                <div class="small text-warning">Respuesta inválida para la etapa actual; sugiere aclaración.</div>
+                {% if proto_facts.get('clarification_prompt') %}
+                <div class="small mt-1 js-ai-suggested-reply">{{ proto_facts.get('clarification_prompt') }}</div>
+                {% endif %}
+                {% elif proto_dec.rule_code in ['PROTOCOL_AUTO_ADVANCE_DISABLED', 'PROTOCOL_AUTO_ADVANCE_LOCAL_ONLY'] and proto_validation.get('matched') %}
+                <div class="small text-info"><strong>Respuesta válida, auto-avance desactivado.</strong></div>
+                <div class="small text-muted">No se avanzó automáticamente.</div>
+                {% elif proto_dec.rule_code == 'PROTOCOL_OUT_OF_STEP_ANSWER' %}
+                <div class="small text-warning"><strong>Respuesta fuera de la etapa actual.</strong></div>
+                <div class="small">Parece responder a: {{ (proto_facts.get('out_of_step_details') or {}).get('suggested_step_code') or proto_facts.get('suggested_step') or 'N/A' }}</div>
+                <div class="small text-muted">No se avanzó automáticamente.</div>
+                {% elif proto_dec.rule_code == 'PROTOCOL_PENDING_CORRECTION_DETECTED' %}
+                {% set corr = proto_facts.get('pending_correction') or {} %}
+                <div class="small text-warning"><strong>Corrección pendiente detectada</strong></div>
+                <div class="small">campo: {{ corr.get('field') or 'N/A' }}</div>
+                <div class="small">valor anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+                <div class="small">valor nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+                <div class="small">etapa sugerida: {{ corr.get('suggested_step_code') or 'N/A' }}</div>
+                <div class="small text-warning">Requiere confirmación humana</div>
+                <div class="small text-muted">No se aplicó automáticamente.</div>
+                {% endif %}
+                {% if detected %}
+                <div class="small mt-1"><strong>Entidades detectadas:</strong></div>
+                {% if detected.get('name') %}<div class="small">nombre: {{ detected.get('name') }}</div>{% endif %}
+                {% if detected.get('age') %}<div class="small">edad: {{ detected.get('age') }}</div>{% endif %}
+                {% if detected.get('city') %}<div class="small">ciudad: {{ detected.get('city') }}</div>{% endif %}
+                {% if detected.get('cedula_masked') %}<div class="small">cédula: {{ detected.get('cedula_masked') }}</div>{% endif %}
+                {% endif %}
+                {% if future_detected %}
+                <div class="small mt-1"><strong>Datos adicionales detectados:</strong></div>
+                {% if future_detected.get('city') %}<div class="small">ciudad anticipada: {{ future_detected.get('city') }}</div>{% endif %}
+                {% if future_detected.get('work_type') %}<div class="small">modalidad anticipada: {{ future_detected.get('work_type') }}</div>{% endif %}
+                {% if future_detected.get('route') %}<div class="small">ruta anticipada: {{ future_detected.get('route') }}</div>{% endif %}
+                <div class="small text-info">No se avanzaron etapas futuras automáticamente.</div>
+                {% endif %}
+                {% if missing %}
+                <div class="small mt-1"><strong>Campos faltantes:</strong> {{ missing|join(', ') }}</div>
+                <div class="small text-info">Avance parcial.</div>
+                {% elif proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_LOCAL' %}
+                <div class="small text-success">Información suficiente para avanzar.</div>
+                {% endif %}
+                {% if proto_dec.rule_code == 'PROTOCOL_AUTO_ADVANCE_LOCAL' %}
+                <div class="small mt-1"><strong>Próximo mensaje sugerido</strong></div>
+                <div class="small"><strong>Etapa nueva:</strong> {{ proto_facts.get('new_step') }}{% if proto_facts.get('next_step_title') %} - {{ proto_facts.get('next_step_title') }}{% endif %}</div>
+                <div class="small js-ai-suggested-reply" style="white-space: pre-line;">{{ proto_facts.get('next_step_prompt') }}</div>
+                <div class="mt-2 d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-primary js-use-suggestion">Usar como respuesta</button>
+                </div>
+                {% endif %}
+                {% endif %}
+                {% if sug %}
+                <div class="small"><strong>Sugerencia IA para este mensaje</strong></div>
+                <div class="small"><strong>intent:</strong> {{ sug.facts_json.get('intent') }}</div>
+                <div class="small"><strong>confidence:</strong> {{ sug.facts_json.get('confidence') }}</div>
+                <div class="small"><strong>requires_human:</strong> {{ sug.facts_json.get('requires_human') }}</div>
+                <div class="small">
+                  <strong>Protocolo:</strong> {{ sug.facts_json.get('protocol_version') or 'n/a' }}
+                  · <strong>Etapa:</strong> {{ sug.facts_json.get('current_step_code') or 'n/a' }}
+                  · <strong>Requiere humano:</strong> {{ sug.facts_json.get('step_requires_human') }}
+                </div>
+                <div class="small mt-1"><strong>respuesta sugerida:</strong></div>
+                <div class="small js-ai-suggested-reply">{{ sug.facts_json.get('suggested_reply') }}</div>
+                <div class="mt-2 d-flex gap-1 flex-wrap">
+                  <span class="badge text-bg-info">Solo sugerencia</span>
+                  <span class="badge text-bg-secondary">No enviada</span>
+                  <span class="badge text-bg-warning">Requiere aprobación humana</span>
+                </div>
+                <div class="mt-2 d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-copy-suggestion">Copiar sugerencia</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary js-use-suggestion">Usar como respuesta</button>
+                </div>
+                {% else %}
+                <div class="small"><strong>Sin sugerencia IA</strong></div>
+                {% endif %}
+                <div class="small mt-2"><strong>Decisiones IA de este inbound</strong></div>
+                {% for decision in msg_decisions %}
+                <div class="border rounded p-2 mt-2">
+                  <div><small class="text-muted">{{ decision.created_at }}</small></div>
+                  <div><strong>{{ decision.decision_type }}</strong> → {{ decision.decision_result }}</div>
+                  <div class="small text-muted">razón: {{ decision.rule_code }} · {{ decision.reason_human }}</div>
+                  {% if decision.ai_used %}
+                  <div class="small text-muted">modelo: {{ decision.ai_model or 'n/a' }} · prompt version: {{ decision.ai_prompt_version or 'n/a' }}</div>
+                  {% endif %}
+                  {% if decision.decision_result == 'manual_only' %}
+                  <div class="small text-warning">La IA sugirió, pero no envió nada.</div>
+                  {% endif %}
+                </div>
+                {% else %}
+                <div class="small text-muted mt-1">Sin decisiones IA para este inbound.</div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% else %}
+          <p class="text-muted mb-0">Sin mensajes.</p>
+          {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm bot-composer-shell">
+        <div class="card-header bg-white"><strong>Simular mensaje entrante del contacto</strong></div>
+        <div class="card-body border-bottom">
+          <form method="post" action="{{ url_for('admin.bot_conversation_simulate_inbound', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="mb-2">
+              <textarea class="form-control" name="body" rows="3" placeholder="Escribe mensaje inbound de prueba..." required></textarea>
+            </div>
+            <p class="small text-muted mb-2">Esto crea un mensaje entrante local de prueba. No envía WhatsApp.</p>
+            <button type="submit" class="btn btn-outline-primary">Simular inbound</button>
+          </form>
+        </div>
+        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+          <strong>Responder manualmente</strong>
+          <div class="d-flex gap-1">
+            {% if bot_dry_run %}<span class="badge text-bg-warning">Dry-run activo</span>{% endif %}
+            {% if not whatsapp_enabled %}<span class="badge text-bg-secondary">WhatsApp real apagado</span>{% endif %}
+          </div>
+        </div>
+        <div class="card-body bot-composer-bar">
+          <form method="post" action="{{ url_for('admin.bot_conversation_add_message', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="mb-2">
+              <textarea id="manual-reply-body" class="form-control" name="body" rows="3" placeholder="Escribe una respuesta manual..." required></textarea>
+            </div>
+            <p class="small text-muted mb-2">Esto guarda una respuesta manual en modo seguro. No se envía WhatsApp si WHATSAPP_ENABLED=false o BOT_DRY_RUN=true.</p>
+            <button type="submit" class="btn btn-primary">Guardar mensaje</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-4">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Protocolo de captación</strong></div>
+        <div class="card-body">
+          <div class="small"><strong>Protocolo:</strong> {{ protocol_state.protocol_version }}</div>
+          <div class="small"><strong>Etapa actual:</strong> {{ protocol_state.current_step_code }}</div>
+          <div class="small"><strong>Siguiente etapa:</strong> {{ protocol_state.next_step_code or 'FIN' }}</div>
+          <div class="small"><strong>Progreso:</strong> {{ protocol_state.progress_current }} / {{ protocol_state.progress_total }} ({{ protocol_state.progress_percent }}%)</div>
+          <div class="small text-muted">No envía mensajes automáticamente.</div>
+          <div class="small text-muted">No cambia datos de candidata/cliente.</div>
+          <div class="small text-muted">Solo actualiza el estado conversacional del bot.</div>
+          <hr>
+          <div class="small"><strong>Pendientes</strong></div>
+          {% for corr in pending_corrections_pending %}
+          <div class="small mt-1 border rounded p-2">
+            <div><strong>{{ corr.get('field') or 'campo' }}</strong> · Pendiente de confirmar</div>
+            <div>Anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+            <div>Nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+            <div>Fecha: {{ corr.get('created_at') or 'N/A' }}</div>
+            <div>Etapa sugerida: {{ corr.get('suggested_step_code') or 'N/A' }}</div>
+            <div class="text-warning">Requiere confirmación humana</div>
+            <div class="mt-2 d-flex gap-2">
+              {% if corr.get('_corr_id') %}
+              <form method="post" action="{{ url_for('admin.bot_protocol_correction_approve', conversation_id=conversation.id, correction_id=corr.get('_corr_id')) }}">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                <button type="submit" class="btn btn-sm btn-outline-success">Aprobar</button>
+              </form>
+              <form method="post" action="{{ url_for('admin.bot_protocol_correction_reject', conversation_id=conversation.id, correction_id=corr.get('_corr_id')) }}">
+                {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+                <input type="text" class="form-control form-control-sm mb-1" name="rejection_reason" placeholder="Motivo (opcional)">
+                <button type="submit" class="btn btn-sm btn-outline-danger">Rechazar</button>
+              </form>
+              {% else %}
+              <button type="button" class="btn btn-sm btn-outline-secondary" disabled>Sin ID para aprobar/rechazar</button>
+              {% endif %}
+            </div>
+          </div>
+          {% else %}
+          <div class="small text-muted">Sin correcciones pendientes.</div>
+          {% endfor %}
+
+          <div class="small mt-2"><strong>Aprobadas</strong></div>
+          {% for corr in pending_corrections_approved %}
+          <div class="small mt-1 border rounded p-2">
+            <div><strong>{{ corr.get('field') or 'campo' }}</strong> · {{ corr.get('status') }}</div>
+            <div>Anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+            <div>Nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+            <div>Fecha: {{ corr.get('approved_at') or corr.get('updated_at') or 'N/A' }}</div>
+            <div>Etapa sugerida: {{ corr.get('suggested_step_code') or 'N/A' }}</div>
+          </div>
+          {% else %}
+          <div class="small text-muted">Sin correcciones aprobadas.</div>
+          {% endfor %}
+
+          <div class="small mt-2"><strong>Rechazadas</strong></div>
+          {% for corr in pending_corrections_rejected %}
+          <div class="small mt-1 border rounded p-2">
+            <div><strong>{{ corr.get('field') or 'campo' }}</strong> · {{ corr.get('status') }}</div>
+            <div>Anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+            <div>Nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+            <div>Fecha: {{ corr.get('rejected_at') or corr.get('updated_at') or 'N/A' }}</div>
+            <div>Etapa sugerida: {{ corr.get('suggested_step_code') or 'N/A' }}</div>
+            {% if corr.get('rejection_reason') %}<div>Motivo: {{ corr.get('rejection_reason') }}</div>{% endif %}
+          </div>
+          {% else %}
+          <div class="small text-muted">Sin correcciones rechazadas.</div>
+          {% endfor %}
+
+          <div class="small mt-2"><strong>Reemplazadas</strong></div>
+          {% for corr in pending_corrections_superseded %}
+          <div class="small mt-1 border rounded p-2">
+            <div><strong>{{ corr.get('field') or 'campo' }}</strong> · {{ corr.get('status') }}</div>
+            <div>Anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+            <div>Nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+            <div>Fecha: {{ corr.get('updated_at') or corr.get('created_at') or 'N/A' }}</div>
+            <div>Etapa sugerida: {{ corr.get('suggested_step_code') or 'N/A' }}</div>
+          </div>
+          {% else %}
+          <div class="small text-muted">Sin correcciones reemplazadas.</div>
+          {% endfor %}
+          {% if protocol_current_step %}
+          <hr>
+          <div class="small"><strong>Título etapa:</strong> {{ protocol_current_step.title }}</div>
+          <div class="small"><strong>Validación esperada:</strong> {{ (protocol_current_step.validations or [])|join(', ') or 'N/A' }}</div>
+          <div class="small"><strong>Respuestas esperadas:</strong> {{ (protocol_current_step.expected_answers or [])|join(', ') or 'N/A' }}</div>
+          <div class="small"><strong>requires_human:</strong> {{ protocol_current_step.requires_human }}</div>
+          <div class="small text-muted" style="white-space: pre-line;">{{ protocol_step_prompt }}</div>
+          {% endif %}
+          <hr>
+          <div class="d-grid gap-2">
+            <form method="post" action="{{ url_for('admin.bot_protocol_mark_completed', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <button type="submit" class="btn btn-outline-secondary w-100">Marcar etapa como completada</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.bot_protocol_advance', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <button type="submit" class="btn btn-outline-primary w-100">Avanzar a siguiente etapa</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.bot_protocol_regress', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <button type="submit" class="btn btn-outline-warning w-100">Retroceder etapa</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.bot_protocol_select', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <div class="mb-2">
+                <select class="form-select form-select-sm" name="step_code" required>
+                  {% for st in protocol_steps %}
+                  <option value="{{ st.step_code }}" {% if st.step_code == protocol_state.current_step_code %}selected{% endif %}>
+                    {{ st.step_code }}{% if st.title %} - {{ st.title }}{% endif %}
+                  </option>
+                  {% endfor %}
+                </select>
+              </div>
+              <button type="submit" class="btn btn-outline-info w-100">Seleccionar etapa manualmente</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.bot_protocol_reset', conversation_id=conversation.id) }}" onsubmit="return confirm('Esto reinicia el protocolo al inicio (solo estado conversacional). ¿Confirmas?');">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <input type="hidden" name="confirm_reset" value="REINICIAR">
+              <button type="submit" class="btn btn-outline-danger w-100">Reiniciar protocolo</button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Resumen de candidata</strong></div>
+        <div class="card-body">
+          {% set s = candidate_summary.fields or {} %}
+          <div class="small"><strong>Estado:</strong> <span class="badge text-bg-light border">{{ candidate_summary_status }}</span></div>
+          {% if candidate_summary_status == 'blocked_pending_corrections' %}
+          <div class="small text-warning mt-1"><strong>Bloqueado:</strong> hay correcciones pendientes de aprobación humana.</div>
+          {% elif candidate_summary_status == 'incomplete' %}
+          <div class="small text-warning mt-1"><strong>Incompleto:</strong> faltan datos clave para revisión.</div>
+          {% elif candidate_summary_status == 'requires_human' %}
+          <div class="small text-warning mt-1"><strong>Revisión humana obligatoria:</strong> hay datos sensibles.</div>
+          {% endif %}
+          <div class="small mt-2"><strong>Datos recopilados</strong></div>
+          <div class="small">nombre: {{ s.name or 'N/A' }}</div>
+          <div class="small">edad: {{ s.age or 'N/A' }}</div>
+          <div class="small">teléfono: {{ s.phone or 'N/A' }}</div>
+          <div class="small">ciudad: {{ s.city or 'N/A' }}</div>
+          <div class="small">sector/dirección: {{ s.sector_address or 'N/A' }}</div>
+          <div class="small">modalidad deseada: {{ s.work_type or 'N/A' }}</div>
+          <div class="small">ruta/transporte: {{ s.route or 'N/A' }}</div>
+          <div class="small">experiencia/habilidades: {{ s.experience_skills or 'N/A' }}</div>
+          <div class="small">referencias laborales: {{ s.work_references or 'N/A' }}</div>
+          <div class="small">referencias familiares: {{ s.family_references or 'N/A' }}</div>
+          <div class="small">aceptación 25%: {{ s.acceptance_25 or 'N/A' }}</div>
+          <div class="small">documentos indicados: {{ s.documents_indicated or 'N/A' }}</div>
+          <div class="small">foto indicada: {{ s.photo_indicated or 'N/A' }}</div>
+          <div class="small">observaciones: {{ s.observations or 'N/A' }}</div>
+
+          <div class="small mt-2"><strong>Campos faltantes</strong></div>
+          {% if candidate_summary_missing_fields %}
+          <div class="small text-warning">{{ candidate_summary_missing_fields | join(', ') }}</div>
+          {% else %}
+          <div class="small text-success">Sin campos obligatorios faltantes.</div>
+          {% endif %}
+
+          <div class="small mt-2"><strong>Correcciones pendientes</strong></div>
+          {% if candidate_summary.pending_corrections_active %}
+            {% for corr in candidate_summary.pending_corrections_active %}
+            <div class="small border rounded p-2 mt-1">
+              <div><strong>{{ corr.get('field') or 'campo' }}</strong> · pending_human</div>
+              <div>Anterior: {{ corr.get('old_value') or 'N/A' }}</div>
+              <div>Nuevo: {{ corr.get('new_value') or 'N/A' }}</div>
+            </div>
+            {% endfor %}
+          {% else %}
+          <div class="small text-muted">Sin correcciones pendientes activas.</div>
+          {% endif %}
+
+          <div class="alert alert-warning mt-3 mb-2 py-2 px-3 small">
+            Este resumen no crea ni actualiza candidatas. Requiere revisión humana.
+          </div>
+          {% if candidate_draft %}
+          <div class="small mt-2"><strong>Borrador creado:</strong> #{{ candidate_draft.id }}</div>
+          <div class="small">estado draft: {{ candidate_draft.draft_status }}</div>
+          <div class="small">creado: {{ candidate_draft.created_at }}</div>
+          <div class="small">reviewed_by: {{ candidate_draft.reviewed_by or 'N/A' }}</div>
+          <div class="small">reviewed_at: {{ candidate_draft.reviewed_at or 'N/A' }}</div>
+          <div class="d-grid gap-2 mt-2">
+            <form method="post" action="{{ url_for('admin.bot_candidate_draft_mark_under_review', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <button type="submit" class="btn btn-outline-info w-100">Marcar borrador bajo revisión</button>
+            </form>
+            <form method="post" action="{{ url_for('admin.bot_candidate_draft_reject', conversation_id=conversation.id) }}">
+              {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+              <input type="text" class="form-control form-control-sm mb-1" name="notes" placeholder="Motivo rechazo (opcional)">
+              <button type="submit" class="btn btn-outline-danger w-100">Rechazar borrador</button>
+            </form>
+          </div>
+          {% else %}
+          {% if candidate_draft_can_create.allowed %}
+          <form method="post" action="{{ url_for('admin.bot_candidate_draft_create', conversation_id=conversation.id) }}" class="mt-2">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <button type="submit" class="btn btn-outline-primary w-100">Crear borrador de candidata</button>
+          </form>
+          {% else %}
+          <button type="button" class="btn btn-outline-secondary w-100 mt-2" disabled>Crear borrador de candidata</button>
+          <div class="small text-warning mt-1">Bloqueado: {{ candidate_draft_can_create.reason }}</div>
+          {% endif %}
+          {% endif %}
+          <button type="button" class="btn btn-outline-secondary w-100" disabled>Crear/actualizar candidata</button>
+          <div class="small text-muted mt-1">Próxima fase: requiere aprobación humana.</div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Entrevista WhatsApp</strong></div>
+        <div class="card-body">
+          {% set flow = interview_flow_state or {} %}
+          <div class="small"><strong>Paso actual:</strong> {{ flow.get('current_step') or 'N/A' }}</div>
+          <div class="small"><strong>Completada:</strong> {{ flow.get('completed') }}</div>
+          <div class="small mt-2"><strong>Próxima pregunta</strong></div>
+          <div class="small text-muted" style="white-space: pre-line;">{{ flow.get('last_question') or 'N/A' }}</div>
+          <div class="small mt-2"><strong>Datos capturados</strong></div>
+          {% set c = flow.get('collected_data') or {} %}
+          {% if c %}
+          {% for key, value in c.items() %}
+          <div class="small">{{ key }}: {{ value }}</div>
+          {% endfor %}
+          {% else %}
+          <div class="small text-muted">Sin datos capturados aún.</div>
+          {% endif %}
+          {% if flow.get('summary') %}
+          <div class="small mt-2"><strong>Resumen final</strong></div>
+          <div class="small text-muted" style="white-space: pre-line;">{{ flow.get('summary') }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% if candidate_conversion_preview %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Preview de candidata</strong></div>
+        <div class="card-body">
+          {% set p = candidate_conversion_preview %}
+          {% set pf = p.mapped_fields or {} %}
+          {% set cv = candidate_creation_validation or {} %}
+          {% set bconf = cv.blocking_conflicts or [] %}
+          {% set wconf = cv.warning_conflicts or [] %}
+          <div class="small"><strong>Estado preview:</strong> <span class="badge text-bg-light border">{{ p.status }}</span></div>
+          {% if candidate_draft and candidate_draft.draft_status == 'converted' %}
+          <div class="small mt-1"><strong>Estado creación:</strong> <span class="badge text-bg-success">converted</span></div>
+          {% elif bconf %}
+          <div class="small mt-1"><strong>Estado creación:</strong> <span class="badge text-bg-danger">blocked</span></div>
+          {% elif candidate_draft and candidate_draft.draft_status in ['under_review', 'approved_for_creation'] %}
+          <div class="small mt-1"><strong>Estado creación:</strong> <span class="badge text-bg-warning">under_review</span></div>
+          {% else %}
+          <div class="small mt-1"><strong>Estado creación:</strong> <span class="badge text-bg-info">ready</span></div>
+          {% endif %}
+          <div class="small mt-2"><strong>Campos mapeados</strong></div>
+          <div class="small">nombre_completo: {{ pf.nombre_completo or 'N/A' }}</div>
+          <div class="small">edad: {{ pf.edad or 'N/A' }}</div>
+          <div class="small">numero_telefono: {{ pf.numero_telefono or 'N/A' }}</div>
+          <div class="small">ciudad: {{ pf.ciudad or 'N/A' }}</div>
+          <div class="small">sector: {{ pf.sector or 'N/A' }}</div>
+          <div class="small">direccion_completa: {{ pf.direccion_completa or 'N/A' }}</div>
+          <div class="small">modalidad_trabajo_preferida: {{ pf.modalidad_trabajo_preferida or 'N/A' }}</div>
+          <div class="small">rutas_cercanas: {{ pf.rutas_cercanas or 'N/A' }}</div>
+          <div class="small">areas_experiencia: {{ pf.areas_experiencia or 'N/A' }}</div>
+          <div class="small">contactos_referencias_laborales: {{ pf.contactos_referencias_laborales or 'N/A' }}</div>
+          <div class="small">referencias_familiares_detalle: {{ pf.referencias_familiares_detalle or 'N/A' }}</div>
+          <div class="small">acepta_porcentaje_sueldo: {{ pf.acepta_porcentaje_sueldo or 'N/A' }}</div>
+          <div class="small">observaciones_internas_preview: {{ pf.observaciones_internas_preview or 'N/A' }}</div>
+          <div class="small">cedula_masked: {{ pf.cedula_masked or 'N/A' }}</div>
+          <div class="small mt-2"><strong>Campos faltantes</strong></div>
+          {% if p.missing_required_fields %}
+          <div class="small text-warning">{{ p.missing_required_fields | join(', ') }}</div>
+          {% else %}
+          <div class="small text-success">Sin faltantes obligatorios para preview.</div>
+          {% endif %}
+          <div class="small mt-2"><strong>Conflictos detectados</strong></div>
+          {% if p.conflicts %}
+            {% for c in p.conflicts %}
+            <div class="small text-warning">- {{ c.type }} · candidata #{{ c.candidate_id }} · {{ c.value_masked }}</div>
+            {% endfor %}
+          {% else %}
+          <div class="small text-muted">Sin conflictos detectados.</div>
+          {% endif %}
+          {% if p.warnings %}
+          <div class="small mt-2"><strong>Warnings</strong></div>
+            {% for w in p.warnings %}
+            <div class="small text-warning">- {{ w }}</div>
+            {% endfor %}
+          {% endif %}
+          <div class="small mt-2"><strong>Conflictos bloqueantes (creación real)</strong></div>
+          {% if bconf %}
+            {% for c in bconf %}
+            <div class="small text-danger">- {{ c.type }}</div>
+            {% endfor %}
+          {% else %}
+          <div class="small text-success">Sin conflictos bloqueantes.</div>
+          {% endif %}
+          {% if wconf %}
+          <div class="small mt-2"><strong>Warnings (creación real)</strong></div>
+            {% for c in wconf %}
+            <div class="small text-warning">- {{ c.type }}</div>
+            {% endfor %}
+          {% endif %}
+          <div class="alert alert-danger mt-3 mb-2 py-2 px-3 small">
+            Esto es solo una vista previa. No se ha creado ninguna candidata.
+          </div>
+          {% if candidate_draft and candidate_draft.draft_status == 'converted' %}
+          <button type="button" class="btn btn-outline-success w-100" disabled>Candidata real ya creada</button>
+          <div class="small text-success mt-1">candidata_id: {{ (candidate_draft.metadata_json or {}).get('created_candidate_id') or 'N/A' }}</div>
+          {% elif bconf %}
+          <button type="button" class="btn btn-outline-secondary w-100" disabled>Crear candidata real</button>
+          <div class="small text-danger mt-1">Bloqueado por conflictos.</div>
+          {% elif candidate_real_confirm and candidate_draft and candidate_draft.draft_status == 'approved_for_creation' %}
+          <div class="alert alert-warning mt-2 mb-2 py-2 px-3 small">
+            Esta acción creará una candidata REAL.
+          </div>
+          {% set gr = (candidate_creation_guardrails or {}) %}
+          <div class="small mb-2">
+            <div>Entorno local: {% if gr.env_ok %}<span class="text-success">OK</span>{% else %}<span class="text-danger">NO</span>{% endif %}</div>
+            <div>DB local: {% if gr.db_ok %}<span class="text-success">OK</span>{% else %}<span class="text-danger">NO</span>{% endif %}</div>
+            <div>Flag creación local: {% if gr.flag_ok %}<span class="text-success">OK</span>{% else %}<span class="text-danger">NO</span>{% endif %}</div>
+          </div>
+          {% if not gr.allowed %}
+          <div class="small text-danger mb-2">Creación real bloqueada por guard rails. Activa {{ gr.flag_name }}=true en entorno local seguro.</div>
+          {% endif %}
+          <form method="post" action="{{ url_for('admin.bot_candidate_draft_create_real', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="confirm_reviewed" name="confirm_reviewed">
+              <label class="form-check-label small" for="confirm_reviewed">Confirmo que revisé la información</label>
+            </div>
+            <button type="submit" class="btn btn-danger w-100" {% if not gr.allowed %}disabled{% endif %}>Confirmar creación REAL</button>
+          </form>
+          {% else %}
+          <form method="post" action="{{ url_for('admin.bot_candidate_draft_prepare_real_creation', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <button type="submit" class="btn btn-outline-danger w-100">Preparar creación real</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Estado IA y Seguridad</strong></div>
+        <div class="card-body">
+          <div class="d-flex flex-wrap gap-1 mb-2">
+            {% if bot_ai_enabled %}<span class="badge text-bg-success">IA activa</span>{% else %}<span class="badge text-bg-secondary">IA inactiva</span>{% endif %}
+            {% if bot_autoreply_enabled %}<span class="badge text-bg-danger">Autorespuesta activa</span>{% else %}<span class="badge text-bg-warning">Autorespuesta apagada</span>{% endif %}
+            {% if bot_protocol_auto_advance_enabled %}<span class="badge text-bg-success">Auto-avance protocolo: activo</span>{% else %}<span class="badge text-bg-secondary">Auto-avance protocolo: inactivo</span>{% endif %}
+            {% if bot_dry_run %}<span class="badge text-bg-warning">Dry-run activo</span>{% endif %}
+            {% if not whatsapp_enabled %}<span class="badge text-bg-secondary">WhatsApp apagado</span>{% endif %}
+          </div>
+          {% if ai_daily_usage %}
+          <div class="small text-muted">
+            límite diario IA: usado {{ ai_daily_usage.used }} / {{ ai_daily_usage.limit }} · restante {{ ai_daily_usage.remaining }}
+          </div>
+          {% if ai_daily_usage.reached %}
+          <div class="small text-warning mt-1"><strong>Límite IA alcanzado, requiere humano.</strong></div>
+          {% endif %}
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-white"><strong>Acciones</strong></div>
+        <div class="card-body d-grid gap-2">
+          <form method="post" action="{{ url_for('admin.bot_conversation_pause', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="text" class="form-control form-control-sm mb-2" name="reason" placeholder="Motivo pausa (opcional)">
+            <button type="submit" class="btn btn-outline-warning w-100">Pausar bot</button>
+          </form>
+
+          <form method="post" action="{{ url_for('admin.bot_conversation_activate', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <button type="submit" class="btn btn-outline-success w-100">Activar bot</button>
+          </form>
+
+          <form method="post" action="{{ url_for('admin.bot_conversation_resolve', conversation_id=conversation.id) }}">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <button type="submit" class="btn btn-outline-secondary w-100">Marcar resuelto</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    var log = document.getElementById("bot-chat-log");
+    if (log) {
+      log.scrollTop = log.scrollHeight;
+    }
+    var manual = document.getElementById("manual-reply-body");
+    function suggestionTextFrom(btn) {
+      var card = btn.closest(".ia-card");
+      if (!card) return "";
+      var node = card.querySelector(".js-ai-suggested-reply");
+      return node ? (node.textContent || "").trim() : "";
+    }
+    document.querySelectorAll(".js-use-suggestion").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (!manual) return;
+        var t = suggestionTextFrom(btn);
+        if (!t) return;
+        manual.value = t;
+        manual.focus();
+      });
+    });
+    document.querySelectorAll(".js-copy-suggestion").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var t = suggestionTextFrom(btn);
+        if (!t) return;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(t).catch(function () {});
+        }
+      });
+    });
+  })();
+</script>
+{% endblock %}

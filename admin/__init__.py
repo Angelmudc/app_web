@@ -9,3 +9,4 @@ admin_bp = Blueprint(
 
 # registra las rutas del blueprint
 from . import routes
+from . import bot_routes

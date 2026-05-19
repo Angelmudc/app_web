@@ -1,0 +1,122 @@
+.bot-wa-page {
+  --wa-bg: #efeae2;
+  --wa-chat-border: #d0ddd1;
+  --wa-in: #ffffff;
+  --wa-out: #d7f7c8;
+  --wa-system: #f2f5f6;
+  --wa-ink: #1f2b2a;
+  --wa-muted: #61706f;
+  --wa-accent: #0e8e69;
+}
+
+.bot-wa-page .card.border-0.shadow-sm {
+  border: 1px solid #d8e1df !important;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.bot-wa-page .card-header.bg-white {
+  background: #f8fbfa !important;
+  border-bottom: 1px solid #d8e1df;
+}
+
+.bot-chat-shell .bot-chat-wrap {
+  background:
+    radial-gradient(circle at 20% 10%, #f8f6f1 0, #f0ebe2 50%, #ebe6dd 100%);
+  border-radius: 0;
+  border: 0;
+}
+
+.bot-chat-shell .bot-chat {
+  max-height: 560px;
+  overflow-y: auto;
+  padding: 16px;
+  scrollbar-width: thin;
+}
+
+.bot-chat-shell .msg-row {
+  display: flex;
+  margin-bottom: 12px;
+}
+
+.bot-chat-shell .msg-row.inbound { justify-content: flex-start; }
+.bot-chat-shell .msg-row.outbound { justify-content: flex-end; }
+.bot-chat-shell .msg-row.system { justify-content: center; }
+
+.bot-chat-shell .msg-bubble {
+  max-width: min(82%, 680px);
+  padding: 10px 12px;
+  border-radius: 12px;
+  color: var(--wa-ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.bot-chat-shell .msg-bubble.inbound {
+  background: var(--wa-in);
+  border-top-left-radius: 4px;
+}
+
+.bot-chat-shell .msg-bubble.outbound {
+  background: var(--wa-out);
+  border-top-right-radius: 4px;
+}
+
+.bot-chat-shell .msg-bubble.system {
+  background: var(--wa-system);
+  color: #3d4b4a;
+}
+
+.bot-chat-shell .msg-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.bot-chat-shell .msg-head strong {
+  color: #17312f;
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+.bot-chat-shell .msg-meta {
+  color: var(--wa-muted);
+  font-size: 0.72rem;
+}
+
+.bot-chat-shell .ia-card {
+  margin-top: 10px;
+  background: #f5fbff;
+  border: 1px solid #c4dff1;
+  border-radius: 10px;
+  color: #1c3a4f;
+}
+
+.bot-chat-shell .ia-card .small {
+  color: #26465f;
+}
+
+.bot-composer-shell .bot-composer-bar {
+  background: #f8fbfa;
+}
+
+.bot-composer-shell textarea.form-control {
+  background: #ffffff;
+  border: 1px solid #c9d6d4;
+}
+
+.bot-composer-shell .btn-primary {
+  background: var(--wa-accent);
+  border-color: var(--wa-accent);
+}
+
+@media (max-width: 992px) {
+  .bot-chat-shell .msg-bubble {
+    max-width: 92%;
+  }
+
+  .bot-chat-shell .bot-chat {
+    max-height: 460px;
+  }
+}

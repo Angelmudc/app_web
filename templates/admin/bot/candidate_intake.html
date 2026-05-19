@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Candidate Intake Queue{% endblock %}
+{% block content %}
+<div class="container py-4" id="candidate-intake-root">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Candidate Intake Queue</h1>
+      <p class="text-muted mb-0">Entrevistas WhatsApp completadas para revisión humana y conversión controlada.</p>
+    </div>
+    <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-outline-secondary btn-sm">Volver</a>
+  </div>
+
+  <div class="row g-2 mb-3" id="intake-metrics"></div>
+
+  <div class="row g-3">
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="table-responsive" style="max-height: 72vh;">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light" style="position: sticky; top: 0;">
+              <tr>
+                <th>Nombre</th>
+                <th>Teléfono</th>
+                <th>Edad</th>
+                <th>Ciudad/Sector</th>
+                <th>Disponibilidad</th>
+                <th>Fecha</th>
+                <th>Estado</th>
+                <th>Score</th>
+                <th>Origen</th>
+              </tr>
+            </thead>
+            <tbody id="intake-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-5">
+      <div class="card border-0 shadow-sm">
+        <div class="card-body">
+          <h2 class="h6">Detalle intake</h2>
+          <div id="intake-detail" class="small text-muted">Selecciona un intake.</div>
+          <div class="mt-2 d-flex flex-wrap gap-1">
+            <button class="btn btn-sm btn-success" id="btn-approve">Aprobar candidata</button>
+            <button class="btn btn-sm btn-danger" id="btn-reject">Rechazar</button>
+            <button class="btn btn-sm btn-dark" id="btn-duplicate">Marcar duplicado</button>
+            <button class="btn btn-sm btn-warning" id="btn-followup">Pedir seguimiento</button>
+            <button class="btn btn-sm btn-outline-primary" id="btn-edit">Editar antes de aprobar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/admin_bot_candidate_intake.js') }}" defer></script>
+{% endblock %}

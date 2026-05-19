@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Bot Sandbox Dashboard{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Sandbox Offline Controlado</h2>
+  <p>Offline activo: <strong>{{ "Sí" if offline_active else "No" }}</strong></p>
+  <form method="post" action="{{ url_for('admin.bot_sandbox_worker_run_once') }}" class="mb-3">
+    <input type="number" name="batch_size" min="1" max="200" value="20">
+    <button type="submit" class="btn btn-primary btn-sm">Ejecutar Worker (1 ciclo)</button>
+  </form>
+  <p><a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.bot_sandbox_revision_dashboard') }}">Ir a revisión manual</a></p>
+
+  <h4>Métricas</h4>
+  <ul>
+    <li>Total outbox: {{ metrics.total }}</li>
+    <li>Queued: {{ metrics.queued }}</li>
+    <li>Processing: {{ metrics.processing }}</li>
+    <li>Queue depth: {{ metrics.queue_depth }}</li>
+    <li>Simulated sent: {{ metrics.sent }}</li>
+    <li>Blocked: {{ metrics.blocked }}</li>
+    <li>Failed: {{ metrics.failed }}</li>
+    <li>Retry count: {{ metrics.retry_count }}</li>
+    <li>Retry histogram (>=1/>=3/>=5): {{ metrics.retry_histogram.ge_1 }}/{{ metrics.retry_histogram.ge_3 }}/{{ metrics.retry_histogram.ge_5 }}</li>
+    <li>Blocked ratio: {{ "%.2f%%"|format((metrics.blocked_ratio or 0) * 100) }}</li>
+    <li>Fail ratio: {{ "%.2f%%"|format((metrics.fail_ratio or 0) * 100) }}</li>
+    <li>Queue oldest age (s): {{ "%.1f"|format(metrics.queue_oldest_age_seconds or 0) }}</li>
+    <li>Throughput fake/min: {{ "%.2f"|format(metrics.throughput_fake_per_min or 0) }}</li>
+    <li>Avg processing (s): {{ "%.3f"|format(metrics.avg_processing_seconds or 0) }}</li>
+    <li>Requires human (decisiones): {{ requires_human }}</li>
+  </ul>
+
+  <h4>Outbound Fake</h4>
+  <table class="table table-sm table-striped">
+    <thead><tr><th>ID</th><th>Conv</th><th>Estado</th><th>Retries</th><th>Reason</th><th>Provider</th><th>Updated</th></tr></thead>
+    <tbody>
+      {% for row in outbox %}
+      <tr>
+        <td>{{ row.id }}</td>
+        <td>{{ row.conversation_id }}</td>
+        <td>{{ row.state }}</td>
+        <td>{{ row.retry_count }}</td>
+        <td>{{ row.failure_reason or "" }}</td>
+        <td>{{ row.provider }}</td>
+        <td>{{ row.updated_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h4>Conversaciones Sandbox</h4>
+  <table class="table table-sm table-bordered">
+    <thead><tr><th>ID</th><th>Teléfono</th><th>Estado</th><th>Último mensaje</th></tr></thead>
+    <tbody>
+      {% for c in conversations %}
+      <tr>
+        <td><a href="{{ url_for('admin.bot_conversation_detail', conversation_id=c.id) }}">{{ c.id }}</a></td>
+        <td>{{ c.phone_e164 }}</td>
+        <td>{{ c.status }}</td>
+        <td>{{ c.last_message_at }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h4>Inbound Sandbox (Webhook)</h4>
+  <table class="table table-sm table-bordered">
+    <thead><tr><th>ID</th><th>Conv</th><th>Type</th><th>Media ID</th><th>Badges</th><th>Requires Human</th><th>Payload Hash</th><th>Duplicate</th><th>Body</th></tr></thead>
+    <tbody>
+      {% for m in sandbox_inbound %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td><a href="{{ url_for('admin.bot_conversation_detail', conversation_id=m.conversation_id) }}">#{{ m.conversation_id }}</a></td>
+        <td>{{ m.message_type }}</td>
+        <td>{{ m.media_id or "" }}</td>
+        <td>
+          {% if m.message_type == "audio" %}<span class="badge text-bg-warning">audio</span>{% endif %}
+          {% if m.message_type == "image" %}<span class="badge text-bg-info">imagen</span>{% endif %}
+          {% if m.message_type == "document" %}<span class="badge text-bg-secondary">documento</span>{% endif %}
+        </td>
+        <td>{{ "Sí" if m.requires_human else "No" }}</td>
+        <td><code>{{ m.raw_payload_hash }}</code></td>
+        <td>{{ "Sí" if m.duplicate_webhook else "No" }}</td>
+        <td>{{ m.text_body }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

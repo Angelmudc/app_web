@@ -362,6 +362,12 @@
     syncRuntimeMode();
   });
 
+  window.__chatGlobalBadgeRuntime = {
+    refreshNow: function () {
+      return refreshBadge();
+    },
+  };
+
   window.addEventListener("beforeunload", function () {
     stopOwnRealtimeRuntime();
     stopSharedRefreshTimer();

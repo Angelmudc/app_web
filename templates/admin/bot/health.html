@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Health{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Bot WhatsApp - Health interno</h1>
+      <p class="text-muted mb-0">Solo lectura operacional local.</p>
+    </div>
+    <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-outline-primary btn-sm">Ir a conversaciones</a>
+  </div>
+
+  {% include 'admin/bot/_safety_alert.html' %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <tbody>
+          <tr><th>APP_ENV</th><td>{{ bot_safety.app_env }}</td></tr>
+          <tr><th>DB host/local</th><td>{{ 'local-safe' if bot_safety.is_safe_local_database else 'NO local-safe' }}</td></tr>
+          <tr><th>DB driver</th><td>{{ bot_safety.db_driver }}</td></tr>
+          <tr><th>DB host type</th><td>{{ bot_safety.db_host_type }}</td></tr>
+          <tr><th>DB name masked</th><td><code>{{ bot_safety.db_name_masked }}</code></td></tr>
+          <tr><th>DB URL masked</th><td><code>{{ bot_safety.db_url_masked }}</code></td></tr>
+          <tr><th>Dry-run</th><td>{{ bot_safety.bot_dry_run }}</td></tr>
+          <tr><th>WhatsApp enabled</th><td>{{ bot_safety.whatsapp_enabled }}</td></tr>
+          <tr><th>IA enabled</th><td>{{ bot_safety.bot_ai_enabled }}</td></tr>
+          <tr><th>IA auto-reply enabled</th><td>{{ bot_safety.bot_autoreply_enabled }}</td></tr>
+          <tr><th>Creación real permitida</th><td>{{ bot_safety.real_creation_allowed }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

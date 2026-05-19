@@ -1,0 +1,162 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Práctica local{% endblock %}
+{% block head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_bot_practice_chat.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-3 bot-practice-page"
+     data-practice-root="1"
+     data-practice-demo-mode="{{ '1' if practice_demo_mode else '0' }}"
+     data-conversation-id="{{ conversation.id if conversation else '' }}">
+  <div class="d-flex justify-content-between align-items-center mb-3 practice-topbar">
+    <div>
+      <h1 class="h4 mb-1">Práctica local del bot</h1>
+      <p class="text-muted mb-0">Solo local. Sin WhatsApp real, sin outbound real, sin creación real automática.</p>
+    </div>
+    <form method="post" action="{{ url_for('admin.bot_practice_chat') }}">
+      {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+      <button type="submit" class="btn btn-primary" {% if not practice_guardrails.allowed %}disabled{% endif %}>Nueva práctica</button>
+    </form>
+  </div>
+
+  {% if not practice_guardrails.allowed %}
+  <div class="alert alert-danger" data-practice-guardrails="blocked">
+    <strong>Práctica bloqueada por seguridad:</strong> {{ practice_guardrails.reasons|join('; ') }}
+  </div>
+  {% endif %}
+
+  {% if conversation %}
+  <div class="row g-3 practice-layout practice-layout-fixed">
+    <div class="col-lg-9 col-xl-9 practice-main-col">
+      <div class="card border-0 shadow-sm practice-chat-shell" data-chat-shell="1">
+        <div class="card-header bg-white practice-chat-header">
+          <div class="d-flex justify-content-between align-items-center">
+            {% if practice_demo_mode %}
+            <strong>Práctica local</strong>
+            {% else %}
+            <strong>Conversación práctica #{{ conversation.id }}</strong>
+            {% endif %}
+            <div class="d-flex align-items-center gap-2">
+              {% if not practice_demo_mode %}
+              <span class="badge practice-phone-badge">{{ conversation.phone_e164 }}</span>
+              {% endif %}
+              <span class="badge practice-mode-badge">Protocolo</span>
+              <span class="badge practice-mode-badge practice-mode-badge-ai">IA</span>
+            </div>
+          </div>
+          <div class="small mt-1 text-muted" id="practice-header-stats"></div>
+        </div>
+        <div class="card-body p-0 practice-chat-bg">
+          <div id="practiceMessages" class="practice-chat-messages practice-scroll-internal" data-chat-log="1"></div>
+        </div>
+        <form class="card-footer practice-composer practice-composer-fixed practice-chat-composer" data-practice-composer="1" onsubmit="return false;">
+          <div class="practice-composer-row">
+            <textarea id="practice-body" class="form-control practice-textarea" rows="1" placeholder="Escribe como candidata..." autocomplete="off"></textarea>
+            <button id="practice-send" type="button" class="btn practice-send-btn" aria-label="Enviar">➤</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="col-lg-3 col-xl-3 practice-side-col practice-sidebar-scroll">
+      {% if practice_demo_mode %}
+      <div class="card border-0 shadow-sm mb-3 practice-panel">
+        <div class="card-header bg-white"><strong>Estado</strong></div>
+        <div class="card-body practice-card-body">
+          <div class="small" id="practice-step-line"></div>
+          <div class="small" id="practice-progress-line"></div>
+          <hr class="practice-divider">
+          <div class="small"><strong>Entidades</strong></div>
+          <div class="small" id="practice-entity-name"></div>
+          <div class="small" id="practice-entity-age"></div>
+          <div class="small" id="practice-entity-city"></div>
+          <div class="small" id="practice-entity-work-type"></div>
+          <hr class="practice-divider">
+          <div class="small" id="practice-human-line"></div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3 practice-panel">
+        <div class="card-header bg-white"><strong>Acciones</strong></div>
+        <div class="card-body d-grid gap-2 practice-controls">
+          <button type="button" class="btn btn-outline-secondary" data-control-action="reset">Reiniciar</button>
+          <div class="small text-muted">No enviado</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="card border-0 shadow-sm mb-3 practice-panel">
+        <div class="card-header bg-white"><strong>Controles</strong></div>
+        <div class="card-body d-grid gap-2 practice-controls">
+          <button type="button" class="btn btn-outline-secondary" data-control-action="reset">Reiniciar práctica</button>
+          <button type="button" class="btn btn-outline-primary" data-control-action="advance">Avanzar etapa manual</button>
+          <button type="button" class="btn btn-outline-warning" data-control-action="regress">Retroceder etapa manual</button>
+          <button type="button" class="btn btn-outline-info" data-control-action="complete">Marcar etapa completada</button>
+          <button type="button" class="btn btn-outline-dark" data-control-action="summary">Ejecutar resumen</button>
+          <button type="button" class="btn btn-outline-success" data-control-action="create_draft">Crear draft local</button>
+          <button type="button" class="btn btn-outline-secondary" id="practice-toggle-metadata">Ver metadata JSON</button>
+        </div>
+      </div>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel" open>
+        <summary class="card-header bg-white"><strong>Estado protocolo</strong></summary>
+        <div class="card-body practice-card-body">
+          <div class="small" id="practice-step-line"></div>
+          <div class="small" id="practice-progress-line"></div>
+          <div class="small" id="practice-human-line"></div>
+          <div class="small" id="practice-summary-line"></div>
+          <div class="small" id="practice-draft-line"></div>
+        </div>
+      </details>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel">
+        <summary class="card-header bg-white"><strong>Debug estado</strong></summary>
+        <div class="card-body practice-card-body">
+          <pre class="practice-pre" id="practice-debug-state"></pre>
+        </div>
+      </details>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel" open>
+        <summary class="card-header bg-white"><strong>Entidades detectadas</strong></summary>
+        <div class="card-body practice-card-body">
+          <div class="small"><strong>Entidades:</strong></div>
+          <pre class="practice-pre" id="practice-entities"></pre>
+        </div>
+      </details>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel" open>
+        <summary class="card-header bg-white"><strong>Future entities</strong></summary>
+        <div class="card-body practice-card-body"><pre class="practice-pre" id="practice-future"></pre></div>
+      </details>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel" open>
+        <summary class="card-header bg-white"><strong>Correcciones pendientes</strong></summary>
+        <div class="card-body practice-card-body"><div id="practice-corrections"></div></div>
+      </details>
+
+      <details class="card border-0 shadow-sm mb-3 practice-panel" open>
+        <summary class="card-header bg-white"><strong>Draft y sugerencia</strong></summary>
+        <div class="card-body practice-card-body">
+          <div class="small"><strong>Último prompt/sugerencia:</strong></div>
+          <pre class="practice-pre" id="practice-suggested"></pre>
+        </div>
+      </details>
+
+      <div class="card border-0 shadow-sm d-none practice-panel" id="practice-metadata-card">
+        <div class="card-header bg-white"><strong>Metadata JSON</strong></div>
+        <div class="card-body practice-card-body"><pre class="practice-pre" id="practice-metadata"></pre></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="alert alert-info">No hay práctica activa. Haz clic en <strong>Nueva práctica</strong>.</div>
+  {% endif %}
+</div>
+
+{% if conversation and practice_state %}
+<script id="practice-initial-state" type="application/json">{{ practice_state|tojson }}</script>
+{% endif %}
+<script src="{{ url_for('static', filename='js/admin_bot_practice_chat.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Bot Sandbox Asistente{% endblock %}
+{% block content %}
+<div class="container-fluid mt-3" id="sandbox-assisted-root" data-initial-review-id="{{ selected.id if selected else '' }}" data-initial-conversation-id="{{ selected.conversation_id if selected else '' }}" data-send-mode="{{ realtime_send_mode }}">
+  <div class="alert alert-warning d-flex justify-content-between align-items-center" role="alert">
+    <div>
+      {% if real_owner_only_active %}
+      <strong>REAL SANDBOX OWNER ONLY</strong> · No producción · Revisión manual obligatoria
+      <span class="badge text-bg-danger ms-2">REAL SANDBOX</span>
+      <span class="badge text-bg-dark ms-1">OWNER ONLY</span>
+      {% else %}
+      <strong>FAKE SANDBOX</strong> · No enviado real · Revisión manual obligatoria · Simulado
+      <span class="badge text-bg-secondary ms-2">FAKE SANDBOX</span>
+      {% endif %}
+    </div>
+    <div class="small text-muted">
+      {% if auto_reply_active %}
+      <span class="badge text-bg-success">AUTO REPLY SANDBOX ON</span>
+      {% else %}
+      <span class="badge text-bg-secondary">MANUAL REVIEW MODE</span>
+      {% endif %}
+      · offline activo: <strong>{{ "Sí" if offline_active else "No" }}</strong>
+    </div>
+  </div>
+
+  <div class="row g-3" style="height: calc(100vh - 220px); min-height: 620px;">
+    <div class="col-lg-3">
+      <div class="card h-100 d-flex flex-column">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Pendientes</strong>
+          <button class="btn btn-outline-secondary btn-sm" id="btn-refresh-list">Refrescar</button>
+        </div>
+        <div class="list-group list-group-flush" id="pending-list" style="flex:1; min-height:0; max-height: 70vh; overflow-y:auto;"></div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card h-100 d-flex flex-column">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Chat Sandbox (tipo WhatsApp)</strong>
+          <span class="badge text-bg-secondary">{{ "Real sandbox" if real_owner_only_active else "Simulado" }}</span>
+        </div>
+        <div class="card-body" id="chat-thread" style="flex:1; min-height:0; max-height:62vh; overflow-y:auto;"></div>
+        <div class="card-footer small text-muted" id="chat-meta">Selecciona una review.</div>
+      </div>
+    </div>
+
+    <div class="col-lg-3">
+      <div class="card h-100 d-flex flex-column">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <strong>Panel de revisión</strong>
+          <a id="btn-debug" class="btn btn-outline-dark btn-sm" href="#" target="_blank">Abrir debug</a>
+        </div>
+        <div class="card-body" id="review-panel" style="flex:1; min-height:0; max-height:62vh; overflow-y:auto;">
+          <p class="text-muted">Sin review seleccionada.</p>
+        </div>
+        <div class="card-footer d-grid gap-2">
+          <button class="btn btn-success" id="btn-approve" disabled>Aprobar</button>
+          <button class="btn btn-primary" id="btn-edit-approve" disabled>Editar y aprobar</button>
+          <button class="btn btn-outline-danger" id="btn-reject" disabled>Rechazar</button>
+          <button class="btn btn-dark" id="btn-block" disabled>Bloquear</button>
+          <button class="btn btn-outline-secondary" id="btn-worker">{{ "Enviar por sandbox real" if real_owner_only_active else "Ejecutar worker fake" }}</button>
+          <button class="btn btn-outline-warning" id="btn-outbox-archive">Archivar outbox viejo</button>
+          <button class="btn btn-outline-danger" id="btn-pause-real-sandbox">Pause real sandbox</button>
+          <button class="btn btn-outline-success" id="btn-resume-real-sandbox">Resume real sandbox</button>
+          <button class="btn btn-outline-danger" id="btn-pause-auto-reply">Pausar auto-reply</button>
+          <button class="btn btn-outline-success" id="btn-resume-auto-reply">Reanudar auto-reply</button>
+          <button class="btn btn-outline-primary" id="btn-reset-conversation">🔄 Reiniciar conversación</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='js/admin_bot_sandbox_asistente.js') }}"></script>
+{% endblock %}

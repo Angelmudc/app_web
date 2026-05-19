@@ -33,6 +33,7 @@ from utils.timezone import (
     utc_now_naive,
 )
 from utils.secrets_manager import get_secret
+from services.environment_guard_service import enforce_production_safety_startup
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover
@@ -150,6 +151,11 @@ def _resolve_database_url_for_env(env: str) -> tuple[str, str]:
 
 def create_app():
     app = Flask(__name__, instance_relative_config=False)
+    try:
+        enforce_production_safety_startup()
+    except Exception as exc:
+        app.logger.critical("BLOQUEO STARTUP SEGURIDAD BOT: %s", str(exc))
+        raise
 
     # ✅ Permite que las rutas funcionen con y sin slash final.
     app.url_map.strict_slashes = False
@@ -852,18 +858,18 @@ def create_app():
                 return None
             raw = uid.split(":", 1)[1].strip()
             if raw.isdigit():
-                return StaffUser.query.get(int(raw))
+                return db.session.get(StaffUser, int(raw))
             return None
 
         # Compatibilidad por si alguna sesión previa guardó solo el id numérico.
         if bool(session.get("is_admin_session")) and uid.isdigit():
-            su = StaffUser.query.get(int(uid))
+            su = db.session.get(StaffUser, int(uid))
             if su is not None:
                 return su
 
         try:
             if uid.isdigit():
-                return Cliente.query.get(int(uid))
+                return db.session.get(Cliente, int(uid))
             return None
         except Exception:
             return None
@@ -1188,6 +1194,9 @@ def create_app():
 
     from reclutas import reclutas_bp
     app.register_blueprint(reclutas_bp)  # ya trae url_prefix="/reclutas"
+
+    from bot import bot_bp
+    app.register_blueprint(bot_bp)
 
     # ─────────────────────────────────────────────────────────
     # Config de entrevistas (si existe)

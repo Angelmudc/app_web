@@ -1,0 +1,61 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Duplicados de Identidad{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-sm btn-link px-0">&larr; Volver</a>
+      <h1 class="h4 mb-1">Duplicados legacy por teléfono E.164</h1>
+      <p class="text-muted mb-0">Reporte de diagnóstico. No corrige ni fusiona registros.</p>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="card-body">
+      {% if duplicate_groups %}
+      {% for group in duplicate_groups %}
+      <div class="border rounded p-3 mb-3">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <strong>{{ group.phone_e164 }}</strong>
+            <span class="badge text-bg-danger ms-2">{{ group.count }} candidatas</span>
+          </div>
+        </div>
+        <div class="table-responsive mt-2">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Nombre</th>
+                <th>Teléfono original</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for cand in group.candidates %}
+              <tr>
+                <td>{{ cand.fila }}</td>
+                <td>{{ cand.nombre_completo or '-' }}</td>
+                <td>{{ cand.numero_telefono or '-' }}</td>
+                <td>{{ cand.estado or '-' }}</td>
+                <td>
+                  {% if cand.fila %}
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('buscar_candidata', candidata_id=cand.fila) }}">Ver candidata</a>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="text-muted mb-0">No se detectaron duplicados en candidatas.telefono_e164.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

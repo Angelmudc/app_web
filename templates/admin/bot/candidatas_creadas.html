@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Candidatas creadas{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Bot WhatsApp - Candidatas creadas</h1>
+      <p class="text-muted mb-0">Panel local de revisión humana manual_only para candidatas creadas desde bot draft.</p>
+    </div>
+    <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-outline-secondary btn-sm">Volver a conversaciones</a>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm"><div class="card-body"><div class="small text-muted">Total creadas desde bot</div><div class="h5 mb-0">{{ metrics.total_created_from_bot }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm"><div class="card-body"><div class="small text-muted">en_proceso</div><div class="h5 mb-0">{{ metrics.en_proceso }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm"><div class="card-body"><div class="small text-muted">Revisadas/listas</div><div class="h5 mb-0">{{ metrics.revisadas_listas }}</div></div></div>
+    </div>
+    <div class="col-md-3">
+      <div class="card border-0 shadow-sm"><div class="card-body"><div class="small text-muted">Rechazadas/descalificadas</div><div class="h5 mb-0">{{ metrics.rechazadas_descalificadas }}</div></div></div>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Fila/ID</th>
+            <th>Nombre</th>
+            <th>Teléfono</th>
+            <th>Ciudad/Dirección</th>
+            <th>Estado</th>
+            <th>Origen</th>
+            <th>Ruta</th>
+            <th>Marca temporal</th>
+            <th>Draft</th>
+            <th>Conversación Bot</th>
+            <th>Workflow bot</th>
+            <th>Reviewer</th>
+            <th>Timestamps</th>
+            <th>Acciones revisión</th>
+            <th>Detalle candidata</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          {% set cand = row.candidata %}
+          <tr>
+            <td>{{ cand.fila }}</td>
+            <td>{{ cand.nombre_completo }}</td>
+            <td>{{ cand.telefono_e164 or cand.numero_telefono or '-' }}</td>
+            <td>{{ cand.direccion_completa or '-' }}</td>
+            <td><span class="badge text-bg-light border">{{ cand.estado or '-' }}</span></td>
+            <td>{{ cand.origen_registro or '-' }}</td>
+            <td><small>{{ cand.creado_desde_ruta or '-' }}</small></td>
+            <td><small>{{ cand.marca_temporal or '-' }}</small></td>
+            <td>{% if row.draft_id %}{{ row.draft_id }}{% else %}-{% endif %}</td>
+            <td>
+              {% if row.conversation_id %}
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.bot_conversation_detail', conversation_id=row.conversation_id) }}">Ver conversación</a>
+              {% else %}
+              -
+              {% endif %}
+            </td>
+            {% set review = row.bot_review %}
+            {% set review_status = review.status %}
+            <td>
+              {% if review_status == 'bot_pending_review' %}
+              <span class="badge text-bg-secondary">bot_pending_review</span>
+              {% elif review_status == 'bot_reviewing' %}
+              <span class="badge text-bg-warning">bot_reviewing</span>
+              {% elif review_status == 'bot_approved' %}
+              <span class="badge text-bg-success">bot_approved</span>
+              {% elif review_status == 'bot_rejected' %}
+              <span class="badge text-bg-danger">bot_rejected</span>
+              {% else %}
+              <span class="badge text-bg-light border">{{ review_status }}</span>
+              {% endif %}
+            </td>
+            <td>{{ row.bot_review_reviewer_name or '-' }}</td>
+            <td>
+              <small>
+                tomada: {{ review.review_taken_at or '-' }}<br>
+                aprobada: {{ review.approved_at or '-' }}<br>
+                rechazada: {{ review.rejected_at or '-' }}
+              </small>
+            </td>
+            <td>
+              <div class="d-flex gap-1 flex-wrap">
+                <form method="post" action="{{ url_for('admin.bot_created_candidate_review_take', candidata_id=cand.fila) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-warning" {% if review_status != 'bot_pending_review' %}disabled{% endif %}>Tomar revisión</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.bot_created_candidate_review_approve', candidata_id=cand.fila) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button class="btn btn-sm btn-outline-success" {% if review_status != 'bot_reviewing' %}disabled{% endif %}>Aprobar revisión</button>
+                </form>
+                <form method="post" action="{{ url_for('admin.bot_created_candidate_review_reject', candidata_id=cand.fila) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input class="form-control form-control-sm mb-1" type="text" name="reason" placeholder="Motivo opcional">
+                  <button class="btn btn-sm btn-outline-danger" {% if review_status != 'bot_reviewing' %}disabled{% endif %}>Rechazar revisión</button>
+                </form>
+              </div>
+            </td>
+            <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('buscar_candidata', candidata_id=cand.fila) }}">Ver candidata</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="15" class="text-center text-muted py-4">No hay candidatas creadas desde bot draft.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

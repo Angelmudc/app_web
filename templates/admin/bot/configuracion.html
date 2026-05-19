@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Configuración{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Configuración Bot WhatsApp</h1>
+      <p class="text-muted mb-0">Vista de settings internos (Fase 1).</p>
+    </div>
+    <a href="{{ url_for('admin.bot_conversations_list') }}" class="btn btn-outline-primary btn-sm">Ir a conversaciones</a>
+    <a href="{{ url_for('admin.bot_health_view') }}" class="btn btn-outline-dark btn-sm">Health</a>
+  </div>
+  {% include 'admin/bot/_safety_alert.html' %}
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Key</th>
+            <th>Valor</th>
+            <th>Descripción</th>
+            <th>Actualizado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for setting in settings %}
+          <tr>
+            <td><code>{{ setting.key }}</code></td>
+            <td><pre class="mb-0 small">{{ setting.value_json }}</pre></td>
+            <td>{{ setting.description or '-' }}</td>
+            <td><small class="text-muted">{{ setting.updated_at }}</small></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">Sin settings iniciales cargados.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends 'base.html' %}
+{% block title %}Bot WhatsApp - Conversaciones{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Bot WhatsApp - Conversaciones</h1>
+      <p class="text-muted mb-0">Bandeja interna de pruebas (Fase 1, sin WhatsApp real).</p>
+      {% if identity_duplicate_groups %}
+      <p class="mb-0 mt-1">
+        <a href="{{ url_for('admin.bot_identity_duplicates') }}" class="small link-danger">
+          Duplicados legacy detectados ({{ identity_duplicate_groups|length }}) - revisar identidad
+        </a>
+      </p>
+      {% endif %}
+    </div>
+    <a href="{{ url_for('admin.bot_settings_view') }}" class="btn btn-outline-secondary btn-sm">Configuración</a>
+    <a href="{{ url_for('admin.bot_health_view') }}" class="btn btn-outline-dark btn-sm">Health</a>
+  </div>
+  {% include 'admin/bot/_safety_alert.html' %}
+
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <form method="get" class="row g-2 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label">Buscar</label>
+          <input type="text" class="form-control" name="q" value="{{ q }}" placeholder="Teléfono o nombre">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Estado</label>
+          <select class="form-select" name="status">
+            <option value="">Todos</option>
+            {% for st in statuses %}
+            <option value="{{ st }}" {% if status_filter == st %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">Filtrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-body">
+      <h2 class="h6">Crear conversación manual de prueba</h2>
+      <form method="post" action="{{ url_for('admin.bot_conversation_create_manual') }}" class="row g-2 align-items-end">
+        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+        <div class="col-md-4">
+          <label class="form-label">Teléfono E.164</label>
+          <input type="text" class="form-control" name="phone_e164" placeholder="+18095550123" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Nombre (opcional)</label>
+          <input type="text" class="form-control" name="contact_name" placeholder="Contacto de prueba">
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-success w-100">Crear</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card border-0 shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Contacto</th>
+            <th>Estado</th>
+            <th>Identidad</th>
+            <th>Pausado</th>
+            <th>Último mensaje</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for conv in conversations %}
+          <tr>
+            <td>{{ conv.id }}</td>
+            <td>
+              <div>{{ conv.contact_name or 'Sin nombre' }}</div>
+              <small class="text-muted">{{ conv.phone_e164 }}</small>
+            </td>
+            <td><span class="badge text-bg-light border">{{ conv.status }}</span></td>
+            <td>
+              {% set identity_status = (conv.identity.identity_status if conv.identity else 'unknown') %}
+              {% if identity_status == 'ambiguous' %}
+                <span class="badge text-bg-danger">ambiguous</span>
+                <small class="d-block text-danger">Ambiguo / requiere revisión</small>
+              {% elif identity_status == 'new_contact' %}
+                <span class="badge text-bg-secondary">new_contact</span>
+                <small class="d-block text-muted">Contacto nuevo</small>
+              {% elif identity_status == 'client_identified' %}
+                <span class="badge text-bg-primary">client_identified</span>
+                <small class="d-block text-muted">Cliente identificado</small>
+              {% elif identity_status == 'candidate_identified' %}
+                <span class="badge text-bg-info">candidate_identified</span>
+                <small class="d-block text-muted">Candidata identificada</small>
+              {% elif identity_status == 'client_and_candidate' %}
+                <span class="badge text-bg-warning">client_and_candidate</span>
+                <small class="d-block text-muted">Cliente y candidata</small>
+              {% else %}
+                <span class="badge text-bg-light border">{{ identity_status }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if conv.bot_paused %}
+                <span class="badge text-bg-warning">Sí</span>
+              {% else %}
+                <span class="badge text-bg-success">No</span>
+              {% endif %}
+            </td>
+            <td><small class="text-muted">{{ conv.last_message_at or 'Sin actividad' }}</small></td>
+            <td><a href="{{ url_for('admin.bot_conversation_detail', conversation_id=conv.id) }}" class="btn btn-sm btn-outline-primary">Ver</a></td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-4">No hay conversaciones.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

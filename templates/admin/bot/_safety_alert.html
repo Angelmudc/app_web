@@ -1,0 +1,8 @@
+{% if bot_safety and bot_safety.warnings %}
+<div class="alert alert-danger" role="alert">
+  <strong>Warnings críticos / Riesgos críticos de seguridad:</strong>
+  <ul class="mb-0 mt-1">
+    {% for w in bot_safety.warnings %}<li>{{ w }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}

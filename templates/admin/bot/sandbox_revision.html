@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Bot Sandbox Revision{% endblock %}
+{% block content %}
+<div class="container mt-4">
+  <h2>Sandbox Manual Review</h2>
+  <p>Offline activo: <strong>{{ "Sí" if offline_active else "No" }}</strong></p>
+
+  <table class="table table-sm table-bordered align-middle">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Conversación</th>
+        <th>Último inbound candidata</th>
+        <th>Base protocol reply</th>
+        <th>IA reply</th>
+        <th>Respuesta sugerida final</th>
+        <th>Estado</th>
+        <th>Badges</th>
+        <th>Eventos</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in pending %}
+      {% set can_approve = r.status in ["pending_review", "edited"] %}
+      {% set can_reject = r.status == "pending_review" %}
+      <tr>
+        <td>{{ r.id }}</td>
+        <td><a href="{{ url_for('admin.bot_conversation_detail', conversation_id=r.conversation_id) }}">#{{ r.conversation_id }}</a></td>
+        <td>{{ (r.inbound_message.text_body if r.inbound_message else '') or '' }}</td>
+        <td>{{ r.base_suggested_reply or '' }}</td>
+        <td>{{ r.ai_suggested_reply or '' }}</td>
+        <td>{{ r.final_suggested_reply or '' }}</td>
+        <td>
+          {% if r.status == "pending_review" %}
+          <span class="badge text-bg-warning">pending_review</span>
+          {% elif r.status == "approved" %}
+          <span class="badge text-bg-success">approved</span>
+          {% elif r.status == "rejected" %}
+          <span class="badge text-bg-danger">rejected</span>
+          {% elif r.status == "edited" %}
+          <span class="badge text-bg-primary">edited</span>
+          {% elif r.status == "simulated_sent" %}
+          <span class="badge text-bg-info">simulated_sent</span>
+          {% elif r.status == "blocked" %}
+          <span class="badge text-bg-dark">blocked</span>
+          {% else %}
+          <span class="badge text-bg-secondary">{{ r.status or "unknown" }}</span>
+          {% endif %}
+          {% if r.rejection_reason %}
+          <div class="small text-muted mt-1">Rechazo: {{ r.rejection_reason }}</div>
+          {% endif %}
+          {% if r.fallback_reason %}
+          <div class="small text-muted mt-1">Motivo bloqueo/fallo: {{ r.fallback_reason }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <span class="badge text-bg-secondary">requires_human</span>
+          {% if r.fallback_reason %}
+          <span class="badge text-bg-warning">IA fallback</span>
+          {% endif %}
+          <span class="badge text-bg-info">{{ r.safety_status or 'pending' }}</span>
+          {% if r.edited_text %}
+          <span class="badge text-bg-primary">edited</span>
+          {% endif %}
+        </td>
+        <td>
+          {% set events = (r.metadata_json or {}).get("review_events", []) %}
+          {% if events %}
+            {% for e in events[-5:] %}
+            <div class="small">
+              <strong>{{ e.get("event_type", "") }}</strong>
+              <span class="text-muted">{{ e.get("ts", "") }}</span>
+            </div>
+            {% endfor %}
+          {% else %}
+          <span class="text-muted small">Sin eventos</span>
+          {% endif %}
+        </td>
+        <td>
+          <form method="post" action="{{ url_for('admin.bot_sandbox_revision_approve', review_id=r.id) }}" class="mb-1 js-disable-on-submit">
+            <button type="submit" class="btn btn-success btn-sm" {% if not can_approve %}disabled{% endif %}>Aprobar</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.bot_sandbox_revision_approve', review_id=r.id) }}" class="mb-1 js-disable-on-submit">
+            <textarea name="edited_text" rows="2" class="form-control form-control-sm mb-1" placeholder="Editar y aprobar" {% if not can_approve %}disabled{% endif %}></textarea>
+            <button type="submit" class="btn btn-primary btn-sm" {% if not can_approve %}disabled{% endif %}>Editar y aprobar</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.bot_sandbox_revision_reject', review_id=r.id) }}" class="mb-1 js-disable-on-submit">
+            <input type="text" name="rejection_reason" class="form-control form-control-sm mb-1" placeholder="Motivo rechazo" {% if not can_reject %}disabled{% endif %}>
+            <button type="submit" class="btn btn-outline-danger btn-sm" {% if not can_reject %}disabled{% endif %}>Rechazar</button>
+          </form>
+          <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.bot_conversation_detail', conversation_id=r.conversation_id) }}">Ver conversación</a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<script>
+  document.querySelectorAll(".js-disable-on-submit").forEach(function(form) {
+    form.addEventListener("submit", function() {
+      form.querySelectorAll("button[type='submit']").forEach(function(btn) {
+        btn.disabled = true;
+      });
+    });
+  });
+</script>
+{% endblock %}

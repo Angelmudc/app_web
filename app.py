@@ -346,8 +346,13 @@ def _is_staff_any() -> bool:
 @app.before_request
 def _protect_sensitive_routes():
     path = (request.path or "").strip()
+    method = (request.method or "").upper()
 
     if not path or path.startswith("/static/"):
+        return None
+
+    # Webhook público de WhatsApp (Meta): solo GET verify y POST inbound.
+    if path == "/bot/whatsapp/webhook" and method in {"GET", "POST"}:
         return None
 
     # Nunca interceptar logins/logout/health
@@ -366,6 +371,10 @@ def _protect_sensitive_routes():
     if path.startswith("/clientes/n/"):
         return None
     if path.startswith("/clientes/api/sueldo-sugerido"):
+        return None
+    if path == "/admin/bot/sandbox/webhook/inbound":
+        return None
+    if path.startswith("/admin/bot/sandbox/asistente"):
         return None
 
     if path.startswith("/admin/"):

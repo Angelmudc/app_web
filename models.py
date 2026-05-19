@@ -1,6 +1,7 @@
 import hashlib
 import os
 import re
+import uuid
 from datetime import datetime
 from typing import Optional, Dict
 
@@ -14,6 +15,7 @@ from config_app import db
 from utils.secrets_manager import get_secret
 from utils.timezone import utc_now_naive
 from utils.client_contact_norm import nullable_norm_email, nullable_norm_phone_rd
+from services.phone_identity_service import normalize_phone_to_e164
 
 
 
@@ -26,6 +28,7 @@ class Candidata(db.Model):
     nombre_completo                 = db.Column(db.String(200), nullable=False)
     edad                            = db.Column(db.String(50))
     numero_telefono                 = db.Column(db.String(50))
+    telefono_e164                  = db.Column(db.String(20), nullable=True, index=True)
     direccion_completa              = db.Column(db.String(300))
     modalidad_trabajo_preferida     = db.Column(db.String(100))
     rutas_cercanas                  = db.Column(db.String(200))
@@ -272,6 +275,7 @@ def _cedula_digits_only(value: str) -> str:
 def _sync_cedula_norm_digits(target: "Candidata") -> None:
     digits = _cedula_digits_only(getattr(target, "cedula", None))
     target.cedula_norm_digits = digits if len(digits) == 11 else None
+    target.telefono_e164 = normalize_phone_to_e164(getattr(target, "numero_telefono", None), default_country="DO")
 
 
 @event.listens_for(Candidata, "before_insert")
@@ -2420,6 +2424,327 @@ class ChatMessage(db.Model):
             f"<ChatMessage id={self.id} conversation_id={self.conversation_id} "
             f"sender_type={self.sender_type}>"
         )
+
+
+class BotContactIdentity(db.Model):
+    __tablename__ = "bot_contact_identities"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(is_client = false AND client_id IS NULL) OR (is_client = true AND client_id IS NOT NULL)",
+            name="ck_bot_identity_client_consistency",
+        ),
+        db.CheckConstraint(
+            "(is_candidate = false AND candidate_id IS NULL) OR (is_candidate = true AND candidate_id IS NOT NULL)",
+            name="ck_bot_identity_candidate_consistency",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    phone_e164 = db.Column(db.String(20), nullable=False, unique=True, index=True)
+    identity_status = db.Column(db.String(30), nullable=False, default="unknown", server_default=text("'unknown'"), index=True)
+    is_client = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
+    is_candidate = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    candidate_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila"), nullable=True, index=True)
+    is_new_contact = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    confidence_score = db.Column(db.Numeric(5, 2), nullable=False, default=0, server_default=text("0"))
+    last_identity_check_at = db.Column(db.DateTime, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    client = db.relationship("Cliente", lazy="select")
+    candidate = db.relationship("Candidata", lazy="select")
+    conversations = db.relationship("BotConversation", back_populates="identity", lazy="dynamic")
+
+
+class BotConversation(db.Model):
+    __tablename__ = "bot_conversations"
+    __table_args__ = (
+        db.Index("ix_bot_conv_status_paused_last_msg", "status", "bot_paused", "last_message_at"),
+        db.Index("ix_bot_conv_identity_last_msg", "identity_id", "last_message_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    channel = db.Column(db.String(20), nullable=False, default="whatsapp", server_default=text("'whatsapp'"), index=True)
+    phone_e164 = db.Column(db.String(20), nullable=False, index=True)
+    contact_name = db.Column(db.String(120), nullable=True)
+    identity_id = db.Column(db.Integer, db.ForeignKey("bot_contact_identities.id"), nullable=True, index=True)
+    status = db.Column(db.String(30), nullable=False, default="open", server_default=text("'open'"), index=True)
+    bot_paused = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    bot_pause_reason = db.Column(db.String(255), nullable=True)
+    last_inbound_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_outbound_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_message_at = db.Column(db.DateTime, nullable=True, index=True)
+    unread_count_admin = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    metadata_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    assigned_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    identity = db.relationship("BotContactIdentity", back_populates="conversations", lazy="select")
+    assigned_staff_user = db.relationship("StaffUser", lazy="select")
+    messages = db.relationship("BotMessage", back_populates="conversation", lazy="dynamic", cascade="all, delete-orphan")
+    escalations = db.relationship("BotEscalation", back_populates="conversation", lazy="dynamic", cascade="all, delete-orphan")
+    decisions = db.relationship("BotDecisionLog", back_populates="conversation", lazy="dynamic", cascade="all, delete-orphan")
+
+
+class BotMessage(db.Model):
+    __tablename__ = "bot_messages"
+    __table_args__ = (
+        db.Index("ix_bot_msg_conv_created", "conversation_id", "created_at"),
+        db.CheckConstraint(
+            "(direction = 'inbound' AND source = 'whatsapp_user') "
+            "OR (direction = 'outbound' AND source IN ('admin_manual', 'bot_auto', 'system'))",
+            name="ck_bot_msg_direction_source",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    uuid = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    direction = db.Column(db.String(10), nullable=False, index=True)
+    source = db.Column(db.String(20), nullable=False, index=True)
+    message_type = db.Column(db.String(20), nullable=False, default="text", server_default=text("'text'"))
+    wa_message_id = db.Column(db.String(120), nullable=True, unique=True, index=True)
+    reply_to_wa_message_id = db.Column(db.String(120), nullable=True, index=True)
+    text_body = db.Column(db.Text, nullable=True)
+    media_id = db.Column(db.String(120), nullable=True)
+    media_mime_type = db.Column(db.String(120), nullable=True)
+    media_sha256 = db.Column(db.String(128), nullable=True)
+    status = db.Column(db.String(30), nullable=False, index=True)
+    status_detail = db.Column(db.String(255), nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+    failed_at = db.Column(db.DateTime, nullable=True)
+    error_code = db.Column(db.String(50), nullable=True)
+    error_message = db.Column(db.String(255), nullable=True)
+    raw_payload_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    conversation = db.relationship("BotConversation", back_populates="messages", lazy="select")
+
+
+class BotDecisionLog(db.Model):
+    __tablename__ = "bot_decision_logs"
+    __table_args__ = (
+        db.Index("ix_bot_dec_conv_created", "conversation_id", "created_at"),
+        db.Index("ix_bot_dec_type_result_created", "decision_type", "decision_result", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    message_id = db.Column(db.Integer, db.ForeignKey("bot_messages.id"), nullable=True, index=True)
+    decision_type = db.Column(db.String(40), nullable=False, index=True)
+    decision_result = db.Column(db.String(40), nullable=False, index=True)
+    rule_code = db.Column(db.String(60), nullable=False, index=True)
+    reason_human = db.Column(db.String(255), nullable=False)
+    facts_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    ai_used = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    ai_model = db.Column(db.String(80), nullable=True)
+    ai_prompt_version = db.Column(db.String(40), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+
+    conversation = db.relationship("BotConversation", back_populates="decisions", lazy="select")
+    message = db.relationship("BotMessage", lazy="select")
+
+
+class BotSetting(db.Model):
+    __tablename__ = "bot_settings"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    key = db.Column(db.String(100), nullable=False, unique=True, index=True)
+    value_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    is_secret = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"))
+    description = db.Column(db.String(255), nullable=True)
+    updated_by_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+
+    updated_by_staff_user = db.relationship("StaffUser", lazy="select")
+
+
+class BotEscalation(db.Model):
+    __tablename__ = "bot_escalations"
+    __table_args__ = (
+        db.Index("ix_bot_esc_status_priority_created", "escalation_status", "priority", "created_at"),
+        db.Index("ix_bot_esc_assigned_status", "assigned_staff_user_id", "escalation_status"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    trigger_message_id = db.Column(db.Integer, db.ForeignKey("bot_messages.id"), nullable=True, index=True)
+    escalation_status = db.Column(db.String(30), nullable=False, default="open", server_default=text("'open'"), index=True)
+    reason_code = db.Column(db.String(60), nullable=False, index=True)
+    reason_detail = db.Column(db.String(255), nullable=True)
+    priority = db.Column(db.String(20), nullable=False, default="normal", server_default=text("'normal'"), index=True)
+    assigned_staff_user_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    ack_at = db.Column(db.DateTime, nullable=True)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolution_note = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    conversation = db.relationship("BotConversation", back_populates="escalations", lazy="select")
+    trigger_message = db.relationship("BotMessage", lazy="select")
+    assigned_staff_user = db.relationship("StaffUser", lazy="select")
+
+
+class BotCandidateDraft(db.Model):
+    __tablename__ = "bot_candidate_drafts"
+    __table_args__ = (
+        db.UniqueConstraint("conversation_id", name="uq_bot_candidate_draft_conversation_id"),
+        db.Index("ix_bot_candidate_draft_status_updated", "draft_status", "updated_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, nullable=False, index=True)
+    protocol_version = db.Column(db.String(50), nullable=True)
+    draft_status = db.Column(db.String(30), nullable=False, default="draft", server_default=text("'draft'"), index=True)
+    summary_status = db.Column(db.String(40), nullable=False, default="incomplete", server_default=text("'incomplete'"), index=True)
+    created_by = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    reviewed_by = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    source_protocol_entities = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    source_pending_corrections_snapshot = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    notes = db.Column(db.Text, nullable=True)
+    requires_human = db.Column(db.Boolean, nullable=False, default=True, server_default=text("true"), index=True)
+    sensitive_detected = db.Column(db.Boolean, nullable=False, default=False, server_default=text("false"), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    creator_user = db.relationship("StaffUser", foreign_keys=[created_by], lazy="select")
+    reviewer_user = db.relationship("StaffUser", foreign_keys=[reviewed_by], lazy="select")
+
+
+class BotSandboxOutbound(db.Model):
+    __tablename__ = "bot_sandbox_outbox"
+    __table_args__ = (
+        db.UniqueConstraint("bot_message_id", name="uq_bot_sandbox_outbox_message_id"),
+        CheckConstraint(
+            "state IN ('queued','processing','simulated_sent','blocked','failed')",
+            name="ck_bot_sandbox_outbox_state_allowed",
+        ),
+        CheckConstraint("retry_count >= 0", name="ck_bot_sandbox_outbox_retry_non_negative"),
+        db.Index("ix_bot_sandbox_outbox_state_retry", "state", "retry_count", "next_retry_at"),
+        db.Index("ix_bot_sandbox_outbox_conversation_created", "conversation_id", "created_at"),
+        db.Index("ix_bot_sandbox_outbox_state_created", "state", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    bot_message_id = db.Column(db.Integer, db.ForeignKey("bot_messages.id"), nullable=False, index=True)
+    phone_e164 = db.Column(db.String(20), nullable=False, index=True)
+    provider = db.Column(db.String(30), nullable=False, default="fake", server_default=text("'fake'"), index=True)
+    state = db.Column(db.String(30), nullable=False, default="queued", server_default=text("'queued'"), index=True)
+    payload_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    retry_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    failure_reason = db.Column(db.String(255), nullable=True)
+    outbound_http_status = db.Column(db.Integer, nullable=True)
+    outbound_meta_error_code = db.Column(db.String(80), nullable=True)
+    outbound_meta_error_message = db.Column(db.String(255), nullable=True)
+    outbound_response_raw = db.Column(db.JSON, nullable=True)
+    queued_at = db.Column(db.DateTime, nullable=True, index=True)
+    processing_at = db.Column(db.DateTime, nullable=True, index=True)
+    simulated_sent_at = db.Column(db.DateTime, nullable=True, index=True)
+    blocked_at = db.Column(db.DateTime, nullable=True, index=True)
+    failed_at = db.Column(db.DateTime, nullable=True, index=True)
+    next_retry_at = db.Column(db.DateTime, nullable=True, index=True)
+    last_transition_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    conversation = db.relationship("BotConversation", lazy="select")
+    message = db.relationship("BotMessage", lazy="select")
+
+
+class BotSandboxReviewQueue(db.Model):
+    __tablename__ = "bot_sandbox_review_queue"
+    __table_args__ = (
+        db.CheckConstraint(
+            "status IN ('pending_review','approved','rejected','edited','simulated_sent','blocked')",
+            name="ck_bot_sandbox_review_status_allowed",
+        ),
+        db.UniqueConstraint("inbound_message_id", name="uq_bot_sandbox_review_inbound_message_id"),
+        db.Index("ix_bot_sandbox_review_status_created", "status", "created_at"),
+        db.Index("ix_bot_sandbox_review_conv_created", "conversation_id", "created_at"),
+        db.Index("ix_bot_sandbox_review_safety_status", "safety_status", "created_at"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    inbound_message_id = db.Column(db.Integer, db.ForeignKey("bot_messages.id"), nullable=False, index=True)
+    outbound_message_id = db.Column(db.Integer, db.ForeignKey("bot_messages.id"), nullable=True, index=True)
+    base_suggested_reply = db.Column(db.Text, nullable=True)
+    ai_suggested_reply = db.Column(db.Text, nullable=True)
+    final_suggested_reply = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(30), nullable=False, default="pending_review", server_default=text("'pending_review'"), index=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True, index=True)
+    edited_text = db.Column(db.Text, nullable=True)
+    rejection_reason = db.Column(db.String(255), nullable=True)
+    safety_status = db.Column(db.String(30), nullable=False, default="pending", server_default=text("'pending'"), index=True)
+    fallback_reason = db.Column(db.String(120), nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    conversation = db.relationship("BotConversation", foreign_keys=[conversation_id], lazy="select")
+    inbound_message = db.relationship("BotMessage", foreign_keys=[inbound_message_id], lazy="select")
+    outbound_message = db.relationship("BotMessage", foreign_keys=[outbound_message_id], lazy="select")
+    reviewer = db.relationship("StaffUser", lazy="select")
+
+
+class BotCandidateIntake(db.Model):
+    __tablename__ = "bot_candidate_intakes"
+    __table_args__ = (
+        db.UniqueConstraint("draft_id", name="uq_bot_candidate_intakes_draft_id"),
+        db.Index("ix_bot_candidate_intakes_status_created", "status", "created_at"),
+        db.Index("ix_bot_candidate_intakes_conversation", "conversation_id", "created_at"),
+        db.Index("ix_bot_candidate_intakes_phone", "phone"),
+        db.Index("ix_bot_candidate_intakes_duplicate_score", "duplicate_score"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    conversation_id = db.Column(db.Integer, db.ForeignKey("bot_conversations.id"), nullable=False, index=True)
+    review_id = db.Column(db.Integer, nullable=True, index=True)
+    draft_id = db.Column(db.Integer, db.ForeignKey("bot_candidate_drafts.id"), nullable=False, index=True)
+    candidate_id = db.Column(db.Integer, nullable=True, index=True)
+    status = db.Column(db.String(32), nullable=False, default="pending_review", server_default=text("'pending_review'"), index=True)
+    source = db.Column(db.String(50), nullable=False, default="whatsapp_bot", server_default=text("'whatsapp_bot'"))
+    phone = db.Column(db.String(32), nullable=True, index=True)
+    full_name = db.Column(db.String(160), nullable=True, index=True)
+    age = db.Column(db.String(20), nullable=True)
+    city_sector = db.Column(db.String(180), nullable=True)
+    experience = db.Column(db.Text, nullable=True)
+    skills = db.Column(db.Text, nullable=True)
+    availability = db.Column(db.String(180), nullable=True)
+    references_text = db.Column(db.Text, nullable=True)
+    summary = db.Column(db.Text, nullable=True)
+    quality_score = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    quality_flags = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    duplicate_flags = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    duplicate_score = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    duplicate_matches = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    ai_metadata = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+    invalid_answers_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    help_requests_count = db.Column(db.Integer, nullable=False, default=0, server_default=text("0"))
+    completed_at = db.Column(db.DateTime, nullable=True, index=True)
+    approved_at = db.Column(db.DateTime, nullable=True, index=True)
+    approved_by = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True, index=True)
+    rejected_at = db.Column(db.DateTime, nullable=True, index=True)
+    version = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"))
+    timeline = db.Column(db.JSON, nullable=False, default=list, server_default=text("'[]'"))
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    conversation = db.relationship("BotConversation", lazy="select")
+    draft = db.relationship("BotCandidateDraft", lazy="select")
+    approver = db.relationship("StaffUser", lazy="select")
 
 
 class RequestIdempotencyKey(db.Model):
