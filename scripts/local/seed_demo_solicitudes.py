@@ -98,31 +98,51 @@ def _mk_client_name(i: int) -> str:
     return f"DEMO {n} {a} {i:03d}"
 
 
-def _mk_horario(i: int) -> tuple[str, dict[str, Any]]:
-    # Fuerza casos con separacion L-V + Sabado para validar salida diaria lunes-sabado.
-    if i % 3 == 0:
-        dias = "Lunes a viernes / sábado hasta 1:00 PM"
-        h_in, h_out = "8:00 AM", "5:30 PM"
-    elif i % 3 == 1:
-        dias = "Lunes a sábado"
-        h_in, h_out = "7:30 AM", "4:30 PM"
-    else:
-        dias = "Lunes a viernes"
-        h_in, h_out = "8:30 AM", "6:00 PM"
+def _mk_horario(i: int, modalidad: str) -> tuple[str, dict[str, Any]]:
+    mod = str(modalidad or "").strip().lower()
+    if "salida diaria" in mod:
+        if "lunes a sabado" in mod or "lunes a sábado" in mod:
+            dias = "Lunes a viernes / sábado hasta 1:00 PM"
+            h_in, h_out = "8:00 AM", "5:30 PM"
+        else:
+            dias = "Lunes a viernes"
+            h_in, h_out = "8:30 AM", "6:00 PM"
+        horario, payload, errors = build_horario_from_form(
+            modalidad_group="con_salida_diaria",
+            modalidad_trabajo="Salida diaria",
+            dias_trabajo=dias,
+            hora_entrada=h_in,
+            hora_salida=h_out,
+            dormida_entrada="",
+            dormida_salida="",
+            horario_legacy="",
+        )
+        if errors:
+            raise RuntimeError(f"Horario invalido para demo/salida_diaria: {errors}")
+        return horario, payload
 
-    horario, payload, errors = build_horario_from_form(
-        modalidad_group="con_salida_diaria",
-        modalidad_trabajo="Salida diaria",
-        dias_trabajo=dias,
-        hora_entrada=h_in,
-        hora_salida=h_out,
-        dormida_entrada="",
-        dormida_salida="",
-        horario_legacy="",
-    )
-    if errors:
-        raise RuntimeError(f"Horario invalido para demo: {errors}")
-    return horario, payload
+    if "con dormida" in mod:
+        if "lunes a sabado" in mod or "lunes a sábado" in mod:
+            entrada = "Lunes 7:00 AM"
+            salida = "Sábado 1:00 PM"
+        else:
+            entrada = "Lunes 7:00 AM"
+            salida = "Viernes 6:00 PM"
+        horario, payload, errors = build_horario_from_form(
+            modalidad_group="con_dormida",
+            modalidad_trabajo="Con dormida",
+            dias_trabajo="",
+            hora_entrada="",
+            hora_salida="",
+            dormida_entrada=entrada,
+            dormida_salida=salida,
+            horario_legacy="",
+        )
+        if errors:
+            raise RuntimeError(f"Horario invalido para demo/con_dormida: {errors}")
+        return horario, payload
+
+    raise RuntimeError(f"Modalidad no reconocida para horario demo: {modalidad}")
 
 
 def _expand_weekly(horario: str) -> dict[str, str]:
@@ -225,9 +245,9 @@ def seed(total_admin: int, total_nuevo: int, total_existente: int, run_id: str) 
                 raise RuntimeError(f"Codigo duplicado interno: {codigo}")
             used_codes.add(codigo)
 
-            horario, horario_payload = _mk_horario(idx)
             funciones = list(FUNCIONES_SET[idx % len(FUNCIONES_SET)])
             modalidad = MODALIDADES[idx % len(MODALIDADES)]
+            horario, horario_payload = _mk_horario(idx, modalidad)
 
             details = dict(horario_payload)
             details["demo"] = True
@@ -325,6 +345,7 @@ def seed(total_admin: int, total_nuevo: int, total_existente: int, run_id: str) 
 
     horario_examples = []
     split_horario_checked = 0
+    incoherencias = []
     for s in created[:6]:
         expanded = _expand_weekly(s.horario or "")
         horario_examples.append({
@@ -340,8 +361,20 @@ def seed(total_admin: int, total_nuevo: int, total_existente: int, run_id: str) 
             if not expanded["lunes"] or not expanded["sabado"].startswith("hasta "):
                 raise RuntimeError(f"Horario separado invalido en {s.codigo_solicitud}: {txt}")
             split_horario_checked += 1
+        mod = str(s.modalidad_trabajo or "").lower()
+        if "salida diaria - lunes a viernes" in mod and ("lunes a sábado" in txt.lower() or "lunes a sabado" in txt.lower()):
+            incoherencias.append((s.codigo_solicitud, s.modalidad_trabajo, s.horario))
+        if "salida diaria - lunes a sabado" in mod or "salida diaria - lunes a sábado" in mod:
+            if "sábado" not in txt.lower() and "sabado" not in txt.lower():
+                incoherencias.append((s.codigo_solicitud, s.modalidad_trabajo, s.horario))
+        if "con dormida - lunes a viernes" in mod and "viernes" not in txt.lower():
+            incoherencias.append((s.codigo_solicitud, s.modalidad_trabajo, s.horario))
+        if ("con dormida - lunes a sabado" in mod or "con dormida - lunes a sábado" in mod) and ("sábado" not in txt.lower() and "sabado" not in txt.lower()):
+            incoherencias.append((s.codigo_solicitud, s.modalidad_trabajo, s.horario))
     if split_horario_checked <= 0:
         raise RuntimeError("No se generaron casos de horario separado L-V y sabado para validar.")
+    if incoherencias:
+        raise RuntimeError(f"Incoherencias modalidad/horario detectadas: {incoherencias[:5]}")
 
     samples = [
         {
@@ -365,6 +398,7 @@ def seed(total_admin: int, total_nuevo: int, total_existente: int, run_id: str) 
         "visibles_admin": visibles_admin,
         "horario_examples": horario_examples,
         "split_horario_checked": split_horario_checked,
+        "incoherencias": len(incoherencias),
         "samples": samples,
     }
 
@@ -405,6 +439,7 @@ def main() -> None:
         for e in out["horario_examples"]:
             print(f"- {e['codigo']} :: {e['horario']} :: lunes={e['lunes']} :: sabado={e['sabado']}")
         print(f"HORARIO_SPLIT_VALIDADOS={out['split_horario_checked']}")
+        print(f"INCOHERENCIAS_MODALIDAD_HORARIO={out['incoherencias']}")
         print("SOLICITUDES_EJEMPLO=")
         for s in out["samples"]:
             print(
