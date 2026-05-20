@@ -7,7 +7,7 @@
     <div class="ps-hero-shell">
       <p class="ps-kicker">Catálogo privado premium</p>
       <h1>Domésticas disponibles para tu hogar</h1>
-      <p class="ps-expire">Perfiles verificados y gestionados por la agencia · Vencimiento de acceso: {{ catalogo.expires_at or 'Sin vencimiento' }}</p>
+      <p class="ps-expire">Perfiles verificados · Vence: {{ catalogo.expires_at or 'Sin vencimiento' }}</p>
       <div class="ps-stat-grid">
         <div class="ps-stat"><strong>{{ total }}</strong><span>Disponibles</span></div>
         <div class="ps-stat"><strong>{{ cards|selectattr('modalidad_publica', 'equalto', 'Con dormida')|list|length if cards else 0 }}</strong><span>Con dormida</span></div>
@@ -19,11 +19,16 @@
 </section>
 
 <section class="container ps-main">
-  <form method="get" class="ps-filters ps-surface" autocomplete="off">
+  <div class="ps-mobile-filter-trigger">
+    <button type="button" class="ps-pill" data-filter-open aria-controls="ps-filter-drawer" aria-expanded="false">Filtros</button>
+  </div>
+  <div class="ps-filter-drawer-overlay" data-filter-overlay hidden></div>
+  <form method="get" class="ps-filters ps-surface" id="ps-filter-drawer" data-filter-drawer autocomplete="off" aria-modal="true" aria-label="Filtros de candidatas">
+    <button type="button" class="ps-filter-drawer-close ps-btn-ghost" data-filter-close aria-label="Cerrar filtros">✕</button>
     <div class="ps-filter-panel">
       <div class="ps-filter-block">
         <h3>¿Qué necesitas?</h3>
-        <p>Selecciona una o varias funciones para tu hogar.</p>
+        <p>Selecciona funciones para tu hogar.</p>
         <div class="ps-functions-grid">
           {% for funcion in ['Limpieza general', 'Cocinar', 'Lavar', 'Planchar', 'Cuidar niños', 'Cuidar envejecientes'] %}
           <label class="ps-function-chip">
@@ -45,12 +50,12 @@
 
       <div class="ps-filter-row">
         <label>Ubicación
-          <select name="ciudad">
+          <select name="ciudad" aria-label="Filtrar por ciudad">
             <option value="">Todas las ciudades</option>
             {% for c in ciudades %}<option value="{{ c }}" {% if ciudad==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
           </select>
         </label>
-        <div class="ps-functions-wrap">
+        <div>
           <span class="ps-functions-title">Disponibilidad</span>
           <div class="ps-chip-row">
             <label class="ps-function-chip">
@@ -64,7 +69,7 @@
           </div>
         </div>
         <label>Mostrar
-          <select name="per_page">{% for n in [12,24,36] %}<option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+          <select name="per_page" aria-label="Cantidad por página">{% for n in [12,24,36] %}<option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
         </label>
       </div>
     </div>
@@ -73,7 +78,7 @@
 
     <div class="ps-actions">
       <button type="submit">Aplicar filtros</button>
-      <a href="{{ url_for('public.private_store_list', token=token) }}">Limpiar todo</a>
+      <a href="{{ url_for('public.private_store_list', token=token) }}">Limpiar</a>
     </div>
   </form>
 
@@ -82,7 +87,7 @@
   {% if cards %}
   <div class="ps-cards">
     {% for c in cards %}
-    <article class="ps-card" style="animation-delay: {{ loop.index0 * 0.04 }}s;">
+    <article class="ps-card">
       <div class="ps-photo-wrap">
         {% if c.foto_publica_url %}<img src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">{% else %}<div class="ps-photo-fallback">Perfil validado por la agencia</div>{% endif %}
         <div class="ps-badge-stack">
@@ -93,27 +98,19 @@
       </div>
       <div class="ps-body">
         <h2>{{ c.nombre_publico }}</h2>
-        <p class="ps-meta">{{ c.ciudad_publica or 'Ciudad no especificada' }}{% if c.modalidad_publica %} · {{ c.modalidad_publica }}{% endif %}</p>
-        {% if c.modalidad_publica %}<p class="ps-chip">{{ c.modalidad_publica }}</p>{% endif %}
-        {% if c.tags_publicos %}
-        <div class="ps-tags">
-          {% for one_tag in c.tags_publicos.split(',')[:4] %}
-          <span class="ps-tag">{{ one_tag.strip() }}</span>
-          {% endfor %}
-        </div>
-        {% endif %}
+        <p class="ps-chip">{{ c.modalidad_publica or 'Modalidad a coordinar' }}</p>
+        <p class="ps-meta">{{ c.ciudad_publica or 'Ciudad no especificada' }} · {{ 'Inmediata' if c.disponible_inmediato else 'A coordinar' }}</p>
         {% if c.experiencia_resumen %}<p class="ps-summary">{{ c.experiencia_resumen }}</p>{% endif %}
-        <p class="ps-salary">{{ c.sueldo_texto_publico or 'Rango salarial según experiencia y responsabilidades' }}</p>
         <div class="ps-row-actions">
-          <a class="ps-link" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=(c.codigo or c.id)) }}">Ver perfil</a>
+          <a class="ps-link" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=(c.codigo or c.id)) }}" aria-label="Ver perfil de {{ c.nombre_publico }}">Ver perfil</a>
           {% if c.is_selected %}
-          <button class="ps-btn-selected" type="button" disabled>Ya en selección</button>
+          <button class="ps-btn-selected" type="button" disabled aria-label="{{ c.nombre_publico }} ya está en selección">Ya en selección</button>
           {% else %}
           <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="ps-inline-form js-add-selection" data-store-action="add" data-candidata-id="{{ c.id }}" data-token="{{ token }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="candidata_id" value="{{ c.id }}">
             <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
-            <button type="submit" class="ps-btn-add" data-add-button="{{ c.id }}">Agregar</button>
+            <button type="submit" class="ps-btn-add" data-add-button="{{ c.id }}" aria-label="Agregar {{ c.nombre_publico }} a selección">Agregar</button>
           </form>
           {% endif %}
         </div>

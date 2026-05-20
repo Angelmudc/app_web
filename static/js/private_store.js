@@ -5,7 +5,14 @@
   var cart = document.querySelector('.ps-cart-cta');
   var cartCountEl = document.querySelector('.ps-cart-count');
   var cartValueEl = document.querySelector('.ps-cart-value');
+  var bottomBar = document.querySelector('.ps-mobile-bottom-bar');
+  var bottomSelectionEl = document.querySelector('[data-bottom-selection]');
   var knownAvailableIds = null;
+
+  var drawer = document.querySelector('[data-filter-drawer]');
+  var drawerOverlay = document.querySelector('[data-filter-overlay]');
+  var openButtons = document.querySelectorAll('[data-filter-open]');
+  var closeButtons = document.querySelectorAll('[data-filter-close]');
 
   function showToast(type, message) {
     if (!toastRoot || !message) return;
@@ -13,7 +20,7 @@
     el.className = 'ps-toast ' + (type || 'info');
     el.textContent = message;
     toastRoot.appendChild(el);
-    window.setTimeout(function () { el.remove(); }, 3200);
+    window.setTimeout(function () { el.remove(); }, 2600);
   }
 
   function toInt(v) {
@@ -25,11 +32,18 @@
     var safe = toInt(count);
     if (cartCountEl) cartCountEl.textContent = String(safe);
     if (cartValueEl) cartValueEl.textContent = 'Mi selección (' + safe + ')';
+    if (bottomSelectionEl) bottomSelectionEl.textContent = 'Selección (' + safe + ')';
     if (cart) {
       cart.setAttribute('data-selection-count', String(safe));
       cart.classList.remove('is-bump');
       void cart.offsetWidth;
       cart.classList.add('is-bump');
+    }
+    if (bottomBar) {
+      bottomBar.setAttribute('data-selection-count', String(safe));
+      bottomBar.classList.remove('is-bump');
+      void bottomBar.offsetWidth;
+      bottomBar.classList.add('is-bump');
     }
   }
 
@@ -74,11 +88,39 @@
   }
 
   function submitFallback(form) {
-    if (form.dataset.psBypass === '1') {
-      return;
-    }
+    if (form.dataset.psBypass === '1') return;
     form.dataset.psBypass = '1';
     form.submit();
+  }
+
+  function setDrawer(open) {
+    if (!drawer || !drawerOverlay) return;
+    if (open) {
+      drawer.classList.add('is-open');
+      drawerOverlay.classList.add('is-open');
+      drawerOverlay.hidden = false;
+    } else {
+      drawer.classList.remove('is-open');
+      drawerOverlay.classList.remove('is-open');
+      window.setTimeout(function () { drawerOverlay.hidden = true; }, 180);
+    }
+    openButtons.forEach(function (btn) { btn.setAttribute('aria-expanded', open ? 'true' : 'false'); });
+  }
+
+  function bindDrawer() {
+    if (!drawer || !drawerOverlay || openButtons.length === 0) return;
+    drawerOverlay.hidden = true;
+
+    openButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () { setDrawer(true); });
+    });
+    closeButtons.forEach(function (btn) {
+      btn.addEventListener('click', function () { setDrawer(false); });
+    });
+    drawerOverlay.addEventListener('click', function () { setDrawer(false); });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') setDrawer(false);
+    });
   }
 
   document.addEventListener('submit', function (event) {
@@ -103,7 +145,7 @@
         if (typeof data.selection_count === 'number') setCartCount(data.selection_count);
         if (Array.isArray(data.selected_ids)) updateSelectedButtons(data.selected_ids);
         if (Array.isArray(data.removed_unavailable_ids) && data.removed_unavailable_ids.length > 0) {
-          showToast('warning', 'Una candidata de tu selección ya no está disponible y fue removida.');
+          showToast('warning', 'Una candidata ya no está disponible.');
         }
         if (!data.ok) {
           showToast('error', data.message || 'No se pudo actualizar la selección.');
@@ -134,12 +176,12 @@
         if (typeof data.selection_count === 'number') setCartCount(data.selection_count);
         if (Array.isArray(data.selected_ids)) updateSelectedButtons(data.selected_ids);
         if (Array.isArray(data.removed_unavailable_ids) && data.removed_unavailable_ids.length > 0) {
-          showToast('warning', 'Una candidata de tu selección ya no está disponible y fue removida.');
+          showToast('warning', 'Una candidata ya no está disponible.');
         }
         if (Array.isArray(data.available_ids)) {
           var next = data.available_ids.slice().sort().join(',');
           if (knownAvailableIds !== null && knownAvailableIds !== next) {
-            showToast('info', 'Hay nuevos perfiles disponibles.');
+            showToast('info', 'Hay perfiles nuevos disponibles.');
           }
           knownAvailableIds = next;
         }
@@ -147,6 +189,7 @@
       .catch(function () {});
   }
 
+  bindDrawer();
   window.setTimeout(function () {
     pollState();
     window.setInterval(pollState, 25000);

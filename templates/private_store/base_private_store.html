@@ -9,22 +9,23 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/private_store.css') }}">
+  <script>document.documentElement.classList.add('ps-has-js');</script>
   {% block head %}{% endblock %}
 </head>
 <body class="ps-page ps-loading" {% if token %}data-store-token="{{ token }}"{% endif %}>
   <header class="ps-topbar">
     <div class="ps-top-inner container">
       <div class="ps-brand">
-        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D" class="ps-logo">
+        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D" class="ps-logo" loading="lazy">
         <div>
           <p class="ps-brand-title">Plataforma privada</p>
-          <p class="ps-brand-sub">Acceso temporal enviado por la agencia · Doméstica del Cibao A&D</p>
+          <p class="ps-brand-sub">Acceso temporal · Doméstica del Cibao A&D</p>
           <span class="ps-secure-badge">Enlace temporal seguro</span>
         </div>
       </div>
       <div class="ps-actions-sticky">
         {% if token %}
-        <a class="ps-cart-cta" href="{{ url_for('public.private_store_selection_list', token=token) }}" data-selection-count="{{ selection_count or 0 }}">
+        <a class="ps-cart-cta" href="{{ url_for('public.private_store_selection_list', token=token) }}" data-selection-count="{{ selection_count or 0 }}" aria-label="Abrir mi selección">
           <span class="ps-cart-icon" aria-hidden="true">🛒</span>
           <span class="ps-cart-meta">
             <span class="ps-cart-label">Mi selección</span>
@@ -32,7 +33,7 @@
           </span>
           <span class="ps-cart-count">{{ selection_count or 0 }}</span>
         </a>
-        <a class="ps-pill ps-pill-primary" href="{{ url_for('public.private_store_request_interviews', token=token) }}">Solicitar entrevistas</a>
+        <a class="ps-pill ps-pill-primary" href="{{ url_for('public.private_store_request_interviews', token=token) }}" aria-label="Solicitar entrevistas">Solicitar entrevistas</a>
         {% endif %}
       </div>
     </div>
@@ -50,6 +51,15 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+
+  {% if token %}
+  <nav class="ps-mobile-bottom-bar ps-mobile-nav" aria-label="Acciones rápidas tienda" data-selection-count="{{ selection_count or 0 }}">
+    <button type="button" class="ps-btn-mobile" data-filter-open aria-label="Abrir filtros">Filtros</button>
+    <a class="ps-btn-mobile" href="{{ url_for('public.private_store_selection_list', token=token) }}" data-bottom-selection aria-label="Ver selección">Selección ({{ selection_count or 0 }})</a>
+    <a class="ps-btn-mobile ps-btn-mobile-primary" href="{{ url_for('public.private_store_request_interviews', token=token) }}" aria-label="Solicitar entrevistas">Solicitar</a>
+  </nav>
+  {% endif %}
+
   <div id="ps-toast-root" aria-live="polite" aria-atomic="true"></div>
 
   <script>

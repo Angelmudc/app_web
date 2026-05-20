@@ -11,11 +11,11 @@
     <article class="ps-detail-card">
       <div class="ps-detail-main">
         <div class="ps-detail-photo">
-          {% if candidata.foto_publica_url %}<img src="{{ candidata.foto_publica_url }}" alt="Foto de {{ candidata.nombre_publico }}">{% else %}<div class="ps-photo-fallback">Perfil validado por la agencia</div>{% endif %}
+          {% if candidata.foto_publica_url %}<img src="{{ candidata.foto_publica_url }}" alt="Foto de {{ candidata.nombre_publico }}" loading="lazy">{% else %}<div class="ps-photo-fallback">Perfil validado por la agencia</div>{% endif %}
         </div>
         <div class="ps-detail-body">
           <h1>{{ candidata.nombre_publico }}</h1>
-          <p class="ps-meta">{% if candidata.edad_publica %}{{ candidata.edad_publica }} · {% endif %}{{ candidata.ciudad_publica or 'Ciudad no especificada' }}{% if candidata.sector_publico %} · {{ candidata.sector_publico }}{% endif %}</p>
+          <p class="ps-meta">{% if candidata.edad_publica %}{{ candidata.edad_publica }} · {% endif %}{{ candidata.ciudad_publica or 'Ciudad no especificada' }}</p>
           <div class="ps-badge-stack" style="position:static; margin:8px 0 0;">
             <span class="ps-badge">Verificada</span>
             <span class="ps-badge ps-badge-on">Disponible</span>
@@ -28,11 +28,10 @@
             <div class="ps-quick"><strong>Ciudad</strong><span>{{ candidata.ciudad_publica or 'No especificada' }}</span></div>
           </div>
 
-          {% if candidata.experiencia_resumen %}<section class="ps-section"><h2>Resumen profesional</h2><p>{{ candidata.experiencia_resumen }}</p></section>{% endif %}
-          {% if candidata.experiencia_detallada %}<section class="ps-section"><h2>Experiencia</h2><p>{{ candidata.experiencia_detallada }}</p></section>{% endif %}
-          {% if candidata.tags_publicos %}<section class="ps-section"><h2>Lo que incluye</h2><p>{{ candidata.tags_publicos }}</p></section>{% endif %}
-          <section class="ps-section"><h2>Disponibilidad</h2><p>{{ 'Incorporación inmediata disponible.' if candidata.disponible_inmediato else 'Disponibilidad sujeta a coordinación con la agencia.' }}</p></section>
-          {% if candidata.entrevista_publica_resumen %}<section class="ps-section"><h2>Perfil validado</h2><p>{{ candidata.entrevista_publica_resumen }}</p></section>{% endif %}
+          {% if candidata.experiencia_resumen %}<details class="ps-section" open><summary>Resumen</summary><p>{{ candidata.experiencia_resumen }}</p></details>{% endif %}
+          {% if candidata.experiencia_detallada %}<details class="ps-section"><summary>Experiencia</summary><p>{{ candidata.experiencia_detallada }}</p></details>{% endif %}
+          <details class="ps-section"><summary>Disponibilidad</summary><p>{{ 'Incorporación inmediata disponible.' if candidata.disponible_inmediato else 'Disponibilidad sujeta a coordinación con la agencia.' }}</p></details>
+          {% if candidata.entrevista_publica_resumen %}<details class="ps-section"><summary>Entrevista</summary><p>{{ candidata.entrevista_publica_resumen }}</p></details>{% endif %}
         </div>
       </div>
     </article>
@@ -41,17 +40,29 @@
       <h3>{{ candidata.nombre_publico }}</h3>
       <p>{{ candidata.sueldo_texto_publico or 'Rango salarial según acuerdo y funciones del hogar.' }}</p>
       {% if candidata.is_selected %}
-      <button class="ps-btn-selected" type="button" disabled style="width:100%;" data-selected-button="{{ candidata.id }}">Ya en tu selección</button>
+      <button class="ps-btn-selected" type="button" disabled style="width:100%;" data-selected-button="{{ candidata.id }}" aria-label="Ya está en selección">Ya en tu selección</button>
       {% else %}
       <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="js-add-selection" data-store-action="add" data-candidata-id="{{ candidata.id }}" data-token="{{ token }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="candidata_id" value="{{ candidata.id }}">
         <input type="hidden" name="return_to" value="{{ request.path }}">
-        <button type="submit" class="ps-btn-add" style="width:100%;" data-add-button="{{ candidata.id }}">Agregar a mi selección</button>
+        <button type="submit" class="ps-btn-add" style="width:100%;" data-add-button="{{ candidata.id }}" aria-label="Agregar {{ candidata.nombre_publico }} a mi selección">Agregar a mi selección</button>
       </form>
       {% endif %}
-      <p style="margin-top:10px; font-size:.84rem;">La agencia coordinará las entrevistas y el seguimiento completo.</p>
     </aside>
+  </div>
+
+  <div class="ps-mobile-sticky-cta">
+    {% if candidata.is_selected %}
+    <button class="ps-btn-selected" type="button" disabled>Ya en tu selección</button>
+    {% else %}
+    <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="js-add-selection" data-store-action="add" data-candidata-id="{{ candidata.id }}" data-token="{{ token }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="candidata_id" value="{{ candidata.id }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <button type="submit" class="ps-btn-add" data-add-button="{{ candidata.id }}">Agregar a selección</button>
+    </form>
+    {% endif %}
   </div>
 </section>
 {% endblock %}

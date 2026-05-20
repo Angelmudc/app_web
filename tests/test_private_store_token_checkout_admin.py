@@ -103,11 +103,15 @@ def test_private_store_uses_private_base_and_not_public_navbar():
     resp = client.get("/tienda/tok_private_nav", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Acceso temporal enviado por la agencia" in html
+    assert "Acceso temporal" in html
     assert "Mi selección (" in html
     assert "Solicitar entrevistas" in html
     assert "Solicitar servicio" not in html
     assert "/servicios" not in html
+    assert "ps-mobile-bottom-bar" in html
+    assert "Selección (" in html
+    assert "data-filter-open" in html
+    assert "js/private_store.js" in html
 
 
 def test_fixed_filters_rd_and_modalidad_options_present_without_db_dependence():
