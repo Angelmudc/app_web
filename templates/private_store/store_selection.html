@@ -1,0 +1,61 @@
+{% extends "private_store/base_private_store.html" %}
+{% block title %}Mi selección{% endblock %}
+{% block content %}
+<section class="container ps-main ps-selection-page">
+  <div class="ps-selection-header">
+    <h1>Mi selección privada</h1>
+    <p>{{ selection_count }} candidata{% if selection_count != 1 %}s{% endif %} seleccionada{% if selection_count != 1 %}s{% endif %}</p>
+  </div>
+
+  {% if cards %}
+  <div class="ps-selection-actions-top">
+    <a class="ps-link-secondary" href="{{ url_for('public.private_store_list', token=token) }}">Seguir explorando</a>
+    <form method="post" action="{{ url_for('public.private_store_selection_clear', token=token) }}" class="ps-inline-form" data-store-action="clear" data-token="{{ token }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <button type="submit" class="ps-btn-ghost">Limpiar selección</button>
+    </form>
+  </div>
+
+  <div class="ps-checkout-layout">
+    <div class="ps-item-list">
+      {% for c in cards %}
+      <article class="ps-item-row">
+        <div class="ps-item-thumb">{% if c.foto_publica_url %}<img src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">{% endif %}</div>
+        <div class="ps-item-content">
+          <h3>{{ c.nombre_publico }}</h3>
+          <p class="ps-item-meta">{{ c.modalidad_publica or 'Modalidad a coordinar' }} · {{ c.ciudad_publica or 'Ciudad no especificada' }}</p>
+          <div class="ps-tags" style="margin-top:6px;">{% if c.disponible_inmediato %}<span class="ps-tag">Disponible inmediata</span>{% endif %}{% if c.tags_publicos %}<span class="ps-tag">{{ c.tags_publicos.split(',')[0].strip() }}</span>{% endif %}</div>
+        </div>
+        <div class="ps-item-actions">
+          <form method="post" action="{{ url_for('public.private_store_selection_remove', token=token) }}" class="ps-inline-form" data-store-action="remove" data-candidata-id="{{ c.id }}" data-token="{{ token }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ c.id }}">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="ps-btn-remove">Eliminar</button>
+          </form>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+
+    <aside class="ps-summary-box">
+      <h2>Resumen de selección</h2>
+      <p>{{ selection_count }} perfil{% if selection_count != 1 %}es{% endif %} listo{% if selection_count != 1 %}s{% endif %} para entrevista</p>
+      <ol class="ps-steps">
+        <li>Enviar solicitud</li>
+        <li>Agencia contacta</li>
+        <li>Coordinación de entrevistas</li>
+      </ol>
+      <a class="ps-pill ps-pill-primary" style="display:flex; justify-content:center; margin-top:12px;" href="{{ url_for('public.private_store_request_interviews', token=token) }}">Solicitar entrevistas</a>
+    </aside>
+  </div>
+  {% else %}
+  <div class="ps-empty">
+    <div class="ps-empty-illustration">◈</div>
+    <p>No tienes candidatas seleccionadas todavía.</p>
+    <a class="ps-link" href="{{ url_for('public.private_store_list', token=token) }}">Explorar candidatas</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

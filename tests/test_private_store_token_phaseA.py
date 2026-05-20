@@ -144,16 +144,25 @@ def test_private_store_filters_work():
         _seed_catalog('tok_store_filter', scope_mode='all_available_store')
         _seed_candidates(seed=3)
 
-    resp = client.get('/tienda/tok_store_filter?q=Ana&ciudad=Santiago&modalidad=Salida&funciones=Cocinar&disponible_inmediato=1', follow_redirects=False)
+    resp = client.get('/tienda/tok_store_filter?ciudad=Santiago&modalidad=Salida&funciones=Cocinar&disponible_inmediato=1', follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert 'Ana Perfil Publico' in html
+    assert 'Buscar por nombre' not in html
+    assert 'name="q"' not in html
     assert 'name="tag"' not in html
-    assert 'Funciones que necesitas' in html
+    assert '¿Qué necesitas?' in html
+    assert 'Modalidad' in html
+    assert 'Ubicación' in html
+    assert 'Disponibilidad' in html
     assert 'Limpieza general' in html
     assert 'Cocinar' in html
     assert 'Lavar' in html
     assert 'Planchar' in html
+    assert 'Cuidar niños' in html
+    assert 'Cuidar envejecientes' in html
+    assert 'Con dormida' in html
+    assert 'Salida diaria' in html
 
 
 def test_manual_shortlist_mode_does_not_break_legacy_catalogo():

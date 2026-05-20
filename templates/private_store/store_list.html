@@ -20,22 +20,12 @@
 
 <section class="container ps-main">
   <form method="get" class="ps-filters ps-surface" autocomplete="off">
-    <div class="ps-searchbar">
-      <span class="ps-search-icon">⌕</span>
-      <input type="text" name="q" value="{{ q or '' }}" placeholder="Buscar por nombre, ciudad, modalidad o habilidades">
-    </div>
-
-    <div class="ps-filter-row">
-      <label>Ciudad
-        <select name="ciudad">
-          <option value="">Todas las ciudades</option>
-          {% for c in ciudades %}<option value="{{ c }}" {% if ciudad==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-        </select>
-      </label>
-      <div class="ps-functions-wrap">
-        <span class="ps-functions-title">Funciones que necesitas</span>
+    <div class="ps-filter-panel">
+      <div class="ps-filter-block">
+        <h3>¿Qué necesitas?</h3>
+        <p>Selecciona una o varias funciones para tu hogar.</p>
         <div class="ps-functions-grid">
-          {% for funcion in funciones_disponibles %}
+          {% for funcion in ['Limpieza general', 'Cocinar', 'Lavar', 'Planchar', 'Cuidar niños', 'Cuidar envejecientes'] %}
           <label class="ps-function-chip">
             <input type="checkbox" name="funciones" value="{{ funcion }}" {% if funcion in (funciones or []) %}checked{% endif %}>
             <span>{{ funcion }}</span>
@@ -43,22 +33,43 @@
           {% endfor %}
         </div>
       </div>
-      <label>Mostrar
-        <select name="per_page">{% for n in [12,24,36] %}<option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }} perfiles</option>{% endfor %}</select>
-      </label>
-    </div>
 
-    <div class="ps-chip-row">
-      <span class="ps-segmented">
-        <a href="{{ url_for('public.private_store_list', token=token, q=q, ciudad=ciudad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if not modalidad %}aria-current="true"{% endif %}>Todas</a>
-        <a href="{{ url_for('public.private_store_list', token=token, q=q, ciudad=ciudad, modalidad='Con dormida', funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if modalidad_lower=='con dormida' %}aria-current="true"{% endif %}>Con dormida</a>
-        <a href="{{ url_for('public.private_store_list', token=token, q=q, ciudad=ciudad, modalidad='Salida diaria', funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if modalidad_lower=='salida diaria' %}aria-current="true"{% endif %}>Salida diaria</a>
-      </span>
-      <a class="ps-chip-link {% if disponible_inmediato in ['1','true','si','sí','yes'] %}is-active{% endif %}" href="{{ url_for('public.private_store_list', token=token, q=q, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato='1', per_page=per_page) }}">Disponible inmediata</a>
+      <div class="ps-filter-block">
+        <h3>Modalidad</h3>
+        <span class="ps-segmented">
+          <a href="{{ url_for('public.private_store_list', token=token, ciudad=ciudad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if not modalidad %}aria-current="true"{% endif %}>Todas</a>
+          <a href="{{ url_for('public.private_store_list', token=token, ciudad=ciudad, modalidad='Con dormida', funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if modalidad_lower=='con dormida' %}aria-current="true"{% endif %}>Con dormida</a>
+          <a href="{{ url_for('public.private_store_list', token=token, ciudad=ciudad, modalidad='Salida diaria', funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" {% if modalidad_lower=='salida diaria' %}aria-current="true"{% endif %}>Salida diaria</a>
+        </span>
+      </div>
+
+      <div class="ps-filter-row">
+        <label>Ubicación
+          <select name="ciudad">
+            <option value="">Todas las ciudades</option>
+            {% for c in ciudades %}<option value="{{ c }}" {% if ciudad==c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+          </select>
+        </label>
+        <div class="ps-functions-wrap">
+          <span class="ps-functions-title">Disponibilidad</span>
+          <div class="ps-chip-row">
+            <label class="ps-function-chip">
+              <input type="radio" name="disponible_inmediato" value="" {% if disponible_inmediato not in ['1','true','si','sí','yes'] %}checked{% endif %}>
+              <span>Todas</span>
+            </label>
+            <label class="ps-function-chip">
+              <input type="radio" name="disponible_inmediato" value="1" {% if disponible_inmediato in ['1','true','si','sí','yes'] %}checked{% endif %}>
+              <span>Disponible inmediata</span>
+            </label>
+          </div>
+        </div>
+        <label>Mostrar
+          <select name="per_page">{% for n in [12,24,36] %}<option value="{{ n }}" {% if per_page==n %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+        </label>
+      </div>
     </div>
 
     <input type="hidden" name="modalidad" value="{{ modalidad or '' }}">
-    <input type="hidden" name="disponible_inmediato" value="{{ disponible_inmediato or '' }}">
 
     <div class="ps-actions">
       <button type="submit">Aplicar filtros</button>
@@ -66,7 +77,7 @@
     </div>
   </form>
 
-  <div class="ps-count">{{ total }} perfil{% if total != 1 %}es{% endif %} disponible{% if total != 1 %}s{% endif %}</div>
+  <div class="ps-count">Mostrando {{ total }} perfil{% if total != 1 %}es{% endif %} disponible{% if total != 1 %}s{% endif %}</div>
 
   {% if cards %}
   <div class="ps-cards">
@@ -75,8 +86,8 @@
       <div class="ps-photo-wrap">
         {% if c.foto_publica_url %}<img src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">{% else %}<div class="ps-photo-fallback">Perfil validado por la agencia</div>{% endif %}
         <div class="ps-badge-stack">
-          <span class="ps-badge ps-badge-on">Disponible</span>
           <span class="ps-badge">Verificada</span>
+          <span class="ps-badge ps-badge-on">Disponible</span>
           {% if c.disponible_inmediato %}<span class="ps-badge ps-badge-premium">Disponible inmediata</span>{% endif %}
         </div>
       </div>
@@ -84,7 +95,6 @@
         <h2>{{ c.nombre_publico }}</h2>
         <p class="ps-meta">{{ c.ciudad_publica or 'Ciudad no especificada' }}{% if c.modalidad_publica %} · {{ c.modalidad_publica }}{% endif %}</p>
         {% if c.modalidad_publica %}<p class="ps-chip">{{ c.modalidad_publica }}</p>{% endif %}
-        {% if c.experiencia_resumen %}<p class="ps-summary">{{ c.experiencia_resumen }}</p>{% endif %}
         {% if c.tags_publicos %}
         <div class="ps-tags">
           {% for one_tag in c.tags_publicos.split(',')[:4] %}
@@ -92,17 +102,18 @@
           {% endfor %}
         </div>
         {% endif %}
+        {% if c.experiencia_resumen %}<p class="ps-summary">{{ c.experiencia_resumen }}</p>{% endif %}
         <p class="ps-salary">{{ c.sueldo_texto_publico or 'Rango salarial según experiencia y responsabilidades' }}</p>
         <div class="ps-row-actions">
           <a class="ps-link" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=(c.codigo or c.id)) }}">Ver perfil</a>
           {% if c.is_selected %}
           <button class="ps-btn-selected" type="button" disabled>Ya en selección</button>
           {% else %}
-          <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="ps-inline-form js-add-selection">
+          <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="ps-inline-form js-add-selection" data-store-action="add" data-candidata-id="{{ c.id }}" data-token="{{ token }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="candidata_id" value="{{ c.id }}">
             <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
-            <button type="submit" class="ps-btn-add">Agregar</button>
+            <button type="submit" class="ps-btn-add" data-add-button="{{ c.id }}">Agregar</button>
           </form>
           {% endif %}
         </div>
@@ -118,7 +129,7 @@
   {% endif %}
 
   {% if pages > 1 %}
-  <nav class="ps-pager" aria-label="Paginación">{% if has_prev %}<a href="{{ url_for('public.private_store_list', token=token, page=prev_num, q=q, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Anterior</a>{% endif %}<span>Página {{ page }} de {{ pages }}</span>{% if has_next %}<a href="{{ url_for('public.private_store_list', token=token, page=next_num, q=q, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Siguiente</a>{% endif %}</nav>
+  <nav class="ps-pager" aria-label="Paginación">{% if has_prev %}<a href="{{ url_for('public.private_store_list', token=token, page=prev_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Anterior</a>{% endif %}<span>Página {{ page }} de {{ pages }}</span>{% if has_next %}<a href="{{ url_for('public.private_store_list', token=token, page=next_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Siguiente</a>{% endif %}</nav>
   {% endif %}
 </section>
 {% endblock %}

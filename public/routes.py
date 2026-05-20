@@ -405,6 +405,49 @@ _TIENDA_FUNCIONES_TERMS = {
 }
 
 
+def _private_store_is_json_request() -> bool:
+    xrw = (request.headers.get("X-Requested-With") or "").strip().lower()
+    accept = (request.headers.get("Accept") or "").strip().lower()
+    return (xrw == "xmlhttprequest") or ("application/json" in accept)
+
+
+def _private_store_json_error(status: str, code: int):
+    message = "Token inválido."
+    if status == "expired":
+        message = "Este enlace privado expiró."
+    return _json_no_cache({"ok": False, "error": status, "message": message}, status=code)
+
+
+def _private_store_available_and_stats():
+    from models import CandidataWeb
+
+    rows = (
+        CandidataWeb.query
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .all()
+    )
+    available_ids = [int(getattr(r, "candidata_id", 0) or 0) for r in rows if int(getattr(r, "candidata_id", 0) or 0) > 0]
+    con_dormida = 0
+    salida_diaria = 0
+    inmediatas = 0
+    for row in rows:
+        modalidad_publica = (getattr(row, "modalidad_publica", None) or "").strip().lower()
+        if modalidad_publica == "con dormida":
+            con_dormida += 1
+        if modalidad_publica == "salida diaria":
+            salida_diaria += 1
+        if bool(getattr(row, "disponible_inmediato", False)):
+            inmediatas += 1
+    stats = {
+        "total": len(available_ids),
+        "con_dormida": int(con_dormida),
+        "salida_diaria": int(salida_diaria),
+        "inmediatas": int(inmediatas),
+    }
+    return available_ids, stats
+
+
 def _private_store_selection_session_key(catalogo_id: int) -> str:
     return f"tienda_sel_{int(catalogo_id)}"
 
@@ -1239,50 +1282,151 @@ def private_store_selection_list(token: str):
 @public_bp.route("/tienda/<token>/seleccion/agregar", methods=["POST"])
 def private_store_selection_add(token: str):
     catalogo, status = _resolver_catalogo_publico_por_token(token)
+    wants_json = _private_store_is_json_request()
     if status == "invalid":
+        if wants_json:
+            return _private_store_json_error("invalid", 404)
         return render_template("private_store/token_invalid.html"), 404
     if status == "expired":
+        if wants_json:
+            return _private_store_json_error("expired", 410)
         return render_template("private_store/token_expired.html"), 410
 
     candidata_id = int(request.form.get("candidata_id") or 0)
     return_to = _private_store_return_to(int(catalogo.id), token)
+    removed_unavailable_ids = []
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    valid_rows = _mi_seleccion_valid_rows(selected_ids)
+    valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in valid_rows]
+    removed_unavailable_ids = [x for x in selected_ids if x not in set(valid_ids)]
+    if valid_ids != selected_ids:
+        _private_store_set_ids(int(catalogo.id), valid_ids)
+        selected_ids = valid_ids
     if candidata_id <= 0:
+        if wants_json:
+            return _json_no_cache({
+                "ok": False,
+                "error": "invalid_id",
+                "message": "Candidata inválida.",
+                "selection_count": len(selected_ids),
+                "selected_ids": selected_ids,
+                "removed_unavailable_ids": removed_unavailable_ids,
+            }, status=400)
         return redirect(return_to, code=303)
     if not _domestica_disponible_para_tienda(candidata_id):
+        if wants_json:
+            return _json_no_cache({
+                "ok": False,
+                "error": "not_available",
+                "message": "Esta candidata ya no está disponible.",
+                "selection_count": len(selected_ids),
+                "selected_ids": selected_ids,
+                "removed_unavailable_ids": removed_unavailable_ids,
+            }, status=409)
         return redirect(return_to, code=303)
     ids = _private_store_get_ids(int(catalogo.id))
+    already_selected = candidata_id in ids
     if candidata_id not in ids:
         ids.append(candidata_id)
-    _private_store_set_ids(int(catalogo.id), ids[:_MI_SELECCION_MAX])
+    ids = ids[:_MI_SELECCION_MAX]
+    _private_store_set_ids(int(catalogo.id), ids)
+    if wants_json:
+        return _json_no_cache({
+            "ok": True,
+            "selection_count": len(ids),
+            "selected_ids": ids,
+            "message": "Ya estaba en tu selección" if already_selected else "Agregada a tu selección",
+            "removed_unavailable_ids": removed_unavailable_ids,
+        })
     return redirect(return_to, code=303)
 
 
 @public_bp.route("/tienda/<token>/seleccion/quitar", methods=["POST"])
 def private_store_selection_remove(token: str):
     catalogo, status = _resolver_catalogo_publico_por_token(token)
+    wants_json = _private_store_is_json_request()
     if status == "invalid":
+        if wants_json:
+            return _private_store_json_error("invalid", 404)
         return render_template("private_store/token_invalid.html"), 404
     if status == "expired":
+        if wants_json:
+            return _private_store_json_error("expired", 410)
         return render_template("private_store/token_expired.html"), 410
 
     candidata_id = int(request.form.get("candidata_id") or 0)
     return_to = _private_store_return_to(int(catalogo.id), token)
     ids = _private_store_get_ids(int(catalogo.id))
+    removed_unavailable_ids = []
     if candidata_id > 0 and candidata_id in ids:
-        _private_store_set_ids(int(catalogo.id), [x for x in ids if int(x) != int(candidata_id)])
+        ids = [x for x in ids if int(x) != int(candidata_id)]
+        _private_store_set_ids(int(catalogo.id), ids)
+    if wants_json:
+        return _json_no_cache({
+            "ok": True,
+            "selection_count": len(ids),
+            "selected_ids": ids,
+            "message": "Candidata removida de tu selección",
+            "removed_unavailable_ids": removed_unavailable_ids,
+        })
     return redirect(return_to, code=303)
 
 
 @public_bp.route("/tienda/<token>/seleccion/limpiar", methods=["POST"])
 def private_store_selection_clear(token: str):
     catalogo, status = _resolver_catalogo_publico_por_token(token)
+    wants_json = _private_store_is_json_request()
     if status == "invalid":
+        if wants_json:
+            return _private_store_json_error("invalid", 404)
         return render_template("private_store/token_invalid.html"), 404
     if status == "expired":
+        if wants_json:
+            return _private_store_json_error("expired", 410)
         return render_template("private_store/token_expired.html"), 410
     return_to = _private_store_return_to(int(catalogo.id), token)
     _private_store_set_ids(int(catalogo.id), [])
+    if wants_json:
+        return _json_no_cache({
+            "ok": True,
+            "selection_count": 0,
+            "selected_ids": [],
+            "message": "Selección limpiada",
+            "removed_unavailable_ids": [],
+        })
     return redirect(return_to, code=303)
+
+
+@public_bp.route("/tienda/<token>/estado.json", methods=["GET"])
+def private_store_state_json(token: str):
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return _private_store_json_error("invalid", 404)
+    if status == "expired":
+        return _private_store_json_error("expired", 410)
+
+    scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode != "all_available_store":
+        return _json_no_cache({"ok": False, "error": "unsupported_scope", "message": "Estado no disponible para este catálogo."}, status=400)
+
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    available_ids, stats = _private_store_available_and_stats()
+    available_set = set(available_ids)
+    sanitized_selected_ids = [x for x in selected_ids if x in available_set]
+    removed_unavailable_ids = [x for x in selected_ids if x not in available_set]
+    if sanitized_selected_ids != selected_ids:
+        _private_store_set_ids(int(catalogo.id), sanitized_selected_ids)
+
+    return _json_no_cache({
+        "ok": True,
+        "catalogo_id": int(catalogo.id),
+        "selection_count": len(sanitized_selected_ids),
+        "selected_ids": sanitized_selected_ids,
+        "available_ids": available_ids,
+        "updated_at": iso_utc_z(),
+        "removed_unavailable_ids": removed_unavailable_ids,
+        "stats": stats,
+    })
 
 
 @public_bp.route("/tienda/<token>/solicitar-entrevistas", methods=["GET", "POST"])
