@@ -3,14 +3,61 @@
 {% block content %}
 <div class="container py-4" style="max-width: 980px;">
   <h1 class="h4 mb-3">{{ 'Editar catálogo' if catalogo else 'Nuevo catálogo privado' }}</h1>
+  <form id="clienteSearchForm" method="get" action="{{ url_for('admin.catalogos_privados_edit', id=catalogo.id) if catalogo else url_for('admin.catalogos_privados_new') }}" class="mb-3">
+    {% if selected_cliente_id %}
+    <input type="hidden" name="cliente_id" value="{{ selected_cliente_id }}">
+    {% endif %}
+    <label class="form-label">Buscar cliente</label>
+    <div class="d-flex gap-2">
+      <input class="form-control" name="cliente_q" value="{{ cliente_q or '' }}" placeholder="Nombre, teléfono o ID">
+      <button class="btn btn-outline-primary" type="submit">Buscar</button>
+    </div>
+  </form>
+
   <form method="post" action="{{ url_for('admin.catalogos_privados_update', id=catalogo.id) if catalogo else url_for('admin.catalogos_privados_create') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% if not catalogo %}
+    <input type="hidden" name="cliente_q" value="{{ cliente_q or '' }}">
+    {% endif %}
     <div class="row g-3">
       <div class="col-md-6"><label class="form-label">Nombre</label><input class="form-control" name="nombre" value="{{ catalogo.nombre if catalogo else '' }}" required></div>
+      {% if catalogo %}
       <div class="col-md-6"><label class="form-label">Vence en</label><input class="form-control" type="datetime-local" name="expires_at" value="{{ catalogo.expires_at.strftime('%Y-%m-%dT%H:%M') if catalogo and catalogo.expires_at else '' }}"></div>
-      <div class="col-md-6"><label class="form-label">Cliente (opcional)</label><select class="form-select" name="cliente_id"><option value="">-</option>{% for c in clientes %}<option value="{{ c.id }}" {% if catalogo and catalogo.cliente_id==c.id %}selected{% endif %}>{{ c.id }} · {{ c.nombre_completo }}</option>{% endfor %}</select></div>
-      <div class="col-md-6"><label class="form-label">Solicitud (opcional)</label><select class="form-select" name="solicitud_id"><option value="">-</option>{% for s in solicitudes %}<option value="{{ s.id }}" {% if catalogo and catalogo.solicitud_id==s.id %}selected{% endif %}>{{ s.id }} · {{ s.codigo_solicitud or 'Sin código' }}</option>{% endfor %}</select></div>
-      <div class="col-12"><label class="form-label">Descripción</label><textarea class="form-control" rows="3" name="descripcion">{{ catalogo.descripcion if catalogo else '' }}</textarea></div>
+      {% else %}
+      <div class="col-md-6">
+        <label class="form-label">Vencimiento</label>
+        <div class="form-control-plaintext border rounded px-3 py-2 bg-light">
+          El acceso se cerrará automáticamente 7 días después de generar el enlace.
+        </div>
+      </div>
+      {% endif %}
+
+      <div class="col-md-6">
+        <label class="form-label">Cliente <span class="text-danger">*</span></label>
+        <select class="form-select" name="cliente_id" required>
+          <option value="">- Sin cliente -</option>
+          {% for c in clientes %}
+          <option value="{{ c.id }}" {% if selected_cliente_id == c.id %}selected{% endif %}>{{ c.id }} · {{ c.nombre_completo }}{% if c.telefono %} · {{ c.telefono }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">Primero selecciona un cliente. Luego se mostrarán sus solicitudes.</div>
+      </div>
+
+      <div class="col-md-6">
+        <label class="form-label">Solicitud (opcional)</label>
+        <select class="form-select" name="solicitud_id">
+          <option value="">-</option>
+          {% for s in solicitudes %}
+          <option value="{{ s.id }}" {% if catalogo and catalogo.solicitud_id==s.id %}selected{% endif %}>{{ s.id }} · {{ s.codigo_solicitud or 'Sin código' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">Mensaje visible para el cliente (opcional)</label>
+        <textarea class="form-control" rows="3" name="descripcion">{{ catalogo.descripcion if catalogo else '' }}</textarea>
+        <div class="form-text">Este mensaje será visible para el cliente en el catálogo.</div>
+      </div>
       <div class="col-12">
         <label class="form-label">Candidatas</label>
         <select class="form-select" name="candidata_ids" multiple size="12">

@@ -24545,6 +24545,64 @@ def _catalogo_privado_parse_expires(raw: str):
     return dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) else dt
 
 
+def _catalogos_privados_form_context(
+    *,
+    catalogo: CatalogoPrivado | None = None,
+    selected_ids: set[int] | None = None,
+):
+    selected_ids = selected_ids or set()
+    cliente_q = (request.args.get("cliente_q") or "").strip()
+    selected_cliente_id = _safe_int(request.args.get("cliente_id"), default=0) or 0
+    if (not selected_cliente_id) and catalogo and catalogo.cliente_id:
+        selected_cliente_id = int(catalogo.cliente_id)
+
+    clientes_query = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono)
+    if cliente_q:
+        pattern = f"%{cliente_q}%"
+        clientes_query = clientes_query.filter(
+            or_(
+                Cliente.nombre_completo.ilike(pattern),
+                Cliente.telefono.ilike(pattern),
+                cast(Cliente.id, db.String).ilike(pattern),
+            )
+        )
+    clientes = clientes_query.order_by(Cliente.id.desc()).limit(120).all()
+
+    cliente_selected = None
+    if selected_cliente_id:
+        cliente_selected = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).filter_by(id=selected_cliente_id).first()
+        if cliente_selected is None:
+            selected_cliente_id = 0
+
+    if selected_cliente_id:
+        solicitudes = (
+            Solicitud.query.with_entities(Solicitud.id, Solicitud.codigo_solicitud, Solicitud.cliente_id)
+            .filter(Solicitud.cliente_id == int(selected_cliente_id))
+            .order_by(Solicitud.id.desc())
+            .limit(120)
+            .all()
+        )
+    else:
+        solicitudes = []
+
+    candidatas = (
+        Candidata.query.with_entities(Candidata.fila, Candidata.codigo, Candidata.nombre_completo)
+        .order_by(Candidata.fila.desc())
+        .limit(250)
+        .all()
+    )
+    return {
+        "catalogo": catalogo,
+        "candidatas": candidatas,
+        "clientes": clientes,
+        "solicitudes": solicitudes,
+        "selected_ids": selected_ids,
+        "cliente_q": cliente_q,
+        "selected_cliente_id": int(selected_cliente_id or 0),
+        "cliente_selected": cliente_selected,
+    }
+
+
 @admin_bp.route("/catalogos-privados", methods=["GET"])
 @login_required
 @staff_required
@@ -24557,22 +24615,7 @@ def catalogos_privados_list():
 @login_required
 @staff_required
 def catalogos_privados_new():
-    candidatas = (
-        Candidata.query.with_entities(Candidata.fila, Candidata.codigo, Candidata.nombre_completo)
-        .order_by(Candidata.fila.desc())
-        .limit(250)
-        .all()
-    )
-    clientes = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).order_by(Cliente.id.desc()).limit(120).all()
-    solicitudes = Solicitud.query.with_entities(Solicitud.id, Solicitud.codigo_solicitud).order_by(Solicitud.id.desc()).limit(120).all()
-    return render_template(
-        "admin/catalogos_privados/form.html",
-        catalogo=None,
-        candidatas=candidatas,
-        clientes=clientes,
-        solicitudes=solicitudes,
-        selected_ids=set(),
-    )
+    return render_template("admin/catalogos_privados/form.html", **_catalogos_privados_form_context(catalogo=None, selected_ids=set()))
 
 
 @admin_bp.route("/catalogos-privados", methods=["POST"])
@@ -24586,13 +24629,28 @@ def catalogos_privados_create():
 
     cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
     solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
-    expires_at = _catalogo_privado_parse_expires(request.form.get("expires_at") or "")
+    cliente_q = (request.form.get("cliente_q") or "").strip() or None
+
+    if not cliente_id:
+        flash("Debes seleccionar un cliente para crear un catálogo privado.", "danger")
+        return redirect(url_for("admin.catalogos_privados_new", cliente_q=cliente_q))
+
+    cliente_obj = Cliente.query.with_entities(Cliente.id).filter_by(id=int(cliente_id)).first()
+    if cliente_obj is None:
+        flash("El cliente seleccionado no existe o es inválido.", "danger")
+        return redirect(url_for("admin.catalogos_privados_new", cliente_q=cliente_q))
 
     raw_ids = request.form.getlist("candidata_ids")
     candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
     if not candidata_ids:
         flash("Debes seleccionar al menos una candidata.", "danger")
-        return redirect(url_for("admin.catalogos_privados_new"))
+        return redirect(
+            url_for(
+                "admin.catalogos_privados_new",
+                cliente_q=cliente_q,
+                cliente_id=cliente_id or None,
+            )
+        )
     valid_ids = {
         int(row.fila)
         for row in Candidata.query.with_entities(Candidata.fila).filter(Candidata.fila.in_(candidata_ids)).all()
@@ -24604,7 +24662,36 @@ def catalogos_privados_create():
             "Hay candidatas inválidas en la selección: " + ", ".join(str(x) for x in invalid_ids) + ".",
             "danger",
         )
-        return redirect(url_for("admin.catalogos_privados_new"))
+        return redirect(
+            url_for(
+                "admin.catalogos_privados_new",
+                cliente_q=cliente_q,
+                cliente_id=cliente_id or None,
+            )
+        )
+
+    if solicitud_id:
+        solicitud_obj = Solicitud.query.with_entities(Solicitud.id, Solicitud.cliente_id).filter_by(id=int(solicitud_id)).first()
+        if solicitud_obj is None:
+            flash("La solicitud seleccionada no existe.", "danger")
+            return redirect(
+                url_for(
+                    "admin.catalogos_privados_new",
+                    cliente_q=cliente_q,
+                    cliente_id=cliente_id or None,
+                )
+            )
+        if cliente_id and int(solicitud_obj.cliente_id or 0) != int(cliente_id):
+            flash("La solicitud seleccionada no pertenece al cliente elegido.", "danger")
+            return redirect(
+                url_for(
+                    "admin.catalogos_privados_new",
+                    cliente_q=cliente_q,
+                    cliente_id=cliente_id or None,
+                )
+            )
+    else:
+        flash("Catálogo creado sin vincular una solicitud específica.", "warning")
 
     token = secrets.token_urlsafe(32)
     token_hash = _catalogo_privado_token_hash(token)
@@ -24617,7 +24704,7 @@ def catalogos_privados_create():
         solicitud_id=solicitud_id,
         token_hash=token_hash,
         token_hint=token_hint,
-        expires_at=expires_at,
+        expires_at=utc_now_naive() + timedelta(days=7),
         created_by=(getattr(current_user, "username", None) or getattr(current_user, "email", None) or "staff")[:80],
         is_active=True,
     )
@@ -24658,23 +24745,8 @@ def catalogos_privados_detail(id: int):
 @staff_required
 def catalogos_privados_edit(id: int):
     catalogo = CatalogoPrivado.query.get_or_404(int(id))
-    candidatas = (
-        Candidata.query.with_entities(Candidata.fila, Candidata.codigo, Candidata.nombre_completo)
-        .order_by(Candidata.fila.desc())
-        .limit(250)
-        .all()
-    )
-    clientes = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).order_by(Cliente.id.desc()).limit(120).all()
-    solicitudes = Solicitud.query.with_entities(Solicitud.id, Solicitud.codigo_solicitud).order_by(Solicitud.id.desc()).limit(120).all()
     selected_ids = {int(it.candidata_id) for it in (catalogo.items or [])}
-    return render_template(
-        "admin/catalogos_privados/form.html",
-        catalogo=catalogo,
-        candidatas=candidatas,
-        clientes=clientes,
-        solicitudes=solicitudes,
-        selected_ids=selected_ids,
-    )
+    return render_template("admin/catalogos_privados/form.html", **_catalogos_privados_form_context(catalogo=catalogo, selected_ids=selected_ids))
 
 
 @admin_bp.route("/catalogos-privados/<int:id>", methods=["POST"])
@@ -24690,6 +24762,16 @@ def catalogos_privados_update(id: int):
     catalogo.descripcion = (request.form.get("descripcion") or "").strip() or None
     catalogo.cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
     catalogo.solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
+    if catalogo.solicitud_id:
+        solicitud_obj = Solicitud.query.with_entities(Solicitud.id, Solicitud.cliente_id).filter_by(id=int(catalogo.solicitud_id)).first()
+        if solicitud_obj is None:
+            flash("La solicitud seleccionada no existe.", "danger")
+            return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
+        if catalogo.cliente_id and int(solicitud_obj.cliente_id or 0) != int(catalogo.cliente_id):
+            flash("La solicitud seleccionada no pertenece al cliente elegido.", "danger")
+            return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
+        if (not catalogo.cliente_id) and solicitud_obj.cliente_id:
+            catalogo.cliente_id = int(solicitud_obj.cliente_id)
     catalogo.expires_at = _catalogo_privado_parse_expires(request.form.get("expires_at") or "")
     db.session.commit()
     flash("Catálogo actualizado.", "success")
