@@ -53,6 +53,9 @@ from models import (
     SeguimientoCandidataCaso,
     SeguimientoCandidataContacto,
     SeguimientoCandidataEvento,
+    CandidataWeb,
+    CatalogoPrivado,
+    CatalogoPrivadoItem,
 )
 try:
     from models import ChatConversation, ChatMessage
@@ -24525,3 +24528,379 @@ def seguimiento_candidatas_badge_json():
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     return jsonify({"ok": True, "overdue_count": seguimiento_candidatas_badge_count(), "ts": iso_utc_z()})
+
+
+def _catalogo_privado_token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _catalogo_privado_parse_expires(raw: str):
+    value = (raw or "").strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except Exception:
+        return None
+    return dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) else dt
+
+
+@admin_bp.route("/catalogos-privados", methods=["GET"])
+@login_required
+@staff_required
+def catalogos_privados_list():
+    rows = CatalogoPrivado.query.order_by(CatalogoPrivado.created_at.desc(), CatalogoPrivado.id.desc()).limit(200).all()
+    return render_template("admin/catalogos_privados/list.html", catalogos=rows, now=utc_now_naive())
+
+
+@admin_bp.route("/catalogos-privados/nuevo", methods=["GET"])
+@login_required
+@staff_required
+def catalogos_privados_new():
+    candidatas = (
+        Candidata.query.with_entities(Candidata.fila, Candidata.codigo, Candidata.nombre_completo)
+        .order_by(Candidata.fila.desc())
+        .limit(250)
+        .all()
+    )
+    clientes = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).order_by(Cliente.id.desc()).limit(120).all()
+    solicitudes = Solicitud.query.with_entities(Solicitud.id, Solicitud.codigo_solicitud).order_by(Solicitud.id.desc()).limit(120).all()
+    return render_template(
+        "admin/catalogos_privados/form.html",
+        catalogo=None,
+        candidatas=candidatas,
+        clientes=clientes,
+        solicitudes=solicitudes,
+        selected_ids=set(),
+    )
+
+
+@admin_bp.route("/catalogos-privados", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_create():
+    nombre = (request.form.get("nombre") or "").strip()
+    if not nombre:
+        flash("El nombre es obligatorio.", "danger")
+        return redirect(url_for("admin.catalogos_privados_new"))
+
+    cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
+    solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
+    expires_at = _catalogo_privado_parse_expires(request.form.get("expires_at") or "")
+
+    raw_ids = request.form.getlist("candidata_ids")
+    candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
+    if not candidata_ids:
+        flash("Debes seleccionar al menos una candidata.", "danger")
+        return redirect(url_for("admin.catalogos_privados_new"))
+    valid_ids = {
+        int(row.fila)
+        for row in Candidata.query.with_entities(Candidata.fila).filter(Candidata.fila.in_(candidata_ids)).all()
+    }
+    invalid_ids = sorted(set(candidata_ids) - valid_ids)
+    if invalid_ids:
+        db.session.rollback()
+        flash(
+            "Hay candidatas inválidas en la selección: " + ", ".join(str(x) for x in invalid_ids) + ".",
+            "danger",
+        )
+        return redirect(url_for("admin.catalogos_privados_new"))
+
+    token = secrets.token_urlsafe(32)
+    token_hash = _catalogo_privado_token_hash(token)
+    token_hint = token[-12:] if len(token) > 12 else token
+
+    catalogo = CatalogoPrivado(
+        nombre=nombre[:160],
+        descripcion=(request.form.get("descripcion") or "").strip() or None,
+        cliente_id=cliente_id,
+        solicitud_id=solicitud_id,
+        token_hash=token_hash,
+        token_hint=token_hint,
+        expires_at=expires_at,
+        created_by=(getattr(current_user, "username", None) or getattr(current_user, "email", None) or "staff")[:80],
+        is_active=True,
+    )
+    db.session.add(catalogo)
+    db.session.flush()
+
+    orden = 1
+    for cand_id in candidata_ids:
+        db.session.add(CatalogoPrivadoItem(catalogo_id=catalogo.id, candidata_id=cand_id, orden=orden, is_visible=True))
+        orden += 1
+
+    db.session.commit()
+    session["catalogo_privado_last_link"] = url_for("public.catalogo_privado_listado", token=token, _external=True)
+    session["catalogo_privado_last_id"] = int(catalogo.id)
+    flash("Catálogo privado creado correctamente.", "success")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/catalogos-privados/<int:id>", methods=["GET"])
+@login_required
+@staff_required
+def catalogos_privados_detail(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    just_created_link = None
+    if int(session.get("catalogo_privado_last_id") or 0) == int(catalogo.id):
+        just_created_link = session.pop("catalogo_privado_last_link", None)
+        session.pop("catalogo_privado_last_id", None)
+    return render_template(
+        "admin/catalogos_privados/detail.html",
+        catalogo=catalogo,
+        now=utc_now_naive(),
+        just_created_link=just_created_link,
+    )
+
+
+@admin_bp.route("/catalogos-privados/<int:id>/editar", methods=["GET"])
+@login_required
+@staff_required
+def catalogos_privados_edit(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    candidatas = (
+        Candidata.query.with_entities(Candidata.fila, Candidata.codigo, Candidata.nombre_completo)
+        .order_by(Candidata.fila.desc())
+        .limit(250)
+        .all()
+    )
+    clientes = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).order_by(Cliente.id.desc()).limit(120).all()
+    solicitudes = Solicitud.query.with_entities(Solicitud.id, Solicitud.codigo_solicitud).order_by(Solicitud.id.desc()).limit(120).all()
+    selected_ids = {int(it.candidata_id) for it in (catalogo.items or [])}
+    return render_template(
+        "admin/catalogos_privados/form.html",
+        catalogo=catalogo,
+        candidatas=candidatas,
+        clientes=clientes,
+        solicitudes=solicitudes,
+        selected_ids=selected_ids,
+    )
+
+
+@admin_bp.route("/catalogos-privados/<int:id>", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_update(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    nombre = (request.form.get("nombre") or "").strip()
+    if not nombre:
+        flash("El nombre es obligatorio.", "danger")
+        return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
+    catalogo.nombre = nombre[:160]
+    catalogo.descripcion = (request.form.get("descripcion") or "").strip() or None
+    catalogo.cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
+    catalogo.solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
+    catalogo.expires_at = _catalogo_privado_parse_expires(request.form.get("expires_at") or "")
+    db.session.commit()
+    flash("Catálogo actualizado.", "success")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/catalogos-privados/<int:id>/candidatas", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_update_candidatas(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    raw_ids = request.form.getlist("candidata_ids")
+    candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
+    if not candidata_ids:
+        flash("Debes mantener al menos una candidata visible.", "danger")
+        return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
+    valid_ids = {
+        int(row.fila)
+        for row in Candidata.query.with_entities(Candidata.fila).filter(Candidata.fila.in_(candidata_ids)).all()
+    }
+    invalid_ids = sorted(set(candidata_ids) - valid_ids)
+    if invalid_ids:
+        db.session.rollback()
+        flash(
+            "Hay candidatas inválidas en la selección: " + ", ".join(str(x) for x in invalid_ids) + ".",
+            "danger",
+        )
+        return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
+    CatalogoPrivadoItem.query.filter_by(catalogo_id=catalogo.id).delete()
+    for idx, cand_id in enumerate(candidata_ids, start=1):
+        db.session.add(CatalogoPrivadoItem(catalogo_id=catalogo.id, candidata_id=cand_id, orden=idx, is_visible=True))
+    db.session.commit()
+    flash("Candidatas del catálogo actualizadas.", "success")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/catalogos-privados/<int:id>/activar", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_activar(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    catalogo.is_active = True
+    db.session.commit()
+    flash("Catálogo activado.", "success")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/catalogos-privados/<int:id>/desactivar", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_desactivar(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    catalogo.is_active = False
+    db.session.commit()
+    flash("Catálogo desactivado.", "warning")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/catalogos-privados/<int:id>/extender-vencimiento", methods=["POST"])
+@login_required
+@staff_required
+def catalogos_privados_extender_vencimiento(id: int):
+    catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    dias = _safe_int(request.form.get("dias"), default=7)
+    dias = min(max(dias, 1), 365)
+    base = catalogo.expires_at if catalogo.expires_at and catalogo.expires_at > utc_now_naive() else utc_now_naive()
+    catalogo.expires_at = base + timedelta(days=dias)
+    db.session.commit()
+    flash(f"Vencimiento extendido {dias} día(s).", "success")
+    return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+def _cw_bool_from_form(field_name: str, default: bool = False) -> bool:
+    raw = (request.form.get(field_name) or "").strip().lower()
+    if not raw:
+        return bool(default)
+    return raw in {"1", "true", "on", "yes", "si", "sí"}
+
+
+def _cw_clean_text(field_name: str, max_len: int | None = None) -> str | None:
+    value = (request.form.get(field_name) or "").strip()
+    if not value:
+        return None
+    if max_len is not None:
+        return value[:max_len]
+    return value
+
+
+@admin_bp.route("/candidatas-web", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_web_list():
+    q = (request.args.get("q") or "").strip()
+    visible_filter = (request.args.get("visible") or "").strip().lower()
+    destacada_filter = (request.args.get("destacada") or "").strip().lower()
+    estado_filter = (request.args.get("estado_publico") or "").strip().lower()
+    allowed_states = {"disponible", "reservada", "no_disponible"}
+
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .outerjoin(CandidataWeb, CandidataWeb.candidata_id == Candidata.fila)
+    )
+
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            or_(
+                Candidata.nombre_completo.ilike(pattern),
+                Candidata.codigo.ilike(pattern),
+                CandidataWeb.nombre_publico.ilike(pattern),
+                CandidataWeb.ciudad_publica.ilike(pattern),
+            )
+        )
+
+    if visible_filter in {"1", "0"}:
+        if visible_filter == "1":
+            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.visible.is_(True)))
+        else:
+            query = query.filter(CandidataWeb.visible.is_(False))
+
+    if destacada_filter in {"1", "0"}:
+        if destacada_filter == "1":
+            query = query.filter(CandidataWeb.es_destacada.is_(True))
+        else:
+            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.es_destacada.is_(False)))
+
+    if estado_filter in allowed_states:
+        if estado_filter == "disponible":
+            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.estado_publico == "disponible"))
+        else:
+            query = query.filter(CandidataWeb.estado_publico == estado_filter)
+
+    rows = (
+        query.order_by(
+            func.coalesce(CandidataWeb.es_destacada, False).desc(),
+            CandidataWeb.orden_lista.asc().nullslast(),
+            Candidata.fila.desc(),
+        )
+        .limit(300)
+        .all()
+    )
+    return render_template(
+        "admin/candidatas_web/list.html",
+        rows=rows,
+        q=q,
+        visible_filter=visible_filter,
+        destacada_filter=destacada_filter,
+        estado_filter=estado_filter,
+        allowed_states=sorted(list(allowed_states)),
+    )
+
+
+@admin_bp.route("/candidatas-web/<int:fila>", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_web_detail(fila: int):
+    candidata = Candidata.query.get_or_404(int(fila))
+    ficha = CandidataWeb.query.filter_by(candidata_id=int(fila)).first()
+    return render_template(
+        "admin/candidatas_web/detail.html",
+        candidata=candidata,
+        ficha=ficha,
+    )
+
+
+@admin_bp.route("/candidatas-web/<int:fila>", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_web_update(fila: int):
+    candidata = Candidata.query.get_or_404(int(fila))
+    ficha = CandidataWeb.query.filter_by(candidata_id=int(fila)).first()
+    if ficha is None:
+        ficha = CandidataWeb(candidata_id=int(fila))
+        db.session.add(ficha)
+
+    estado_publico = (request.form.get("estado_publico") or "").strip().lower() or "disponible"
+    if estado_publico not in {"disponible", "reservada", "no_disponible"}:
+        flash("Estado público inválido.", "danger")
+        return redirect(url_for("admin.candidatas_web_detail", fila=candidata.fila))
+
+    orden_lista_raw = (request.form.get("orden_lista") or "").strip()
+    orden_lista = None
+    if orden_lista_raw:
+        try:
+            orden_lista = max(0, int(orden_lista_raw))
+        except Exception:
+            flash("Orden de lista inválido.", "danger")
+            return redirect(url_for("admin.candidatas_web_detail", fila=candidata.fila))
+
+    ficha.visible = _cw_bool_from_form("visible", default=True)
+    ficha.estado_publico = estado_publico
+    ficha.es_destacada = _cw_bool_from_form("es_destacada", default=False)
+    ficha.orden_lista = orden_lista
+    ficha.disponible_inmediato = _cw_bool_from_form("disponible_inmediato", default=False)
+
+    ficha.nombre_publico = _cw_clean_text("nombre_publico", 200)
+    ficha.edad_publica = _cw_clean_text("edad_publica", 50)
+    ficha.ciudad_publica = _cw_clean_text("ciudad_publica", 120)
+    ficha.sector_publico = _cw_clean_text("sector_publico", 120)
+    ficha.modalidad_publica = _cw_clean_text("modalidad_publica", 120)
+    ficha.sueldo_texto_publico = _cw_clean_text("sueldo_texto_publico", 120)
+    ficha.experiencia_resumen = _cw_clean_text("experiencia_resumen")
+    ficha.experiencia_detallada = _cw_clean_text("experiencia_detallada")
+    ficha.entrevista_publica_resumen = _cw_clean_text("entrevista_publica_resumen")
+    ficha.tags_publicos = _cw_clean_text("tags_publicos", 255)
+    ficha.foto_publica_url = _cw_clean_text("foto_publica_url", 255)
+
+    db.session.commit()
+    flash("Perfil público actualizado.", "success")
+
+    return_to = (request.form.get("return_to") or "").strip()
+    if return_to.startswith("/admin/candidatas-web"):
+        return redirect(return_to)
+    return redirect(url_for("admin.candidatas_web_detail", fila=candidata.fila))

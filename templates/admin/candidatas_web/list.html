@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% block title %}Perfiles Públicos{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 1200px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Perfiles públicos editoriales</h1>
+    <span class="text-muted small">{{ rows|length }} resultado(s)</span>
+  </div>
+
+  <form class="card card-body mb-3" method="get">
+    <div class="row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label">Buscar (nombre, código, ciudad)</label>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Ej: Ana, COD-101, Santiago">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Visibilidad</label>
+        <select class="form-select" name="visible">
+          <option value="" {% if not visible_filter %}selected{% endif %}>Todos</option>
+          <option value="1" {% if visible_filter == '1' %}selected{% endif %}>Visibles</option>
+          <option value="0" {% if visible_filter == '0' %}selected{% endif %}>Ocultos</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Destacadas</label>
+        <select class="form-select" name="destacada">
+          <option value="" {% if not destacada_filter %}selected{% endif %}>Todas</option>
+          <option value="1" {% if destacada_filter == '1' %}selected{% endif %}>Sí</option>
+          <option value="0" {% if destacada_filter == '0' %}selected{% endif %}>No</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Estado público</label>
+        <select class="form-select" name="estado_publico">
+          <option value="" {% if not estado_filter %}selected{% endif %}>Todos</option>
+          {% for st in allowed_states %}
+          <option value="{{ st }}" {% if estado_filter == st %}selected{% endif %}>{{ st }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-1 d-grid">
+        <button class="btn btn-primary" type="submit">Filtrar</button>
+      </div>
+    </div>
+  </form>
+
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr>
+          <th>Fila</th>
+          <th>Código</th>
+          <th>Nombre</th>
+          <th>Ciudad pública</th>
+          <th>Visible</th>
+          <th>Estado</th>
+          <th>Destacada</th>
+          <th>Orden</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for cand, ficha in rows %}
+        <tr>
+          <td>{{ cand.fila }}</td>
+          <td>{{ cand.codigo or 'SIN-COD' }}</td>
+          <td>{{ ficha.nombre_publico if ficha and ficha.nombre_publico else cand.nombre_completo }}</td>
+          <td>{{ ficha.ciudad_publica if ficha and ficha.ciudad_publica else '-' }}</td>
+          <td>{{ 'Sí' if (not ficha or ficha.visible) else 'No' }}</td>
+          <td>{{ ficha.estado_publico if ficha else 'disponible' }}</td>
+          <td>{{ 'Sí' if ficha and ficha.es_destacada else 'No' }}</td>
+          <td>{{ ficha.orden_lista if ficha and ficha.orden_lista is not none else '-' }}</td>
+          <td>
+            <div class="d-flex gap-1">
+              <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.candidatas_web_detail', fila=cand.fila) }}">Editar</a>
+              <form method="post" action="{{ url_for('admin.candidatas_web_update', fila=cand.fila) }}" class="d-flex gap-1">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="return_to" value="{{ request.full_path }}">
+                <input type="hidden" name="estado_publico" value="{{ ficha.estado_publico if ficha else 'disponible' }}">
+                <input type="hidden" name="visible" value="{{ '0' if (ficha and ficha.visible) else '1' }}">
+                <button class="btn btn-outline-primary btn-sm" type="submit">
+                  {{ 'Ocultar' if (not ficha or ficha.visible) else 'Mostrar' }}
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

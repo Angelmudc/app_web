@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block title %}Perfil Público · {{ candidata.codigo or candidata.fila }}{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 1100px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="h4 mb-1">Perfil público editorial</h1>
+      <div class="text-muted small">
+        #{{ candidata.fila }} · {{ candidata.codigo or 'SIN-COD' }} · {{ candidata.nombre_completo }}
+      </div>
+    </div>
+    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.candidatas_web_list') }}">Volver al listado</a>
+  </div>
+
+  <form method="post" action="{{ url_for('admin.candidatas_web_update', fila=candidata.fila) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div class="row g-3">
+      <div class="col-lg-7">
+        <div class="card mb-3">
+          <div class="card-header"><strong>Control de visibilidad</strong></div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">Visible</label>
+                <select class="form-select" name="visible">
+                  <option value="1" {% if not ficha or ficha.visible %}selected{% endif %}>Sí</option>
+                  <option value="0" {% if ficha and not ficha.visible %}selected{% endif %}>No</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Estado público</label>
+                {% set estado = (ficha.estado_publico if ficha else 'disponible') %}
+                <select class="form-select" name="estado_publico">
+                  <option value="disponible" {% if estado == 'disponible' %}selected{% endif %}>disponible</option>
+                  <option value="reservada" {% if estado == 'reservada' %}selected{% endif %}>reservada</option>
+                  <option value="no_disponible" {% if estado == 'no_disponible' %}selected{% endif %}>no_disponible</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Disponible inmediato</label>
+                <select class="form-select" name="disponible_inmediato">
+                  <option value="1" {% if not ficha or ficha.disponible_inmediato %}selected{% endif %}>Sí</option>
+                  <option value="0" {% if ficha and not ficha.disponible_inmediato %}selected{% endif %}>No</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header"><strong>Destacado y orden</strong></div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label">Destacada</label>
+                <select class="form-select" name="es_destacada">
+                  <option value="1" {% if ficha and ficha.es_destacada %}selected{% endif %}>Sí</option>
+                  <option value="0" {% if not ficha or not ficha.es_destacada %}selected{% endif %}>No</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Orden lista</label>
+                <input class="form-control" type="number" min="0" name="orden_lista" value="{{ ficha.orden_lista if ficha and ficha.orden_lista is not none else '' }}">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mb-3">
+          <div class="card-header"><strong>Datos públicos</strong></div>
+          <div class="card-body">
+            <div class="row g-2">
+              <div class="col-md-6"><label class="form-label">Nombre público</label><input class="form-control" name="nombre_publico" value="{{ ficha.nombre_publico if ficha and ficha.nombre_publico else '' }}"></div>
+              <div class="col-md-3"><label class="form-label">Edad pública</label><input class="form-control" name="edad_publica" value="{{ ficha.edad_publica if ficha and ficha.edad_publica else '' }}"></div>
+              <div class="col-md-3"><label class="form-label">Ciudad pública</label><input class="form-control" name="ciudad_publica" value="{{ ficha.ciudad_publica if ficha and ficha.ciudad_publica else '' }}"></div>
+              <div class="col-md-6"><label class="form-label">Sector público</label><input class="form-control" name="sector_publico" value="{{ ficha.sector_publico if ficha and ficha.sector_publico else '' }}"></div>
+              <div class="col-md-6"><label class="form-label">Modalidad pública</label><input class="form-control" name="modalidad_publica" value="{{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else '' }}"></div>
+              <div class="col-md-6"><label class="form-label">Sueldo texto público</label><input class="form-control" name="sueldo_texto_publico" value="{{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else '' }}"></div>
+              <div class="col-md-6"><label class="form-label">Tags públicos (coma)</label><input class="form-control" name="tags_publicos" value="{{ ficha.tags_publicos if ficha and ficha.tags_publicos else '' }}"></div>
+              <div class="col-12"><label class="form-label">Experiencia resumen</label><textarea class="form-control" rows="2" name="experiencia_resumen">{{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else '' }}</textarea></div>
+              <div class="col-12"><label class="form-label">Experiencia detallada</label><textarea class="form-control" rows="4" name="experiencia_detallada">{{ ficha.experiencia_detallada if ficha and ficha.experiencia_detallada else '' }}</textarea></div>
+              <div class="col-12"><label class="form-label">Entrevista pública resumida</label><textarea class="form-control" rows="4" name="entrevista_publica_resumen">{{ ficha.entrevista_publica_resumen if ficha and ficha.entrevista_publica_resumen else '' }}</textarea></div>
+              <div class="col-12"><label class="form-label">Foto pública URL</label><input class="form-control" name="foto_publica_url" value="{{ ficha.foto_publica_url if ficha and ficha.foto_publica_url else '' }}"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-lg-5">
+        <div class="card">
+          <div class="card-header"><strong>Preview rápido</strong></div>
+          <div class="card-body">
+            <p class="text-muted small mb-2">Vista aproximada de cómo se presentará públicamente.</p>
+            <div class="border rounded p-3">
+              <h2 class="h6 mb-1">{{ (ficha.nombre_publico if ficha and ficha.nombre_publico else candidata.nombre_completo) }}</h2>
+              <p class="small text-muted mb-2">
+                {{ (ficha.edad_publica if ficha and ficha.edad_publica else candidata.edad or 'Edad no especificada') }}
+                ·
+                {{ (ficha.ciudad_publica if ficha and ficha.ciudad_publica else 'Zona disponible bajo coordinación') }}
+              </p>
+              <p class="mb-2"><strong>Estado:</strong> {{ ficha.estado_publico if ficha else 'disponible' }}</p>
+              <p class="mb-2"><strong>Modalidad:</strong> {{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else (candidata.modalidad_trabajo_preferida or 'Por definir') }}</p>
+              <p class="mb-2"><strong>Sueldo:</strong> {{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else 'A coordinar' }}</p>
+              <p class="mb-2"><strong>Resumen:</strong> {{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else 'Sin resumen editorial.' }}</p>
+              <p class="mb-0"><strong>Entrevista:</strong> {{ ficha.entrevista_publica_resumen if ficha and ficha.entrevista_publica_resumen else 'Sin resumen editorial de entrevista.' }}</p>
+            </div>
+            <p class="text-muted small mt-3 mb-0">
+              Este módulo no publica referencias, notas internas, teléfonos, cédula ni dirección exacta.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-primary" type="submit">Guardar cambios</button>
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.candidatas_web_list') }}">Cancelar</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

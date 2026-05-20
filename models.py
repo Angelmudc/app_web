@@ -1830,6 +1830,12 @@ class CandidataWeb(db.Model):
         comment="Descripción más larga para la página de detalle."
     )
 
+    entrevista_publica_resumen = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Resumen editorial público de entrevista, sin notas internas ni referencias."
+    )
+
     tags_publicos = db.Column(
         db.String(255),
         nullable=True,
@@ -2229,6 +2235,67 @@ class SolicitudCandidata(db.Model):
             f"<SolicitudCandidata id={self.id} solicitud_id={self.solicitud_id} "
             f"candidata_id={self.candidata_id} status={self.status}>"
         )
+
+
+class CatalogoPrivado(db.Model):
+    __tablename__ = "catalogos_privados"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(160), nullable=False)
+    descripcion = db.Column(db.Text, nullable=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+    token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    token_hint = db.Column(db.String(12), nullable=True)
+    is_active = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+        index=True,
+    )
+    expires_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_by = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    cliente = db.relationship("Cliente", lazy="joined")
+    solicitud = db.relationship("Solicitud", lazy="joined")
+    items = db.relationship(
+        "CatalogoPrivadoItem",
+        back_populates="catalogo",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class CatalogoPrivadoItem(db.Model):
+    __tablename__ = "catalogos_privados_items"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "catalogo_id",
+            "candidata_id",
+            name="uq_catalogo_privado_item_catalogo_candidata",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    catalogo_id = db.Column(db.Integer, db.ForeignKey("catalogos_privados.id"), nullable=False, index=True)
+    candidata_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila"), nullable=False, index=True)
+    orden = db.Column(db.Integer, nullable=True, index=True)
+    is_visible = db.Column(
+        db.Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+        index=True,
+    )
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+
+    catalogo = db.relationship("CatalogoPrivado", back_populates="items", lazy="joined")
+    candidata = db.relationship("Candidata", lazy="joined")
 
 
 class SolicitudRecommendationRun(db.Model):

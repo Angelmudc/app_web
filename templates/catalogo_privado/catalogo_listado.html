@@ -1,0 +1,34 @@
+{% extends 'catalogo_privado/base_catalogo.html' %}
+{% block title %}Catálogo Privado{% endblock %}
+{% block content %}
+<section class="cp-catalogo">
+  <div class="cp-shell">
+    <header class="cp-header">
+      <h1>{{ catalogo.nombre }}</h1>
+      <p>{{ catalogo.descripcion or 'Perfiles seleccionados por la agencia para revisión privada.' }}</p>
+    </header>
+
+    <div class="cp-grid">
+      {% for c in candidatas %}
+      <article class="cp-card">
+        <div class="cp-photo">
+          {% if c.foto_publica %}
+          <img src="{{ c.foto_publica }}" alt="Foto de perfil" style="max-width:100%; max-height:180px; border-radius:8px;">
+          {% else %}
+          Sin foto
+          {% endif %}
+        </div>
+        <h2>{{ c.nombre_publico }}</h2>
+        <p class="cp-meta">{{ c.edad }} · {{ c.ciudad }}</p>
+        <p><strong>Estado:</strong> {{ c.estado_publico }}</p>
+        <p><strong>Modalidad:</strong> {{ c.modalidad }}</p>
+        {% if c.sueldo_texto_publico %}<p><strong>Sueldo:</strong> {{ c.sueldo_texto_publico }}</p>{% endif %}
+        <p><strong>Disponibilidad:</strong> {{ c.disponibilidad }}</p>
+        <p><strong>Experiencia:</strong> {{ c.experiencia_resumen }}</p>
+        <a class="cp-btn" href="{{ url_for('public.catalogo_privado_candidata_detalle', token=token, codigo_o_id=(c.codigo or c.id)) }}">Ver perfil</a>
+      </article>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

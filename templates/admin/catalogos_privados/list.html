@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Catálogos Privados{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 1080px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">Catálogos privados</h1>
+    <a class="btn btn-primary" href="{{ url_for('admin.catalogos_privados_new') }}">Nuevo catálogo</a>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>ID</th><th>Nombre</th><th>Estado</th><th>Vence</th><th>Vistas</th><th></th></tr></thead>
+      <tbody>
+      {% for row in catalogos %}
+        <tr>
+          <td>{{ row.id }}</td>
+          <td>{{ row.nombre }}</td>
+          <td>{% if row.is_active %}Activo{% else %}Inactivo{% endif %}</td>
+          <td>{{ row.expires_at or 'Sin vencimiento' }}</td>
+          <td>{{ row.last_seen_at or 'Nunca' }}</td>
+          <td><a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.catalogos_privados_detail', id=row.id) }}">Ver</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

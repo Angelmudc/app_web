@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block title %}Detalle Catálogo Privado{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 980px;">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 mb-0">{{ catalogo.nombre }}</h1>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.catalogos_privados_edit', id=catalogo.id) }}">Editar</a>
+  </div>
+
+  {% if just_created_link %}
+  <div class="alert alert-success">
+    <div><strong>Enlace generado:</strong></div>
+    <code>{{ just_created_link }}</code>
+  </div>
+  {% endif %}
+
+  <div class="card mb-3"><div class="card-body">
+    <p><strong>Estado:</strong> {% if catalogo.is_active %}Activo{% else %}Inactivo{% endif %}</p>
+    <p><strong>Vencimiento:</strong> {{ catalogo.expires_at or 'Sin vencimiento' }}</p>
+    <p><strong>Token:</strong> No se guarda token plano. {% if catalogo.token_hint %}(hint: {{ catalogo.token_hint }}){% endif %}</p>
+    <p><strong>Último acceso:</strong> {{ catalogo.last_seen_at or 'Nunca' }}</p>
+  </div></div>
+
+  <div class="d-flex gap-2 mb-3">
+    <form method="post" action="{{ url_for('admin.catalogos_privados_activar', id=catalogo.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-success btn-sm">Activar</button></form>
+    <form method="post" action="{{ url_for('admin.catalogos_privados_desactivar', id=catalogo.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn btn-warning btn-sm">Desactivar</button></form>
+    <form method="post" action="{{ url_for('admin.catalogos_privados_extender_vencimiento', id=catalogo.id) }}" class="d-flex gap-2"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="number" min="1" max="365" name="dias" class="form-control form-control-sm" value="7" style="max-width: 110px;"><button class="btn btn-outline-primary btn-sm">Extender</button></form>
+  </div>
+
+  <div class="card"><div class="card-body">
+    <h2 class="h6">Candidatas incluidas</h2>
+    <ul class="mb-3">
+      {% for item in catalogo.items %}
+      <li>
+        #{{ item.candidata.fila if item.candidata else item.candidata_id }} · {{ item.candidata.codigo if item.candidata else 'SIN-COD' }} · {{ item.candidata.nombre_completo if item.candidata else 'Sin registro' }}
+        {% if item.candidata %}
+        <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ url_for('admin.candidatas_web_detail', fila=item.candidata.fila) }}">Perfil público</a>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('admin.catalogos_privados_update_candidatas', id=catalogo.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label class="form-label">Actualizar candidatas (multi-selección)</label>
+      <select class="form-select" name="candidata_ids" multiple size="12">
+        {% for item in catalogo.items %}
+        <option value="{{ item.candidata_id }}" selected>#{{ item.candidata_id }} · {{ item.candidata.codigo if item.candidata else '' }} · {{ item.candidata.nombre_completo if item.candidata else '' }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-primary btn-sm mt-2">Guardar candidatas</button>
+    </form>
+  </div></div>
+</div>
+{% endblock %}

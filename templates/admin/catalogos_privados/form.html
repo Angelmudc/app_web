@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block title %}{{ 'Editar catálogo' if catalogo else 'Nuevo catálogo privado' }}{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 980px;">
+  <h1 class="h4 mb-3">{{ 'Editar catálogo' if catalogo else 'Nuevo catálogo privado' }}</h1>
+  <form method="post" action="{{ url_for('admin.catalogos_privados_update', id=catalogo.id) if catalogo else url_for('admin.catalogos_privados_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="row g-3">
+      <div class="col-md-6"><label class="form-label">Nombre</label><input class="form-control" name="nombre" value="{{ catalogo.nombre if catalogo else '' }}" required></div>
+      <div class="col-md-6"><label class="form-label">Vence en</label><input class="form-control" type="datetime-local" name="expires_at" value="{{ catalogo.expires_at.strftime('%Y-%m-%dT%H:%M') if catalogo and catalogo.expires_at else '' }}"></div>
+      <div class="col-md-6"><label class="form-label">Cliente (opcional)</label><select class="form-select" name="cliente_id"><option value="">-</option>{% for c in clientes %}<option value="{{ c.id }}" {% if catalogo and catalogo.cliente_id==c.id %}selected{% endif %}>{{ c.id }} · {{ c.nombre_completo }}</option>{% endfor %}</select></div>
+      <div class="col-md-6"><label class="form-label">Solicitud (opcional)</label><select class="form-select" name="solicitud_id"><option value="">-</option>{% for s in solicitudes %}<option value="{{ s.id }}" {% if catalogo and catalogo.solicitud_id==s.id %}selected{% endif %}>{{ s.id }} · {{ s.codigo_solicitud or 'Sin código' }}</option>{% endfor %}</select></div>
+      <div class="col-12"><label class="form-label">Descripción</label><textarea class="form-control" rows="3" name="descripcion">{{ catalogo.descripcion if catalogo else '' }}</textarea></div>
+      <div class="col-12">
+        <label class="form-label">Candidatas</label>
+        <select class="form-select" name="candidata_ids" multiple size="12">
+          {% for cd in candidatas %}
+          <option value="{{ cd.fila }}" {% if cd.fila in selected_ids %}selected{% endif %}>{{ cd.fila }} · {{ cd.codigo or 'SIN-COD' }} · {{ cd.nombre_completo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <div class="mt-3 d-flex gap-2">
+      <button class="btn btn-primary" type="submit">Guardar</button>
+      {% if catalogo %}<a class="btn btn-outline-secondary" href="{{ url_for('admin.catalogos_privados_detail', id=catalogo.id) }}">Cancelar</a>{% else %}<a class="btn btn-outline-secondary" href="{{ url_for('admin.catalogos_privados_list') }}">Cancelar</a>{% endif %}
+    </div>
+  </form>
+</div>
+{% endblock %}

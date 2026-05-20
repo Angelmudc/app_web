@@ -1,0 +1,23 @@
+{% extends 'catalogo_privado/base_catalogo.html' %}
+{% block title %}Perfil Privado{% endblock %}
+{% block content %}
+<section class="cp-catalogo">
+  <div class="cp-shell cp-detail">
+    <a class="cp-link-back" href="{{ url_for('public.catalogo_privado_listado', token=token) }}">← Volver al catálogo</a>
+    <article class="cp-detail-card">
+      <h1>{{ candidata.nombre_publico }}</h1>
+      <p class="cp-meta">{{ candidata.edad }} · {{ candidata.ciudad }}</p>
+      <div class="cp-block"><strong>Estado público:</strong> {{ candidata.estado_publico }}</div>
+      <div class="cp-block"><strong>Sector:</strong> {{ candidata.sector_general }}</div>
+      <div class="cp-block"><strong>Modalidad:</strong> {{ candidata.modalidad }}</div>
+      {% if candidata.sueldo_texto_publico %}<div class="cp-block"><strong>Sueldo:</strong> {{ candidata.sueldo_texto_publico }}</div>{% endif %}
+      <div class="cp-block"><strong>Disponibilidad:</strong> {{ candidata.disponibilidad }}</div>
+      <div class="cp-block"><strong>Verificación:</strong> {{ candidata.verificacion_general }}</div>
+      <div class="cp-block"><strong>Resumen profesional:</strong> {{ candidata.experiencia_resumen }}</div>
+      <div class="cp-block"><strong>Experiencia detallada:</strong> {{ candidata.experiencia_detallada }}</div>
+      <div class="cp-block"><strong>Especialidades:</strong> {{ candidata.especialidades }}</div>
+      <div class="cp-block"><strong>Entrevista pública:</strong> {{ candidata.entrevista_publica_resumen }}</div>
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -4,6 +4,7 @@ import os
 import json
 import urllib.parse
 import time
+import hashlib
 from threading import Lock
 
 from flask import (
@@ -19,7 +20,9 @@ from flask import (
     g,
 )
 from flask_login import current_user
+from sqlalchemy import func
 from . import public_bp
+from config_app import db
 
 from utils.audit_logger import log_action
 from utils.distributed_backplane import bp_get, bp_set
@@ -120,6 +123,132 @@ def _public_external_url(endpoint: str, **values) -> str:
             rel = url_for(endpoint, _external=False, **values).lstrip("/")
             return urllib.parse.urljoin(base.rstrip("/") + "/", rel)
     return url_for(endpoint, _external=True, **values)
+
+
+def _catalogo_token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _catalogo_public_alias(candidata, ficha_web=None) -> str:
+    raw = (getattr(ficha_web, "nombre_publico", None) or "").strip()
+    if raw:
+        return raw
+    raw = (getattr(candidata, "nombre_completo", None) or "").strip()
+    if not raw:
+        codigo = (getattr(candidata, "codigo", None) or "").strip()
+        return f"Perfil {codigo}" if codigo else f"Perfil #{int(getattr(candidata, 'fila', 0) or 0)}"
+    parts = [p for p in raw.split() if p]
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} {parts[1][0]}."
+
+
+def _catalogo_safe_text(value, fallback="No especificado") -> str:
+    if value is None:
+        return fallback
+    text_value = str(value).strip()
+    return text_value if text_value else fallback
+
+
+def _catalogo_public_payload(candidata, ficha_web=None):
+    ciudad = _catalogo_safe_text(getattr(ficha_web, "ciudad_publica", None), fallback="").strip() if ficha_web else ""
+    sector_general = _catalogo_safe_text(getattr(ficha_web, "sector_publico", None), fallback="").strip() if ficha_web else ""
+    if not ciudad:
+        ciudad = "Zona disponible bajo coordinacion"
+    if not sector_general:
+        sector_general = "Informacion general disponible con la agencia"
+
+    modalidad = _catalogo_safe_text(
+        getattr(ficha_web, "modalidad_publica", None) if ficha_web else None,
+        fallback="",
+    ).strip()
+    if not modalidad:
+        modalidad = _catalogo_safe_text(getattr(candidata, "modalidad_trabajo_preferida", None), fallback="Por definir")
+
+    experiencia = _catalogo_safe_text(
+        getattr(ficha_web, "experiencia_resumen", None) if ficha_web else None,
+        fallback="",
+    ).strip()
+    if not experiencia:
+        experiencia = _catalogo_safe_text(getattr(candidata, "anos_experiencia", None), fallback="")
+    if not experiencia:
+        experiencia = _catalogo_safe_text(getattr(candidata, "empleo_anterior", None), fallback="Experiencia no especificada")[:240]
+
+    experiencia_detallada = _catalogo_safe_text(
+        getattr(ficha_web, "experiencia_detallada", None) if ficha_web else None,
+        fallback="",
+    ).strip()
+    if not experiencia_detallada:
+        experiencia_detallada = "Experiencia detallada no especificada."
+
+    entrevista_publica = _catalogo_safe_text(
+        getattr(ficha_web, "entrevista_publica_resumen", None) if ficha_web else None,
+        fallback="",
+    ).strip()
+    if not entrevista_publica:
+        entrevista_publica = "Entrevista pública pendiente de preparar por la agencia."
+
+    especialidades = _catalogo_safe_text(
+        getattr(ficha_web, "tags_publicos", None) if ficha_web else None,
+        fallback="",
+    ).strip()
+    if not especialidades:
+        especialidades = _catalogo_safe_text(getattr(candidata, "areas_experiencia", None), fallback="No especificadas")
+
+    disponibilidad = "Disponible de inmediato" if bool(getattr(ficha_web, "disponible_inmediato", False)) else ""
+    if not disponibilidad:
+        disponibilidad = _catalogo_safe_text(getattr(candidata, "disponibilidad_inicio", None), fallback="A coordinar")
+    sueldo_publico = _catalogo_safe_text(
+        getattr(ficha_web, "sueldo_texto_publico", None) if ficha_web else None,
+        fallback="",
+    ).strip() or None
+    estado_publico = _catalogo_safe_text(
+        getattr(ficha_web, "estado_publico", None) if ficha_web else None,
+        fallback="disponible",
+    ).strip().lower()
+    foto_publica = _catalogo_safe_text(
+        getattr(ficha_web, "foto_publica_url", None) if ficha_web else None,
+        fallback="",
+    ).strip() or None
+    verificacion = "Perfil evaluado por la agencia"
+    return {
+        "id": int(getattr(candidata, "fila", 0) or 0),
+        "codigo": (getattr(candidata, "codigo", None) or "").strip() or None,
+        "nombre_publico": _catalogo_public_alias(candidata, ficha_web=ficha_web),
+        "edad": _catalogo_safe_text(
+            getattr(ficha_web, "edad_publica", None) if ficha_web else getattr(candidata, "edad", None),
+            fallback="No especificada",
+        ),
+        "ciudad": ciudad,
+        "sector_general": sector_general,
+        "modalidad": modalidad,
+        "estado_publico": estado_publico,
+        "sueldo_texto_publico": sueldo_publico,
+        "experiencia_resumen": experiencia,
+        "experiencia_detallada": experiencia_detallada,
+        "entrevista_publica_resumen": entrevista_publica,
+        "especialidades": especialidades,
+        "foto_publica": foto_publica,
+        "disponibilidad": disponibilidad,
+        "verificacion_general": verificacion,
+    }
+
+
+def _resolver_catalogo_publico_por_token(token: str):
+    from models import CatalogoPrivado
+
+    token_hash = _catalogo_token_hash(token)
+    catalogo = CatalogoPrivado.query.filter_by(token_hash=token_hash).first()
+    if not catalogo:
+        return None, "invalid"
+    now = utc_now_naive()
+    if not bool(catalogo.is_active):
+        return catalogo, "expired"
+    if catalogo.expires_at and catalogo.expires_at <= now:
+        return catalogo, "expired"
+    catalogo.last_seen_at = now
+    db.session.commit()
+    return catalogo, "ok"
 
 
 def _resolve_share_state(code: str):
@@ -436,3 +565,72 @@ def gracias():
     if not PUBLIC_SITE_ENABLED:
         abort(404)
     return render_template("public/gracias.html")
+
+
+@public_bp.route("/catalogo/<token>", methods=["GET"])
+def catalogo_privado_listado(token: str):
+    from models import CatalogoPrivadoItem, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("catalogo_privado/catalogo_invalido.html"), 404
+    if status == "expired":
+        return render_template("catalogo_privado/catalogo_expirado.html"), 410
+
+    items = (
+        CatalogoPrivadoItem.query.filter_by(catalogo_id=catalogo.id, is_visible=True)
+        .order_by(CatalogoPrivadoItem.orden.asc().nullslast(), CatalogoPrivadoItem.id.asc())
+        .all()
+    )
+    candidata_ids = [int(item.candidata_id) for item in items if item.candidata_id]
+    fichas = {}
+    if candidata_ids:
+        rows = CandidataWeb.query.filter(CandidataWeb.candidata_id.in_(candidata_ids)).all()
+        fichas = {int(r.candidata_id): r for r in rows}
+    candidatas = [
+        _catalogo_public_payload(item.candidata, ficha_web=fichas.get(int(item.candidata_id)))
+        for item in items
+        if item.candidata
+    ]
+    return render_template(
+        "catalogo_privado/catalogo_listado.html",
+        catalogo=catalogo,
+        candidatas=candidatas,
+        token=token,
+    )
+
+
+@public_bp.route("/catalogo/<token>/candidata/<codigo_o_id>", methods=["GET"])
+def catalogo_privado_candidata_detalle(token: str, codigo_o_id: str):
+    from models import Candidata, CatalogoPrivadoItem, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("catalogo_privado/catalogo_invalido.html"), 404
+    if status == "expired":
+        return render_template("catalogo_privado/catalogo_expirado.html"), 410
+
+    candidata_q = Candidata.query
+    raw = (codigo_o_id or "").strip()
+    if raw.isdigit():
+        candidata = candidata_q.filter(Candidata.fila == int(raw)).first()
+    else:
+        candidata = candidata_q.filter(func.lower(Candidata.codigo) == raw.lower()).first()
+    if not candidata:
+        return render_template("catalogo_privado/catalogo_invalido.html"), 404
+
+    exists_item = CatalogoPrivadoItem.query.filter_by(
+        catalogo_id=catalogo.id,
+        candidata_id=int(candidata.fila),
+        is_visible=True,
+    ).first()
+    if not exists_item:
+        return render_template("catalogo_privado/catalogo_invalido.html"), 404
+    ficha_web = CandidataWeb.query.filter_by(candidata_id=int(candidata.fila)).first()
+
+    return render_template(
+        "catalogo_privado/catalogo_candidata_detalle.html",
+        catalogo=catalogo,
+        candidata=_catalogo_public_payload(candidata, ficha_web=ficha_web),
+        token=token,
+    )
