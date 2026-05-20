@@ -4,7 +4,6 @@ import os
 import json
 import urllib.parse
 import time
-import hashlib
 from threading import Lock
 
 from flask import (
@@ -12,6 +11,7 @@ from flask import (
     abort,
     request,
     redirect,
+    flash,
     jsonify,
     make_response,
     session,
@@ -25,6 +25,10 @@ from . import public_bp
 from config_app import db
 
 from utils.audit_logger import log_action
+from utils.catalogo_privado_tokens import (
+    catalogo_privado_token_hash,
+    resolve_catalogo_privado_publico_por_token,
+)
 from utils.distributed_backplane import bp_get, bp_set
 from utils.timezone import iso_utc_z, utc_now_naive
 
@@ -126,7 +130,7 @@ def _public_external_url(endpoint: str, **values) -> str:
 
 
 def _catalogo_token_hash(token: str) -> str:
-    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+    return catalogo_privado_token_hash(token)
 
 
 def _catalogo_public_alias(candidata, ficha_web=None) -> str:
@@ -234,21 +238,246 @@ def _catalogo_public_payload(candidata, ficha_web=None):
     }
 
 
-def _resolver_catalogo_publico_por_token(token: str):
-    from models import CatalogoPrivado
+def _domesticas_store_public_payload(candidata, ficha_web=None):
+    """Payload público estricto (allowlist) para tienda abierta."""
+    nombre_publico = (getattr(ficha_web, "nombre_publico", None) or "").strip()
+    if not nombre_publico:
+        nombre_publico = _catalogo_public_alias(candidata, ficha_web=ficha_web)
 
-    token_hash = _catalogo_token_hash(token)
-    catalogo = CatalogoPrivado.query.filter_by(token_hash=token_hash).first()
-    if not catalogo:
-        return None, "invalid"
-    now = utc_now_naive()
-    if not bool(catalogo.is_active):
-        return catalogo, "expired"
-    if catalogo.expires_at and catalogo.expires_at <= now:
-        return catalogo, "expired"
-    catalogo.last_seen_at = now
-    db.session.commit()
-    return catalogo, "ok"
+    ciudad_publica = (getattr(ficha_web, "ciudad_publica", None) or "").strip() or None
+    sector_publico = (getattr(ficha_web, "sector_publico", None) or "").strip() or None
+    modalidad_publica = (getattr(ficha_web, "modalidad_publica", None) or "").strip() or None
+    experiencia_resumen = (getattr(ficha_web, "experiencia_resumen", None) or "").strip() or None
+    experiencia_detallada = (getattr(ficha_web, "experiencia_detallada", None) or "").strip() or None
+    entrevista_publica_resumen = (getattr(ficha_web, "entrevista_publica_resumen", None) or "").strip() or None
+    tags_publicos = (getattr(ficha_web, "tags_publicos", None) or "").strip() or None
+    sueldo_texto_publico = (getattr(ficha_web, "sueldo_texto_publico", None) or "").strip() or None
+    foto_publica_url = (getattr(ficha_web, "foto_publica_url", None) or "").strip() or None
+
+    return {
+        "id": int(getattr(candidata, "fila", 0) or 0),
+        "codigo": (getattr(candidata, "codigo", None) or "").strip() or None,
+        "nombre_publico": nombre_publico,
+        "edad_publica": (getattr(ficha_web, "edad_publica", None) or "").strip() or None,
+        "ciudad_publica": ciudad_publica,
+        "sector_publico": sector_publico,
+        "modalidad_publica": modalidad_publica,
+        "sueldo_texto_publico": sueldo_texto_publico,
+        "experiencia_resumen": experiencia_resumen,
+        "experiencia_detallada": experiencia_detallada,
+        "tags_publicos": tags_publicos,
+        "disponible_inmediato": bool(getattr(ficha_web, "disponible_inmediato", False)),
+        "foto_publica_url": foto_publica_url,
+        "entrevista_publica_resumen": entrevista_publica_resumen,
+        "estado_publico": (getattr(ficha_web, "estado_publico", "disponible") or "disponible").strip().lower(),
+    }
+
+
+_MI_SELECCION_SESSION_KEY = "mi_seleccion_candidatas"
+_MI_SELECCION_MAX = 20
+
+
+def _mi_seleccion_get_ids() -> list[int]:
+    raw = session.get(_MI_SELECCION_SESSION_KEY, [])
+    if not isinstance(raw, list):
+        return []
+    out: list[int] = []
+    for value in raw:
+        try:
+            num = int(value)
+        except Exception:
+            continue
+        if num > 0 and num not in out:
+            out.append(num)
+    return out[:_MI_SELECCION_MAX]
+
+
+def _mi_seleccion_set_ids(ids: list[int]) -> None:
+    cleaned: list[int] = []
+    for value in ids:
+        try:
+            num = int(value)
+        except Exception:
+            continue
+        if num > 0 and num not in cleaned:
+            cleaned.append(num)
+    session[_MI_SELECCION_SESSION_KEY] = cleaned[:_MI_SELECCION_MAX]
+    session.modified = True
+
+
+def _mi_seleccion_return_to() -> str:
+    raw = (request.form.get("return_to") or request.referrer or "").strip()
+    if not raw:
+        return url_for("public.domesticas_store_list")
+    try:
+        host = (request.host_url or "").rstrip("/")
+        if raw.startswith(host):
+            raw = raw[len(host):] or "/"
+    except Exception:
+        pass
+    if not raw.startswith("/"):
+        return url_for("public.domesticas_store_list")
+    if raw.startswith("//"):
+        return url_for("public.domesticas_store_list")
+    return raw
+
+
+def _domestica_disponible_para_tienda(candidata_id: int):
+    from models import Candidata, CandidataWeb
+
+    row = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(Candidata.fila == int(candidata_id))
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .first()
+    )
+    return row
+
+
+def _mi_seleccion_valid_rows(ids: list[int]):
+    valid_rows = []
+    for candidata_id in ids:
+        row = _domestica_disponible_para_tienda(int(candidata_id))
+        if row:
+            valid_rows.append(row)
+    return valid_rows
+
+
+def _resolver_catalogo_publico_por_token(token: str):
+    return resolve_catalogo_privado_publico_por_token(token, touch_last_seen=True)
+
+
+_RD_CIUDADES_OPCIONES = [
+    "Distrito Nacional",
+    "Santo Domingo",
+    "Santiago",
+    "La Vega",
+    "Puerto Plata",
+    "Espaillat",
+    "San Cristóbal",
+    "La Romana",
+    "San Pedro de Macorís",
+    "Higüey / La Altagracia",
+    "San Francisco de Macorís / Duarte",
+    "Bonao / Monseñor Nouel",
+    "Moca",
+    "Mao / Valverde",
+    "Azua",
+    "Barahona",
+    "San Juan",
+    "Peravia / Baní",
+    "Monte Plata",
+    "Samaná",
+    "María Trinidad Sánchez / Nagua",
+    "Hermanas Mirabal",
+    "Sánchez Ramírez / Cotuí",
+    "Dajabón",
+    "Monte Cristi",
+    "El Seibo",
+    "Hato Mayor",
+    "Pedernales",
+    "Independencia",
+    "Elías Piña",
+    "Bahoruco",
+]
+_TIENDA_MODALIDADES = ["Con dormida", "Salida diaria"]
+_TIENDA_FUNCIONES = [
+    "Limpieza general",
+    "Cocinar",
+    "Lavar",
+    "Planchar",
+    "Cuidar niños",
+    "Cuidar envejecientes",
+    "Limpieza profunda",
+    "Organización del hogar",
+]
+_TIENDA_FUNCIONES_TERMS = {
+    "Limpieza general": ["limpieza general", "limpieza"],
+    "Cocinar": ["cocinar", "cocina"],
+    "Lavar": ["lavar", "lavado"],
+    "Planchar": ["planchar", "planchado"],
+    "Cuidar niños": ["cuidar niños", "cuidar ninos", "niños", "ninos"],
+    "Cuidar envejecientes": ["cuidar envejecientes", "envejecientes", "adulto mayor"],
+    "Limpieza profunda": ["limpieza profunda", "deep cleaning"],
+    "Organización del hogar": ["organización del hogar", "organizacion del hogar", "organización", "organizacion"],
+}
+
+
+def _private_store_selection_session_key(catalogo_id: int) -> str:
+    return f"tienda_sel_{int(catalogo_id)}"
+
+
+def _private_store_get_ids(catalogo_id: int) -> list[int]:
+    key = _private_store_selection_session_key(catalogo_id)
+    raw = session.get(key, [])
+    if not isinstance(raw, list):
+        return []
+    out: list[int] = []
+    for value in raw:
+        try:
+            num = int(value)
+        except Exception:
+            continue
+        if num > 0 and num not in out:
+            out.append(num)
+    return out[:_MI_SELECCION_MAX]
+
+
+def _private_store_set_ids(catalogo_id: int, ids: list[int]) -> None:
+    key = _private_store_selection_session_key(catalogo_id)
+    cleaned: list[int] = []
+    for value in ids:
+        try:
+            num = int(value)
+        except Exception:
+            continue
+        if num > 0 and num not in cleaned:
+            cleaned.append(num)
+    session[key] = cleaned[:_MI_SELECCION_MAX]
+    session.modified = True
+
+
+def _private_store_return_to(catalogo_id: int, token: str) -> str:
+    raw = (request.form.get("return_to") or request.referrer or "").strip()
+    fallback = url_for("public.private_store_list", token=token)
+    if not raw:
+        return fallback
+    try:
+        host = (request.host_url or "").rstrip("/")
+        if raw.startswith(host):
+            raw = raw[len(host):] or "/"
+    except Exception:
+        pass
+    if not raw.startswith("/") or raw.startswith("//"):
+        return fallback
+    token_prefix = f"/tienda/{token}/"
+    if raw == f"/tienda/{token}" or raw.startswith(token_prefix):
+        return raw
+    # Evita saltar a otra tienda/token.
+    return fallback
+
+
+def _private_store_filters():
+    q = (request.args.get("q") or "").strip()[:120]
+    ciudad = (request.args.get("ciudad") or "").strip()[:120]
+    modalidad = (request.args.get("modalidad") or "").strip()[:120]
+    raw_funciones = request.args.getlist("funciones")
+    if not raw_funciones:
+        legacy_tag = (request.args.get("tag") or "").strip()[:120]
+        raw_funciones = [legacy_tag] if legacy_tag else []
+    funciones = []
+    valid_map = {x.lower(): x for x in _TIENDA_FUNCIONES}
+    for raw in raw_funciones:
+        clean = (raw or "").strip()[:120]
+        if not clean:
+            continue
+        canonical = valid_map.get(clean.lower(), clean)
+        if canonical not in funciones:
+            funciones.append(canonical)
+    disponible_inmediato = (request.args.get("disponible_inmediato") or "").strip().lower()
+    return q, ciudad, modalidad, funciones[:8], disponible_inmediato
 
 
 def _resolve_share_state(code: str):
@@ -567,6 +796,205 @@ def gracias():
     return render_template("public/gracias.html")
 
 
+@public_bp.route("/tienda-domesticas", methods=["GET"])
+def domesticas_store_alias():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    return redirect(url_for("public.domesticas_store_list"), code=302)
+
+
+@public_bp.route("/domesticas", methods=["GET"])
+def domesticas_store_list():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
+    from models import Candidata, CandidataWeb
+
+    q = (request.args.get("q") or "").strip()[:120]
+    ciudad = (request.args.get("ciudad") or "").strip()[:120]
+    modalidad = (request.args.get("modalidad") or "").strip()[:120]
+    tag = (request.args.get("tag") or "").strip()[:120]
+    disponible_inmediato = (request.args.get("disponible_inmediato") or "").strip().lower()
+    page = _safe_page(request.args.get("page"), default=1)
+    per_page = request.args.get("per_page", 12, type=int)
+    per_page = per_page if per_page in (12, 24, 36) else 12
+
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .order_by(
+            db.case((CandidataWeb.orden_lista.is_(None), 1), else_=0).asc(),
+            CandidataWeb.orden_lista.asc(),
+            CandidataWeb.fecha_ultima_actualizacion.desc(),
+            Candidata.fila.desc(),
+        )
+    )
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                CandidataWeb.nombre_publico.ilike(like),
+                CandidataWeb.tags_publicos.ilike(like),
+                CandidataWeb.ciudad_publica.ilike(like),
+                CandidataWeb.sector_publico.ilike(like),
+                CandidataWeb.modalidad_publica.ilike(like),
+            )
+        )
+    if ciudad:
+        query = query.filter(CandidataWeb.ciudad_publica.ilike(f"%{ciudad}%"))
+    if modalidad:
+        query = query.filter(CandidataWeb.modalidad_publica.ilike(f"%{modalidad}%"))
+    if tag:
+        query = query.filter(CandidataWeb.tags_publicos.ilike(f"%{tag}%"))
+    if disponible_inmediato in {"1", "true", "si", "sí", "yes"}:
+        query = query.filter(CandidataWeb.disponible_inmediato.is_(True))
+
+    total = query.count()
+    items = (
+        query
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+        .all()
+    )
+
+    pages = (total + per_page - 1) // per_page if per_page else 1
+    pages = max(1, pages)
+    has_prev = page > 1
+    has_next = page < pages
+
+    selected_ids = _mi_seleccion_get_ids()
+    selected_set = set(selected_ids)
+    cards = []
+    for cand, ficha in (items or []):
+        payload = _domesticas_store_public_payload(cand, ficha_web=ficha)
+        payload["is_selected"] = int(payload["id"]) in selected_set
+        cards.append(payload)
+
+    base_options_q = (
+        db.session.query(CandidataWeb)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+    )
+    ciudades = sorted({(row.ciudad_publica or "").strip() for row in base_options_q if (row.ciudad_publica or "").strip()})
+    modalidades = sorted({(row.modalidad_publica or "").strip() for row in base_options_q if (row.modalidad_publica or "").strip()})
+
+    return render_template(
+        "public/domesticas_store_list.html",
+        cards=cards,
+        selection_count=len(selected_ids),
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        has_prev=has_prev,
+        has_next=has_next,
+        prev_num=page - 1 if has_prev else 1,
+        next_num=page + 1 if has_next else pages,
+        q=q,
+        ciudad=ciudad,
+        modalidad=modalidad,
+        tag=tag,
+        disponible_inmediato=disponible_inmediato,
+        ciudades=ciudades,
+        modalidades=modalidades,
+    )
+
+
+@public_bp.route("/domesticas/<codigo_o_id>", methods=["GET"])
+def domesticas_store_detail(codigo_o_id: str):
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
+    from models import Candidata, CandidataWeb
+
+    raw = (codigo_o_id or "").strip()
+    if not raw:
+        abort(404)
+    if raw.isdigit():
+        cand = Candidata.query.filter(Candidata.fila == int(raw)).first()
+    else:
+        cand = Candidata.query.filter(func.lower(Candidata.codigo) == raw.lower()).first()
+    if not cand:
+        abort(404)
+
+    ficha = CandidataWeb.query.filter_by(candidata_id=int(cand.fila)).first()
+    if not ficha or (not bool(getattr(ficha, "visible", False))) or (str(getattr(ficha, "estado_publico", "") or "").strip().lower() != "disponible"):
+        abort(404)
+
+    selected_ids = _mi_seleccion_get_ids()
+    selected_set = set(selected_ids)
+    candidata = _domesticas_store_public_payload(cand, ficha_web=ficha)
+    candidata["is_selected"] = int(candidata["id"]) in selected_set
+    return render_template(
+        "public/domesticas_store_detail.html",
+        candidata=candidata,
+        selection_count=len(selected_ids),
+    )
+
+
+@public_bp.route("/mi-seleccion", methods=["GET"])
+def mi_seleccion_list():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
+    selected_ids = _mi_seleccion_get_ids()
+    rows = _mi_seleccion_valid_rows(selected_ids)
+    valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in rows]
+    if valid_ids != selected_ids:
+        _mi_seleccion_set_ids(valid_ids)
+    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
+    return render_template(
+        "public/mi_seleccion.html",
+        cards=cards,
+        selection_count=len(cards),
+    )
+
+
+@public_bp.route("/mi-seleccion/agregar", methods=["POST"])
+def mi_seleccion_agregar():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
+    candidata_id = int(request.form.get("candidata_id") or 0)
+    return_to = _mi_seleccion_return_to()
+    if candidata_id <= 0:
+        return redirect(return_to, code=303)
+    if not _domestica_disponible_para_tienda(candidata_id):
+        return redirect(return_to, code=303)
+
+    ids = _mi_seleccion_get_ids()
+    if candidata_id not in ids:
+        ids.append(candidata_id)
+    _mi_seleccion_set_ids(ids[:_MI_SELECCION_MAX])
+    return redirect(return_to, code=303)
+
+
+@public_bp.route("/mi-seleccion/quitar", methods=["POST"])
+def mi_seleccion_quitar():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+
+    candidata_id = int(request.form.get("candidata_id") or 0)
+    return_to = _mi_seleccion_return_to()
+    ids = _mi_seleccion_get_ids()
+    if candidata_id > 0 and candidata_id in ids:
+        ids = [x for x in ids if int(x) != int(candidata_id)]
+        _mi_seleccion_set_ids(ids)
+    return redirect(return_to, code=303)
+
+
+@public_bp.route("/mi-seleccion/limpiar", methods=["POST"])
+def mi_seleccion_limpiar():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    return_to = _mi_seleccion_return_to()
+    _mi_seleccion_set_ids([])
+    return redirect(return_to, code=303)
+
+
 @public_bp.route("/catalogo/<token>", methods=["GET"])
 def catalogo_privado_listado(token: str):
     from models import CatalogoPrivadoItem, CandidataWeb
@@ -633,4 +1061,317 @@ def catalogo_privado_candidata_detalle(token: str, codigo_o_id: str):
         catalogo=catalogo,
         candidata=_catalogo_public_payload(candidata, ficha_web=ficha_web),
         token=token,
+    )
+
+
+@public_bp.route("/tienda/<token>", methods=["GET"])
+def private_store_list(token: str):
+    from models import Candidata, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+
+    scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode == "manual_shortlist":
+        return redirect(url_for("public.catalogo_privado_listado", token=token), code=302)
+
+    q, ciudad, modalidad, funciones, disponible_inmediato = _private_store_filters()
+    page = _safe_page(request.args.get("page"), default=1)
+    per_page = request.args.get("per_page", 12, type=int)
+    per_page = per_page if per_page in (12, 24, 36) else 12
+
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .order_by(
+            db.case((CandidataWeb.orden_lista.is_(None), 1), else_=0).asc(),
+            CandidataWeb.orden_lista.asc(),
+            CandidataWeb.fecha_ultima_actualizacion.desc(),
+            Candidata.fila.desc(),
+        )
+    )
+
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            db.or_(
+                CandidataWeb.nombre_publico.ilike(like),
+                CandidataWeb.tags_publicos.ilike(like),
+                CandidataWeb.ciudad_publica.ilike(like),
+                CandidataWeb.sector_publico.ilike(like),
+                CandidataWeb.modalidad_publica.ilike(like),
+            )
+        )
+    if ciudad:
+        query = query.filter(CandidataWeb.ciudad_publica.ilike(f"%{ciudad}%"))
+    if modalidad:
+        query = query.filter(CandidataWeb.modalidad_publica.ilike(f"%{modalidad}%"))
+    if funciones:
+        for funcion in funciones:
+            terms = _TIENDA_FUNCIONES_TERMS.get(funcion, [funcion])
+            query = query.filter(
+                db.or_(
+                    *[
+                        db.or_(
+                            CandidataWeb.tags_publicos.ilike(f"%{term}%"),
+                            CandidataWeb.experiencia_resumen.ilike(f"%{term}%"),
+                            CandidataWeb.experiencia_detallada.ilike(f"%{term}%"),
+                        )
+                        for term in terms
+                    ]
+                )
+            )
+    if disponible_inmediato in {"1", "true", "si", "sí", "yes"}:
+        query = query.filter(CandidataWeb.disponible_inmediato.is_(True))
+
+    total = query.count()
+    items = query.limit(per_page).offset((page - 1) * per_page).all()
+    pages = (total + per_page - 1) // per_page if per_page else 1
+    pages = max(1, pages)
+    has_prev = page > 1
+    has_next = page < pages
+
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    selected_set = set(selected_ids)
+    cards = []
+    for cand, ficha in (items or []):
+        payload = _domesticas_store_public_payload(cand, ficha_web=ficha)
+        payload["is_selected"] = int(payload["id"]) in selected_set
+        cards.append(payload)
+
+    return render_template(
+        "private_store/store_list.html",
+        catalogo=catalogo,
+        token=token,
+        cards=cards,
+        total=total,
+        page=page,
+        pages=pages,
+        per_page=per_page,
+        has_prev=has_prev,
+        has_next=has_next,
+        prev_num=page - 1 if has_prev else 1,
+        next_num=page + 1 if has_next else pages,
+        q=q,
+        ciudad=ciudad,
+        modalidad=modalidad,
+        funciones=funciones,
+        disponible_inmediato=disponible_inmediato,
+        ciudades=_RD_CIUDADES_OPCIONES,
+        modalidades=_TIENDA_MODALIDADES,
+        funciones_disponibles=_TIENDA_FUNCIONES,
+        scope_mode=scope_mode,
+        selection_count=len(selected_ids),
+        selected_ids=selected_ids,
+    )
+
+
+@public_bp.route("/tienda/<token>/domesticas/<codigo_o_id>", methods=["GET"])
+def private_store_detail(token: str, codigo_o_id: str):
+    from models import Candidata, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+
+    scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode == "manual_shortlist":
+        return redirect(url_for("public.catalogo_privado_candidata_detalle", token=token, codigo_o_id=codigo_o_id), code=302)
+
+    raw = (codigo_o_id or "").strip()
+    if not raw:
+        abort(404)
+    if raw.isdigit():
+        cand = Candidata.query.filter(Candidata.fila == int(raw)).first()
+    else:
+        cand = Candidata.query.filter(func.lower(Candidata.codigo) == raw.lower()).first()
+    if not cand:
+        abort(404)
+
+    ficha = CandidataWeb.query.filter_by(candidata_id=int(cand.fila)).first()
+    if not ficha or (not bool(getattr(ficha, "visible", False))) or (str(getattr(ficha, "estado_publico", "") or "").strip().lower() != "disponible"):
+        abort(404)
+
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    return render_template(
+        "private_store/store_detail.html",
+        catalogo=catalogo,
+        token=token,
+        candidata={**_domesticas_store_public_payload(cand, ficha_web=ficha), "is_selected": int(cand.fila) in set(selected_ids)},
+        selection_count=len(selected_ids),
+    )
+
+
+@public_bp.route("/tienda/<token>/mi-seleccion", methods=["GET"])
+def private_store_selection_list(token: str):
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+
+    scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode != "all_available_store":
+        return redirect(url_for("public.catalogo_privado_listado", token=token), code=302)
+
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    rows = _mi_seleccion_valid_rows(selected_ids)
+    valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in rows]
+    if valid_ids != selected_ids:
+        _private_store_set_ids(int(catalogo.id), valid_ids)
+    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
+    return render_template(
+        "private_store/store_selection.html",
+        catalogo=catalogo,
+        token=token,
+        cards=cards,
+        selection_count=len(cards),
+    )
+
+
+@public_bp.route("/tienda/<token>/seleccion/agregar", methods=["POST"])
+def private_store_selection_add(token: str):
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+
+    candidata_id = int(request.form.get("candidata_id") or 0)
+    return_to = _private_store_return_to(int(catalogo.id), token)
+    if candidata_id <= 0:
+        return redirect(return_to, code=303)
+    if not _domestica_disponible_para_tienda(candidata_id):
+        return redirect(return_to, code=303)
+    ids = _private_store_get_ids(int(catalogo.id))
+    if candidata_id not in ids:
+        ids.append(candidata_id)
+    _private_store_set_ids(int(catalogo.id), ids[:_MI_SELECCION_MAX])
+    return redirect(return_to, code=303)
+
+
+@public_bp.route("/tienda/<token>/seleccion/quitar", methods=["POST"])
+def private_store_selection_remove(token: str):
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+
+    candidata_id = int(request.form.get("candidata_id") or 0)
+    return_to = _private_store_return_to(int(catalogo.id), token)
+    ids = _private_store_get_ids(int(catalogo.id))
+    if candidata_id > 0 and candidata_id in ids:
+        _private_store_set_ids(int(catalogo.id), [x for x in ids if int(x) != int(candidata_id)])
+    return redirect(return_to, code=303)
+
+
+@public_bp.route("/tienda/<token>/seleccion/limpiar", methods=["POST"])
+def private_store_selection_clear(token: str):
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+    return_to = _private_store_return_to(int(catalogo.id), token)
+    _private_store_set_ids(int(catalogo.id), [])
+    return redirect(return_to, code=303)
+
+
+@public_bp.route("/tienda/<token>/solicitar-entrevistas", methods=["GET", "POST"])
+def private_store_request_interviews(token: str):
+    from models import TiendaInteres, TiendaInteresItem
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+    scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode != "all_available_store":
+        return redirect(url_for("public.catalogo_privado_listado", token=token), code=302)
+
+    ids = _private_store_get_ids(int(catalogo.id))
+    rows = _mi_seleccion_valid_rows(ids)
+    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
+    valid_ids = [int(getattr(c, "id", 0) or 0) for c in cards]
+    if valid_ids != ids:
+        _private_store_set_ids(int(catalogo.id), valid_ids)
+        ids = valid_ids
+
+    cliente = getattr(catalogo, "cliente", None)
+    cliente_nombre = (getattr(cliente, "nombre_completo", None) or "").strip()
+    cliente_telefono = (getattr(cliente, "telefono", None) or "").strip()
+    has_linked_cliente = bool(cliente and cliente_nombre and cliente_telefono)
+    default_nombre = cliente_nombre if has_linked_cliente else (request.form.get("nombre_contacto") or "").strip()
+    default_telefono = cliente_telefono if has_linked_cliente else (request.form.get("telefono_contacto") or "").strip()
+    comentario = (request.form.get("comentario") or "").strip()
+
+    if request.method == "POST":
+        posted_ids = sorted({int(x) for x in request.form.getlist("candidata_ids") if str(x).isdigit() and int(x) > 0})
+        if (not ids) and posted_ids:
+            valid_posted = []
+            for candidata_id in posted_ids:
+                if _domestica_disponible_para_tienda(int(candidata_id)):
+                    valid_posted.append(int(candidata_id))
+            if valid_posted:
+                ids = valid_posted[:_MI_SELECCION_MAX]
+                _private_store_set_ids(int(catalogo.id), ids)
+        if not ids:
+            flash("Debes seleccionar al menos una candidata antes de solicitar entrevistas.", "danger")
+            return redirect(url_for("public.private_store_selection_list", token=token))
+        if not default_nombre or not default_telefono:
+            flash("Nombre y teléfono/WhatsApp son obligatorios.", "danger")
+            return render_template(
+                "private_store/store_request_interviews.html",
+                catalogo=catalogo,
+                token=token,
+                cards=cards,
+                selection_count=len(cards),
+                has_linked_cliente=has_linked_cliente,
+                nombre_contacto=default_nombre,
+                telefono_contacto=default_telefono,
+                comentario=comentario,
+            ), 400
+        interes = TiendaInteres(
+            catalogo_id=int(catalogo.id),
+            cliente_id=int(catalogo.cliente_id) if getattr(catalogo, "cliente_id", None) else None,
+            solicitud_id=int(catalogo.solicitud_id) if getattr(catalogo, "solicitud_id", None) else None,
+            nombre_contacto=default_nombre[:200],
+            telefono_contacto=default_telefono[:50],
+            comentario=comentario or None,
+            estado="nuevo",
+            token_hint_usado=(getattr(catalogo, "token_hint", None) or None),
+        )
+        db.session.add(interes)
+        db.session.flush()
+        for idx, candidata_id in enumerate(ids, start=1):
+            db.session.add(TiendaInteresItem(interes_id=int(interes.id), candidata_id=int(candidata_id), orden=idx))
+        db.session.commit()
+        _private_store_set_ids(int(catalogo.id), [])
+        return render_template(
+            "private_store/store_request_success.html",
+            catalogo=catalogo,
+            token=token,
+            interes=interes,
+            selection_count=0,
+        )
+
+    return render_template(
+        "private_store/store_request_interviews.html",
+        catalogo=catalogo,
+        token=token,
+        cards=cards,
+        selection_count=len(cards),
+        has_linked_cliente=has_linked_cliente,
+        nombre_contacto=default_nombre,
+        telefono_contacto=default_telefono,
+        comentario=comentario,
     )

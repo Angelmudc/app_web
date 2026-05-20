@@ -1,0 +1,70 @@
+{% extends "private_store/base_private_store.html" %}
+{% block title %}Solicitar entrevistas{% endblock %}
+{% block content %}
+<section class="container ps-main">
+  <h1>Solicitud de entrevistas</h1>
+
+  {% if cards %}
+  <div class="ps-progress">
+    <div class="step">Selección</div>
+    <div class="step active">Contacto</div>
+    <div class="step">Confirmación</div>
+  </div>
+
+  <div class="ps-checkout-layout">
+    <div class="ps-surface ps-filters">
+      <form method="post" class="ps-form-grid">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for c in cards %}<input type="hidden" name="candidata_ids" value="{{ c.id }}">{% endfor %}
+
+        {% if has_linked_cliente %}
+        <section class="ps-contact-card">
+          <div class="ps-contact-head">
+            <h3>Datos de contacto</h3>
+            <span class="ps-badge ps-badge-on">Confirmado por la agencia</span>
+          </div>
+          <p><strong>Nombre del cliente:</strong> {{ nombre_contacto }}</p>
+          <p><strong>WhatsApp/Teléfono:</strong> {{ telefono_contacto }}</p>
+        </section>
+        {% else %}
+        <div class="ps-field">
+          <label for="nombre_contacto">Nombre del cliente</label>
+          <input id="nombre_contacto" type="text" name="nombre_contacto" value="{{ nombre_contacto or '' }}" required>
+        </div>
+        <div class="ps-field">
+          <label for="telefono_contacto">Teléfono / WhatsApp</label>
+          <input id="telefono_contacto" type="text" name="telefono_contacto" value="{{ telefono_contacto or '' }}" required>
+        </div>
+        {% endif %}
+        <div class="ps-field">
+          <label for="comentario">Nota para la agencia (opcional)</label>
+          <textarea id="comentario" name="comentario" rows="4" placeholder="Ej: Me interesa entrevistar primero a las candidatas con experiencia en niños...">{{ comentario or '' }}</textarea>
+        </div>
+
+        <button class="ps-pill ps-pill-primary ps-cta-lg" type="submit">Solicitar entrevistas</button>
+      </form>
+
+      <section class="ps-trust">
+        <h3>¿Qué sucede después?</h3>
+        <ul>
+          <li>La agencia revisa tu selección y prioridades del hogar.</li>
+          <li>Te contactamos para confirmar detalles y disponibilidad real.</li>
+          <li>Coordinamos entrevistas con seguimiento personalizado.</li>
+        </ul>
+      </section>
+    </div>
+
+    <aside class="ps-summary-box">
+      <h2>Resumen</h2>
+      <p>Total perfiles: {{ selection_count }}</p>
+      <ul class="ps-steps" style="margin-bottom:12px;">
+        {% for c in cards %}<li>{{ c.nombre_publico }}</li>{% endfor %}
+      </ul>
+      <p style="font-size:.87rem; color:#b8cde1; margin:0;">Proceso siguiente: revisión interna y coordinación de entrevistas con la agencia.</p>
+    </aside>
+  </div>
+  {% else %}
+  <div class="ps-empty">No tienes candidatas en tu selección. <a class="ps-link" href="{{ url_for('public.private_store_list', token=token) }}">Volver a tienda</a></div>
+  {% endif %}
+</section>
+{% endblock %}
