@@ -24556,22 +24556,24 @@ def _catalogos_privados_form_context(
     if (not selected_cliente_id) and catalogo and catalogo.cliente_id:
         selected_cliente_id = int(catalogo.cliente_id)
 
-    clientes_query = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono)
+    clientes_query = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono, Cliente.codigo, Cliente.email)
     if cliente_q:
         pattern = f"%{cliente_q}%"
-        clientes_query = clientes_query.filter(
-            or_(
-                Cliente.nombre_completo.ilike(pattern),
-                Cliente.telefono.ilike(pattern),
-                cast(Cliente.id, db.String).ilike(pattern),
-            )
-        )
+        criteria = [
+            Cliente.nombre_completo.ilike(pattern),
+            Cliente.telefono.ilike(pattern),
+            Cliente.codigo.ilike(pattern),
+            Cliente.email.ilike(pattern),
+        ]
+        if cliente_q.isdigit():
+            criteria.append(Cliente.id == int(cliente_q))
+        clientes_query = clientes_query.filter(or_(*criteria))
     clientes = clientes_query.order_by(Cliente.id.desc()).limit(120).all()
 
     cliente_selected = None
     if selected_cliente_id:
         cliente_selected = (
-            Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono)
+            Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono, Cliente.codigo, Cliente.email)
             .filter_by(id=selected_cliente_id)
             .first()
         )
@@ -24630,20 +24632,21 @@ def catalogos_privados_new():
 @login_required
 @staff_required
 def catalogos_privados_create():
-    nombre = (request.form.get("nombre") or "").strip()
-    if not nombre:
-        flash("El nombre es obligatorio.", "danger")
-        return redirect(url_for("admin.catalogos_privados_new"))
-
     cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
     solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
     cliente_q = (request.form.get("cliente_q") or "").strip() or None
+    solicitud_obj = None
 
     if not cliente_id:
         flash("Debes seleccionar un cliente para crear un catálogo privado.", "danger")
         return redirect(url_for("admin.catalogos_privados_new", cliente_q=cliente_q))
 
-    cliente_obj = Cliente.query.with_entities(Cliente.id).filter_by(id=int(cliente_id)).first()
+    cliente_obj = (
+        Cliente.query
+        .with_entities(Cliente.id, Cliente.nombre_completo)
+        .filter_by(id=int(cliente_id))
+        .first()
+    )
     if cliente_obj is None:
         flash("El cliente seleccionado no existe o es inválido.", "danger")
         return redirect(url_for("admin.catalogos_privados_new", cliente_q=cliente_q))
@@ -24679,7 +24682,12 @@ def catalogos_privados_create():
         )
 
     if solicitud_id:
-        solicitud_obj = Solicitud.query.with_entities(Solicitud.id, Solicitud.cliente_id).filter_by(id=int(solicitud_id)).first()
+        solicitud_obj = (
+            Solicitud.query
+            .with_entities(Solicitud.id, Solicitud.cliente_id, Solicitud.codigo_solicitud)
+            .filter_by(id=int(solicitud_id))
+            .first()
+        )
         if solicitud_obj is None:
             flash("La solicitud seleccionada no existe.", "danger")
             return redirect(
@@ -24698,15 +24706,19 @@ def catalogos_privados_create():
                     cliente_id=cliente_id or None,
                 )
             )
+
+    base_nombre = f"Catálogo para {str(cliente_obj.nombre_completo or '').strip()}"[:120]
+    if solicitud_obj and str(getattr(solicitud_obj, "codigo_solicitud", "") or "").strip():
+        nombre_generado = f"{base_nombre} - {str(solicitud_obj.codigo_solicitud).strip()}"
     else:
-        flash("Catálogo creado sin vincular una solicitud específica.", "warning")
+        nombre_generado = base_nombre
 
     token = secrets.token_urlsafe(32)
     token_hash = _catalogo_privado_token_hash(token)
     token_hint = token[-12:] if len(token) > 12 else token
 
     catalogo = CatalogoPrivado(
-        nombre=nombre[:160],
+        nombre=nombre_generado[:160],
         descripcion=(request.form.get("descripcion") or "").strip() or None,
         cliente_id=cliente_id,
         solicitud_id=solicitud_id,

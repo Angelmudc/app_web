@@ -35,9 +35,21 @@ def _ensure_tables() -> None:
     ensure_sqlite_compat_tables([Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud], reset=False)
 
 
-def _seed_clientes_solicitudes() -> tuple[int, int, int]:
-    c1 = Cliente(nombre_completo='Ana Cliente', telefono='8095551111', role='cliente')
-    c2 = Cliente(nombre_completo='Beto Cliente', telefono='8095552222', role='cliente')
+def _seed_clientes_solicitudes() -> tuple[int, str, str, int, int]:
+    c1 = Cliente(
+        nombre_completo='Ana Cliente',
+        telefono='8095551111',
+        codigo='CLI-ANA-001',
+        email='ana.catalogo@example.com',
+        role='cliente',
+    )
+    c2 = Cliente(
+        nombre_completo='Beto Cliente',
+        telefono='8095552222',
+        codigo='CLI-BETO-002',
+        email='beto.catalogo@example.com',
+        role='cliente',
+    )
     db.session.add(c1)
     db.session.add(c2)
     db.session.flush()
@@ -49,7 +61,7 @@ def _seed_clientes_solicitudes() -> tuple[int, int, int]:
     db.session.add(s2)
     db.session.add(s_other)
     db.session.commit()
-    return int(c1.id), int(s1.id), int(s_other.id)
+    return int(c1.id), str(c1.codigo), str(c1.telefono), int(s1.id), int(s_other.id)
 
 
 def _seed_candidata(fila: int = 992001) -> int:
@@ -67,33 +79,49 @@ def test_catalogo_form_flujo_cliente_solicitud_y_vencimiento_automatico():
 
     with flask_app.app_context():
         _ensure_tables()
-        cliente_id, solicitud_ok_id, solicitud_other_id = _seed_clientes_solicitudes()
+        cliente_id, cliente_codigo, cliente_telefono, solicitud_ok_id, solicitud_other_id = _seed_clientes_solicitudes()
         candidata_id = _seed_candidata()
 
     # 1) Form nuevo sin fecha manual + texto informativo de 7 días
     new_resp = client.get('/admin/catalogos-privados/nuevo', follow_redirects=False)
     assert new_resp.status_code == 200
     new_html = new_resp.get_data(as_text=True)
-    assert 'cerrará automáticamente 7 días' in new_html
+    assert 'Se genera automáticamente al guardar' in new_html
+    assert 'Busca y selecciona un cliente para ver sus solicitudes.' in new_html
+    assert 'name="nombre"' not in new_html
     assert 'name="expires_at"' not in new_html
 
-    # 2) Buscar cliente
+    # 2) Buscar cliente por nombre
     search_resp = client.get('/admin/catalogos-privados/nuevo?cliente_q=Ana', follow_redirects=False)
     assert search_resp.status_code == 200
     search_html = search_resp.get_data(as_text=True)
     assert 'Ana Cliente' in search_html
+    assert 'Seleccionar' in search_html
+
+    # 2.1) Buscar cliente por teléfono / código / id
+    phone_resp = client.get(f'/admin/catalogos-privados/nuevo?cliente_q={cliente_telefono}', follow_redirects=False)
+    assert phone_resp.status_code == 200
+    assert 'Ana Cliente' in phone_resp.get_data(as_text=True)
+
+    code_resp = client.get(f'/admin/catalogos-privados/nuevo?cliente_q={cliente_codigo}', follow_redirects=False)
+    assert code_resp.status_code == 200
+    assert 'Ana Cliente' in code_resp.get_data(as_text=True)
+
+    id_resp = client.get(f'/admin/catalogos-privados/nuevo?cliente_q={cliente_id}', follow_redirects=False)
+    assert id_resp.status_code == 200
+    assert 'Ana Cliente' in id_resp.get_data(as_text=True)
 
     # 3) Seleccionar cliente y filtrar solicitudes solo de ese cliente
     selected_resp = client.get(f'/admin/catalogos-privados/nuevo?cliente_id={cliente_id}', follow_redirects=False)
     assert selected_resp.status_code == 200
     selected_html = selected_resp.get_data(as_text=True)
+    assert f'value="{cliente_id}"' in selected_html
     assert f'value="{solicitud_ok_id}"' in selected_html
     assert 'SOL-A-1' in selected_html
     assert 'SOL-B-1' not in selected_html
 
     # 4) Envío inválido: solicitud no pertenece al cliente seleccionado
     bad_payload = {
-        'nombre': 'Catalogo inválido cliente-solicitud',
         'cliente_id': str(cliente_id),
         'solicitud_id': str(solicitud_other_id),
         'candidata_ids': [str(candidata_id)],
@@ -102,12 +130,11 @@ def test_catalogo_form_flujo_cliente_solicitud_y_vencimiento_automatico():
     assert bad_resp.status_code == 200
     assert 'no pertenece al cliente elegido' in bad_resp.get_data(as_text=True).lower()
     with flask_app.app_context():
-        bad_cat = CatalogoPrivado.query.filter_by(nombre='Catalogo inválido cliente-solicitud').first()
+        bad_cat = CatalogoPrivado.query.filter_by(cliente_id=cliente_id, solicitud_id=solicitud_other_id).first()
         assert bad_cat is None
 
     # 4.1) Envío inválido: sin cliente seleccionado
     no_cliente_payload = {
-        'nombre': 'Catalogo inválido sin cliente',
         'solicitud_id': str(solicitud_ok_id),
         'candidata_ids': [str(candidata_id)],
     }
@@ -115,12 +142,11 @@ def test_catalogo_form_flujo_cliente_solicitud_y_vencimiento_automatico():
     assert no_cliente_resp.status_code == 200
     assert 'debes seleccionar un cliente' in no_cliente_resp.get_data(as_text=True).lower()
     with flask_app.app_context():
-        no_cliente_cat = CatalogoPrivado.query.filter_by(nombre='Catalogo inválido sin cliente').first()
-        assert no_cliente_cat is None
+        bad_no_cliente = CatalogoPrivado.query.filter_by(solicitud_id=solicitud_ok_id).order_by(CatalogoPrivado.id.desc()).first()
+        assert bad_no_cliente is None or int(bad_no_cliente.cliente_id or 0) != 0
 
     # 5) Crear catálogo válido sin expires_at manual
     ok_payload = {
-        'nombre': 'Catalogo válido cliente-solicitud',
         'cliente_id': str(cliente_id),
         'solicitud_id': str(solicitud_ok_id),
         'descripcion': 'Mensaje visible demo',
@@ -132,10 +158,11 @@ def test_catalogo_form_flujo_cliente_solicitud_y_vencimiento_automatico():
     after = utc_now_naive()
 
     with flask_app.app_context():
-        cat = CatalogoPrivado.query.filter_by(nombre='Catalogo válido cliente-solicitud').order_by(CatalogoPrivado.id.desc()).first()
+        cat = CatalogoPrivado.query.filter_by(cliente_id=cliente_id, solicitud_id=solicitud_ok_id).order_by(CatalogoPrivado.id.desc()).first()
         assert cat is not None
         assert int(cat.cliente_id or 0) == cliente_id
         assert int(cat.solicitud_id or 0) == solicitud_ok_id
+        assert cat.nombre == 'Catálogo para Ana Cliente - SOL-A-1'
         assert cat.expires_at is not None
         min_expected = before + timedelta(days=7) - timedelta(minutes=2)
         max_expected = after + timedelta(days=7) + timedelta(minutes=2)

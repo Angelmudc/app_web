@@ -99,7 +99,8 @@ def test_catalogo_nuevo_preselecciona_cliente_y_filtra_solicitudes_por_querystri
     selected_resp = client.get(f'/admin/catalogos-privados/nuevo?cliente_id={c1_id}', follow_redirects=False)
     assert selected_resp.status_code == 200
     selected_html = selected_resp.get_data(as_text=True)
-    assert f'<option value="{c1_id}" selected' in selected_html
+    assert f'value="{c1_id}"' in selected_html
+    assert 'Ana Auto' in selected_html
     assert 'SOL-AUTO-1' in selected_html
     assert 'SOL-AUTO-2' not in selected_html
 
@@ -116,4 +117,4 @@ def test_catalogo_nuevo_ignora_cliente_id_invalido_sin_romper_flujo():
     resp = client.get('/admin/catalogos-privados/nuevo?cliente_id=99999999', follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert '<option value=""' in html
+    assert 'Busca y selecciona un cliente para ver sus solicitudes.' in html
