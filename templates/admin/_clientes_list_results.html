@@ -57,6 +57,7 @@
               {% else %}
               <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
               {% endif %}
+              <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
               {% if can_delete_cliente %}
               <button
                 type="button"
@@ -107,6 +108,7 @@
         {% else %}
         <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
         {% endif %}
+        <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
         {% if can_delete_cliente %}
         <button
           type="button"

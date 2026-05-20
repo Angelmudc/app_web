@@ -24570,9 +24570,17 @@ def _catalogos_privados_form_context(
 
     cliente_selected = None
     if selected_cliente_id:
-        cliente_selected = Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo).filter_by(id=selected_cliente_id).first()
+        cliente_selected = (
+            Cliente.query.with_entities(Cliente.id, Cliente.nombre_completo, Cliente.telefono)
+            .filter_by(id=selected_cliente_id)
+            .first()
+        )
         if cliente_selected is None:
             selected_cliente_id = 0
+        elif not any(int(getattr(c, "id", 0) or 0) == int(selected_cliente_id) for c in (clientes or [])):
+            clientes = [cliente_selected, *list(clientes or [])]
+            if len(clientes) > 120:
+                clientes = clientes[:120]
 
     if selected_cliente_id:
         solicitudes = (
