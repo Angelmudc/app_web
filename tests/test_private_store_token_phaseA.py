@@ -74,7 +74,17 @@ def _seed_candidates(seed: int = 1) -> dict[str, int]:
         numero_telefono='809-000-1111',
         direccion_completa='Calle X',
         perfil=_PNG_1X1,
-        entrevista='Excelente actitud. Telefono: 809-111-2222. Vive en sector Naco. Referencias: madre 849-333-4444.',
+        entrevista=(
+            "Nombre completo: Ana Interna\n"
+            "Nacionalidad: Dominicana\n"
+            "Edad: 32\n"
+            "Dirección: Calle 4, sector Naco, Santo Domingo\n"
+            "Cómo se describe: Responsable y ordenada\n"
+            "Modalidad: Salida diaria\n"
+            "Labores desempeñadas: Limpieza general y cocina básica\n"
+            "Referencias laborales: Sra. Marta 809-111-2222\n"
+            "Referencias familiares: Tía Julia 849-333-4444"
+        ),
     )
     hidden = Candidata(fila=base + 2, nombre_completo='Oculta', cedula=f'{base + 2:011d}', codigo=f'PTA-HID-{seed}')
     reserved = Candidata(fila=base + 3, nombre_completo='Reservada', cedula=f'{base + 3:011d}', codigo=f'PTA-RES-{seed}')
@@ -238,23 +248,24 @@ def test_private_store_interview_protected_access_and_redaction():
     resp = client.get(ok_url, follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True).lower()
+    assert "nombre completo" in html
+    assert "dirección" in html or "direccion" in html
     assert "información protegida por la agencia" in html
     for marker in [
         "809-111-2222",
         "849-333-4444",
         "naco",
         "santiago",
-        "referencias",
         "cedula",
         "cédula",
-        "dirección",
-        "direccion",
-        "familiar",
-        "laboral",
+        "calle 4",
+        "sra. marta",
+        "tía julia",
     ]:
         assert marker not in html
     assert "/users/" not in html
     assert "/private/" not in html
+    assert ".pdf" not in html
 
     invalid = client.get(f"/tienda/token-invalido/domesticas/{ids['ok']}/entrevista", follow_redirects=False)
     assert invalid.status_code == 404
@@ -279,12 +290,14 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
         db.session.add(e)
         db.session.flush()
         p1 = EntrevistaPregunta(clave="dom.ciudad", texto="Ciudad donde vive", tipo="texto", orden=1, activa=True)
-        p2 = EntrevistaPregunta(clave="dom.fortaleza", texto="Fortaleza principal", tipo="texto", orden=2, activa=True)
-        db.session.add_all([p1, p2])
+        p2 = EntrevistaPregunta(clave="dom.fortaleza", texto="Cómo se describe", tipo="texto", orden=2, activa=True)
+        p3 = EntrevistaPregunta(clave="dom.referencias", texto="Referencias laborales", tipo="texto", orden=3, activa=True)
+        db.session.add_all([p1, p2, p3])
         db.session.flush()
         db.session.add_all([
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p1.id, respuesta="Santiago"),
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p2.id, respuesta="Organizada y puntual"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p3.id, respuesta="Sra Rosa 809-000-1212"),
         ])
         db.session.commit()
 
@@ -296,8 +309,10 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
     interview = client.get(f"/tienda/tok_store_structured/domesticas/{cand_id}/entrevista", follow_redirects=False)
     assert interview.status_code == 200
     iv_html = interview.get_data(as_text=True).lower()
+    assert "cómo se describe" in iv_html or "como se describe" in iv_html
     assert "información protegida por la agencia" in iv_html
     assert "santiago" not in iv_html
+    assert "809-000-1212" not in iv_html
 
 def test_private_store_filters_work():
     flask_app.config['TESTING'] = True

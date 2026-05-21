@@ -9,13 +9,18 @@
 
   <article class="ps-detail-card">
     <div class="ps-detail-body">
-      <h1>Entrevista protegida de {{ candidata.nombre_publico }}</h1>
-      <p>La entrevista fue revisada por la agencia. Algunos datos personales están protegidos por seguridad.</p>
+      <h1>Entrevista protegida</h1>
+      <p><strong>{{ candidata.nombre_publico }}</strong></p>
+      <p>Datos personales ocultos por seguridad.</p>
+      <p style="font-size:.8rem; opacity:.7; letter-spacing:.04em;">Uso exclusivo de Doméstica del Cibao A&amp;D</p>
 
       <section class="ps-section">
-        <h2>Contenido autorizado</h2>
+        <h2>Preguntas y respuestas</h2>
         <div class="ps-detail-grid" style="grid-template-columns:1fr;">
           {% for item in entrevista_items %}
+          {% if item.section == 'referencias' and (loop.first or loop.previtem.section != 'referencias') %}
+          <h3 style="margin:14px 0 6px;">Referencias</h3>
+          {% endif %}
           <article class="ps-quick">
             <strong>{{ item.label }}</strong>
             <span>{{ item.value }}</span>

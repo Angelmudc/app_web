@@ -334,7 +334,7 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
 _PROTECTED_INTERVIEW_REDACT = "Información protegida por la agencia"
 _SENSITIVE_KEYWORDS = (
     "cedula", "cédula", "telefono", "teléfono", "direccion", "dirección", "vive", "donde vive", "sector", "ciudad",
-    "referencia", "referencias", "familiar", "familiares", "laboral", "contacto", "whatsapp",
+    "referencia", "referencias", "familiar", "familiares", "laboral", "contacto", "whatsapp", "ubicación", "ubicacion",
 )
 
 
@@ -368,28 +368,21 @@ def _private_store_build_protected_interview(candidata):
     sections = []
     has_source = False
 
-    legacy = (getattr(candidata, "entrevista", None) or "").strip()
-    if legacy:
-        has_source = True
-        safe = _private_store_redact_text(legacy)
-        if safe:
-            sections.append({"label": "Resumen validado por la agencia", "value": safe})
-
     try:
-        entrevistas = (
+        entrevista = (
             Entrevista.query
             .filter(Entrevista.candidata_id == int(getattr(candidata, "fila", 0) or 0))
             .order_by(Entrevista.id.desc())
-            .limit(3)
-            .all()
+            .first()
         )
     except SQLAlchemyError:
-        entrevistas = []
-    for ent in entrevistas:
+        entrevista = None
+    if entrevista is not None:
+        has_source = True
         respuestas = (
             db.session.query(EntrevistaRespuesta, EntrevistaPregunta)
             .join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
-            .filter(EntrevistaRespuesta.entrevista_id == int(ent.id))
+            .filter(EntrevistaRespuesta.entrevista_id == int(entrevista.id))
             .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
             .all()
         )
@@ -405,7 +398,49 @@ def _private_store_build_protected_interview(candidata):
                 safe_answer = _private_store_redact_text(answer)
             if not safe_answer:
                 continue
-            sections.append({"label": label[:180], "value": safe_answer[:1200]})
+            sections.append({"section": "entrevista", "label": label[:180], "value": safe_answer[:1200]})
+
+    if not sections:
+        legacy = (getattr(candidata, "entrevista", None) or "").strip()
+        if legacy:
+            has_source = True
+            for raw in legacy.splitlines():
+                line = (raw or "").strip(" -\t")
+                if not line:
+                    continue
+                if ":" in line:
+                    q, a = line.split(":", 1)
+                    label = (q or "").strip()[:180] or "Pregunta"
+                    answer_raw = (a or "").strip()
+                else:
+                    label = "Observación"
+                    answer_raw = line
+                if not answer_raw:
+                    continue
+                safe_answer = (
+                    _PROTECTED_INTERVIEW_REDACT
+                    if _private_store_is_sensitive_label(label)
+                    else _private_store_redact_text(answer_raw)
+                )
+                if not safe_answer:
+                    continue
+                sections.append({"section": "entrevista", "label": label, "value": safe_answer[:1200]})
+
+    ref_laborales = (
+        getattr(candidata, "referencias_laborales_texto", None)
+        or getattr(candidata, "contactos_referencias_laborales", None)
+        or getattr(candidata, "referencias_laboral", None)
+        or ""
+    ).strip()
+    ref_familiares = (
+        getattr(candidata, "referencias_familiares_texto", None)
+        or getattr(candidata, "referencias_familiares_detalle", None)
+        or getattr(candidata, "referencias_familiares", None)
+        or ""
+    ).strip()
+    if has_source and (ref_laborales or ref_familiares):
+        sections.append({"section": "referencias", "label": "Referencias laborales", "value": _PROTECTED_INTERVIEW_REDACT})
+        sections.append({"section": "referencias", "label": "Referencias familiares", "value": _PROTECTED_INTERVIEW_REDACT})
 
     # Evita duplicados por normalización.
     uniq = []
@@ -417,7 +452,7 @@ def _private_store_build_protected_interview(candidata):
         seen.add(key)
         uniq.append(item)
 
-    return {"has_source": has_source, "sections": uniq[:40]}
+    return {"has_source": has_source, "sections": uniq[:80]}
 
 
 def _private_store_has_real_interview(candidata) -> bool:
