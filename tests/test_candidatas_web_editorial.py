@@ -74,7 +74,7 @@ def _seed_catalog_for_editorial(token: str, fila: int) -> None:
     db.session.commit()
 
 
-def test_panel_editorial_guarda_entrevista_publica_y_catalogo_publico_refleja_valor():
+def test_panel_editorial_guarda_datos_publicos_y_catalogo_publico_refleja_valor():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -88,7 +88,8 @@ def test_panel_editorial_guarda_entrevista_publica_y_catalogo_publico_refleja_va
     payload = {
         "estado_publico": "disponible",
         "nombre_publico": "Perfil Editorial",
-        "entrevista_publica_resumen": "Resumen editorial nuevo desde panel",
+        "modalidad_publica": "Con dormida",
+        "tags_publicos": "Limpieza general",
         "return_to": "/admin/candidatas-web/990071",
     }
     post_resp = client.post("/admin/candidatas-web/990071", data=payload, follow_redirects=False)
@@ -99,5 +100,5 @@ def test_panel_editorial_guarda_entrevista_publica_y_catalogo_publico_refleja_va
 
     html = public_detail.get_data(as_text=True)
     assert "Perfil Editorial" in html
-    assert "Resumen editorial nuevo desde panel" in html
+    assert "Con dormida" in html
     assert "/admin" not in html.lower()

@@ -15,6 +15,17 @@
   <form method="post" action="{{ url_for('admin.candidatas_web_update', fila=candidata.fila) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
+    {% if publish_warnings %}
+    <div class="alert alert-warning mb-3">
+      <div class="fw-semibold mb-1">Recomendado antes de publicar</div>
+      <ul class="mb-0 ps-3">
+        {% for msg in publish_warnings %}
+        <li>{{ msg }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+
     <div class="row g-3">
       <div class="col-lg-7">
         <div class="card mb-3">
@@ -68,6 +79,26 @@
         </div>
 
         <div class="card mb-3">
+          <div class="card-header"><strong>Estado de contenido</strong></div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+              <span class="badge {% if has_photo %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                Perfil/foto: {{ 'Disponible' if has_photo else 'No disponible' }}
+              </span>
+              <span class="badge {% if has_interview %}text-bg-success{% else %}text-bg-secondary{% endif %}">
+                Entrevista: {{ 'Realizada' if has_interview else 'No realizada' }}
+              </span>
+            </div>
+            {% if has_photo %}
+            <div class="border rounded p-2 mb-2" style="width: 140px;">
+              <img src="{{ profile_photo_url }}" alt="Foto de {{ candidata.nombre_completo }}" class="img-fluid rounded">
+            </div>
+            {% endif %}
+            <a class="btn btn-outline-primary btn-sm" href="{{ interview_manage_url }}">Gestionar entrevista</a>
+          </div>
+        </div>
+
+        <div class="card mb-3">
           <div class="card-header"><strong>Datos públicos</strong></div>
           <div class="card-body">
             <div class="row g-2">
@@ -75,13 +106,31 @@
               <div class="col-md-3"><label class="form-label">Edad pública</label><input class="form-control" name="edad_publica" value="{{ ficha.edad_publica if ficha and ficha.edad_publica else '' }}"></div>
               <div class="col-md-3"><label class="form-label">Ciudad pública</label><input class="form-control" name="ciudad_publica" value="{{ ficha.ciudad_publica if ficha and ficha.ciudad_publica else '' }}"></div>
               <div class="col-md-6"><label class="form-label">Sector público</label><input class="form-control" name="sector_publico" value="{{ ficha.sector_publico if ficha and ficha.sector_publico else '' }}"></div>
-              <div class="col-md-6"><label class="form-label">Modalidad pública</label><input class="form-control" name="modalidad_publica" value="{{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else '' }}"></div>
+              {% set modalidad_actual = (ficha.modalidad_publica if ficha and ficha.modalidad_publica else '') %}
+              <div class="col-md-6">
+                <label class="form-label">Modalidad pública</label>
+                <select class="form-select" name="modalidad_publica">
+                  <option value="">Seleccionar...</option>
+                  {% for op in modalidad_options %}
+                  <option value="{{ op }}" {% if modalidad_actual == op %}selected{% endif %}>{{ op }}</option>
+                  {% endfor %}
+                </select>
+              </div>
               <div class="col-md-6"><label class="form-label">Sueldo texto público</label><input class="form-control" name="sueldo_texto_publico" value="{{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else '' }}"></div>
-              <div class="col-md-6"><label class="form-label">Tags públicos (coma)</label><input class="form-control" name="tags_publicos" value="{{ ficha.tags_publicos if ficha and ficha.tags_publicos else '' }}"></div>
+              <div class="col-12">
+                <label class="form-label d-block">Funciones destacadas</label>
+                <div class="d-flex flex-wrap gap-2">
+                  {% for tag in tag_options %}
+                  {% set checked = tag in selected_tags %}
+                  <label class="btn btn-sm {% if checked %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+                    <input type="checkbox" class="d-none" name="tags_publicos" value="{{ tag }}" {% if checked %}checked{% endif %}>
+                    {{ tag }}
+                  </label>
+                  {% endfor %}
+                </div>
+              </div>
               <div class="col-12"><label class="form-label">Experiencia resumen</label><textarea class="form-control" rows="2" name="experiencia_resumen">{{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else '' }}</textarea></div>
               <div class="col-12"><label class="form-label">Experiencia detallada</label><textarea class="form-control" rows="4" name="experiencia_detallada">{{ ficha.experiencia_detallada if ficha and ficha.experiencia_detallada else '' }}</textarea></div>
-              <div class="col-12"><label class="form-label">Entrevista pública resumida</label><textarea class="form-control" rows="4" name="entrevista_publica_resumen">{{ ficha.entrevista_publica_resumen if ficha and ficha.entrevista_publica_resumen else '' }}</textarea></div>
-              <div class="col-12"><label class="form-label">Foto pública URL</label><input class="form-control" name="foto_publica_url" value="{{ ficha.foto_publica_url if ficha and ficha.foto_publica_url else '' }}"></div>
             </div>
           </div>
         </div>
@@ -99,11 +148,20 @@
                 ·
                 {{ (ficha.ciudad_publica if ficha and ficha.ciudad_publica else 'Zona disponible bajo coordinación') }}
               </p>
+              <p class="mb-2"><strong>Sector:</strong> {{ ficha.sector_publico if ficha and ficha.sector_publico else 'Por definir' }}</p>
               <p class="mb-2"><strong>Estado:</strong> {{ ficha.estado_publico if ficha else 'disponible' }}</p>
               <p class="mb-2"><strong>Modalidad:</strong> {{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else (candidata.modalidad_trabajo_preferida or 'Por definir') }}</p>
               <p class="mb-2"><strong>Sueldo:</strong> {{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else 'A coordinar' }}</p>
+              <p class="mb-2"><strong>Funciones:</strong>
+                {% if selected_tags %}
+                  {{ selected_tags|join(' · ') }}
+                {% else %}
+                  Por definir
+                {% endif %}
+              </p>
+              <p class="mb-2"><strong>Perfil/foto:</strong> {{ 'Disponible' if has_photo else 'No disponible' }}</p>
+              <p class="mb-2"><strong>Entrevista:</strong> {{ 'Realizada' if has_interview else 'No realizada' }}</p>
               <p class="mb-2"><strong>Resumen:</strong> {{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else 'Sin resumen editorial.' }}</p>
-              <p class="mb-0"><strong>Entrevista:</strong> {{ ficha.entrevista_publica_resumen if ficha and ficha.entrevista_publica_resumen else 'Sin resumen editorial de entrevista.' }}</p>
             </div>
             <p class="text-muted small mt-3 mb-0">
               Este módulo no publica referencias, notas internas, teléfonos, cédula ni dirección exacta.

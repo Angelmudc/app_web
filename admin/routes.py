@@ -25156,6 +25156,49 @@ def _cw_clean_text(field_name: str, max_len: int | None = None) -> str | None:
     return value
 
 
+_CW_MODALIDAD_OPTIONS = ("Con dormida", "Salida diaria")
+_CW_TAG_OPTIONS = (
+    "Limpieza general",
+    "Cocinar",
+    "Lavar",
+    "Planchar",
+    "Cuidar niños",
+    "Cuidar envejecientes",
+)
+
+
+def _cw_parse_tags(value: str | None) -> list[str]:
+    raw = (value or "").strip()
+    if not raw:
+        return []
+    parts = [x.strip() for x in raw.split(",") if x and x.strip()]
+    out: list[str] = []
+    seen = set()
+    for item in parts:
+        if item in _CW_TAG_OPTIONS and item not in seen:
+            out.append(item)
+            seen.add(item)
+    return out
+
+
+def _cw_has_profile_photo(candidata: Candidata) -> bool:
+    blob = getattr(candidata, "perfil", None)
+    return isinstance(blob, (bytes, bytearray, memoryview)) and len(blob) > 0
+
+
+def _cw_has_interview(candidata: Candidata) -> bool:
+    legacy_txt = (getattr(candidata, "entrevista", None) or "").strip()
+    if legacy_txt:
+        return True
+    structured_exists = (
+        db.session.query(Entrevista.id)
+        .filter(Entrevista.candidata_id == int(candidata.fila))
+        .limit(1)
+        .first()
+    )
+    return structured_exists is not None
+
+
 @admin_bp.route("/candidatas-web", methods=["GET"])
 @login_required
 @staff_required
@@ -25272,10 +25315,44 @@ def candidatas_web_list():
 def candidatas_web_detail(fila: int):
     candidata = Candidata.query.get_or_404(int(fila))
     ficha = CandidataWeb.query.filter_by(candidata_id=int(fila)).first()
+    selected_tags = _cw_parse_tags(getattr(ficha, "tags_publicos", None) if ficha else None)
+    has_photo = _cw_has_profile_photo(candidata)
+    has_interview = _cw_has_interview(candidata)
+    modalidad_value = (getattr(ficha, "modalidad_publica", None) or "").strip()
+    preview_nombre = (getattr(ficha, "nombre_publico", None) or "").strip() or (candidata.nombre_completo or "")
+    preview_edad = (getattr(ficha, "edad_publica", None) or "").strip() or (getattr(candidata, "edad", None) or "")
+    preview_ciudad = (getattr(ficha, "ciudad_publica", None) or "").strip()
+    preview_sector = (getattr(ficha, "sector_publico", None) or "").strip()
+    preview_modalidad = modalidad_value if modalidad_value in _CW_MODALIDAD_OPTIONS else ""
+    preview_sueldo = (getattr(ficha, "sueldo_texto_publico", None) or "").strip()
+    preview_estado = (getattr(ficha, "estado_publico", None) or "").strip() or "disponible"
+    visible_on = (not ficha) or bool(getattr(ficha, "visible", True))
+    publish_warnings: list[str] = []
+    if visible_on:
+        if not has_photo:
+            publish_warnings.append("Falta foto/perfil cargado.")
+        if not has_interview:
+            publish_warnings.append("Falta entrevista realizada.")
+        if not preview_nombre:
+            publish_warnings.append("Falta nombre público.")
+        if not preview_modalidad:
+            publish_warnings.append("Falta modalidad pública.")
+        if not preview_ciudad:
+            publish_warnings.append("Falta ciudad pública.")
+        if not selected_tags:
+            publish_warnings.append("Faltan funciones/tags públicos.")
     return render_template(
         "admin/candidatas_web/detail.html",
         candidata=candidata,
         ficha=ficha,
+        modalidad_options=_CW_MODALIDAD_OPTIONS,
+        tag_options=_CW_TAG_OPTIONS,
+        selected_tags=selected_tags,
+        has_photo=has_photo,
+        has_interview=has_interview,
+        publish_warnings=publish_warnings,
+        interview_manage_url=url_for("entrevistas_de_candidata", fila=candidata.fila, next=request.path),
+        profile_photo_url=url_for("perfil_candidata", fila=candidata.fila),
     )
 
 
@@ -25313,13 +25390,23 @@ def candidatas_web_update(fila: int):
     ficha.edad_publica = _cw_clean_text("edad_publica", 50)
     ficha.ciudad_publica = _cw_clean_text("ciudad_publica", 120)
     ficha.sector_publico = _cw_clean_text("sector_publico", 120)
-    ficha.modalidad_publica = _cw_clean_text("modalidad_publica", 120)
+    modalidad_publica = (_cw_clean_text("modalidad_publica", 120) or "").strip()
+    if modalidad_publica and modalidad_publica not in _CW_MODALIDAD_OPTIONS:
+        flash("Modalidad pública inválida. Usa una opción permitida.", "danger")
+        return redirect(url_for("admin.candidatas_web_detail", fila=candidata.fila))
+    ficha.modalidad_publica = modalidad_publica or None
     ficha.sueldo_texto_publico = _cw_clean_text("sueldo_texto_publico", 120)
     ficha.experiencia_resumen = _cw_clean_text("experiencia_resumen")
     ficha.experiencia_detallada = _cw_clean_text("experiencia_detallada")
-    ficha.entrevista_publica_resumen = _cw_clean_text("entrevista_publica_resumen")
-    ficha.tags_publicos = _cw_clean_text("tags_publicos", 255)
-    ficha.foto_publica_url = _cw_clean_text("foto_publica_url", 255)
+    posted_tags = request.form.getlist("tags_publicos")
+    tags_selected = []
+    seen_tags = set()
+    for item in posted_tags:
+        txt = (item or "").strip()
+        if txt in _CW_TAG_OPTIONS and txt not in seen_tags:
+            tags_selected.append(txt)
+            seen_tags.add(txt)
+    ficha.tags_publicos = ",".join(tags_selected) if tags_selected else None
 
     db.session.commit()
     flash("Perfil público actualizado.", "success")
