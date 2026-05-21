@@ -46,7 +46,16 @@ def _seed_catalog(token: str, *, scope_mode: str = "all_available_store", is_act
 
 def _seed_candidates(seed: int = 1) -> dict[str, int]:
     base = 997000 + seed * 10
-    ok = Candidata(fila=base + 1, nombre_completo='Ana Interna', cedula=f'{base + 1:011d}', codigo=f'PTA-OK-{seed}', numero_telefono='809-000-1111', direccion_completa='Calle X', perfil=_PNG_1X1)
+    ok = Candidata(
+        fila=base + 1,
+        nombre_completo='Ana Interna',
+        cedula=f'{base + 1:011d}',
+        codigo=f'PTA-OK-{seed}',
+        numero_telefono='809-000-1111',
+        direccion_completa='Calle X',
+        perfil=_PNG_1X1,
+        entrevista='Excelente actitud. Telefono: 809-111-2222. Vive en sector Naco. Referencias: madre 849-333-4444.',
+    )
     hidden = Candidata(fila=base + 2, nombre_completo='Oculta', cedula=f'{base + 2:011d}', codigo=f'PTA-HID-{seed}')
     reserved = Candidata(fila=base + 3, nombre_completo='Reservada', cedula=f'{base + 3:011d}', codigo=f'PTA-RES-{seed}')
     nodisp = Candidata(fila=base + 4, nombre_completo='No disponible', cedula=f'{base + 4:011d}', codigo=f'PTA-NOD-{seed}')
@@ -154,7 +163,7 @@ def test_private_store_detail_premium_sections_privacy_and_profile_image_route()
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Entrevista de la agencia" in html
-    assert "Entrevista validada por agencia." in html
+    assert "Ver entrevista protegida" in html
     assert "Agregar a mi selección" in html
     assert "Ver mi selección" in html
     assert 'href="/domesticas/' not in html
@@ -183,13 +192,38 @@ def test_private_store_detail_shows_interview_pending_and_fallback_when_no_profi
         assert c is not None and ficha is not None
         c.perfil = None
         ficha.entrevista_publica_resumen = None
+        c.entrevista = None
         db.session.commit()
 
     resp = client.get(f"/tienda/tok_store_no_interview/domesticas/{ids['ok']}", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Entrevista pública aún no disponible." in html
+    assert "Entrevista aún no disponible." in html
     assert "Perfil validado por la agencia" in html
+
+
+def test_private_store_interview_protected_access_and_redaction():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_interview_protected', scope_mode='all_available_store')
+        ids = _seed_candidates(seed=11)
+
+    ok_url = f"/tienda/tok_store_interview_protected/domesticas/{ids['ok']}/entrevista"
+    resp = client.get(ok_url, follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True).lower()
+    assert "información protegida por la agencia" in html
+    for marker in ["809-111-2222", "849-333-4444", "naco", "referencias", "cedula", "dirección", "direccion"]:
+        assert marker not in html
+    assert "/users/" not in html
+    assert "/private/" not in html
+
+    invalid = client.get(f"/tienda/token-invalido/domesticas/{ids['ok']}/entrevista", follow_redirects=False)
+    assert invalid.status_code == 404
 
 def test_private_store_filters_work():
     flask_app.config['TESTING'] = True

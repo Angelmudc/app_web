@@ -5,6 +5,7 @@ import json
 import urllib.parse
 import time
 import imghdr
+import re
 from threading import Lock
 from typing import Optional
 
@@ -328,6 +329,95 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
         "nota_confianza": "Perfil revisado por Doméstica del Cibao A&D.",
     })
     return payload
+
+
+_PROTECTED_INTERVIEW_REDACT = "Información protegida por la agencia"
+_SENSITIVE_KEYWORDS = (
+    "cedula", "cédula", "telefono", "teléfono", "direccion", "dirección", "vive", "donde vive", "sector",
+    "referencia", "referencias", "familiar", "familiares", "laboral", "contacto", "whatsapp",
+)
+
+
+def _private_store_is_sensitive_label(label: str) -> bool:
+    raw = (label or "").strip().lower()
+    if not raw:
+        return False
+    return any(k in raw for k in _SENSITIVE_KEYWORDS)
+
+
+def _private_store_redact_text(value: str) -> str:
+    txt = (value or "").strip()
+    if not txt:
+        return ""
+    patterns = [
+        r"\b\d{3}-?\d{7}-?\d\b",  # cedula RD
+        r"\b(?:\+?1[-.\s]?)?(?:809|829|849)[-.\s]?\d{3}[-.\s]?\d{4}\b",  # phone RD
+        r"\b(calle|av\.?|avenida|residencial|sector|apartamento|edificio|manzana|bloque|no\.?|#)\b[^\n,;.]*",
+    ]
+    redacted = txt
+    for p in patterns:
+        redacted = re.sub(p, _PROTECTED_INTERVIEW_REDACT, redacted, flags=re.IGNORECASE)
+    if any(k in redacted.lower() for k in _SENSITIVE_KEYWORDS):
+        return _PROTECTED_INTERVIEW_REDACT
+    return redacted
+
+
+def _private_store_build_protected_interview(candidata):
+    from models import Entrevista, EntrevistaRespuesta, EntrevistaPregunta
+
+    sections = []
+    has_source = False
+
+    legacy = (getattr(candidata, "entrevista", None) or "").strip()
+    if legacy:
+        has_source = True
+        safe = _private_store_redact_text(legacy)
+        if safe:
+            sections.append({"label": "Resumen validado por la agencia", "value": safe})
+
+    try:
+        entrevistas = (
+            Entrevista.query
+            .filter(Entrevista.candidata_id == int(getattr(candidata, "fila", 0) or 0))
+            .order_by(Entrevista.id.desc())
+            .limit(3)
+            .all()
+        )
+    except SQLAlchemyError:
+        entrevistas = []
+    for ent in entrevistas:
+        respuestas = (
+            db.session.query(EntrevistaRespuesta, EntrevistaPregunta)
+            .join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
+            .filter(EntrevistaRespuesta.entrevista_id == int(ent.id))
+            .order_by(EntrevistaPregunta.orden.asc(), EntrevistaPregunta.id.asc())
+            .all()
+        )
+        for resp, pregunta in (respuestas or []):
+            label = (getattr(pregunta, "texto", None) or getattr(pregunta, "clave", None) or "Dato").strip()
+            answer = (getattr(resp, "respuesta", None) or "").strip()
+            if not answer:
+                continue
+            has_source = True
+            if _private_store_is_sensitive_label(label):
+                safe_answer = _PROTECTED_INTERVIEW_REDACT
+            else:
+                safe_answer = _private_store_redact_text(answer)
+            if not safe_answer:
+                continue
+            sections.append({"label": label[:180], "value": safe_answer[:1200]})
+
+    # Evita duplicados por normalización.
+    uniq = []
+    seen = set()
+    for item in sections:
+        key = (item.get("label", "").strip().lower(), item.get("value", "").strip().lower())
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(item)
+
+    return {"has_source": has_source, "sections": uniq[:40]}
 
 
 _MI_SELECCION_SESSION_KEY = "mi_seleccion_candidatas"
@@ -1300,11 +1390,21 @@ def private_store_detail(token: str, codigo_o_id: str):
         abort(404)
 
     selected_ids = _private_store_get_ids(int(catalogo.id))
+    interview_data = _private_store_build_protected_interview(cand)
+    has_protected_interview = bool(interview_data.get("sections"))
     return render_template(
         "private_store/store_detail.html",
         catalogo=catalogo,
         token=token,
-        candidata={**_private_store_detail_payload(cand, ficha, token=token), "is_selected": int(cand.fila) in set(selected_ids)},
+        candidata={
+            **_private_store_detail_payload(cand, ficha, token=token),
+            "is_selected": int(cand.fila) in set(selected_ids),
+            "entrevista_protegida_disponible": has_protected_interview,
+            "entrevista_protegida_url": (
+                url_for("public.private_store_interview_protected", token=token, candidata_id=int(cand.fila))
+                if has_protected_interview else None
+            ),
+        },
         selection_count=len(selected_ids),
     )
 
@@ -1341,6 +1441,42 @@ def private_store_profile_image(token: str, candidata_id: int):
     resp.headers["Cache-Control"] = "private, max-age=300"
     resp.headers["X-Content-Type-Options"] = "nosniff"
     return resp
+
+
+@public_bp.route("/tienda/<token>/domesticas/<int:candidata_id>/entrevista", methods=["GET"])
+def private_store_interview_protected(token: str, candidata_id: int):
+    from models import Candidata, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        abort(404)
+    if status == "expired":
+        abort(410)
+
+    row = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(Candidata.fila == int(candidata_id))
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .first()
+    )
+    if not row:
+        abort(404)
+    candidata, ficha = row
+    interview_data = _private_store_build_protected_interview(candidata)
+    if not interview_data.get("sections"):
+        abort(404)
+
+    selected_ids = _private_store_get_ids(int(catalogo.id))
+    return render_template(
+        "private_store/store_interview_protected.html",
+        catalogo=catalogo,
+        token=token,
+        candidata=_private_store_detail_payload(candidata, ficha, token=token),
+        entrevista_items=interview_data.get("sections") or [],
+        selection_count=len(selected_ids),
+    )
 
 
 @public_bp.route("/tienda/<token>/mi-seleccion", methods=["GET"])

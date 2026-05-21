@@ -1,0 +1,27 @@
+{% extends "private_store/base_private_store.html" %}
+{% block title %}Entrevista protegida · {{ candidata.nombre_publico }}{% endblock %}
+{% block content %}
+<section class="container ps-detail">
+  <div class="ps-detail-head">
+    <a class="ps-back" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">← Volver al perfil</a>
+    <span class="ps-expire-chip">Entrevista protegida</span>
+  </div>
+
+  <article class="ps-detail-card">
+    <div class="ps-detail-body">
+      <h1>Entrevista protegida de {{ candidata.nombre_publico }}</h1>
+      <p>La entrevista fue revisada por la agencia. Algunos datos personales están protegidos por seguridad.</p>
+
+      <section class="ps-section">
+        <h2>Contenido autorizado</h2>
+        {% for item in entrevista_items %}
+        <div class="ps-quick" style="margin-bottom:10px;">
+          <strong>{{ item.label }}</strong>
+          <span>{{ item.value }}</span>
+        </div>
+        {% endfor %}
+      </section>
+    </div>
+  </article>
+</section>
+{% endblock %}
