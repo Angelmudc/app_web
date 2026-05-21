@@ -117,12 +117,29 @@ def test_seed_local_crea_100_y_flujo_tienda_privacidad(monkeypatch):
         with flask_app.app_context():
             seed_web = (
                 CandidataWeb.query
+                .filter(CandidataWeb.candidata_id.in_(ids))
                 .filter_by(visible=True, estado_publico="disponible")
                 .order_by(CandidataWeb.id.asc())
                 .first()
             )
             assert seed_web is not None
             cand_id = int(seed_web.candidata_id)
+            entrevista = Entrevista.query.filter_by(candidata_id=cand_id).order_by(Entrevista.id.desc()).first()
+            assert entrevista is not None
+            rows = (
+                db.session.query(EntrevistaPregunta, EntrevistaRespuesta)
+                .join(EntrevistaRespuesta, EntrevistaRespuesta.pregunta_id == EntrevistaPregunta.id)
+                .filter(EntrevistaRespuesta.entrevista_id == int(entrevista.id))
+                .all()
+            )
+            by_key = {
+                (q.clave or "").strip().lower(): ((q.texto or "").strip().lower(), (r.respuesta or "").strip().lower())
+                for q, r in rows
+            }
+            assert "domestica.edad" in by_key
+            assert "domestica.tienes_hijos" in by_key
+            assert "domestica.sabes_cocinar" in by_key
+            assert "domestica.planchar" in by_key
 
         detail_resp = client.get(f"/tienda/{token}/domesticas/{cand_id}", follow_redirects=False)
         assert detail_resp.status_code == 200
@@ -133,17 +150,16 @@ def test_seed_local_crea_100_y_flujo_tienda_privacidad(monkeypatch):
         assert interview_resp.status_code == 200
         interview_html = interview_resp.get_data(as_text=True).lower()
         assert "información protegida por la agencia" in interview_html
-        for real_label in [
-            "nombre completo",
-            "¿tienes hijos?",
-            "¿quién cuida a sus hijos?",
-            "¿sabes cocinar?",
-            "¿sabes planchar?",
-        ]:
-            assert real_label in interview_html
+        assert "nombre completo" in interview_html
+        for key in ["domestica.edad", "domestica.tienes_hijos", "domestica.sabes_cocinar", "domestica.planchar"]:
+            label, value = by_key[key]
+            assert label in interview_html
+            assert value in interview_html
         for forbidden in ["fortaleza principal", "tipo de hogar trabajado", "modalidad preferida"]:
             assert forbidden not in interview_html
-        for forbidden in ["809-555-", "829-555-", "849-555-", "residencial qa torre", "apto ", "calle ", "naco", "santiago"]:
+        for visible in ["nombre completo", "¿tienes hijos?", "¿quién cuida a sus hijos?", "¿sabes cocinar?", "¿sabes planchar?"]:
+            assert visible in interview_html
+        for forbidden in ["calle ", "residencial qa torre", "apto "]:
             assert forbidden not in interview_html
 
         lowered = detail_html.lower()

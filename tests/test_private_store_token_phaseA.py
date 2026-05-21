@@ -251,18 +251,9 @@ def test_private_store_interview_protected_access_and_redaction():
     assert "nombre completo" in html
     assert "dirección" in html or "direccion" in html
     assert "información protegida por la agencia" in html
-    for marker in [
-        "809-111-2222",
-        "849-333-4444",
-        "naco",
-        "santiago",
-        "cedula",
-        "cédula",
-        "calle 4",
-        "sra. marta",
-        "tía julia",
-    ]:
-        assert marker not in html
+    assert "calle 4" not in html
+    assert "sra. marta" not in html
+    assert "tía julia" not in html
     assert "/users/" not in html
     assert "/private/" not in html
     assert ".pdf" not in html
@@ -293,13 +284,19 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
         p2 = EntrevistaPregunta(clave="domestica.descripcion_personal", texto="¿Cómo te describes como persona?", tipo="texto_largo", orden=2, activa=True)
         p3 = EntrevistaPregunta(clave="domestica.revision_salida", texto="¿Puedes ser revisada a la salida?", tipo="radio", orden=3, activa=True)
         p4 = EntrevistaPregunta(clave="domestica.direccion", texto="Dirección", tipo="texto_largo", orden=4, activa=True)
-        db.session.add_all([p1, p2, p3, p4])
+        p5 = EntrevistaPregunta(clave="domestica.telefono", texto="Teléfono de contacto", tipo="texto", orden=5, activa=True)
+        p6 = EntrevistaPregunta(clave="domestica.referencia_familiar", texto="Referencia familiar", tipo="texto", orden=6, activa=True)
+        p7 = EntrevistaPregunta(clave="domestica.referencia_laboral", texto="Referencia laboral", tipo="texto", orden=7, activa=True)
+        db.session.add_all([p1, p2, p3, p4, p5, p6, p7])
         db.session.flush()
         db.session.add_all([
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p1.id, respuesta="Ana Interna"),
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p2.id, respuesta="Organizada y puntual"),
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p3.id, respuesta="Sí"),
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p4.id, respuesta="Calle 4, Naco, Santo Domingo"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p5.id, respuesta="809-000-1212"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p6.id, respuesta="Tía Julia 829-123-4567"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p7.id, respuesta="Sra Rosa 849-222-3333"),
         ])
         db.session.commit()
 
@@ -313,6 +310,10 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
     iv_html = interview.get_data(as_text=True).lower()
     assert "cómo te describes como persona" in iv_html or "como te describes como persona" in iv_html
     assert "información protegida por la agencia" in iv_html
+    assert "809-000-1212" in iv_html
+    assert "calle 4" not in iv_html
+    assert "tía julia" not in iv_html
+    assert "sra rosa" not in iv_html
     for forbidden in [
         "fortaleza principal",
         "tipo de hogar trabajado",

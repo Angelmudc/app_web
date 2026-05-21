@@ -333,8 +333,14 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
 
 _PROTECTED_INTERVIEW_REDACT = "Información protegida por la agencia"
 _SENSITIVE_KEYWORDS = (
-    "cedula", "cédula", "telefono", "teléfono", "direccion", "dirección", "vive", "donde vive", "sector", "ciudad",
-    "referencia", "referencias", "familiar", "familiares", "laboral", "contacto", "whatsapp", "ubicación", "ubicacion",
+    "direccion",
+    "dirección",
+    "domicilio",
+    "residencia",
+    "referencia familiar",
+    "referencias familiares",
+    "referencia laboral",
+    "referencias laborales",
 )
 
 
@@ -349,17 +355,7 @@ def _private_store_redact_text(value: str) -> str:
     txt = (value or "").strip()
     if not txt:
         return ""
-    patterns = [
-        r"\b\d{3}-?\d{7}-?\d\b",  # cedula RD
-        r"\b(?:\+?1[-.\s]?)?(?:809|829|849)[-.\s]?\d{3}[-.\s]?\d{4}\b",  # phone RD
-        r"\b(calle|av\.?|avenida|residencial|sector|apartamento|edificio|manzana|bloque|no\.?|#)\b[^\n,;.]*",
-    ]
-    redacted = txt
-    for p in patterns:
-        redacted = re.sub(p, _PROTECTED_INTERVIEW_REDACT, redacted, flags=re.IGNORECASE)
-    if any(k in redacted.lower() for k in _SENSITIVE_KEYWORDS):
-        return _PROTECTED_INTERVIEW_REDACT
-    return redacted
+    return txt
 
 
 def _private_store_build_protected_interview(candidata):
