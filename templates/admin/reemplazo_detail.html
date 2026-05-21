@@ -2,82 +2,163 @@
 {% block title %}Reemplazo #{{ reemplazo.id }}{% endblock %}
 {% block content %}
 <div class="container py-4" style="max-width: 1180px;">
+  <style>
+    .op-chip { border-radius: 999px; padding: .22rem .6rem; font-size: .78rem; border: 1px solid rgba(0,0,0,.08); background: #f8f9fb; display: inline-flex; align-items: center; gap: .3rem; }
+    .op-avatar { width: 58px; height: 58px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: #e9eef7; color: #21406d; flex: 0 0 auto; }
+    .op-card { border: 1px solid rgba(0,0,0,.06); border-radius: .8rem; background: #fff; }
+    .op-grid { display: grid; grid-template-columns: 1fr; gap: .8rem; }
+    .op-secondary { color: var(--bs-secondary-color); font-size: .86rem; }
+    @media (min-width: 768px) {
+      .op-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
   <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
-      <h1 class="h4 mb-1">Reemplazo #{{ reemplazo.id }}</h1>
-      <div class="small text-muted">Estado operativo: <span class="badge text-bg-primary">{{ estado_operativo }}</span> · Prioridad: <span class="badge text-bg-secondary">{{ prioridad }}</span> · Días abierto: {{ reemplazo.dias_en_reemplazo or 0 }}</div>
+      <h1 class="h4 mb-1">
+        {% if reemplazo.fecha_fin_reemplazo %}Reemplazo cerrado{% else %}Reemplazo activo{% endif %}
+        · {{ cliente and cliente.nombre_completo or ('Caso #' ~ reemplazo.id) }}
+      </h1>
+      <div class="d-flex gap-2 flex-wrap">
+        <span class="op-chip">{{ solicitud and solicitud.ciudad_sector or 'Ciudad no indicada' }}</span>
+        <span class="op-chip">{{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</span>
+        <span class="op-chip">⏱ {{ reemplazo.dias_en_reemplazo or 0 }} días abiertos</span>
+        <span class="op-chip {% if prioridad == 'critica' %}text-bg-danger{% elif prioridad in ['urgente', 'alta'] %}text-bg-warning{% elif prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">Prioridad {{ prioridad }}</span>
+      </div>
     </div>
     <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary btn-sm">Volver al panel</a>
   </div>
 
-  <div class="glass-card p-3 mb-3">
-    <h2 class="h6">Encabezado</h2>
-    <div class="row g-3">
-      <div class="col-md-6"><strong>Cliente:</strong> {{ cliente and cliente.nombre_completo or '—' }}</div>
-      <div class="col-md-6"><strong>Solicitud:</strong> {{ solicitud and (solicitud.codigo_solicitud or ('SOL-' ~ solicitud.id)) or '—' }}</div>
-      <div class="col-md-4"><strong>Responsable:</strong> {{ reemplazo.responsable and reemplazo.responsable.username or '—' }}</div>
-      <div class="col-md-4"><strong>Motivo:</strong> {{ reemplazo.motivo_fallo or '—' }}</div>
-      <div class="col-md-4"><strong>Resultado final:</strong> {{ reemplazo.resultado_final or '—' }}</div>
+  <div class="op-card p-3 mb-3 {% if estado_tone == 'danger' %}border-danger-subtle{% elif estado_tone == 'warning' %}border-warning-subtle{% elif estado_tone == 'success' %}border-success-subtle{% else %}border-info-subtle{% endif %}">
+    <div class="small text-uppercase text-muted mb-1">Qué está pasando</div>
+    <div class="fs-6 fw-semibold">{{ resumen_humano }}</div>
+    <div class="small mt-2 {% if estado_tone == 'danger' %}text-danger{% elif estado_tone == 'warning' %}text-warning-emphasis{% elif estado_tone == 'success' %}text-success{% else %}text-primary{% endif %}">
+      Estado actual del reemplazo: <strong>{{ estado_operativo }}</strong>
     </div>
   </div>
 
-  <div class="glass-card p-3 mb-3">
-    <h2 class="h6">Candidatas</h2>
+  <div class="op-card p-3 mb-3">
+    <div class="small text-uppercase text-muted mb-1">Próximo paso</div>
+    <div class="fw-semibold mb-3">{{ proximo_paso }}</div>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn {{ cta_style }}" href="{{ cta_href }}">{{ cta_label }}</a>
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Más acciones</button>
+        <ul class="dropdown-menu">
+          <li><button class="dropdown-item" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button></li>
+          {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
+          {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
+          <li><a class="dropdown-item" href="#auditoria">Auditoría y eventos</a></li>
+          {% if (current_user.role|default('')|lower) in ['admin','owner'] and not reemplazo.fecha_fin_reemplazo %}
+          <li><hr class="dropdown-divider"></li>
+          <li>
+            <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1">
+              <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar reemplazo</button>
+            </form>
+          </li>
+          {% endif %}
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="op-grid mb-3">
+    <div class="op-card p-3">
+      <div class="small text-uppercase text-muted mb-2">Candidata anterior</div>
+      <div class="d-flex gap-3 align-items-start">
+        <div class="op-avatar">{{ (reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo[:1]) or '?' }}</div>
+        <div class="w-100">
+          <div class="fw-semibold">{{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or 'No registrada' }}</div>
+          <div class="op-secondary">{{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</div>
+          <div class="op-secondary">Tiempo en reemplazo: {{ reemplazo.dias_en_reemplazo or 0 }} días</div>
+          <div class="op-secondary mt-1">Motivo de salida: {{ reemplazo.motivo_fallo or 'No indicado' }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="op-card p-3">
+      <div class="small text-uppercase text-muted mb-2">Nueva candidata</div>
+      {% if reemplazo.candidata_new %}
+      <div class="d-flex gap-3 align-items-start">
+        <div class="op-avatar">{{ reemplazo.candidata_new.nombre_completo[:1] }}</div>
+        <div class="w-100">
+          <div class="fw-semibold">{{ reemplazo.candidata_new.nombre_completo }}</div>
+          <div class="op-secondary">
+            Estado:
+            {% if reemplazo.fecha_fin_reemplazo and (reemplazo.resultado_final or '') in ['cerrado_exitoso', 'exitoso'] %}
+              trabajando
+            {% elif reemplazo.fecha_fin_reemplazo %}
+              enviada
+            {% elif solicitud and (solicitud.estado or '') == 'reemplazo' %}
+              aprobada
+            {% else %}
+              pendiente
+            {% endif %}
+          </div>
+          <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
+        </div>
+      </div>
+      {% else %}
+      <div class="op-secondary">No se ha asignado nueva candidata todavía</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="op-card p-3 mb-3">
+    <div class="small text-uppercase text-muted mb-2">Datos del servicio</div>
     <div class="row g-2">
-      <div class="col-md-6"><strong>Saliente:</strong> {{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or '—' }}</div>
-      <div class="col-md-6"><strong>Entrante:</strong> {{ reemplazo.candidata_new and reemplazo.candidata_new.nombre_completo or '—' }}</div>
-    </div>
-    <div class="d-flex gap-2 flex-wrap mt-3">
-      {% if reemplazo.candidata_old %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=reemplazo.candidata_old.fila) }}">Ver candidata saliente</a>{% endif %}
-      {% if reemplazo.candidata_new %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=reemplazo.candidata_new.fila) }}">Ver candidata entrante</a>{% endif %}
-      {% if solicitud and not reemplazo.fecha_fin_reemplazo %}<a class="btn btn-sm btn-warning" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Cambiar candidata entrante / finalizar</a>{% endif %}
-    </div>
-  </div>
-
-  <div class="glass-card p-3 mb-3">
-    <h2 class="h6">Datos de solicitud</h2>
-    <div class="row g-2">
-      <div class="col-md-4"><strong>Ciudad/Sector:</strong> {{ solicitud and solicitud.ciudad_sector or '—' }}</div>
-      <div class="col-md-4"><strong>Modalidad:</strong> {{ solicitud and solicitud.modalidad_trabajo or '—' }}</div>
-      <div class="col-md-4"><strong>Horario:</strong> {{ solicitud and solicitud.horario or '—' }}</div>
-      <div class="col-md-6"><strong>Funciones:</strong> {{ solicitud and solicitud.funciones or '—' }}</div>
-      <div class="col-md-3"><strong>Sueldo:</strong> {{ solicitud and solicitud.sueldo or '—' }}</div>
-      <div class="col-md-3"><strong>Notas:</strong> {{ reemplazo.nota_adicional or '—' }}</div>
+      <div class="col-md-4"><strong>Ciudad:</strong> {{ solicitud and solicitud.ciudad_sector or 'No indicada' }}</div>
+      <div class="col-md-4"><strong>Modalidad:</strong> {{ solicitud and solicitud.modalidad_trabajo or 'No indicada' }}</div>
+      <div class="col-md-4"><strong>Horario:</strong> {{ solicitud and solicitud.horario or 'A coordinar' }}</div>
+      <div class="col-md-8">
+        <strong>Funciones:</strong>
+        {% if funciones_humanas %}
+          <ul class="mb-0 mt-1">
+            {% for f in funciones_humanas %}<li>{{ f }}</li>{% endfor %}
+          </ul>
+        {% else %}
+          <span class="op-secondary">No especificadas</span>
+        {% endif %}
+      </div>
+      <div class="col-md-4"><strong>Sueldo:</strong> {{ solicitud and solicitud.sueldo or 'A discutir' }}</div>
+      <div class="col-md-6"><strong>Resultado:</strong> {{ reemplazo.resultado_final or 'Pendiente' }}</div>
+      <div class="col-md-6"><strong>Responsable:</strong> {{ reemplazo.responsable and reemplazo.responsable.username or 'Sin asignar' }}</div>
     </div>
   </div>
 
-  <div class="glass-card p-3 mb-3">
-    <h2 class="h6">Acciones rápidas</h2>
+  {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+  <div class="op-card p-3 mb-3">
+    <div class="small text-uppercase text-muted mb-2">Acciones de cierre</div>
     <div class="d-flex gap-2 flex-wrap">
-      <button class="btn btn-sm btn-outline-dark" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button>
-      {% if cliente and cliente.telefono %}<a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a>{% endif %}
-      {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
       <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
         <input type="hidden" name="resultado_final" value="exitoso">
         <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
-        <button class="btn btn-sm btn-success" type="submit">Cerrar exitoso</button>
+        <button class="btn btn-success" type="submit">Finalizar reemplazo</button>
       </form>
       <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
         <input type="hidden" name="resultado_final" value="fallido">
-        <button class="btn btn-sm btn-outline-warning" type="submit">Cerrar fallido</button>
+        <button class="btn btn-outline-warning" type="submit">Marcar como no resuelto</button>
       </form>
-      {% if (current_user.role|default('')|lower) in ['admin','owner'] %}
-      <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-        <button class="btn btn-sm btn-outline-danger" type="submit">Cancelar</button>
-      </form>
-      {% endif %}
-      {% endif %}
-    </div>
-    <div class="mt-2">
-      <label class="form-label small">Texto operativo</label>
-      <textarea class="form-control form-control-sm" rows="6" readonly>{{ publicacion_texto }}</textarea>
     </div>
   </div>
+  {% endif %}
 
-  <div class="row g-3">
-    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">StaffAuditLog</h2><ul class="small mb-0">{% for log in (logs or []) %}<li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
-    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">DomainOutbox</h2><ul class="small mb-0">{% for ev in (outbox_events or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
-    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">Seguimiento</h2><div class="small mb-2">{% if seguimiento %}Caso #{{ seguimiento.id }} · prioridad {{ seguimiento.prioridad }}{% else %}Sin caso de seguimiento{% endif %}</div><ul class="small mb-0">{% for ev in (seg_eventos or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
+  <div class="op-card p-3 mb-3">
+    <div class="small text-uppercase text-muted mb-2">Línea de tiempo del caso</div>
+    <ul class="mb-0">
+      {% for ev in (timeline_humano or []) %}
+      <li><strong>{{ ev.fecha }}</strong> · {{ ev.texto }}</li>
+      {% else %}
+      <li class="text-muted">Todavía no hay movimientos registrados.</li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <div class="op-card p-3" id="auditoria">
+    <div class="small text-uppercase text-muted mb-2">Auditoría y eventos técnicos</div>
+    <div class="row g-3">
+      <div class="col-md-4"><h2 class="h6">StaffAuditLog</h2><ul class="small mb-0">{% for log in (logs or []) %}<li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
+      <div class="col-md-4"><h2 class="h6">DomainOutbox</h2><ul class="small mb-0">{% for ev in (outbox_events or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
+      <div class="col-md-4"><h2 class="h6">Seguimiento</h2><div class="small mb-2">{% if seguimiento %}Caso #{{ seguimiento.id }} · prioridad {{ seguimiento.prioridad }}{% else %}Sin caso de seguimiento{% endif %}</div><ul class="small mb-0">{% for ev in (seg_eventos or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
+    </div>
   </div>
 </div>
 {% endblock %}

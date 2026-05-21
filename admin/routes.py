@@ -17603,6 +17603,81 @@ def reemplazo_detail(reemplazo_id):
     estado_operativo = _reemplazo_operativo_estado(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
     prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
     publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
+    resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
+    has_new = bool(getattr(reemplazo, "candidata_new_id", None))
+    is_closed = bool(getattr(reemplazo, "fecha_fin_reemplazo", None))
+
+    estado_tone = "info"
+    if resultado == "cancelado":
+        estado_tone = "warning"
+    elif resultado in {"cerrado_exitoso", "exitoso"}:
+        estado_tone = "success"
+    elif resultado in {"cerrado_fallido", "fallido"}:
+        estado_tone = "danger"
+    elif prioridad == "critica":
+        estado_tone = "danger"
+    elif estado_operativo in {"Vencido"}:
+        estado_tone = "warning"
+
+    if resultado in {"cerrado_exitoso", "exitoso"}:
+        resumen_humano = "✅ Reemplazo resuelto: la nueva candidata ya fue confirmada para este cliente."
+        proximo_paso = "Próximo paso recomendado: • Dar seguimiento de adaptación durante la primera semana."
+        cta_label = "Ver historial completo"
+        cta_href = url_for("admin.reemplazos_dashboard", estado="cerrados")
+        cta_style = "btn-success"
+    elif resultado in {"cerrado_fallido", "fallido"}:
+        resumen_humano = "⚠️ El reemplazo se cerró como no resuelto. Este cliente todavía necesita una solución."
+        proximo_paso = "Próximo paso recomendado: • Reabrir búsqueda y enviar nuevas candidatas."
+        cta_label = "Buscar nueva candidata"
+        cta_href = url_for("admin.reemplazo_nuevo_panel", cliente_id=(solicitud.cliente_id if solicitud else None), solicitud_id=(solicitud.id if solicitud else None))
+        cta_style = "btn-danger"
+    elif resultado == "cancelado":
+        resumen_humano = "⏸️ El reemplazo fue cancelado por el cliente o por decisión operativa."
+        proximo_paso = "Próximo paso recomendado: • Confirmar con cliente si desea reactivar el proceso."
+        cta_label = "Volver al panel"
+        cta_href = url_for("admin.reemplazos_dashboard")
+        cta_style = "btn-outline-secondary"
+    elif has_new and not is_closed:
+        resumen_humano = "✅ Cliente ya seleccionó nueva candidata. Pendiente coordinar entrada."
+        proximo_paso = "Próximo paso recomendado: • Confirmar entrada de la nueva candidata."
+        cta_label = "Finalizar reemplazo"
+        cta_href = url_for("admin.finalizar_reemplazo", s_id=solicitud.id, reemplazo_id=reemplazo.id) if solicitud else "#"
+        cta_style = "btn-warning"
+    else:
+        resumen_humano = "⚠️ La candidata anterior no se presentó. Actualmente estamos buscando una nueva candidata para este cliente."
+        proximo_paso = "Próximo paso recomendado: • Enviar nuevas candidatas al cliente."
+        cta_label = "Buscar nueva candidata"
+        cta_href = url_for("admin.reemplazo_nuevo_panel", cliente_id=(solicitud.cliente_id if solicitud else None), solicitud_id=(solicitud.id if solicitud else None))
+        cta_style = "btn-primary"
+
+    funciones_humanas = []
+    if solicitud is not None:
+        funciones_txt = format_funciones(getattr(solicitud, "funciones", None), extra_text=getattr(solicitud, "funciones_otro", None))
+        if funciones_txt:
+            for frag in [x.strip() for x in str(funciones_txt).replace(";", ",").split(",")]:
+                if frag:
+                    funciones_humanas.append(frag[:1].upper() + frag[1:])
+
+    timeline_humano: list[dict[str, str]] = []
+    if getattr(reemplazo, "fecha_fallo", None):
+        timeline_humano.append({"fecha": to_rd(reemplazo.fecha_fallo).strftime("%d %b"), "texto": "Cliente reporta ausencia de la candidata anterior"})
+    if getattr(reemplazo, "fecha_inicio_reemplazo", None):
+        timeline_humano.append({"fecha": to_rd(reemplazo.fecha_inicio_reemplazo).strftime("%d %b"), "texto": "Se abre reemplazo y se inicia búsqueda"})
+    if has_new and not is_closed:
+        timeline_humano.append({"fecha": to_rd(utc_now_naive()).strftime("%d %b"), "texto": "Nueva candidata asignada, pendiente coordinación de entrada"})
+    if is_closed and getattr(reemplazo, "fecha_fin_reemplazo", None):
+        if resultado in {"cerrado_exitoso", "exitoso"}:
+            cierre_texto = "Reemplazo finalizado con nueva candidata"
+        elif resultado in {"cerrado_fallido", "fallido"}:
+            cierre_texto = "Reemplazo marcado como no resuelto"
+        elif resultado == "cancelado":
+            cierre_texto = "Reemplazo cancelado"
+        else:
+            cierre_texto = "Reemplazo cerrado"
+        timeline_humano.append({"fecha": to_rd(reemplazo.fecha_fin_reemplazo).strftime("%d %b"), "texto": cierre_texto})
+    if seguimiento and getattr(seguimiento, "due_at", None) and getattr(seguimiento, "closed_at", None) is None:
+        if seguimiento.due_at < utc_now_naive():
+            timeline_humano.append({"fecha": to_rd(seguimiento.due_at).strftime("%d %b"), "texto": "Seguimiento pendiente vencido"})
 
     logs = []
     if solicitud is not None:
@@ -17646,6 +17721,14 @@ def reemplazo_detail(reemplazo_id):
         estado_operativo=estado_operativo,
         prioridad=prioridad,
         publicacion_texto=publicacion_texto,
+        resumen_humano=resumen_humano,
+        proximo_paso=proximo_paso,
+        estado_tone=estado_tone,
+        cta_label=cta_label,
+        cta_href=cta_href,
+        cta_style=cta_style,
+        funciones_humanas=funciones_humanas,
+        timeline_humano=timeline_humano,
         logs=logs,
         outbox_events=outbox,
         seg_eventos=seg_eventos,

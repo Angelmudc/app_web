@@ -103,11 +103,13 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     resp_detail = client.get(f"/admin/reemplazos/{repl_active_id}", follow_redirects=False)
     assert resp_detail.status_code == 200
     detail_html = resp_detail.get_data(as_text=True)
-    assert "Reemplazo #" in detail_html
+    assert "Reemplazo activo" in detail_html or "Reemplazo cerrado" in detail_html
     assert "Cliente" in detail_html
-    assert "Solicitud" in detail_html
-    assert "Texto operativo" in detail_html
-    assert "Disponible reemplazo" in detail_html
+    assert "Qué está pasando" in detail_html
+    assert "Próximo paso" in detail_html
+    assert "Candidata anterior" in detail_html
+    assert "Nueva candidata" in detail_html
+    assert "Finalizar reemplazo" in detail_html
 
     resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)
     assert resp_pub.status_code == 200
