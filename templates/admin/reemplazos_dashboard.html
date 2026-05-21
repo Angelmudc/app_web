@@ -2,6 +2,31 @@
 {% block title %}Reemplazos{% endblock %}
 {% block content %}
 <div class="container py-4" style="max-width: 1380px;">
+  <style>
+    .reemp-table { table-layout: fixed; }
+    .reemp-table th, .reemp-table td { vertical-align: middle; }
+    .reemp-main { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
+    .reemp-secondary { font-size: .78rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .reemp-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .reemp-indicators { display: flex; flex-wrap: wrap; gap: .25rem; }
+    .reemp-indicator { font-size: .72rem; padding: .2rem .42rem; border-radius: 999px; border: 1px solid rgba(0,0,0,.08); background: #f6f7f9; }
+    .reemp-indicator-danger { background: #fce8ea; color: #8b1e2c; border-color: #f5c2c7; }
+    .reemp-indicator-warn { background: #fff3cd; color: #664d03; border-color: #ffe69c; }
+    .reemp-indicator-info { background: #e7f1ff; color: #0a3a72; border-color: #b6d4fe; }
+    .reemp-actions { display: flex; flex-wrap: wrap; gap: .28rem; justify-content: flex-end; }
+    .reemp-col-cliente { width: 20%; }
+    .reemp-col-ciudad { width: 12%; }
+    .reemp-col-modalidad { width: 14%; }
+    .reemp-col-estado { width: 11%; }
+    .reemp-col-dias { width: 8%; text-align: center; }
+    .reemp-col-prio { width: 9%; }
+    .reemp-col-resp { width: 12%; }
+    .reemp-col-ind { width: 20%; }
+    .reemp-col-acc { width: 15%; }
+    @media (max-width: 991px) {
+      .reemp-table { min-width: 1050px; }
+    }
+  </style>
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
       <h1 class="h4 mb-1">Panel de reemplazos</h1>
@@ -19,9 +44,11 @@
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Críticos</div><div class="h5 mb-0 text-danger">{{ metric_criticos }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Vencidos</div><div class="h5 mb-0 text-warning">{{ metric_vencidos }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Sin candidata nueva</div><div class="h5 mb-0">{{ metric_sin_candidata_nueva }}</div></div></div>
-    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Esperando cliente</div><div class="h5 mb-0">{{ metric_esperando_cliente }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Esperando cliente</div><div class="h5 mb-0 text-primary">{{ metric_esperando_cliente }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Sin responsable</div><div class="h5 mb-0 text-secondary">{{ metric_sin_responsable }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Cerrados semana</div><div class="h5 mb-0">{{ metric_cerrados_semana }}</div></div></div>
-    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Promedio días abiertos</div><div class="h5 mb-0">{{ metric_promedio_dias }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Prom. días abiertos</div><div class="h5 mb-0">{{ metric_promedio_dias }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Prom. resolución</div><div class="h5 mb-0">{{ metric_promedio_resolucion }}</div></div></div>
   </div>
 
   <div class="glass-card p-3 mb-3">
@@ -43,41 +70,82 @@
   </div>
 
   <div class="table-responsive glass-card">
-    <table class="table table-sm align-middle mb-0">
-      <thead><tr><th>Prioridad</th><th>Estado</th><th>Cliente</th><th>Solicitud</th><th>Ciudad/Modalidad</th><th>Saliente</th><th>Entrante</th><th>Motivo</th><th>Inicio</th><th>Días</th><th>Responsable</th><th>Acciones</th></tr></thead>
+    <table class="table table-sm align-middle mb-0 reemp-table">
+      <thead>
+        <tr>
+          <th class="reemp-col-cliente">Cliente</th>
+          <th class="reemp-col-ciudad">Ciudad</th>
+          <th class="reemp-col-modalidad">Modalidad</th>
+          <th class="reemp-col-estado">Estado operativo</th>
+          <th class="reemp-col-dias">Días</th>
+          <th class="reemp-col-prio">Prioridad</th>
+          <th class="reemp-col-resp">Responsable</th>
+          <th class="reemp-col-ind">Indicadores</th>
+          <th class="reemp-col-acc text-end">Acciones</th>
+        </tr>
+      </thead>
       <tbody>
       {% for row in (rows or []) %}
       {% set r = row.reemplazo %}
       <tr>
-        <td><span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad == 'alta' %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">{{ row.prioridad }}</span></td>
-        <td><span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo == 'Cerrado' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ row.estado_operativo }}</span></td>
-        <td>{{ row.cliente and row.cliente.nombre_completo or '—' }}</td>
-        <td>{{ row.solicitud and (row.solicitud.codigo_solicitud or ('SOL-' ~ row.solicitud.id)) or '—' }}</td>
-        <td>{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}<div class="small text-muted">{{ row.solicitud and row.solicitud.modalidad_trabajo or '—' }}</div></td>
-        <td>{{ r.candidata_old and r.candidata_old.nombre_completo or '—' }}</td>
-        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
-        <td class="text-truncate" style="max-width: 200px;">{{ (r.motivo_fallo or '')[:120] }}</td>
-        <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
-        <td>{{ row.dias_abierto }}</td>
-        <td>{{ r.responsable and r.responsable.username or (row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username) or '—' }}</td>
         <td>
-          <div class="d-flex flex-wrap gap-1">
+          <div class="reemp-main">
+            <div class="reemp-truncate fw-semibold">{{ row.cliente and row.cliente.nombre_completo or '—' }}</div>
+            <div class="reemp-secondary">{{ row.solicitud and (row.solicitud.codigo_solicitud or ('SOL-' ~ row.solicitud.id)) or '—' }}</div>
+          </div>
+        </td>
+        <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}</div></td>
+        <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.modalidad_trabajo or '—' }}</div></td>
+        <td>
+          <span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado'] %}text-bg-secondary{% elif row.estado_operativo == 'Coordinando entrada' %}text-bg-info{% else %}text-bg-primary{% endif %}">
+            {{ row.estado_operativo }}
+          </span>
+        </td>
+        <td class="text-center"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
+        <td>
+          <span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad in ['urgente', 'alta'] %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">
+            {{ row.prioridad }}
+          </span>
+        </td>
+        <td><div class="reemp-truncate">{{ r.responsable and r.responsable.username or (row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username) or '—' }}</div></td>
+        <td>
+          <div class="reemp-indicators">
+            <span class="reemp-indicator" title="{{ row.motivo_full or row.motivo_compacto }}">📝 {{ row.motivo_compacto }}</span>
+            <span class="reemp-indicator {% if row.indicador_critica %}reemp-indicator-danger{% endif %}">⏱ {{ row.dias_abierto }}d</span>
+            {% if row.indicador_sin_candidata %}<span class="reemp-indicator reemp-indicator-danger">⚠ sin candidata</span>{% endif %}
+            {% if row.indicador_esperando_cliente %}<span class="reemp-indicator reemp-indicator-info">👤 esperando cliente</span>{% endif %}
+            {% if row.indicador_vencido or row.indicador_seguimiento_vencido %}<span class="reemp-indicator reemp-indicator-warn">📅 seguimiento vencido</span>{% endif %}
+          </div>
+        </td>
+        <td>
+          <div class="reemp-actions">
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Ver</a>
             <button type="button" class="btn btn-outline-dark btn-sm" onclick="window.prompt('Texto para publicar', {{ row.publicacion_texto|tojson }})">Publicar</button>
-            <button type="button" class="btn btn-outline-dark btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText({{ row.publicacion_texto|tojson }});">Copiar</button>
             {% if not r.fecha_fin_reemplazo %}
               <a class="btn btn-warning btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=row.solicitud.id, reemplazo_id=r.id) }}">Cerrar</a>
-              {% if (current_user.role|default('')|lower) in ['admin','owner'] %}
-              <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=r.id) }}" class="d-inline"><button class="btn btn-outline-danger btn-sm" type="submit">Cancelar</button></form>
-              {% endif %}
             {% endif %}
-            {% if row.solicitud %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=row.solicitud.cliente_id, id=row.solicitud.id) }}">Ver solicitud</a>{% endif %}
-            {% if row.cliente and row.cliente.telefono %}<a class="btn btn-outline-success btn-sm" target="_blank" rel="noopener" href="https://wa.me/{{ row.cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a>{% endif %}
+            <div class="dropdown">
+              <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
+              <ul class="dropdown-menu dropdown-menu-end">
+                <li><button type="button" class="dropdown-item" onclick="navigator.clipboard && navigator.clipboard.writeText({{ row.publicacion_texto|tojson }});">Copiar</button></li>
+                {% if row.solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=row.solicitud.cliente_id, id=row.solicitud.id) }}">Timeline solicitud</a></li>{% endif %}
+                <li><a class="dropdown-item" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Seguimiento y auditoría</a></li>
+                {% if row.cliente and row.cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ row.cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
+                {% if (current_user.role|default('')|lower) in ['admin','owner'] and not r.fecha_fin_reemplazo %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=r.id) }}" class="px-3 py-1">
+                    <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar</button>
+                  </form>
+                </li>
+                {% endif %}
+              </ul>
+            </div>
           </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="12" class="text-center text-muted py-4">No hay reemplazos para mostrar</td></tr>
+      <tr><td colspan="9" class="text-center text-muted py-4">No hay reemplazos para mostrar</td></tr>
       {% endfor %}
       </tbody>
     </table>

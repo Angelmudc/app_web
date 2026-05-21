@@ -17471,6 +17471,7 @@ def reemplazos_dashboard():
         if sid > 0 and sid not in seg_by_solicitud:
             seg_by_solicitud[sid] = seg
 
+    now = utc_now_naive()
     cards = []
     for row in reemplazos:
         seg = seg_by_solicitud.get(int(getattr(row, "solicitud_id", 0) or 0))
@@ -17482,6 +17483,17 @@ def reemplazos_dashboard():
             continue
         if q_vencidos and estado_operativo != "Vencido":
             continue
+        motivo_full = str(getattr(row, "motivo_fallo", None) or "").strip()
+        motivo_compacto = motivo_full[:47].rstrip()
+        if len(motivo_full) > 47:
+            motivo_compacto = f"{motivo_compacto}..."
+        indicador_sin_candidata = bool(getattr(row, "candidata_new_id", None) is None and getattr(row, "fecha_fin_reemplazo", None) is None)
+        indicador_esperando_cliente = bool(estado_operativo == "Coordinando entrada")
+        indicador_vencido = bool(estado_operativo == "Vencido")
+        indicador_critica = bool(prioridad == "critica")
+        indicador_seguimiento_vencido = bool(
+            seg and getattr(seg, "due_at", None) and getattr(seg, "closed_at", None) is None and getattr(seg, "due_at", None) < now
+        )
         cards.append(
             {
                 "reemplazo": row,
@@ -17491,13 +17503,19 @@ def reemplazos_dashboard():
                 "estado_operativo": estado_operativo,
                 "prioridad": prioridad,
                 "dias_abierto": dias_abierto,
+                "motivo_compacto": motivo_compacto or "Motivo no registrado",
+                "motivo_full": motivo_full,
+                "indicador_sin_candidata": indicador_sin_candidata,
+                "indicador_esperando_cliente": indicador_esperando_cliente,
+                "indicador_vencido": indicador_vencido,
+                "indicador_critica": indicador_critica,
+                "indicador_seguimiento_vencido": indicador_seguimiento_vencido,
                 "publicacion_texto": _reemplazo_publicacion_texto(reemplazo=row, solicitud=sol),
                 "old_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_old", None), "cedula", None)),
                 "new_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_new", None), "cedula", None)),
             }
         )
 
-    now = utc_now_naive()
     week_start = (to_rd(now).date() - timedelta(days=to_rd(now).weekday()))
     activos_rows = [c for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None) is None]
     metric_activos = len(activos_rows)
@@ -17506,11 +17524,24 @@ def reemplazos_dashboard():
     metric_vencidos = sum(1 for c in cards if c["estado_operativo"] == "Vencido")
     metric_sin_candidata_nueva = sum(1 for c in activos_rows if getattr(c["reemplazo"], "candidata_new_id", None) is None)
     metric_esperando_cliente = sum(1 for c in activos_rows if c["estado_operativo"] == "Coordinando entrada")
+    metric_sin_responsable = sum(
+        1 for c in activos_rows
+        if not (
+            getattr(getattr(c.get("reemplazo"), "responsable", None), "username", None)
+            or getattr(getattr(c.get("seguimiento"), "owner_staff_user", None), "username", None)
+        )
+    )
     metric_cerrados_semana = sum(
         1 for c in cards
         if getattr(c["reemplazo"], "fecha_fin_reemplazo", None)
         and to_rd(c["reemplazo"].fecha_fin_reemplazo).date() >= week_start
     )
+    cerrados_rows = [c for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None)]
+    metric_promedio_resolucion = int(
+        round(
+            sum(int(getattr(c["reemplazo"], "dias_en_reemplazo", 0) or 0) for c in cerrados_rows) / len(cerrados_rows)
+        )
+    ) if cerrados_rows else 0
     metric_promedio_dias = int(round(sum((c["dias_abierto"] or 0) for c in activos_rows) / len(activos_rows))) if activos_rows else 0
 
     return render_template(
@@ -17540,7 +17571,9 @@ def reemplazos_dashboard():
         metric_vencidos=metric_vencidos,
         metric_sin_candidata_nueva=metric_sin_candidata_nueva,
         metric_esperando_cliente=metric_esperando_cliente,
+        metric_sin_responsable=metric_sin_responsable,
         metric_cerrados_semana=metric_cerrados_semana,
+        metric_promedio_resolucion=metric_promedio_resolucion,
         metric_promedio_dias=metric_promedio_dias,
     )
 

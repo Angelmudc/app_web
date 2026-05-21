@@ -27,7 +27,7 @@ def _login_staff(client):
     assert resp.status_code in (302, 303)
 
 
-def _seed_case(*, closed: bool) -> tuple[int, int]:
+def _seed_case(*, closed: bool, motivo: str = "No se presentó") -> tuple[int, int]:
     token = secrets.token_hex(4)
     cliente = Cliente(codigo=f"RPL-{token}", nombre_completo=f"Cliente {token}", email=f"rpl_{token}@example.com", telefono="8091112222")
     db.session.add(cliente)
@@ -46,7 +46,7 @@ def _seed_case(*, closed: bool) -> tuple[int, int]:
         solicitud_id=int(solicitud.id),
         candidata_old_id=int(old.fila),
         candidata_new_id=(int(new.fila) if closed else None),
-        motivo_fallo="No se presentó",
+        motivo_fallo=motivo,
         oportunidad_nueva=not closed,
     )
     repl.iniciar_reemplazo()
@@ -159,3 +159,29 @@ def test_reemplazo_prioridad_derivada_por_dias_abiertos():
     assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r5, solicitud=sol, seguimiento=seg) == "urgente"
     assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r6, solicitud=sol, seguimiento=seg) == "urgente"
     assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r7, solicitud=sol, seguimiento=seg) == "critica"
+
+
+def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        long_motivo = "No se adaptó al horario de entrada/salida y faltó coordinación con el cliente para el relevo"
+        _seed_case(closed=False, motivo=long_motivo)
+
+    _login_staff(client)
+    resp = client.get("/admin/reemplazos", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert "Saliente" not in html
+    assert "Entrante" not in html
+    assert "<th>Solicitud</th>" not in html
+    assert 'title="No se adaptó al horario de entrada/salida y faltó coordinación con el cliente para el relevo"' in html
+    assert "📝 No se adaptó al horario de entrada/salida" in html
+    assert "..." in html
+    assert "📝" in html
+    assert "dropdown-item" in html
+    assert "⋮" in html
