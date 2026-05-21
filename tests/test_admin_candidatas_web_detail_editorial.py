@@ -84,6 +84,7 @@ def test_tags_multiples_se_guardan_como_csv():
         [
             ("estado_publico", "disponible"),
             ("modalidad_publica", "Con dormida"),
+            ("experiencia_resumen", "Resumen corto editorial"),
             ("tags_publicos", "Limpieza general"),
             ("tags_publicos", "Cocinar"),
             ("tags_publicos", "Lavar"),
@@ -95,6 +96,7 @@ def test_tags_multiples_se_guardan_como_csv():
         ficha = CandidataWeb.query.filter_by(candidata_id=fila).first()
         assert ficha is not None
         assert ficha.tags_publicos == "Limpieza general,Cocinar,Lavar"
+        assert ficha.experiencia_resumen == "Resumen corto editorial"
 
 
 def test_get_editor_renderiza_checkboxes_tags_y_precarga_checked():
@@ -207,6 +209,8 @@ def test_form_no_muestra_campos_retirados_ni_preview_legacy():
     assert "Entrevista pública resumida" not in html
     assert "name=\"entrevista_publica_resumen\"" not in html
     assert "Sin resumen editorial de entrevista." not in html
+    assert "Experiencia detallada" not in html
+    assert "name=\"experiencia_detallada\"" not in html
 
 
 def test_editor_contiene_hooks_de_preview_realtime():

@@ -25397,7 +25397,6 @@ def candidatas_web_update(fila: int):
     ficha.modalidad_publica = modalidad_publica or None
     ficha.sueldo_texto_publico = _cw_clean_text("sueldo_texto_publico", 120)
     ficha.experiencia_resumen = _cw_clean_text("experiencia_resumen")
-    ficha.experiencia_detallada = _cw_clean_text("experiencia_detallada")
     posted_tags = request.form.getlist("tags_publicos")
     tags_selected = []
     seen_tags = set()
