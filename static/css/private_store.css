@@ -357,6 +357,11 @@ body.ps-page main { padding-top: 8px; }
 
 .ps-detail { padding: 14px 0 30px; }
 .ps-detail-head { display: grid; gap: 8px; }
+.ps-interview-head h1 { margin: 0; font-size: 1.2rem; }
+.ps-interview-name { margin: 4px 0 0; font-size: 1rem; color: #dce9f7; font-weight: 800; }
+.ps-interview-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.ps-interview-note { margin: 8px 0 0; color: #b7cee3; font-size: .86rem; max-width: 760px; }
+.ps-watermark { margin: 4px 0 0; font-size: .76rem; opacity: .78; letter-spacing: .06em; color: #9fb7cc; }
 .ps-back { text-decoration: none; color: #c8dcf1; font-weight: 800; }
 .ps-expire-chip { font-size: .76rem; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(171,203,229,.42); color: #b7cee4; width: fit-content; }
 .ps-detail-layout { margin-top: 12px; display: grid; gap: 12px; }
@@ -379,6 +384,39 @@ body.ps-page main { padding-top: 8px; }
 .ps-quick { border: 1px solid rgba(143, 177, 206, 0.42); border-radius: 12px; padding: 10px; background: rgba(14, 38, 60, 0.72); }
 .ps-quick strong { display: block; font-size: .72rem; color: #9fb0c3; text-transform: uppercase; letter-spacing: .08em; }
 .ps-quick span { display: block; margin-top: 4px; font-weight: 700; }
+.ps-interview-list { display: grid; gap: 10px; }
+.ps-interview-item {
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: rgba(14, 38, 60, 0.6);
+  border: 1px solid rgba(143, 177, 206, 0.25);
+}
+.ps-interview-label {
+  display: block;
+  font-size: .69rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #9fb0c3;
+}
+.ps-interview-answer {
+  display: block;
+  margin-top: 6px;
+  color: #eff6ff;
+  font-weight: 700;
+  line-height: 1.45;
+}
+.ps-protected-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 7px;
+  border-radius: 999px;
+  padding: 6px 11px;
+  background: rgba(122, 88, 24, 0.5);
+  border: 1px solid rgba(226, 191, 120, 0.5);
+  color: #ffeec7;
+  font-size: .82rem;
+  font-weight: 800;
+}
 .ps-section { margin-top: 12px; border-top: 1px solid rgba(142, 179, 211, 0.35); padding-top: 12px; }
 .ps-section h2 { margin: 0 0 8px; font-size: .95rem; }
 .ps-section p { margin: 0; color: #d1deeb; line-height: 1.42; }

@@ -301,9 +301,12 @@ def test_private_store_interview_protected_access_and_redaction():
     resp = client.get(ok_url, follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True).lower()
+    assert "entrevista protegida" in html
+    assert "datos generales" in html
     assert "nombre completo" in html
-    assert "dirección" in html or "direccion" in html
     assert "información protegida por la agencia" in html
+    assert "volver al perfil" in html
+    assert "agregar a mi selección" in html
     assert "calle 4" not in html
     assert "sra. marta" not in html
     assert "tía julia" not in html
@@ -361,6 +364,7 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
     interview = client.get(f"/tienda/tok_store_structured/domesticas/{cand_id}/entrevista", follow_redirects=False)
     assert interview.status_code == 200
     iv_html = interview.get_data(as_text=True).lower()
+    assert "datos generales" in iv_html
     assert "cómo te describes como persona" in iv_html or "como te describes como persona" in iv_html
     assert "información protegida por la agencia" in iv_html
     assert "809-000-1212" in iv_html

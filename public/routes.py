@@ -451,6 +451,88 @@ def _private_store_build_protected_interview(candidata):
     return {"has_source": has_source, "sections": uniq[:80]}
 
 
+def _private_store_interview_section_title(label: str) -> str:
+    raw = (label or "").strip().lower()
+    if not raw:
+        return "Otros detalles"
+    if "referencia familiar" in raw or "referencias familiares" in raw or "referencia laboral" in raw or "referencias laborales" in raw:
+        return "Referencias protegidas"
+    if any(k in raw for k in ("nombre", "edad", "nacionalidad", "estado civil", "ciudad", "sector", "hijos", "quién cuida", "quien cuida")):
+        return "Datos generales"
+    if any(k in raw for k in ("labores", "último trabajo", "ultimo trabajo", "razón de salida", "razon de salida", "experiencia", "describes", "describes como persona")):
+        return "Experiencia y labores"
+    if any(k in raw for k in ("cocinar", "cocina", "planchar", "electrodomésticos", "electrodomesticos", "tareas de la casa", "uniforme")):
+        return "Cocina, limpieza y plancha"
+    if any(k in raw for k in ("niños", "ninos", "envejecientes", "cuidado")):
+        return "Niños y envejecientes"
+    if any(k in raw for k in ("dispon", "feriados", "revisada a la salida", "colaborar", "modalidad")):
+        return "Disponibilidad y condiciones"
+    return "Otros detalles"
+
+
+def _private_store_group_interview_sections(items: list[dict]) -> list[dict]:
+    grouped: dict[str, list[dict]] = {}
+    order: list[str] = []
+    desired = [
+        "Datos generales",
+        "Experiencia y labores",
+        "Cocina, limpieza y plancha",
+        "Niños y envejecientes",
+        "Disponibilidad y condiciones",
+        "Referencias protegidas",
+        "Otros detalles",
+    ]
+    for item in (items or []):
+        title = _private_store_interview_section_title(item.get("label", ""))
+        if title not in grouped:
+            grouped[title] = []
+            order.append(title)
+        grouped[title].append(item)
+
+    out: list[dict] = []
+    for title in desired:
+        vals = grouped.get(title) or []
+        if vals:
+            out.append({"title": title, "items": vals})
+    for title in order:
+        if title not in desired:
+            out.append({"title": title, "items": grouped.get(title) or []})
+    return out
+
+
+def _private_store_interview_summary(candidata_payload: dict, items: list[dict]) -> list[dict]:
+    values = {
+        "nacionalidad": "",
+        "estado_civil": "",
+        "hijos": "",
+        "experiencia": "",
+    }
+    for item in (items or []):
+        label = (item.get("label") or "").strip().lower()
+        value = (item.get("value") or "").strip()
+        if not value:
+            continue
+        if "nacionalidad" in label and not values["nacionalidad"]:
+            values["nacionalidad"] = value
+        elif "estado civil" in label and not values["estado_civil"]:
+            values["estado_civil"] = value
+        elif ("tienes hijos" in label or "hijos" == label) and not values["hijos"]:
+            values["hijos"] = value
+        elif ("experiencia" in label or "labores" in label) and not values["experiencia"]:
+            values["experiencia"] = value
+
+    summary = [
+        {"label": "Nombre público", "value": (candidata_payload.get("nombre_publico") or "No especificado")},
+        {"label": "Edad", "value": (candidata_payload.get("edad_publica") or "No especificada")},
+        {"label": "Nacionalidad", "value": (values.get("nacionalidad") or "No especificada")},
+        {"label": "Estado civil", "value": (values.get("estado_civil") or "No especificado")},
+        {"label": "Modalidad", "value": (candidata_payload.get("modalidad_publica") or "A coordinar")},
+        {"label": "Hijos", "value": (values.get("hijos") or "No especificado")},
+        {"label": "Experiencia principal", "value": (values.get("experiencia") or candidata_payload.get("experiencia_resumen") or "No especificada")},
+    ]
+    return summary
+
+
 def _private_store_has_real_interview(candidata) -> bool:
     data = _private_store_build_protected_interview(candidata)
     return bool(data.get("has_source")) and bool(data.get("sections"))
@@ -1505,12 +1587,19 @@ def private_store_interview_protected(token: str, candidata_id: int):
         abort(404)
 
     selected_ids = _private_store_get_ids(int(catalogo.id))
+    candidata_payload = _private_store_detail_payload(candidata, ficha, token=token)
+    section_items = interview_data.get("sections") or []
     return render_template(
         "private_store/store_interview_protected.html",
         catalogo=catalogo,
         token=token,
-        candidata=_private_store_detail_payload(candidata, ficha, token=token),
-        entrevista_items=interview_data.get("sections") or [],
+        candidata={
+            **candidata_payload,
+            "is_selected": int(candidata.fila) in set(selected_ids),
+        },
+        entrevista_items=section_items,
+        entrevista_sections=_private_store_group_interview_sections(section_items),
+        entrevista_summary=_private_store_interview_summary(candidata_payload, section_items),
         selection_count=len(selected_ids),
     )
 
