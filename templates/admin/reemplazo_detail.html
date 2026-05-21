@@ -34,6 +34,11 @@
     .op-header-row { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: .55rem; }
     .op-header-left { min-width: 0; }
     .op-header-right { display: flex; gap: .38rem; flex-wrap: wrap; justify-content: flex-end; }
+    .op-search-panel { border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: rgba(10,15,24,.45); padding: .75rem; margin-top: .7rem; }
+    .op-search-results { display: grid; grid-template-columns: 1fr; gap: .5rem; margin-top: .6rem; }
+    .op-result-item { border: 1px solid rgba(255,255,255,.14); border-radius: 10px; background: rgba(255,255,255,.03); padding: .58rem .62rem; }
+    .op-result-head { display: flex; align-items: flex-start; justify-content: space-between; gap: .5rem; }
+    .op-result-meta { color: #b8c7de; font-size: .82rem; margin-top: .18rem; }
     @media (min-width: 992px) {
       .op-grid-top { grid-template-columns: 1fr 1fr; }
       .op-grid-cands { grid-template-columns: 1fr 1fr; }
@@ -122,12 +127,37 @@
               {% endif %}
             </div>
             <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
+            {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+            <div class="mt-2 d-flex gap-2 flex-wrap">
+              <button class="btn btn-outline-light btn-sm" type="button" id="toggleNuevaCandBtn">Cambiar candidata</button>
+              <a class="btn btn-success btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Finalizar reemplazo</a>
+            </div>
+            {% endif %}
           </div>
         </div>
         {% else %}
         <div class="op-empty">
           <div class="fw-semibold mb-1">No hay nueva candidata asignada todavía</div>
           <div class="op-secondary">Próximo paso: Buscar candidatas compatibles para este servicio.</div>
+        </div>
+        {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+        <div class="mt-2 d-flex gap-2 flex-wrap">
+          <button class="btn btn-primary btn-sm" type="button" id="toggleNuevaCandBtn">Buscar nueva candidata</button>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+        <div id="nuevaCandidataPanel" class="op-search-panel d-none" data-reemplazo-id="{{ reemplazo.id }}">
+          <label class="form-label mb-1">Buscar candidata por nombre, código, teléfono o ciudad</label>
+          <div class="d-flex gap-2 flex-wrap">
+            <input type="text" id="nuevaCandidataQuery" class="form-control" placeholder="Buscar candidata por nombre, código, teléfono o ciudad" autocomplete="off">
+            <button class="btn btn-primary btn-sm" type="button" id="buscarNuevaCandBtn">Buscar</button>
+            <button class="btn btn-outline-light btn-sm" type="button" id="cerrarNuevaCandBtn">Cancelar</button>
+          </div>
+          <div class="form-text text-light mt-1">Busca por nombre, código, ciudad o teléfono.</div>
+          <div id="nuevaCandidataAlert" class="alert d-none mt-2 mb-2 py-2 px-3"></div>
+          <div id="nuevaCandidataState" class="op-secondary mt-2">Busca por nombre, código, ciudad o teléfono.</div>
+          <div id="nuevaCandidataResults" class="op-search-results"></div>
         </div>
         {% endif %}
       </div>
@@ -217,4 +247,126 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+  <script>
+    (function () {
+      var panel = document.getElementById('nuevaCandidataPanel');
+      var toggleBtn = document.getElementById('toggleNuevaCandBtn');
+      var closeBtn = document.getElementById('cerrarNuevaCandBtn');
+      var searchBtn = document.getElementById('buscarNuevaCandBtn');
+      var input = document.getElementById('nuevaCandidataQuery');
+      var state = document.getElementById('nuevaCandidataState');
+      var results = document.getElementById('nuevaCandidataResults');
+      var alertBox = document.getElementById('nuevaCandidataAlert');
+      if (!panel || !toggleBtn || !closeBtn || !searchBtn || !input || !state || !results || !alertBox) return;
+
+      var reemplazoId = panel.getAttribute('data-reemplazo-id');
+
+      function showAlert(message, level) {
+        alertBox.className = 'alert mt-2 mb-2 py-2 px-3 alert-' + (level || 'info');
+        alertBox.textContent = message || '';
+        alertBox.classList.remove('d-none');
+      }
+
+      function hideAlert() {
+        alertBox.classList.add('d-none');
+        alertBox.textContent = '';
+      }
+
+      function renderRows(items) {
+        results.innerHTML = '';
+        if (!items || !items.length) {
+          state.textContent = 'No encontramos candidatas con esa búsqueda.';
+          return;
+        }
+        state.textContent = '';
+        items.forEach(function (item) {
+          var box = document.createElement('div');
+          box.className = 'op-result-item';
+          box.innerHTML = '' +
+            '<div class="op-result-head">' +
+              '<div>' +
+                '<div class="op-value fw-semibold">' + (item.nombre || ('ID ' + item.id)) + '</div>' +
+                '<div class="op-result-meta">Código: ' + (item.codigo || '—') + ' · Ciudad: ' + (item.ciudad || '—') + '</div>' +
+                '<div class="op-result-meta">Modalidad: ' + (item.modalidad || '—') + ' · Tel: ' + (item.telefono_masked || '—') + ' · Estado: ' + (item.estado || '—') + '</div>' +
+              '</div>' +
+              '<button class="btn btn-success btn-sm" type="button" data-candidata-id="' + item.id + '">Seleccionar candidata</button>' +
+            '</div>';
+          results.appendChild(box);
+        });
+      }
+
+      function doSearch() {
+        hideAlert();
+        var q = (input.value || '').trim();
+        if (q.length < 2) {
+          state.textContent = 'Debes escribir al menos 2 caracteres.';
+          results.innerHTML = '';
+          return;
+        }
+        state.textContent = 'Buscando candidatas...';
+        results.innerHTML = '';
+        var url = '/admin/reemplazos/candidatas-search?reemplazo_id=' + encodeURIComponent(reemplazoId) + '&q=' + encodeURIComponent(q);
+        fetch(url, { credentials: 'same-origin' })
+          .then(function (resp) { return resp.json(); })
+          .then(function (data) { renderRows((data && data.results) || []); })
+          .catch(function () {
+            state.textContent = 'No pudimos buscar candidatas ahora mismo.';
+          });
+      }
+
+      function seleccionar(candidataId) {
+        hideAlert();
+        state.textContent = 'Asignando candidata...';
+        fetch('/admin/reemplazos/' + encodeURIComponent(reemplazoId) + '/seleccionar-candidata', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Admin-Async': '1' },
+          body: JSON.stringify({ candidata_id: candidataId })
+        })
+          .then(function (resp) { return resp.json().then(function (data) { return { status: resp.status, data: data || {} }; }); })
+          .then(function (res) {
+            if (res.status >= 200 && res.status < 300 && res.data && res.data.ok) {
+              showAlert('Nueva candidata seleccionada para este reemplazo.', 'success');
+              window.setTimeout(function () { window.location.reload(); }, 650);
+              return;
+            }
+            showAlert((res.data && res.data.message) || 'No se pudo seleccionar candidata.', 'warning');
+            state.textContent = '';
+          })
+          .catch(function () {
+            showAlert('No se pudo seleccionar candidata.', 'danger');
+            state.textContent = '';
+          });
+      }
+
+      toggleBtn.addEventListener('click', function () {
+        panel.classList.remove('d-none');
+        input.focus();
+      });
+      closeBtn.addEventListener('click', function () {
+        panel.classList.add('d-none');
+        hideAlert();
+        state.textContent = 'Busca por nombre, código, ciudad o teléfono.';
+        results.innerHTML = '';
+      });
+      searchBtn.addEventListener('click', doSearch);
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          doSearch();
+        }
+      });
+      results.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('button[data-candidata-id]') : null;
+        if (!btn) return;
+        seleccionar(btn.getAttribute('data-candidata-id'));
+      });
+    })();
+  </script>
+  {% endif %}
 {% endblock %}

@@ -187,3 +187,114 @@ def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
     assert "📝" in html
     assert "dropdown-item" in html
     assert "⋮" in html
+
+
+def test_reemplazo_detail_busqueda_y_seleccion_candidata():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand_old = Candidata.query.get(int(repl.candidata_old_id))
+        assert cand_old is not None
+        cand_pick = Candidata(
+            nombre_completo="Maritza Prueba",
+            cedula="11122233344",
+            numero_telefono="8298881122",
+            codigo="M-900",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand_pick)
+        db.session.commit()
+        cand_pick_id = int(cand_pick.fila)
+        old_id = int(cand_old.fila)
+
+    _login_staff(client)
+
+    resp_short = client.get(f"/admin/reemplazos/candidatas-search?reemplazo_id={repl_id}&q=a", follow_redirects=False)
+    assert resp_short.status_code == 200
+    payload_short = resp_short.get_json() or {}
+    assert payload_short.get("results") == []
+
+    resp_search = client.get(f"/admin/reemplazos/candidatas-search?reemplazo_id={repl_id}&q=Maritza", follow_redirects=False)
+    assert resp_search.status_code == 200
+    payload = resp_search.get_json() or {}
+    rows = payload.get("results") or []
+    assert any(int(r.get("id") or 0) == cand_pick_id for r in rows)
+    assert all(int(r.get("id") or 0) != old_id for r in rows)
+    assert any((r.get("telefono_masked") or "") != "8298881122" for r in rows)
+
+    resp_old = client.post(
+        f"/admin/reemplazos/{repl_id}/seleccionar-candidata",
+        json={"candidata_id": old_id},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp_old.status_code == 409
+
+    resp_pick = client.post(
+        f"/admin/reemplazos/{repl_id}/seleccionar-candidata",
+        json={"candidata_id": cand_pick_id},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp_pick.status_code == 200
+    data_pick = resp_pick.get_json() or {}
+    assert data_pick.get("ok") is True
+
+    with flask_app.app_context():
+        repl_after = Reemplazo.query.get(repl_id)
+        assert repl_after is not None
+        assert int(repl_after.candidata_new_id or 0) == cand_pick_id
+        outbox = (
+            DomainOutbox.query
+            .filter_by(aggregate_type="Solicitud", aggregate_id=str(repl_after.solicitud_id), event_type="REEMPLAZO_CANDIDATA_SELECCIONADA")
+            .order_by(DomainOutbox.id.desc())
+            .first()
+        )
+        assert outbox is not None
+        audit = (
+            StaffAuditLog.query
+            .filter_by(entity_type="Reemplazo", entity_id=str(repl_id), action_type="REEMPLAZO_SELECCIONAR_CANDIDATA")
+            .order_by(StaffAuditLog.id.desc())
+            .first()
+        )
+        assert audit is not None
+
+    resp_detail = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+    assert resp_detail.status_code == 200
+    detail_html = resp_detail.get_data(as_text=True)
+    assert "Buscar candidata por nombre, código, teléfono o ciudad" in detail_html
+    assert "Cambiar candidata" in detail_html
+    assert "Maritza Prueba" in detail_html
+
+
+def test_reemplazo_seleccionar_candidata_bloquea_cerrado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=True)
+        cand = Candidata(
+            nombre_completo="Candidata Cerrado",
+            cedula="44455566677",
+            numero_telefono="8091010101",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.commit()
+        cand_id = int(cand.fila)
+    _login_staff(client)
+    resp = client.post(
+        f"/admin/reemplazos/{repl_id}/seleccionar-candidata",
+        json={"candidata_id": cand_id},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 409

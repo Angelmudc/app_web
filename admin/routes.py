@@ -17302,6 +17302,231 @@ def reemplazos_solicitudes_por_cliente(cliente_id: int):
     return jsonify({"ok": True, "results": out}), 200
 
 
+def _reemplazo_candidata_disponibilidad_rank(cand: Candidata | None) -> int:
+    estado = str(getattr(cand, "estado", "") or "").strip().lower()
+    if estado in {"lista_para_trabajar", "disponible", "disponible_inmediata"}:
+        return 0
+    if estado in {"activa", "proceso", "reemplazo"}:
+        return 1
+    if estado in {"trabajando"}:
+        return 2
+    return 3
+
+
+@admin_bp.route("/reemplazos/candidatas-search", methods=["GET"])
+@login_required
+@staff_required
+def reemplazos_candidatas_search():
+    q = (request.args.get("q") or "").strip()
+    reemplazo_id = _safe_int(request.args.get("reemplazo_id"), default=0)
+    if len(q) < 2:
+        return jsonify({"ok": True, "results": [], "error": "query_too_short"}), 200
+
+    reemplazo = None
+    if reemplazo_id > 0:
+        reemplazo = Reemplazo.query.get_or_404(int(reemplazo_id))
+
+    try:
+        rows = _search_candidatas_reemplazo(q, limit=80)
+    except Exception:
+        like = f"%{q}%"
+        rows = (
+            Candidata.query
+            .filter(candidatas_activas_filter(Candidata))
+            .filter(
+                or_(
+                    Candidata.nombre_completo.ilike(like),
+                    Candidata.codigo.ilike(like),
+                    Candidata.numero_telefono.ilike(like),
+                    Candidata.direccion_completa.ilike(like),
+                    cast(Candidata.fila, db.String).ilike(like),
+                )
+            )
+            .order_by(Candidata.nombre_completo.asc())
+            .limit(80)
+            .all()
+        )
+    old_id = int(getattr(reemplazo, "candidata_old_id", 0) or 0) if reemplazo is not None else 0
+
+    filtered = []
+    for cand in (rows or []):
+        cand_id = int(getattr(cand, "fila", 0) or 0)
+        if cand_id <= 0:
+            continue
+        if old_id > 0 and cand_id == old_id:
+            continue
+        filtered.append(cand)
+
+    filtered.sort(
+        key=lambda c: (
+            _reemplazo_candidata_disponibilidad_rank(c),
+            str(getattr(c, "nombre_completo", "") or "").strip().lower(),
+        )
+    )
+    limited = filtered[:20]
+    out = []
+    for c in limited:
+        cand_id = int(getattr(c, "fila", 0) or 0)
+        if cand_id <= 0:
+            continue
+        out.append(
+            {
+                "id": cand_id,
+                "fila": cand_id,
+                "nombre": str(getattr(c, "nombre_completo", "") or ""),
+                "codigo": str(getattr(c, "codigo", "") or ""),
+                "ciudad": str(getattr(c, "direccion_completa", None) or ""),
+                "modalidad": _safe_modalidad_text(getattr(c, "modalidad_trabajo", None)),
+                "telefono_masked": _mask_phone(getattr(c, "numero_telefono", None)),
+                "estado": str(getattr(c, "estado", "") or ""),
+                "disponibilidad_rank": _reemplazo_candidata_disponibilidad_rank(c),
+            }
+        )
+    return jsonify({"ok": True, "results": out}), 200
+
+
+@admin_bp.route("/reemplazos/<int:reemplazo_id>/seleccionar-candidata", methods=["POST"])
+@login_required
+@staff_required
+@admin_action_limit(bucket="reemplazos", max_actions=20, window_sec=60)
+def reemplazo_seleccionar_candidata(reemplazo_id: int):
+    reemplazo = Reemplazo.query.get_or_404(int(reemplazo_id))
+    solicitud = Solicitud.query.get_or_404(int(reemplazo.solicitud_id))
+
+    payload = request.get_json(silent=True) or {}
+    candidata_raw = (
+        payload.get("candidata_id")
+        if isinstance(payload, dict)
+        else None
+    )
+    if candidata_raw is None:
+        candidata_raw = request.form.get("candidata_id")
+    candidata_id = _safe_int(candidata_raw, default=0)
+
+    wants_json = _admin_async_wants_json() or request.is_json
+
+    def _respond(*, ok: bool, message: str, category: str, status: int = 200, error_code: str | None = None):
+        if wants_json:
+            return jsonify(
+                {
+                    "ok": bool(ok),
+                    "success": bool(ok),
+                    "message": str(message or ""),
+                    "category": str(category or "info"),
+                    "error_code": error_code,
+                    "reemplazo_id": int(reemplazo.id),
+                    "candidata_new_id": int(getattr(reemplazo, "candidata_new_id", 0) or 0) or None,
+                }
+            ), int(status)
+        flash(message, category)
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=reemplazo.id))
+
+    if getattr(reemplazo, "fecha_fin_reemplazo", None) is not None or not bool(getattr(reemplazo, "reemplazo_activo", False)):
+        return _respond(
+            ok=False,
+            message="El reemplazo está cerrado y no permite seleccionar candidata.",
+            category="warning",
+            status=409,
+            error_code="conflict",
+        )
+
+    if candidata_id <= 0:
+        return _respond(
+            ok=False,
+            message="Debes seleccionar una candidata válida.",
+            category="warning",
+            status=400,
+            error_code="invalid_input",
+        )
+
+    candidata = Candidata.query.filter_by(fila=int(candidata_id)).first()
+    if candidata is None:
+        return _respond(
+            ok=False,
+            message="La candidata seleccionada no existe.",
+            category="danger",
+            status=404,
+            error_code="not_found",
+        )
+
+    if int(getattr(reemplazo, "candidata_old_id", 0) or 0) == int(candidata.fila):
+        return _respond(
+            ok=False,
+            message="No puedes seleccionar la misma candidata anterior del reemplazo.",
+            category="warning",
+            status=409,
+            error_code="conflict",
+        )
+
+    blocked = assert_candidata_no_descalificada(
+        candidata,
+        action="preseleccionar candidata de reemplazo",
+        redirect_endpoint="admin.reemplazo_detail",
+        redirect_kwargs={"reemplazo_id": int(reemplazo.id)},
+    )
+    if blocked is not None:
+        return _respond(
+            ok=False,
+            message="La candidata seleccionada no está disponible para esta acción.",
+            category="warning",
+            status=409,
+            error_code="conflict",
+        )
+
+    try:
+        reemplazo.candidata_new_id = int(candidata.fila)
+        _emit_domain_outbox_event(
+            event_type="REEMPLAZO_CANDIDATA_SELECCIONADA",
+            aggregate_type="Solicitud",
+            aggregate_id=solicitud.id,
+            aggregate_version=(int(getattr(solicitud, "row_version", 0) or 0) + 1),
+            payload={
+                "solicitud_id": int(solicitud.id),
+                "reemplazo_id": int(reemplazo.id),
+                "candidata_old_id": int(getattr(reemplazo, "candidata_old_id", 0) or 0) or None,
+                "candidata_new_id": int(candidata.fila),
+                "sync_solicitud_pendiente_cierre": True,
+            },
+        )
+        db.session.commit()
+        _audit_log(
+            action_type="REEMPLAZO_SELECCIONAR_CANDIDATA",
+            entity_type="Reemplazo",
+            entity_id=reemplazo.id,
+            summary=f"Nueva candidata seleccionada en reemplazo #{reemplazo.id}",
+            metadata={
+                "solicitud_id": int(solicitud.id),
+                "cliente_id": int(getattr(solicitud, "cliente_id", 0) or 0),
+                "candidata_new_id": int(candidata.fila),
+            },
+        )
+    except Exception:
+        db.session.rollback()
+        _audit_log(
+            action_type="REEMPLAZO_SELECCIONAR_CANDIDATA",
+            entity_type="Reemplazo",
+            entity_id=reemplazo.id,
+            summary=f"Fallo seleccionando candidata en reemplazo #{reemplazo.id}",
+            metadata={"solicitud_id": int(solicitud.id)},
+            success=False,
+            error="No se pudo seleccionar candidata.",
+        )
+        return _respond(
+            ok=False,
+            message="No se pudo seleccionar la candidata.",
+            category="danger",
+            status=500,
+            error_code="server_error",
+        )
+
+    return _respond(
+        ok=True,
+        message="Nueva candidata seleccionada para este reemplazo.",
+        category="success",
+        status=200,
+    )
+
+
 @admin_bp.route("/reemplazos/<int:reemplazo_id>/cancelar", methods=["POST"])
 @login_required
 @admin_required
