@@ -3,161 +3,217 @@
 {% block content %}
 <div class="container py-4" style="max-width: 1180px;">
   <style>
-    .op-chip { border-radius: 999px; padding: .22rem .6rem; font-size: .78rem; border: 1px solid rgba(0,0,0,.08); background: #f8f9fb; display: inline-flex; align-items: center; gap: .3rem; }
-    .op-avatar { width: 58px; height: 58px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: #e9eef7; color: #21406d; flex: 0 0 auto; }
-    .op-card { border: 1px solid rgba(0,0,0,.06); border-radius: .8rem; background: #fff; }
-    .op-grid { display: grid; grid-template-columns: 1fr; gap: .8rem; }
-    .op-secondary { color: var(--bs-secondary-color); font-size: .86rem; }
-    @media (min-width: 768px) {
-      .op-grid { grid-template-columns: 1fr 1fr; }
+    .op-shell { background: linear-gradient(180deg, #151a25 0%, #111722 100%); border-radius: 18px; border: 1px solid rgba(255,255,255,.08); padding: 1rem; }
+    .op-card { border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(22,30,46,.9); box-shadow: 0 8px 22px rgba(0,0,0,.18); padding: .95rem; }
+    .op-title { color: #f8fafc; font-weight: 700; margin: 0; }
+    .op-subtitle { color: #c4d0e3; font-size: .9rem; }
+    .op-label { color: #9fb2cf; letter-spacing: .03em; font-size: .73rem; font-weight: 600; text-transform: uppercase; }
+    .op-value { color: #f4f7fb; font-size: .93rem; }
+    .op-chip { border-radius: 999px; padding: .2rem .55rem; font-size: .75rem; border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.07); color: #f5f8ff; display: inline-flex; align-items: center; gap: .25rem; }
+    .op-chip-danger { background: rgba(220,53,69,.18); border-color: rgba(220,53,69,.45); color: #ffd8de; }
+    .op-chip-warning { background: rgba(255,193,7,.2); border-color: rgba(255,193,7,.45); color: #fff2cd; }
+    .op-chip-info { background: rgba(13,110,253,.18); border-color: rgba(13,110,253,.45); color: #dbe9ff; }
+    .op-chip-success { background: rgba(25,135,84,.2); border-color: rgba(25,135,84,.45); color: #cff4e0; }
+    .op-avatar { width: 52px; height: 52px; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: rgba(255,255,255,.14); color: #e8efff; flex: 0 0 auto; }
+    .op-grid-top { display: grid; grid-template-columns: 1fr; gap: .65rem; margin-top: .65rem; }
+    .op-grid-cands { display: grid; grid-template-columns: 1fr; gap: .65rem; margin-top: .65rem; }
+    .op-grid-service { margin-top: .65rem; }
+    .op-service-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+    .op-service-block { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: .55rem .65rem; }
+    .op-func-tags { display: flex; flex-wrap: wrap; gap: .38rem; }
+    .op-func-tag { padding: .22rem .52rem; border-radius: 999px; background: rgba(13,110,253,.2); border: 1px solid rgba(13,110,253,.45); color: #dbe8ff; font-size: .76rem; }
+    .op-primary-btn { min-width: 240px; font-weight: 600; }
+    .op-empty { border: 1px dashed rgba(255,255,255,.22); border-radius: 10px; padding: .8rem; background: rgba(255,255,255,.03); color: #d5e0f1; }
+    .op-timeline { position: relative; margin: 0; padding-left: 1.1rem; list-style: none; }
+    .op-timeline::before { content: ""; position: absolute; left: .25rem; top: .3rem; bottom: .3rem; width: 2px; background: rgba(255,255,255,.16); }
+    .op-timeline li { position: relative; margin-bottom: .62rem; color: #edf3ff; }
+    .op-timeline li::before { content: ""; position: absolute; left: -.94rem; top: .38rem; width: 8px; height: 8px; border-radius: 50%; background: #7aa2ff; box-shadow: 0 0 0 3px rgba(122,162,255,.18); }
+    .op-time { color: #9fb2cf; font-size: .76rem; margin-right: .25rem; }
+    .op-secondary { color: #b8c7de; font-size: .84rem; }
+    .reemp-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .op-header-row { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: .55rem; }
+    .op-header-left { min-width: 0; }
+    .op-header-right { display: flex; gap: .38rem; flex-wrap: wrap; justify-content: flex-end; }
+    @media (min-width: 992px) {
+      .op-grid-top { grid-template-columns: 1fr 1fr; }
+      .op-grid-cands { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 767px) {
+      .op-service-grid { grid-template-columns: 1fr; }
+      .op-shell { padding: .75rem; }
+      .op-primary-btn { width: 100%; min-width: 0; }
     }
   </style>
-  <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-    <div>
-      <h1 class="h4 mb-1">
-        {% if reemplazo.fecha_fin_reemplazo %}Reemplazo cerrado{% else %}Reemplazo activo{% endif %}
-        · {{ cliente and cliente.nombre_completo or ('Caso #' ~ reemplazo.id) }}
-      </h1>
-      <div class="d-flex gap-2 flex-wrap">
-        <span class="op-chip">{{ solicitud and solicitud.ciudad_sector or 'Ciudad no indicada' }}</span>
-        <span class="op-chip">{{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</span>
-        <span class="op-chip">⏱ {{ reemplazo.dias_en_reemplazo or 0 }} días abiertos</span>
-        <span class="op-chip {% if prioridad == 'critica' %}text-bg-danger{% elif prioridad in ['urgente', 'alta'] %}text-bg-warning{% elif prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">Prioridad {{ prioridad }}</span>
+  <div class="op-shell">
+    <div class="op-header-row">
+      <div class="op-header-left">
+        <div class="op-title">{% if reemplazo.fecha_fin_reemplazo %}Reemplazo cerrado{% else %}Reemplazo activo{% endif %}</div>
+        <div class="op-subtitle reemp-truncate">{{ cliente and cliente.nombre_completo or ('Caso #' ~ reemplazo.id) }} · {{ solicitud and solicitud.ciudad_sector or 'Ciudad no indicada' }} · {{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</div>
+      </div>
+      <div class="op-header-right">
+        <span class="op-chip {% if prioridad == 'critica' %}op-chip-danger{% elif prioridad in ['urgente', 'alta'] %}op-chip-warning{% else %}op-chip-info{% endif %}">Prioridad {{ prioridad }}</span>
+        <span class="op-chip">⏱ {{ reemplazo.dias_en_reemplazo or 0 }}d</span>
+        <span class="op-chip {% if estado_tone == 'danger' %}op-chip-danger{% elif estado_tone == 'warning' %}op-chip-warning{% elif estado_tone == 'success' %}op-chip-success{% else %}op-chip-info{% endif %}">{{ estado_operativo }}</span>
       </div>
     </div>
-    <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary btn-sm">Volver al panel</a>
-  </div>
 
-  <div class="op-card p-3 mb-3 {% if estado_tone == 'danger' %}border-danger-subtle{% elif estado_tone == 'warning' %}border-warning-subtle{% elif estado_tone == 'success' %}border-success-subtle{% else %}border-info-subtle{% endif %}">
-    <div class="small text-uppercase text-muted mb-1">Qué está pasando</div>
-    <div class="fs-6 fw-semibold">{{ resumen_humano }}</div>
-    <div class="small mt-2 {% if estado_tone == 'danger' %}text-danger{% elif estado_tone == 'warning' %}text-warning-emphasis{% elif estado_tone == 'success' %}text-success{% else %}text-primary{% endif %}">
-      Estado actual del reemplazo: <strong>{{ estado_operativo }}</strong>
-    </div>
-  </div>
-
-  <div class="op-card p-3 mb-3">
-    <div class="small text-uppercase text-muted mb-1">Próximo paso</div>
-    <div class="fw-semibold mb-3">{{ proximo_paso }}</div>
-    <div class="d-flex flex-wrap gap-2">
-      <a class="btn {{ cta_style }}" href="{{ cta_href }}">{{ cta_label }}</a>
-      <div class="dropdown">
-        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Más acciones</button>
-        <ul class="dropdown-menu">
-          <li><button class="dropdown-item" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button></li>
-          {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
-          {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
-          <li><a class="dropdown-item" href="#auditoria">Auditoría y eventos</a></li>
-          {% if (current_user.role|default('')|lower) in ['admin','owner'] and not reemplazo.fecha_fin_reemplazo %}
-          <li><hr class="dropdown-divider"></li>
-          <li>
-            <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1">
-              <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar reemplazo</button>
-            </form>
-          </li>
-          {% endif %}
-        </ul>
+    <div class="op-grid-top">
+      <div class="op-card">
+        <div class="op-label mb-1">Qué está pasando</div>
+        <div class="op-value fw-semibold">{{ resumen_humano }}</div>
+        <div class="op-secondary mt-1">Estado actual del reemplazo: <strong>{{ estado_operativo }}</strong></div>
       </div>
-    </div>
-  </div>
-
-  <div class="op-grid mb-3">
-    <div class="op-card p-3">
-      <div class="small text-uppercase text-muted mb-2">Candidata anterior</div>
-      <div class="d-flex gap-3 align-items-start">
-        <div class="op-avatar">{{ (reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo[:1]) or '?' }}</div>
-        <div class="w-100">
-          <div class="fw-semibold">{{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or 'No registrada' }}</div>
-          <div class="op-secondary">{{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</div>
-          <div class="op-secondary">Tiempo en reemplazo: {{ reemplazo.dias_en_reemplazo or 0 }} días</div>
-          <div class="op-secondary mt-1">Motivo de salida: {{ reemplazo.motivo_fallo or 'No indicado' }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="op-card p-3">
-      <div class="small text-uppercase text-muted mb-2">Nueva candidata</div>
-      {% if reemplazo.candidata_new %}
-      <div class="d-flex gap-3 align-items-start">
-        <div class="op-avatar">{{ reemplazo.candidata_new.nombre_completo[:1] }}</div>
-        <div class="w-100">
-          <div class="fw-semibold">{{ reemplazo.candidata_new.nombre_completo }}</div>
-          <div class="op-secondary">
-            Estado:
-            {% if reemplazo.fecha_fin_reemplazo and (reemplazo.resultado_final or '') in ['cerrado_exitoso', 'exitoso'] %}
-              trabajando
-            {% elif reemplazo.fecha_fin_reemplazo %}
-              enviada
-            {% elif solicitud and (solicitud.estado or '') == 'reemplazo' %}
-              aprobada
-            {% else %}
-              pendiente
-            {% endif %}
+      <div class="op-card">
+        <div class="op-label mb-1">Próximo paso</div>
+        <div class="op-value fw-semibold mb-2">{{ proximo_paso }}</div>
+        <div class="d-flex flex-wrap gap-2 align-items-center">
+          <a class="btn {{ cta_style }} op-primary-btn" href="{{ cta_href }}">⚡ {{ cta_label }}</a>
+          <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Más acciones</button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button class="dropdown-item" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button></li>
+              {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
+              {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
+              <li><button class="dropdown-item" type="button" data-bs-toggle="collapse" data-bs-target="#techEvents" aria-expanded="false">Ver eventos técnicos</button></li>
+              {% if (current_user.role|default('')|lower) in ['admin','owner'] and not reemplazo.fecha_fin_reemplazo %}
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1">
+                  <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar reemplazo</button>
+                </form>
+              </li>
+              {% endif %}
+            </ul>
           </div>
-          <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
         </div>
       </div>
-      {% else %}
-      <div class="op-secondary">No se ha asignado nueva candidata todavía</div>
-      {% endif %}
     </div>
-  </div>
 
-  <div class="op-card p-3 mb-3">
-    <div class="small text-uppercase text-muted mb-2">Datos del servicio</div>
-    <div class="row g-2">
-      <div class="col-md-4"><strong>Ciudad:</strong> {{ solicitud and solicitud.ciudad_sector or 'No indicada' }}</div>
-      <div class="col-md-4"><strong>Modalidad:</strong> {{ solicitud and solicitud.modalidad_trabajo or 'No indicada' }}</div>
-      <div class="col-md-4"><strong>Horario:</strong> {{ solicitud and solicitud.horario or 'A coordinar' }}</div>
-      <div class="col-md-8">
-        <strong>Funciones:</strong>
-        {% if funciones_humanas %}
-          <ul class="mb-0 mt-1">
-            {% for f in funciones_humanas %}<li>{{ f }}</li>{% endfor %}
-          </ul>
+    <div class="op-grid-cands">
+      <div class="op-card">
+        <div class="op-label mb-2">Candidata anterior</div>
+        <div class="d-flex gap-3 align-items-start">
+          <div class="op-avatar">{{ (reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo[:1]) or '?' }}</div>
+          <div class="w-100">
+            <div class="op-value fw-semibold">{{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or 'No registrada' }}</div>
+            <div class="op-secondary">{{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</div>
+            <div class="op-secondary">Tiempo trabajado: {{ reemplazo.dias_en_reemplazo or 0 }} días</div>
+            <div class="op-secondary mt-1">Motivo salida: {{ reemplazo.motivo_fallo or 'No indicado' }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="op-card">
+        <div class="op-label mb-2">Nueva candidata</div>
+        {% if reemplazo.candidata_new %}
+        <div class="d-flex gap-3 align-items-start">
+          <div class="op-avatar">{{ reemplazo.candidata_new.nombre_completo[:1] }}</div>
+          <div class="w-100">
+            <div class="op-value fw-semibold">{{ reemplazo.candidata_new.nombre_completo }}</div>
+            <div class="op-secondary">
+              Estado:
+              {% if reemplazo.fecha_fin_reemplazo and (reemplazo.resultado_final or '') in ['cerrado_exitoso', 'exitoso'] %}
+                trabajando
+              {% elif reemplazo.fecha_fin_reemplazo %}
+                enviada
+              {% elif solicitud and (solicitud.estado or '') == 'reemplazo' %}
+                aprobada
+              {% else %}
+                pendiente
+              {% endif %}
+            </div>
+            <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
+          </div>
+        </div>
         {% else %}
-          <span class="op-secondary">No especificadas</span>
+        <div class="op-empty">
+          <div class="fw-semibold mb-1">No hay nueva candidata asignada todavía</div>
+          <div class="op-secondary">Próximo paso: Buscar candidatas compatibles para este servicio.</div>
+        </div>
         {% endif %}
       </div>
-      <div class="col-md-4"><strong>Sueldo:</strong> {{ solicitud and solicitud.sueldo or 'A discutir' }}</div>
-      <div class="col-md-6"><strong>Resultado:</strong> {{ reemplazo.resultado_final or 'Pendiente' }}</div>
-      <div class="col-md-6"><strong>Responsable:</strong> {{ reemplazo.responsable and reemplazo.responsable.username or 'Sin asignar' }}</div>
     </div>
-  </div>
 
-  {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
-  <div class="op-card p-3 mb-3">
-    <div class="small text-uppercase text-muted mb-2">Acciones de cierre</div>
-    <div class="d-flex gap-2 flex-wrap">
-      <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-        <input type="hidden" name="resultado_final" value="exitoso">
-        <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
-        <button class="btn btn-success" type="submit">Finalizar reemplazo</button>
-      </form>
-      <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-        <input type="hidden" name="resultado_final" value="fallido">
-        <button class="btn btn-outline-warning" type="submit">Marcar como no resuelto</button>
-      </form>
+    <div class="op-card op-grid-service">
+      <div class="op-label mb-2">Datos del servicio</div>
+      <div class="op-service-grid">
+        <div class="op-service-block">
+          <div class="op-label">Ciudad</div>
+          <div class="op-value">{{ solicitud and solicitud.ciudad_sector or 'No indicada' }}</div>
+        </div>
+        <div class="op-service-block">
+          <div class="op-label">Modalidad</div>
+          <div class="op-value">{{ solicitud and solicitud.modalidad_trabajo or 'No indicada' }}</div>
+        </div>
+        <div class="op-service-block">
+          <div class="op-label">Horario</div>
+          <div class="op-value">{{ solicitud and solicitud.horario or 'A coordinar' }}</div>
+        </div>
+        <div class="op-service-block">
+          <div class="op-label">Sueldo</div>
+          <div class="op-value">{{ solicitud and solicitud.sueldo or 'A discutir' }}</div>
+        </div>
+        <div class="op-service-block">
+          <div class="op-label">Resultado</div>
+          <div class="op-value">{{ reemplazo.resultado_final or 'Pendiente' }}</div>
+        </div>
+        <div class="op-service-block">
+          <div class="op-label">Responsable</div>
+          <div class="op-value">{{ reemplazo.responsable and reemplazo.responsable.username or 'Sin asignar' }}</div>
+        </div>
+      </div>
+      <div class="mt-2">
+        <div class="op-label mb-1">Funciones</div>
+        {% if funciones_humanas %}
+        <div class="op-func-tags">
+          {% for f in funciones_humanas %}<span class="op-func-tag">{{ f }}</span>{% endfor %}
+        </div>
+        {% else %}
+        <div class="op-secondary">No especificadas</div>
+        {% endif %}
+      </div>
     </div>
-  </div>
-  {% endif %}
 
-  <div class="op-card p-3 mb-3">
-    <div class="small text-uppercase text-muted mb-2">Línea de tiempo del caso</div>
-    <ul class="mb-0">
-      {% for ev in (timeline_humano or []) %}
-      <li><strong>{{ ev.fecha }}</strong> · {{ ev.texto }}</li>
-      {% else %}
-      <li class="text-muted">Todavía no hay movimientos registrados.</li>
-      {% endfor %}
-    </ul>
-  </div>
+    {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+    <div class="op-card mt-2">
+      <div class="op-label mb-2">Acciones de cierre</div>
+      <div class="d-flex gap-2 flex-wrap">
+        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="resultado_final" value="exitoso">
+          <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
+          <button class="btn btn-success btn-sm" type="submit">Finalizar reemplazo</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="resultado_final" value="fallido">
+          <button class="btn btn-outline-warning btn-sm" type="submit">Marcar como no resuelto</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
 
-  <div class="op-card p-3" id="auditoria">
-    <div class="small text-uppercase text-muted mb-2">Auditoría y eventos técnicos</div>
-    <div class="row g-3">
-      <div class="col-md-4"><h2 class="h6">StaffAuditLog</h2><ul class="small mb-0">{% for log in (logs or []) %}<li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
-      <div class="col-md-4"><h2 class="h6">DomainOutbox</h2><ul class="small mb-0">{% for ev in (outbox_events or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
-      <div class="col-md-4"><h2 class="h6">Seguimiento</h2><div class="small mb-2">{% if seguimiento %}Caso #{{ seguimiento.id }} · prioridad {{ seguimiento.prioridad }}{% else %}Sin caso de seguimiento{% endif %}</div><ul class="small mb-0">{% for ev in (seg_eventos or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div>
+    <div class="op-card mt-2">
+      <div class="op-label mb-2">Línea de tiempo del caso</div>
+      <ul class="op-timeline">
+        {% for ev in (timeline_humano or []) %}
+        <li><span class="op-time">{{ ev.fecha }}</span> {{ ev.texto }}</li>
+        {% else %}
+        <li class="op-secondary">Todavía no hay movimientos registrados.</li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <div class="collapse mt-2" id="techEvents">
+      <div class="op-card" id="auditoria">
+        <div class="op-label mb-2">Auditoría y eventos técnicos</div>
+        <div class="row g-3">
+          <div class="col-md-4"><h2 class="h6 text-light">StaffAuditLog</h2><ul class="small mb-0 text-light">{% for log in (logs or []) %}<li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>{% else %}<li class="op-secondary">Sin eventos</li>{% endfor %}</ul></div>
+          <div class="col-md-4"><h2 class="h6 text-light">DomainOutbox</h2><ul class="small mb-0 text-light">{% for ev in (outbox_events or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>{% else %}<li class="op-secondary">Sin eventos</li>{% endfor %}</ul></div>
+          <div class="col-md-4"><h2 class="h6 text-light">Seguimiento</h2><div class="small mb-2 op-secondary">{% if seguimiento %}Caso #{{ seguimiento.id }} · prioridad {{ seguimiento.prioridad }}{% else %}Sin caso de seguimiento{% endif %}</div><ul class="small mb-0 text-light">{% for ev in (seg_eventos or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>{% else %}<li class="op-secondary">Sin eventos</li>{% endfor %}</ul></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-2">
+      <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-light btn-sm">Volver al panel</a>
     </div>
   </div>
 </div>
