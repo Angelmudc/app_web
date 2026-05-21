@@ -101,34 +101,11 @@ APELLIDOS = [
     "Pérez", "Rodríguez", "Guzmán", "Martínez", "López", "Hernández", "Castillo", "Reyes", "Núñez", "Tejeda",
     "Rosario", "Vargas", "Morillo", "de la Cruz", "Abreu", "Méndez", "Santos", "Toribio", "Ramírez", "Domínguez",
 ]
-HOGARES = [
-    "apartamento con 2 habitaciones",
-    "casa de familia con patio",
-    "hogar con bebé y mascota pequeña",
-    "casa de dos niveles con adultos mayores",
-    "apartamento de pareja con un niño",
-]
-PERSONALIDADES = ["tímida", "responsable", "habladora", "estricta", "organizada", "paciente", "rápida"]
-DEBILIDADES = [
-    "me cuesta delegar cuando veo desorden fuerte",
-    "soy perfeccionista y me tomo tiempo extra planchando",
-    "al inicio hablo poco hasta conocer a la familia",
-    "prefiero confirmar instrucciones por escrito",
-    "me pongo nerviosa con cambios de última hora",
-]
+DESCRIPCIONES = ["responsable y organizada", "paciente y respetuosa", "puntual y trabajadora", "tranquila y colaboradora"]
 SALIDAS = [
-    "el hogar se mudó fuera del país",
-    "cerraron el contrato al entrar un familiar",
-    "se redujeron horas por presupuesto",
-    "terminó la etapa escolar de los niños",
-    "la persona envejeciente pasó a cuidado clínico",
-]
-FORTALEZAS_TXT = [
-    "rutina estricta de limpieza por zonas",
-    "organización de cocina y compras básicas",
-    "trato paciente con niños pequeños",
-    "acompañamiento respetuoso de envejecientes",
-    "puntualidad y disciplina de horarios",
+    "cerraron el contrato por cambio de ciudad",
+    "la familia ya no necesitaba el servicio completo",
+    "cambió el horario y no era compatible",
 ]
 
 
@@ -139,18 +116,8 @@ def _fake_phone(idx: int, *, offset: int = 0) -> str:
 
 
 def _build_legacy_interview(p: dict[str, Any], idx: int, *, rnd: random.Random) -> str:
-    personalidad = PERSONALIDADES[idx % len(PERSONALIDADES)]
-    hogar = HOGARES[idx % len(HOGARES)]
-    fortaleza = FORTALEZAS_TXT[idx % len(FORTALEZAS_TXT)]
-    debilidad = DEBILIDADES[idx % len(DEBILIDADES)]
     salida = SALIDAS[idx % len(SALIDAS)]
-    dificultad = [
-        "coordinar limpieza profunda y cuidado de un bebé el mismo día",
-        "cocinar para dieta especial sin sal para envejeciente",
-        "organizar ropa escolar de tres niños en horarios distintos",
-        "adaptarme a cambios de turno por emergencias familiares",
-        "trabajar con instrucciones muy detalladas de planchado",
-    ][idx % 5]
+    descripcion = DESCRIPCIONES[idx % len(DESCRIPCIONES)]
     ref_fam_name = f"{NOMBRES[(idx + 2) % len(NOMBRES)]} {APELLIDOS[(idx + 7) % len(APELLIDOS)]}"
     ref_lab_name = f"{NOMBRES[(idx + 5) % len(NOMBRES)]} {APELLIDOS[(idx + 11) % len(APELLIDOS)]}"
     dir_fake = f"Calle {['Primera', 'Central', 'Los Pinos', 'San Juan', 'Luna'][(idx + 1) % 5]} #{40 + (idx % 180)}"
@@ -161,70 +128,109 @@ def _build_legacy_interview(p: dict[str, Any], idx: int, *, rnd: random.Random) 
 
     return (
         f"Entrevista QA {p['codigo']}:\n"
-        f"- Vive en {p['ciudad']}, sector {p['sector']}, dirección {dir_fake}.\n"
-        f"- Teléfono personal: {_fake_phone(idx, offset=0)}.\n"
-        f"- Modalidad preferida: {p['modalidad']}. Disponible: {'inmediata' if p['disponible_inmediato'] else '1-2 semanas'}.\n"
-        f"- Perfil {personalidad}; describe su principal fortaleza como {fortaleza}.\n"
-        f"- Tipo de hogar manejado recientemente: {hogar}.\n"
+        f"- ¿Cuál es su nombre completo?: {p['nombre']}.\n"
+        f"- ¿Qué edad tiene?: {p['edad']}.\n"
+        f"- Dirección: {dir_fake}, sector {p['sector']}, {p['ciudad']}.\n"
+        f"- ¿Cómo te describes como persona?: {descripcion}.\n"
+        f"- Modalidad de trabajo: {p['modalidad']}. Disponible: {'inmediata' if p['disponible_inmediato'] else '1-2 semanas'}.\n"
         f"- Cocina: {cooks}\n"
         f"- Niños: {ninos}\n"
         f"- Envejecientes: {enve}\n"
-        f"- Dificultad superada: {dificultad}.\n"
-        f"- Puntualidad y disciplina: llega 10 minutos antes y confirma tareas al iniciar jornada.\n"
         f"- Razón de salida del empleo anterior: {salida}.\n"
-        f"- Debilidad declarada: {debilidad}.\n"
         f"- Referencia familiar: {ref_fam_name}, {_fake_phone(idx, offset=1)}.\n"
         f"- Referencia laboral: {ref_lab_name}, {_fake_phone(idx, offset=2)}.\n"
-        f"- Observación: acepta feedback y mantiene comunicación respetuosa."
+        f"- Observación: acepta revisión a la salida y uso de uniforme."
     )
 
 
-def _structured_interview_answers(p: dict[str, Any], idx: int) -> dict[str, str]:
-    personalidad = PERSONALIDADES[idx % len(PERSONALIDADES)]
-    hogar = HOGARES[idx % len(HOGARES)]
-    fortaleza = FORTALEZAS_TXT[idx % len(FORTALEZAS_TXT)]
+def _structured_interview_answers(p: dict[str, Any], idx: int, question_ids: set[str]) -> dict[str, str]:
+    descripcion = DESCRIPCIONES[idx % len(DESCRIPCIONES)]
+    response_by_id = {
+        "nombre": p["nombre"],
+        "nacionalidad": "Dominicana",
+        "edad": p["edad"],
+        "direccion": f"Calle QA #{50 + idx}, sector {p['sector']}, {p['ciudad']}",
+        "estado_civil": "Soltera",
+        "tienes_hijos": "Sí" if (idx % 2 == 0) else "No",
+        "numero_hijos": "2" if (idx % 2 == 0) else "0",
+        "edades_hijos": "5 y 8" if (idx % 2 == 0) else "",
+        "quien_cuida": "Su madre",
+        "descripcion_personal": descripcion,
+        "razon_trabajo": "Le gusta trabajar en casas de familia y mantener el hogar organizado.",
+        "labores_anteriores": "Limpieza general, lavado, planchado y cocina básica.",
+        "tiempo_ultimo_trabajo": "3 meses",
+        "razon_salida": SALIDAS[idx % len(SALIDAS)],
+        "situacion_dificil": "Sí",
+        "manejo_situacion": "Conversando con respeto y siguiendo instrucciones.",
+        "manejo_reclamo": "Mantiene calma y aclara la situación con respeto.",
+        "uniforme": "Sí",
+        "dias_feriados": "Sí lo pagan",
+        "revision_salida": "Sí",
+        "colaboracion": "Sí, dispuesta a colaborar.",
+        "tipo_familia": "Familia con niños en edad escolar.",
+        "cuidado_ninos": "Sí, de 2 a 10 años.",
+        "sabes_cocinar": "Sí",
+        "gusta_cocinar": "Sí",
+        "que_cocinas": "Arroz, habichuelas, pollo guisado y pastas.",
+        "postres": "Flan y bizcocho básico.",
+        "tareas_casa": "Le gusta limpieza y cocina; prefiere evitar tareas pesadas nocturnas.",
+        "electrodomesticos": "Sí, usa lavadora, secadora y microondas.",
+        "planchar": "Sí",
+        "actividad_principal": "No",
+        "afiliacion_religiosa": "Cristiana",
+        "cursos_domesticos": "Curso básico de higiene en el hogar.",
+        "nivel_academico": "Secundaria completa",
+        "condiciones_salud": "No",
+        "alergico": "No",
+        "medicamentos": "No",
+        "seguro_medico": "Sí",
+        "pruebas_medicas": "Sí",
+        "vacunas_covid": "Dosis 2",
+        "tomas_alcohol": "No",
+        "fumas": "No",
+        "tatuajes_piercings": "No",
+    }
     return {
-        "qa.vive_ciudad": p["ciudad"],
-        "qa.vive_sector": p["sector"],
-        "qa.direccion": f"Residencial QA Torre {1 + (idx % 9)}, apto {10 + (idx % 70)}",
-        "qa.telefono": _fake_phone(idx, offset=3),
-        "qa.referencia_familiar": f"{NOMBRES[(idx + 3) % len(NOMBRES)]} {APELLIDOS[(idx + 9) % len(APELLIDOS)]}, {_fake_phone(idx, offset=4)}",
-        "qa.referencia_laboral": f"{NOMBRES[(idx + 6) % len(NOMBRES)]} {APELLIDOS[(idx + 13) % len(APELLIDOS)]}, {_fake_phone(idx, offset=5)}",
-        "qa.modalidad": p["modalidad"],
-        "qa.hogar_tipo": hogar,
-        "qa.fortalezas": fortaleza,
-        "qa.personalidad": personalidad,
-        "qa.ninos": "Sí, experiencia con rutinas de escuela y meriendas." if "Cuidar niños" in (p.get("tags") or "") else "Apoyo ocasional, prioridad limpieza.",
-        "qa.envejecientes": "Sí, apoyo en movilidad y compañía diaria." if "Cuidar envejecientes" in (p.get("tags") or "") else "Sin experiencia principal en envejecientes.",
-        "qa.disponibilidad": "Inmediata" if p["disponible_inmediato"] else "En dos semanas",
+        f"domestica.{qid}": response_by_id.get(qid, "")
+        for qid in question_ids
     }
 
 
-def _upsert_questions() -> dict[str, EntrevistaPregunta]:
-    defs = [
-        ("qa.vive_ciudad", "Ciudad donde vive"),
-        ("qa.vive_sector", "Sector donde vive"),
-        ("qa.direccion", "Dirección de residencia"),
-        ("qa.telefono", "Teléfono de contacto"),
-        ("qa.referencia_familiar", "Referencia familiar"),
-        ("qa.referencia_laboral", "Referencia laboral"),
-        ("qa.modalidad", "Modalidad preferida"),
-        ("qa.hogar_tipo", "Tipo de hogar trabajado"),
-        ("qa.fortalezas", "Fortaleza principal"),
-        ("qa.personalidad", "Personalidad en trabajo"),
-        ("qa.ninos", "Experiencia cuidando niños"),
-        ("qa.envejecientes", "Experiencia cuidando envejecientes"),
-        ("qa.disponibilidad", "Disponibilidad declarada"),
-    ]
+def _upsert_questions() -> tuple[dict[str, EntrevistaPregunta], set[str]]:
+    banco = flask_app.config.get("ENTREVISTAS_CONFIG") or {}
+    domestica = (banco.get("domestica") or {}).get("preguntas") or []
+    defs: list[tuple[str, str, str, list[str] | None]] = []
+    for i, row in enumerate(domestica, start=1):
+        qid = str((row or {}).get("id") or "").strip()
+        texto = str((row or {}).get("enunciado") or "").strip()
+        if not qid or not texto:
+            continue
+        tipo = str((row or {}).get("tipo") or "texto").strip()
+        opciones = (row or {}).get("opciones")
+        defs.append((f"domestica.{qid}", texto, tipo, list(opciones) if isinstance(opciones, list) else None))
+
+    if not defs:
+        raise RuntimeError("No hay preguntas de domestica en ENTREVISTAS_CONFIG")
+
     out: dict[str, EntrevistaPregunta] = {}
-    for i, (clave, texto) in enumerate(defs, start=1):
+    question_ids: set[str] = set()
+    for i, (clave, texto, tipo, opciones) in enumerate(defs, start=1):
+        # Para compatibilidad SQLite en tests locales, persistimos opciones como None.
+        safe_opciones = None
         row = EntrevistaPregunta.query.filter_by(clave=clave).first()
         if row is None:
-            row = EntrevistaPregunta(clave=clave, texto=texto, tipo="texto", orden=i, activa=True)
+            row = EntrevistaPregunta(clave=clave, texto=texto, tipo=tipo, opciones=safe_opciones, orden=i, activa=True)
             db.session.add(row)
             db.session.flush()
+        else:
+            row.texto = texto[:255]
+            row.tipo = tipo[:30]
+            row.opciones = safe_opciones
+            row.orden = i
+            row.activa = True
         out[clave] = row
-    return out
+        question_ids.add(clave.split(".", 1)[1])
+    return out, question_ids
 
 
 @dataclass
@@ -375,6 +381,8 @@ def _build_candidate_payload(idx: int) -> dict[str, Any]:
     entrevista_legacy = _build_legacy_interview(
         {
             "codigo": codigo,
+            "nombre": nombre,
+            "edad": str(edad),
             "ciudad": ciudad,
             "sector": sector,
             "modalidad": modalidad,
@@ -386,6 +394,8 @@ def _build_candidate_payload(idx: int) -> dict[str, Any]:
     )
     entrevista_struct = _structured_interview_answers(
         {
+            "nombre": nombre,
+            "edad": str(edad),
             "ciudad": ciudad,
             "sector": sector,
             "modalidad": modalidad,
@@ -393,6 +403,7 @@ def _build_candidate_payload(idx: int) -> dict[str, Any]:
             "tags": ", ".join(tags),
         },
         idx,
+        question_ids=set(),
     )
 
     return {
@@ -485,10 +496,23 @@ def run_seed(*, reset: bool = False, total: int = SEED_TOTAL, token: str = DEFAU
 
     if reset:
         _delete_seed_candidates()
-    preguntas = _upsert_questions()
+    preguntas, question_ids = _upsert_questions()
 
     for idx in range(1, total + 1):
         p = _build_candidate_payload(idx)
+        p["entrevista_struct"] = _structured_interview_answers(
+            {
+                "nombre": p["nombre"],
+                "edad": p["edad"],
+                "ciudad": p["ciudad"],
+                "sector": p["sector"],
+                "modalidad": p["modalidad"],
+                "disponible_inmediato": p["disponible_inmediato"],
+                "tags": p["tags"],
+            },
+            idx,
+            question_ids=question_ids,
+        )
         c = Candidata(
             nombre_completo=p["nombre"],
             edad=p["edad"],

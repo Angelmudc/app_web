@@ -289,15 +289,17 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
         e = Entrevista(candidata_id=cand_id, tipo="domestica", estado="completa")
         db.session.add(e)
         db.session.flush()
-        p1 = EntrevistaPregunta(clave="dom.ciudad", texto="Ciudad donde vive", tipo="texto", orden=1, activa=True)
-        p2 = EntrevistaPregunta(clave="dom.fortaleza", texto="Cómo se describe", tipo="texto", orden=2, activa=True)
-        p3 = EntrevistaPregunta(clave="dom.referencias", texto="Referencias laborales", tipo="texto", orden=3, activa=True)
-        db.session.add_all([p1, p2, p3])
+        p1 = EntrevistaPregunta(clave="domestica.nombre", texto="Nombre completo", tipo="texto", orden=1, activa=True)
+        p2 = EntrevistaPregunta(clave="domestica.descripcion_personal", texto="¿Cómo te describes como persona?", tipo="texto_largo", orden=2, activa=True)
+        p3 = EntrevistaPregunta(clave="domestica.revision_salida", texto="¿Puedes ser revisada a la salida?", tipo="radio", orden=3, activa=True)
+        p4 = EntrevistaPregunta(clave="domestica.direccion", texto="Dirección", tipo="texto_largo", orden=4, activa=True)
+        db.session.add_all([p1, p2, p3, p4])
         db.session.flush()
         db.session.add_all([
-            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p1.id, respuesta="Santiago"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p1.id, respuesta="Ana Interna"),
             EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p2.id, respuesta="Organizada y puntual"),
-            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p3.id, respuesta="Sra Rosa 809-000-1212"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p3.id, respuesta="Sí"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p4.id, respuesta="Calle 4, Naco, Santo Domingo"),
         ])
         db.session.commit()
 
@@ -309,10 +311,14 @@ def test_private_store_detail_shows_protected_button_with_structured_interview()
     interview = client.get(f"/tienda/tok_store_structured/domesticas/{cand_id}/entrevista", follow_redirects=False)
     assert interview.status_code == 200
     iv_html = interview.get_data(as_text=True).lower()
-    assert "cómo se describe" in iv_html or "como se describe" in iv_html
+    assert "cómo te describes como persona" in iv_html or "como te describes como persona" in iv_html
     assert "información protegida por la agencia" in iv_html
-    assert "santiago" not in iv_html
-    assert "809-000-1212" not in iv_html
+    for forbidden in [
+        "fortaleza principal",
+        "tipo de hogar trabajado",
+        "modalidad preferida",
+    ]:
+        assert forbidden not in iv_html
 
 def test_private_store_filters_work():
     flask_app.config['TESTING'] = True

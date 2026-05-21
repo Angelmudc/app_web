@@ -87,6 +87,21 @@ def test_seed_local_crea_100_y_flujo_tienda_privacidad(monkeypatch):
             entrevista_ids = [int(x.id) for x in entrevistas]
             respuestas = EntrevistaRespuesta.query.filter(EntrevistaRespuesta.entrevista_id.in_(entrevista_ids)).all()
             assert len(respuestas) >= 1000
+            preguntas = EntrevistaPregunta.query.filter(EntrevistaPregunta.clave.like("domestica.%")).all()
+            textos = {(q.texto or "").strip().lower() for q in preguntas}
+            assert "nombre completo" in textos
+            assert "¿tienes hijos?" in textos
+            assert "¿quién cuida a sus hijos?" in textos
+            assert "¿sabes cocinar?" in textos
+            assert "¿sabes planchar?" in textos
+            for forbidden in [
+                "modalidad preferida",
+                "tipo de hogar trabajado",
+                "fortaleza principal",
+                "personalidad en trabajo",
+                "disponibilidad declarada",
+            ]:
+                assert forbidden not in textos
 
             cat = CatalogoPrivado.query.filter_by(token_hash=seed_script._token_hash(seed_script.DEFAULT_TOKEN)).first()
             assert cat is not None
@@ -118,6 +133,16 @@ def test_seed_local_crea_100_y_flujo_tienda_privacidad(monkeypatch):
         assert interview_resp.status_code == 200
         interview_html = interview_resp.get_data(as_text=True).lower()
         assert "información protegida por la agencia" in interview_html
+        for real_label in [
+            "nombre completo",
+            "¿tienes hijos?",
+            "¿quién cuida a sus hijos?",
+            "¿sabes cocinar?",
+            "¿sabes planchar?",
+        ]:
+            assert real_label in interview_html
+        for forbidden in ["fortaleza principal", "tipo de hogar trabajado", "modalidad preferida"]:
+            assert forbidden not in interview_html
         for forbidden in ["809-555-", "829-555-", "849-555-", "residencial qa torre", "apto ", "calle ", "naco", "santiago"]:
             assert forbidden not in interview_html
 
