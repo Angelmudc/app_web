@@ -7,7 +7,17 @@ from datetime import timedelta
 
 from app import app as flask_app
 from config_app import db
-from models import Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud
+from models import (
+    Candidata,
+    CandidataWeb,
+    CatalogoPrivado,
+    CatalogoPrivadoItem,
+    Cliente,
+    Solicitud,
+    Entrevista,
+    EntrevistaPregunta,
+    EntrevistaRespuesta,
+)
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.timezone import utc_now_naive
 
@@ -24,7 +34,17 @@ def _token_hash(token: str) -> str:
 
 def _ensure_tables() -> None:
     ensure_sqlite_compat_tables(
-        [Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud],
+        [
+            Candidata,
+            CandidataWeb,
+            CatalogoPrivado,
+            CatalogoPrivadoItem,
+            Cliente,
+            Solicitud,
+            Entrevista,
+            EntrevistaPregunta,
+            EntrevistaRespuesta,
+        ],
         reset=False,
     )
 
@@ -162,7 +182,7 @@ def test_private_store_detail_premium_sections_privacy_and_profile_image_route()
     resp = client.get(f"/tienda/tok_store_detail_premium/domesticas/{ids['ok']}", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Entrevista de la agencia" in html
+    assert "Entrevista de la candidata" in html
     assert "Ver entrevista protegida" in html
     assert "Agregar a mi selección" in html
     assert "Ver mi selección" in html
@@ -217,13 +237,65 @@ def test_private_store_interview_protected_access_and_redaction():
     assert resp.status_code == 200
     html = resp.get_data(as_text=True).lower()
     assert "información protegida por la agencia" in html
-    for marker in ["809-111-2222", "849-333-4444", "naco", "referencias", "cedula", "dirección", "direccion"]:
+    for marker in [
+        "809-111-2222",
+        "849-333-4444",
+        "naco",
+        "santiago",
+        "referencias",
+        "cedula",
+        "cédula",
+        "dirección",
+        "direccion",
+        "familiar",
+        "laboral",
+    ]:
         assert marker not in html
     assert "/users/" not in html
     assert "/private/" not in html
 
     invalid = client.get(f"/tienda/token-invalido/domesticas/{ids['ok']}/entrevista", follow_redirects=False)
     assert invalid.status_code == 404
+
+
+def test_private_store_detail_shows_protected_button_with_structured_interview():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_structured', scope_mode='all_available_store')
+        ids = _seed_candidates(seed=12)
+        cand_id = ids["ok"]
+        c = Candidata.query.get(cand_id)
+        assert c is not None
+        c.entrevista = None
+        db.session.flush()
+
+        e = Entrevista(candidata_id=cand_id, tipo="domestica", estado="completa")
+        db.session.add(e)
+        db.session.flush()
+        p1 = EntrevistaPregunta(clave="dom.ciudad", texto="Ciudad donde vive", tipo="texto", orden=1, activa=True)
+        p2 = EntrevistaPregunta(clave="dom.fortaleza", texto="Fortaleza principal", tipo="texto", orden=2, activa=True)
+        db.session.add_all([p1, p2])
+        db.session.flush()
+        db.session.add_all([
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p1.id, respuesta="Santiago"),
+            EntrevistaRespuesta(entrevista_id=e.id, pregunta_id=p2.id, respuesta="Organizada y puntual"),
+        ])
+        db.session.commit()
+
+    detail = client.get(f"/tienda/tok_store_structured/domesticas/{cand_id}", follow_redirects=False)
+    assert detail.status_code == 200
+    html = detail.get_data(as_text=True)
+    assert "Ver entrevista protegida" in html
+
+    interview = client.get(f"/tienda/tok_store_structured/domesticas/{cand_id}/entrevista", follow_redirects=False)
+    assert interview.status_code == 200
+    iv_html = interview.get_data(as_text=True).lower()
+    assert "información protegida por la agencia" in iv_html
+    assert "santiago" not in iv_html
 
 def test_private_store_filters_work():
     flask_app.config['TESTING'] = True

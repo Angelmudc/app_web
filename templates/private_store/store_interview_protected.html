@@ -14,12 +14,14 @@
 
       <section class="ps-section">
         <h2>Contenido autorizado</h2>
-        {% for item in entrevista_items %}
-        <div class="ps-quick" style="margin-bottom:10px;">
-          <strong>{{ item.label }}</strong>
-          <span>{{ item.value }}</span>
+        <div class="ps-detail-grid" style="grid-template-columns:1fr;">
+          {% for item in entrevista_items %}
+          <article class="ps-quick">
+            <strong>{{ item.label }}</strong>
+            <span>{{ item.value }}</span>
+          </article>
+          {% endfor %}
         </div>
-        {% endfor %}
       </section>
     </div>
   </article>

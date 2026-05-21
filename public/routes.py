@@ -333,7 +333,7 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
 
 _PROTECTED_INTERVIEW_REDACT = "Información protegida por la agencia"
 _SENSITIVE_KEYWORDS = (
-    "cedula", "cédula", "telefono", "teléfono", "direccion", "dirección", "vive", "donde vive", "sector",
+    "cedula", "cédula", "telefono", "teléfono", "direccion", "dirección", "vive", "donde vive", "sector", "ciudad",
     "referencia", "referencias", "familiar", "familiares", "laboral", "contacto", "whatsapp",
 )
 
@@ -418,6 +418,11 @@ def _private_store_build_protected_interview(candidata):
         uniq.append(item)
 
     return {"has_source": has_source, "sections": uniq[:40]}
+
+
+def _private_store_has_real_interview(candidata) -> bool:
+    data = _private_store_build_protected_interview(candidata)
+    return bool(data.get("has_source")) and bool(data.get("sections"))
 
 
 _MI_SELECCION_SESSION_KEY = "mi_seleccion_candidatas"
@@ -1391,7 +1396,7 @@ def private_store_detail(token: str, codigo_o_id: str):
 
     selected_ids = _private_store_get_ids(int(catalogo.id))
     interview_data = _private_store_build_protected_interview(cand)
-    has_protected_interview = bool(interview_data.get("sections"))
+    has_protected_interview = bool(interview_data.get("has_source")) and bool(interview_data.get("sections"))
     return render_template(
         "private_store/store_detail.html",
         catalogo=catalogo,

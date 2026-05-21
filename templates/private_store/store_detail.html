@@ -31,10 +31,10 @@
           <section class="ps-section"><h2>Resumen</h2><p>{{ candidata.experiencia_resumen }}</p></section>
           <section class="ps-section"><h2>Experiencia</h2><p>{{ candidata.experiencia_detallada }}</p></section>
           <section class="ps-section">
-            <h2>Entrevista de la agencia</h2>
-            <p>La entrevista fue revisada por la agencia. Algunos datos personales están protegidos por seguridad.</p>
+            <h2>Entrevista de la candidata</h2>
+            <p>Puedes revisar la entrevista protegida. Algunos datos personales están ocultos por seguridad.</p>
             {% if candidata.entrevista_protegida_disponible and candidata.entrevista_protegida_url %}
-            <p><a class="ps-link-secondary" href="{{ candidata.entrevista_protegida_url }}">Ver entrevista protegida</a></p>
+            <p><a class="ps-btn-add" href="{{ candidata.entrevista_protegida_url }}" style="display:inline-block; text-decoration:none;">Ver entrevista protegida</a></p>
             {% else %}
             <p>Entrevista aún no disponible.</p>
             {% endif %}
