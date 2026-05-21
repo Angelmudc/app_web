@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Reemplazos{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 1240px;">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h1 class="h4 mb-1">Panel operativo de reemplazos</h1>
+      <div class="small text-muted">Fase 1 sin migraciones</div>
+    </div>
+    <a href="{{ url_for('admin.listar_solicitudes', estado='reemplazo') }}" class="btn btn-outline-secondary btn-sm">Ver solicitudes en reemplazo</a>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Activos</div><div class="h5 mb-0">{{ metric_activos }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Abiertos hoy</div><div class="h5 mb-0">{{ metric_hoy }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Críticos</div><div class="h5 mb-0 text-danger">{{ metric_criticos }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Vencidos</div><div class="h5 mb-0 text-warning">{{ metric_vencidos }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Cerrados semana</div><div class="h5 mb-0">{{ metric_cerrados_semana }}</div></div></div>
+  </div>
+
+  <div class="glass-card p-3 mb-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Estado</label>
+        <select name="estado" class="form-select form-select-sm">
+          <option value="activos" {% if estado == 'activos' %}selected{% endif %}>Activos</option>
+          <option value="cerrados" {% if estado == 'cerrados' %}selected{% endif %}>Cerrados</option>
+          <option value="todos" {% if estado == 'todos' %}selected{% endif %}>Todos</option>
+        </select>
+      </div>
+      <div class="col-md-2"><label class="form-label small mb-1">Cliente</label><input class="form-control form-control-sm" name="cliente" value="{{ cliente or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Solicitud</label><input class="form-control form-control-sm" name="solicitud" value="{{ solicitud or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Candidata</label><input class="form-control form-control-sm" name="candidata" value="{{ candidata or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Motivo</label><input class="form-control form-control-sm" name="motivo" value="{{ motivo or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Ciudad</label><input class="form-control form-control-sm" name="ciudad" value="{{ ciudad or '' }}"></div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Prioridad</label>
+        <select name="prioridad" class="form-select form-select-sm">
+          <option value="">Todas</option><option value="baja" {% if prioridad == 'baja' %}selected{% endif %}>Baja</option><option value="media" {% if prioridad == 'media' %}selected{% endif %}>Media</option><option value="alta" {% if prioridad == 'alta' %}selected{% endif %}>Alta</option><option value="critica" {% if prioridad == 'critica' %}selected{% endif %}>Crítica</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Días abierto</label>
+        <select name="dias_abierto" class="form-select form-select-sm">
+          <option value="">Todos</option><option value="0" {% if dias_abierto == '0' %}selected{% endif %}>0</option><option value="1" {% if dias_abierto == '1' %}selected{% endif %}>1</option><option value="2" {% if dias_abierto == '2' %}selected{% endif %}>2</option><option value="3+" {% if dias_abierto == '3+' %}selected{% endif %}>3+</option>
+        </select>
+      </div>
+      <div class="col-md-2 d-grid"><button class="btn btn-primary btn-sm">Filtrar</button></div>
+    </form>
+  </div>
+
+  <div class="table-responsive glass-card">
+    <table class="table table-sm align-middle mb-0">
+      <thead><tr><th>ID</th><th>Cliente</th><th>Solicitud</th><th>Saliente</th><th>Entrante</th><th>Motivo</th><th>Inicio</th><th>Días</th><th>Estado</th><th>Responsable</th><th>Prioridad</th><th></th></tr></thead>
+      <tbody>
+      {% for row in (rows or []) %}
+      {% set r = row.reemplazo %}
+      <tr>
+        <td>#{{ r.id }}</td>
+        <td>{{ row.cliente and row.cliente.nombre_completo or '—' }}</td>
+        <td>{{ row.solicitud and (row.solicitud.codigo_solicitud or ('SOL-' ~ row.solicitud.id)) or '—' }}</td>
+        <td>{{ r.candidata_old and r.candidata_old.nombre_completo or '—' }}{% if row.old_cedula_masked %}<div class="small text-muted">{{ row.old_cedula_masked }}</div>{% endif %}</td>
+        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}{% if row.new_cedula_masked %}<div class="small text-muted">{{ row.new_cedula_masked }}</div>{% endif %}</td>
+        <td class="text-truncate" style="max-width: 200px;">{{ (r.motivo_fallo or '')[:120] }}</td>
+        <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
+        <td>{{ row.dias_abierto }}</td>
+        <td><span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo == 'Cerrado' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ row.estado_operativo }}</span></td>
+        <td>{{ row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username or '—' }}</td>
+        <td><span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad == 'alta' %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">{{ row.prioridad }}</span></td>
+        <td><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Detalle</a></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="12" class="text-center text-muted py-4">No hay reemplazos para mostrar</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex justify-content-between align-items-center mt-3">
+    {% set shown_start = ((page - 1) * per_page) + 1 if (total or 0) > 0 else 0 %}
+    {% set shown_end = [page * per_page, total or 0]|min %}
+    <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }}</small>
+    <div class="d-flex gap-2">
+      <a class="btn btn-sm btn-outline-secondary {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, dias_abierto=dias_abierto, ciudad=ciudad, page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
+      <a class="btn btn-sm btn-outline-secondary {% if not has_more %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, dias_abierto=dias_abierto, ciudad=ciudad, page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
