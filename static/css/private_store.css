@@ -357,18 +357,27 @@ body.ps-page main { padding-top: 8px; }
 
 .ps-detail { padding: 14px 0 30px; }
 .ps-detail-head { display: grid; gap: 8px; }
-.ps-interview-head h1 { margin: 0; font-size: 1.2rem; }
-.ps-interview-name { margin: 4px 0 0; font-size: 1rem; color: #dce9f7; font-weight: 800; }
+.ps-interview-head h1 { margin: 0; font-size: 1.34rem; letter-spacing: .01em; text-shadow: 0 8px 24px rgba(4, 16, 30, 0.45); }
+.ps-interview-name { margin: 4px 0 0; font-size: 1.02rem; color: #dce9f7; font-weight: 800; }
 .ps-interview-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 .ps-interview-note { margin: 8px 0 12px; color: #b7cee3; font-size: .86rem; max-width: 760px; }
 .ps-watermark { margin: 4px 0 0; font-size: .76rem; opacity: .78; letter-spacing: .06em; color: #9fb7cc; }
+.ps-interview-divider {
+  height: 1px;
+  margin-top: 4px;
+  background: linear-gradient(90deg, rgba(143, 199, 243, 0), rgba(143, 199, 243, 0.52), rgba(143, 199, 243, 0));
+}
 .ps-interview-shell {
   border-radius: 22px;
-  border-color: rgba(170, 203, 228, 0.24);
-  background: linear-gradient(170deg, rgba(10, 28, 46, 0.94), rgba(9, 26, 43, 0.9));
+  border-color: rgba(170, 203, 228, 0.26);
+  background:
+    radial-gradient(130% 90% at 14% 0%, rgba(40, 95, 148, 0.22), transparent 58%),
+    radial-gradient(90% 80% at 100% 8%, rgba(26, 122, 103, 0.14), transparent 62%),
+    linear-gradient(170deg, rgba(10, 28, 46, 0.94), rgba(9, 26, 43, 0.9));
+  box-shadow: 0 18px 42px rgba(2, 12, 24, 0.42), inset 0 1px 0 rgba(205, 228, 247, 0.06);
 }
 .ps-back { text-decoration: none; color: #c8dcf1; font-weight: 800; }
-.ps-expire-chip { font-size: .76rem; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(171,203,229,.42); color: #b7cee4; width: fit-content; }
+.ps-expire-chip { font-size: .76rem; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(171,203,229,.42); color: #d7e8f8; width: fit-content; background: rgba(16, 39, 63, 0.62); box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
 .ps-detail-layout { margin-top: 12px; display: grid; gap: 12px; }
 .ps-detail-card {
   border-radius: 18px;
@@ -393,33 +402,47 @@ body.ps-page main { padding-top: 8px; }
 .ps-interview-item {
   border-radius: 12px;
   padding: 10px 12px;
-  background: rgba(14, 38, 60, 0.6);
-  border: 1px solid rgba(143, 177, 206, 0.25);
+  background: linear-gradient(160deg, rgba(17, 44, 70, 0.62), rgba(13, 35, 56, 0.58));
+  border: 1px solid rgba(149, 186, 216, 0.22);
+  box-shadow: 0 8px 20px rgba(4, 17, 30, 0.18), inset 0 1px 0 rgba(216, 235, 250, 0.05);
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease, background .22s ease;
+  animation: psInterviewIn .36s ease both;
+  animation-delay: calc(var(--ps-i, 0) * 22ms);
+}
+.ps-interview-item:hover {
+  transform: translateY(-2px);
+  border-color: rgba(161, 203, 236, 0.45);
+  background: linear-gradient(160deg, rgba(19, 50, 78, 0.75), rgba(14, 40, 64, 0.7));
+  box-shadow: 0 14px 26px rgba(4, 17, 30, 0.26), inset 0 1px 0 rgba(226, 241, 252, 0.06);
 }
 .ps-interview-label {
   display: block;
-  font-size: .69rem;
+  font-size: .68rem;
   text-transform: uppercase;
-  letter-spacing: .08em;
-  color: #9fb0c3;
+  letter-spacing: .1em;
+  color: #a8c1d8;
+  font-weight: 800;
 }
 .ps-interview-answer {
   display: block;
   margin-top: 6px;
-  color: #eff6ff;
+  color: #edf5ff;
   font-weight: 700;
-  line-height: 1.45;
+  line-height: 1.52;
+  font-size: .97rem;
 }
 .ps-protected-chip {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   margin-top: 7px;
   border-radius: 999px;
   padding: 6px 11px;
-  background: rgba(122, 88, 24, 0.5);
-  border: 1px solid rgba(226, 191, 120, 0.5);
+  background: linear-gradient(120deg, rgba(112, 80, 24, 0.36), rgba(138, 100, 28, 0.32));
+  border: 1px solid rgba(228, 196, 126, 0.52);
   color: #ffeec7;
-  font-size: .82rem;
+  box-shadow: inset 0 1px 0 rgba(255, 236, 191, 0.24), 0 7px 14px rgba(34, 22, 8, 0.28);
+  font-size: .81rem;
   font-weight: 800;
 }
 .ps-interview-footer {
@@ -428,6 +451,19 @@ body.ps-page main { padding-top: 8px; }
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.ps-interview-head .ps-link-secondary,
+.ps-interview-footer .ps-link-secondary {
+  border-color: rgba(171, 203, 229, 0.5);
+  background: linear-gradient(145deg, rgba(16, 41, 66, 0.78), rgba(13, 35, 56, 0.72));
+  box-shadow: 0 9px 20px rgba(3, 14, 25, 0.22), inset 0 1px 0 rgba(219, 236, 251, 0.07);
+  transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+}
+.ps-interview-head .ps-link-secondary:hover,
+.ps-interview-footer .ps-link-secondary:hover {
+  transform: translateY(-1px);
+  border-color: rgba(166, 209, 242, 0.72);
+  box-shadow: 0 12px 24px rgba(3, 14, 25, 0.3), inset 0 1px 0 rgba(227, 241, 253, 0.1);
 }
 .ps-section { margin-top: 12px; border-top: 1px solid rgba(142, 179, 211, 0.35); padding-top: 12px; }
 .ps-section h2 { margin: 0 0 8px; font-size: .95rem; }
@@ -630,6 +666,7 @@ body.ps-page main { padding-top: 8px; }
 
 @keyframes psIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes psCartBump { 0% { transform: translateY(0); } 50% { transform: translateY(-2px); } 100% { transform: translateY(0); } }
+@keyframes psInterviewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -665,6 +702,7 @@ body.ps-page main { padding-top: 8px; }
   .ps-interview-shell .ps-detail-body { padding: 18px; }
   .ps-interview-list { gap: 12px; }
   .ps-interview-item { padding: 12px 14px; }
+  .ps-interview-name { font-size: 1.08rem; }
   .ps-detail-layout { margin-top: 14px; grid-template-columns: 1.3fr .75fr; gap: 16px; }
   .ps-detail-main { grid-template-columns: 320px 1fr; }
   .ps-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -685,4 +723,14 @@ body.ps-page main { padding-top: 8px; }
 
 @media (min-width: 1300px) {
   .ps-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .ps-interview-head .ps-link-secondary { width: fit-content; }
+  .ps-interview-shell { border-radius: 18px; }
+  .ps-interview-shell .ps-detail-body { padding: 12px; }
+  .ps-interview-list { gap: 9px; }
+  .ps-interview-item { padding: 10px; }
+  .ps-interview-answer { font-size: .94rem; line-height: 1.48; }
+  .ps-interview-footer { margin-top: 10px; flex-direction: column; align-items: flex-start; }
 }

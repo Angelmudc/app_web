@@ -12,13 +12,14 @@
     </div>
     <a class="ps-link-secondary" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">Volver al perfil</a>
   </div>
+  <div class="ps-interview-divider" aria-hidden="true"></div>
   <p class="ps-interview-note">Dirección y referencias están protegidas por la agencia.</p>
 
   <article class="ps-detail-card ps-interview-shell">
     <div class="ps-detail-body">
       <div class="ps-interview-list">
         {% for item in entrevista_items %}
-        <article class="ps-interview-item">
+        <article class="ps-interview-item" style="--ps-i: {{ loop.index0 }};">
           <strong class="ps-interview-label">{{ item.label }}</strong>
           {% if (item.value or '').strip().lower() == 'información protegida por la agencia' %}
           <span class="ps-protected-chip">🔒 Información protegida por la agencia</span>
