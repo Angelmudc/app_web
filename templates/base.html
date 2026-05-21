@@ -204,6 +204,8 @@
 {% set _client_public_message_island_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.generar_link_publico_cliente_nuevo_json') %}
 {% set _public_intake_badge_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.bandeja_formularios_publicos_nuevos') %}
 {% set _public_intake_badge_count = (public_intake_badge_count() if _public_intake_badge_enabled and (public_intake_badge_count is defined) else 0) %}
+{% set _tienda_intereses_badge_enabled = is_internal_surface and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.tienda_intereses_list') %}
+{% set _tienda_intereses_badge_count = (tienda_intereses_badge_count() if _tienda_intereses_badge_enabled and (tienda_intereses_badge_count is defined) else 0) %}
 
 <body data-theme="light"
       class="{{ body_class|default('') }}"
@@ -382,6 +384,18 @@
           </li>
           {% endif %}
 
+          {% if _tienda_intereses_badge_enabled %}
+          <li class="nav-item">
+            <a class="nav-link {% if request.endpoint in ['admin.tienda_intereses_list', 'admin.tienda_intereses_detail'] %}active{% endif %}"
+               href="{{ url_for('admin.tienda_intereses_list') }}">
+              Solicitudes de entrevistas
+              {% if _tienda_intereses_badge_count|int > 0 %}
+                <span class="badge rounded-pill text-bg-danger ms-1">{{ _tienda_intereses_badge_count|int }}</span>
+              {% endif %}
+            </a>
+          </li>
+          {% endif %}
+
           {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (_staff_role == 'owner') %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
@@ -439,6 +453,18 @@
               <li>
                 <a class="dropdown-item {% if request.endpoint in ['admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create', 'admin.catalogos_privados_detail', 'admin.catalogos_privados_edit', 'admin.catalogos_privados_update'] %}active{% endif %}"
                    href="{{ url_for('admin.catalogos_privados_list') }}">Catálogos privados</a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.tienda_intereses_list') %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.tienda_intereses_list', 'admin.tienda_intereses_detail'] %}active{% endif %}"
+                   href="{{ url_for('admin.tienda_intereses_list') }}">
+                  Solicitudes de entrevistas
+                  {% if _tienda_intereses_badge_count|int > 0 %}
+                    <span class="badge rounded-pill text-bg-danger ms-1">{{ _tienda_intereses_badge_count|int }}</span>
+                  {% endif %}
+                </a>
               </li>
               {% endif %}
 

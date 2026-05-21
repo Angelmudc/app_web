@@ -10,7 +10,7 @@ import secrets
 import ipaddress
 from types import SimpleNamespace
 from contextlib import contextmanager
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlparse, quote_plus
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -56,6 +56,8 @@ from models import (
     CandidataWeb,
     CatalogoPrivado,
     CatalogoPrivadoItem,
+    TiendaInteres,
+    TiendaInteresItem,
 )
 try:
     from models import ChatConversation, ChatMessage
@@ -116,6 +118,7 @@ from utils.staff_auth import (
 )
 from utils.audit_logger import log_action, log_admin_action, log_auth_event
 from utils.business_guard import enforce_business_limit, enforce_min_human_interval
+from utils.catalogo_privado_tokens import catalogo_privado_token_hash
 from utils.distributed_backplane import bp_get, bp_healthcheck, bp_set
 from utils.enterprise_layer import (
     touch_staff_session,
@@ -7493,6 +7496,15 @@ def listar_clientes():
             clientes = all_rows[(page - 1) * per_page: page * per_page]
         last_page = ((total - 1) // per_page) + 1 if total > 0 else 1
 
+    tienda_intereses_counts = _tienda_intereses_counts_by_cliente(
+        [int(getattr(c, "id", 0) or 0) for c in (clientes or [])],
+        solo_nuevos=False,
+    ) if (has_search and clientes) else {}
+    tienda_intereses_nuevos_counts = _tienda_intereses_counts_by_cliente(
+        [int(getattr(c, "id", 0) or 0) for c in (clientes or [])],
+        solo_nuevos=True,
+    ) if (has_search and clientes) else {}
+
     role = str(role_for_user(current_user) or "").strip().lower()
     can_manage_public_intake = role in {"owner", "admin"}
     public_intake_new_count = _public_intake_badge_count() if can_manage_public_intake else 0
@@ -7508,6 +7520,8 @@ def listar_clientes():
             total=total,
             last_page=last_page,
             server_paginated=True,
+            tienda_intereses_counts=tienda_intereses_counts,
+            tienda_intereses_nuevos_counts=tienda_intereses_nuevos_counts,
         )
         return jsonify(_admin_async_payload(
             success=True,
@@ -7537,6 +7551,8 @@ def listar_clientes():
         server_paginated=True,
         can_manage_public_intake=can_manage_public_intake,
         public_intake_new_count=public_intake_new_count,
+        tienda_intereses_counts=tienda_intereses_counts,
+        tienda_intereses_nuevos_counts=tienda_intereses_nuevos_counts,
     )
 
 
@@ -16055,6 +16071,59 @@ def _public_intake_badge_count() -> int:
         return 0
 
 
+def _tienda_intereses_badge_count(*, cliente_id: int | None = None) -> int:
+    if not hasattr(TiendaInteres, "estado"):
+        return 0
+    try:
+        query = TiendaInteres.query.filter(TiendaInteres.estado == "nuevo")
+        if cliente_id is not None and int(cliente_id or 0) > 0:
+            query = query.filter(TiendaInteres.cliente_id == int(cliente_id))
+        return int(query.count() or 0)
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return 0
+    except Exception:
+        return 0
+
+
+def _tienda_intereses_counts_by_cliente(cliente_ids: list[int], *, solo_nuevos: bool = False) -> dict[int, int]:
+    ids = sorted({int(x) for x in (cliente_ids or []) if int(x or 0) > 0})
+    if not ids:
+        return {}
+    try:
+        query = (
+            db.session.query(TiendaInteres.cliente_id, func.count(TiendaInteres.id))
+            .filter(TiendaInteres.cliente_id.in_(ids))
+        )
+        if solo_nuevos:
+            query = query.filter(TiendaInteres.estado == "nuevo")
+        rows = query.group_by(TiendaInteres.cliente_id).all()
+        return {int(cid): int(total or 0) for cid, total in rows if int(cid or 0) > 0}
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return {}
+    except Exception:
+        return {}
+
+
+@admin_bp.app_template_global("tienda_intereses_badge_count")
+def tienda_intereses_badge_count() -> int:
+    if not has_request_context():
+        return 0
+    if not bool(getattr(current_user, "is_authenticated", False)):
+        return 0
+    role = str(role_for_user(current_user) or "").strip().lower()
+    if role not in {"owner", "admin", "secretaria"}:
+        return 0
+    return _tienda_intereses_badge_count()
+
+
 @admin_bp.app_template_global("public_intake_badge_count")
 def public_intake_badge_count() -> int:
     if not has_request_context():
@@ -16224,6 +16293,13 @@ def actualizar_review_status_solicitud(solicitud_id: int):
 @admin_required
 def bandeja_formularios_publicos_nuevos_badge_json():
     return jsonify({"ok": True, "count": _public_intake_badge_count(), "ts": iso_utc_z()})
+
+
+@admin_bp.route("/tienda-intereses/badge.json", methods=["GET"])
+@login_required
+@staff_required
+def tienda_intereses_badge_json():
+    return jsonify({"ok": True, "nuevo_count": _tienda_intereses_badge_count(), "ts": iso_utc_z()})
 
 
 def _matching_created_by() -> str:
@@ -24531,7 +24607,7 @@ def seguimiento_candidatas_badge_json():
 
 
 def _catalogo_privado_token_hash(token: str) -> str:
-    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+    return catalogo_privado_token_hash(token)
 
 
 def _catalogo_privado_parse_expires(raw: str):
@@ -24551,6 +24627,13 @@ def _catalogos_privados_form_context(
     selected_ids: set[int] | None = None,
 ):
     selected_ids = selected_ids or set()
+    scope_mode_current = (
+        (request.args.get("scope_mode") or "")
+        if not catalogo
+        else (request.args.get("scope_mode") or getattr(catalogo, "scope_mode", "") or "")
+    ).strip().lower()
+    if scope_mode_current not in {"manual_shortlist", "all_available_store"}:
+        scope_mode_current = "all_available_store" if not catalogo else "manual_shortlist"
     cliente_q = (request.args.get("cliente_q") or "").strip()
     selected_cliente_id = _safe_int(request.args.get("cliente_id"), default=0) or 0
     if (not selected_cliente_id) and catalogo and catalogo.cliente_id:
@@ -24610,6 +24693,7 @@ def _catalogos_privados_form_context(
         "cliente_q": cliente_q,
         "selected_cliente_id": int(selected_cliente_id or 0),
         "cliente_selected": cliente_selected,
+        "scope_mode_current": scope_mode_current,
     }
 
 
@@ -24635,6 +24719,9 @@ def catalogos_privados_create():
     cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
     solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
     cliente_q = (request.form.get("cliente_q") or "").strip() or None
+    scope_mode = (request.form.get("scope_mode") or "all_available_store").strip().lower()
+    if scope_mode not in {"manual_shortlist", "all_available_store"}:
+        scope_mode = "all_available_store"
     solicitud_obj = None
 
     if not cliente_id:
@@ -24651,35 +24738,39 @@ def catalogos_privados_create():
         flash("El cliente seleccionado no existe o es inválido.", "danger")
         return redirect(url_for("admin.catalogos_privados_new", cliente_q=cliente_q))
 
-    raw_ids = request.form.getlist("candidata_ids")
-    candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
-    if not candidata_ids:
-        flash("Debes seleccionar al menos una candidata.", "danger")
-        return redirect(
-            url_for(
-                "admin.catalogos_privados_new",
-                cliente_q=cliente_q,
-                cliente_id=cliente_id or None,
+    candidata_ids = []
+    if scope_mode == "manual_shortlist":
+        raw_ids = request.form.getlist("candidata_ids")
+        candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
+        if not candidata_ids:
+            flash("Debes seleccionar al menos una candidata en shortlist manual.", "danger")
+            return redirect(
+                url_for(
+                    "admin.catalogos_privados_new",
+                    cliente_q=cliente_q,
+                    cliente_id=cliente_id or None,
+                    scope_mode=scope_mode,
+                )
             )
-        )
-    valid_ids = {
-        int(row.fila)
-        for row in Candidata.query.with_entities(Candidata.fila).filter(Candidata.fila.in_(candidata_ids)).all()
-    }
-    invalid_ids = sorted(set(candidata_ids) - valid_ids)
-    if invalid_ids:
-        db.session.rollback()
-        flash(
-            "Hay candidatas inválidas en la selección: " + ", ".join(str(x) for x in invalid_ids) + ".",
-            "danger",
-        )
-        return redirect(
-            url_for(
-                "admin.catalogos_privados_new",
-                cliente_q=cliente_q,
-                cliente_id=cliente_id or None,
+        valid_ids = {
+            int(row.fila)
+            for row in Candidata.query.with_entities(Candidata.fila).filter(Candidata.fila.in_(candidata_ids)).all()
+        }
+        invalid_ids = sorted(set(candidata_ids) - valid_ids)
+        if invalid_ids:
+            db.session.rollback()
+            flash(
+                "Hay candidatas inválidas en la selección: " + ", ".join(str(x) for x in invalid_ids) + ".",
+                "danger",
             )
-        )
+            return redirect(
+                url_for(
+                    "admin.catalogos_privados_new",
+                    cliente_q=cliente_q,
+                    cliente_id=cliente_id or None,
+                    scope_mode=scope_mode,
+                )
+            )
 
     if solicitud_id:
         solicitud_obj = (
@@ -24722,6 +24813,7 @@ def catalogos_privados_create():
         descripcion=(request.form.get("descripcion") or "").strip() or None,
         cliente_id=cliente_id,
         solicitud_id=solicitud_id,
+        scope_mode=scope_mode,
         token_hash=token_hash,
         token_hint=token_hint,
         expires_at=utc_now_naive() + timedelta(days=7),
@@ -24731,13 +24823,15 @@ def catalogos_privados_create():
     db.session.add(catalogo)
     db.session.flush()
 
-    orden = 1
-    for cand_id in candidata_ids:
-        db.session.add(CatalogoPrivadoItem(catalogo_id=catalogo.id, candidata_id=cand_id, orden=orden, is_visible=True))
-        orden += 1
+    if scope_mode == "manual_shortlist":
+        orden = 1
+        for cand_id in candidata_ids:
+            db.session.add(CatalogoPrivadoItem(catalogo_id=catalogo.id, candidata_id=cand_id, orden=orden, is_visible=True))
+            orden += 1
 
     db.session.commit()
-    session["catalogo_privado_last_link"] = url_for("public.catalogo_privado_listado", token=token, _external=True)
+    public_endpoint = "public.private_store_list" if scope_mode == "all_available_store" else "public.catalogo_privado_listado"
+    session["catalogo_privado_last_link"] = url_for(public_endpoint, token=token, _external=True)
     session["catalogo_privado_last_id"] = int(catalogo.id)
     flash("Catálogo privado creado correctamente.", "success")
     return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
@@ -24774,12 +24868,16 @@ def catalogos_privados_edit(id: int):
 @staff_required
 def catalogos_privados_update(id: int):
     catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    scope_mode = (request.form.get("scope_mode") or getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode not in {"manual_shortlist", "all_available_store"}:
+        scope_mode = "manual_shortlist"
     nombre = (request.form.get("nombre") or "").strip()
     if not nombre:
         flash("El nombre es obligatorio.", "danger")
         return redirect(url_for("admin.catalogos_privados_edit", id=catalogo.id))
     catalogo.nombre = nombre[:160]
     catalogo.descripcion = (request.form.get("descripcion") or "").strip() or None
+    catalogo.scope_mode = scope_mode
     catalogo.cliente_id = _safe_int(request.form.get("cliente_id"), default=0) or None
     catalogo.solicitud_id = _safe_int(request.form.get("solicitud_id"), default=0) or None
     if catalogo.solicitud_id:
@@ -24803,6 +24901,10 @@ def catalogos_privados_update(id: int):
 @staff_required
 def catalogos_privados_update_candidatas(id: int):
     catalogo = CatalogoPrivado.query.get_or_404(int(id))
+    scope_mode = (getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    if scope_mode != "manual_shortlist":
+        flash("Este acceso es tienda privada de todas las disponibles; no usa shortlist manual.", "info")
+        return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
     raw_ids = request.form.getlist("candidata_ids")
     candidata_ids = sorted({int(x) for x in raw_ids if str(x).isdigit() and int(x) > 0})
     if not candidata_ids:
@@ -24862,6 +24964,123 @@ def catalogos_privados_extender_vencimiento(id: int):
     db.session.commit()
     flash(f"Vencimiento extendido {dias} día(s).", "success")
     return redirect(url_for("admin.catalogos_privados_detail", id=catalogo.id))
+
+
+@admin_bp.route("/tienda-intereses", methods=["GET"])
+@login_required
+@staff_required
+def tienda_intereses_list():
+    estado = (request.args.get("estado") or "").strip().lower()
+    q = (request.args.get("q") or "").strip()
+    fecha_desde_raw = (request.args.get("fecha_desde") or "").strip()
+    fecha_hasta_raw = (request.args.get("fecha_hasta") or "").strip()
+    solo_nuevos = (request.args.get("solo_nuevos") or "").strip().lower() in {"1", "true", "on", "yes", "si", "sí"}
+    cliente_id = _safe_int(request.args.get("cliente_id"), default=0)
+    allowed = {"nuevo", "en_gestion", "contactado", "cerrado"}
+    query = TiendaInteres.query
+    if cliente_id > 0:
+        query = query.filter(TiendaInteres.cliente_id == int(cliente_id))
+    if estado in allowed:
+        query = query.filter(TiendaInteres.estado == estado)
+    if solo_nuevos:
+        query = query.filter(TiendaInteres.estado == "nuevo")
+    if q:
+        pattern = f"%{q}%"
+        query = query.filter(
+            or_(
+                TiendaInteres.nombre_contacto.ilike(pattern),
+                TiendaInteres.telefono_contacto.ilike(pattern),
+            )
+        )
+    if fecha_desde_raw:
+        try:
+            fecha_desde = datetime.strptime(fecha_desde_raw, "%Y-%m-%d")
+            query = query.filter(TiendaInteres.created_at >= fecha_desde)
+        except Exception:
+            pass
+    if fecha_hasta_raw:
+        try:
+            fecha_hasta = datetime.strptime(fecha_hasta_raw, "%Y-%m-%d") + timedelta(days=1)
+            query = query.filter(TiendaInteres.created_at < fecha_hasta)
+        except Exception:
+            pass
+    rows = query.order_by(TiendaInteres.created_at.desc(), TiendaInteres.id.desc()).limit(300).all()
+    counts = {st: 0 for st in allowed}
+    for r in rows:
+        st = (r.estado or "").strip().lower()
+        if st in counts:
+            counts[st] += 1
+    return render_template(
+        "admin/tienda_intereses/list.html",
+        rows=rows,
+        estado=estado,
+        q=q,
+        fecha_desde=fecha_desde_raw,
+        fecha_hasta=fecha_hasta_raw,
+        solo_nuevos=solo_nuevos,
+        cliente_id=cliente_id,
+        counts=counts,
+    )
+
+
+@admin_bp.route("/tienda-intereses/<int:id>", methods=["GET"])
+@login_required
+@staff_required
+def tienda_intereses_detail(id: int):
+    row = TiendaInteres.query.get_or_404(int(id))
+    estado_view = []
+    for item in (row.items or []):
+        candidata = item.candidata
+        ficha = getattr(candidata, "ficha_web", None) if candidata else None
+        visible = bool(getattr(ficha, "visible", False))
+        estado_publico = (getattr(ficha, "estado_publico", "") or "").strip().lower()
+        if not ficha or not visible:
+            status_tone = "danger"
+            status_text = "Oculta del catálogo"
+        elif estado_publico == "reservada":
+            status_tone = "warning"
+            status_text = "Reservada / revisar antes de ofrecer"
+        elif estado_publico == "no_disponible":
+            status_tone = "danger"
+            status_text = "No disponible actualmente"
+        else:
+            status_tone = "success"
+            status_text = "Disponible para coordinar"
+        estado_view.append({
+            "item": item,
+            "candidata": candidata,
+            "ficha": ficha,
+            "status_tone": status_tone,
+            "status_text": status_text,
+        })
+    telefono_digits = re.sub(r"\D", "", row.telefono_contacto or "")
+    wa_text = f"Hola {row.nombre_contacto or 'cliente'}, recibimos tu selección de candidatas. Vamos a verificar disponibilidad y coordinar contigo las entrevistas."
+    wa_link = f"https://wa.me/{telefono_digits}?text={quote_plus(wa_text)}" if telefono_digits else None
+    return render_template(
+        "admin/tienda_intereses/detail.html",
+        row=row,
+        estado_view=estado_view,
+        wa_link=wa_link,
+        wa_text=wa_text,
+    )
+
+
+@admin_bp.route("/tienda-intereses/<int:id>/estado", methods=["POST"])
+@login_required
+@staff_required
+def tienda_intereses_update_estado(id: int):
+    row = TiendaInteres.query.get_or_404(int(id))
+    estado = (request.form.get("estado") or "").strip().lower()
+    if estado not in {"nuevo", "en_gestion", "contactado", "cerrado"}:
+        flash("Estado inválido.", "danger")
+        return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
+    row.estado = estado
+    db.session.commit()
+    flash("Estado actualizado.", "success")
+    next_url = (request.form.get("next") or "").strip()
+    if next_url.startswith("/admin/tienda-intereses"):
+        return redirect(next_url)
+    return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
 
 
 def _cw_bool_from_form(field_name: str, default: bool = False) -> bool:

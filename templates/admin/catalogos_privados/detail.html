@@ -15,6 +15,7 @@
   {% endif %}
 
   <div class="card mb-3"><div class="card-body">
+    <p><strong>Tipo de acceso:</strong> {{ 'Tienda privada (todas disponibles)' if catalogo.scope_mode == 'all_available_store' else 'Shortlist manual' }}</p>
     <p><strong>Estado:</strong> {% if catalogo.is_active %}Activo{% else %}Inactivo{% endif %}</p>
     <p><strong>Vencimiento:</strong> {{ catalogo.expires_at or 'Sin vencimiento' }}</p>
     <p><strong>Token:</strong> No se guarda token plano. {% if catalogo.token_hint %}(hint: {{ catalogo.token_hint }}){% endif %}</p>
@@ -28,7 +29,12 @@
   </div>
 
   <div class="card"><div class="card-body">
-    <h2 class="h6">Candidatas incluidas</h2>
+    <h2 class="h6">{{ 'Candidatas incluidas (shortlist manual)' if catalogo.scope_mode == 'manual_shortlist' else 'Modo tienda privada: todas disponibles' }}</h2>
+    {% if catalogo.scope_mode != 'manual_shortlist' %}
+    <div class="alert alert-info">
+      Este acceso no usa selección manual: el cliente verá todas las domésticas disponibles publicadas.
+    </div>
+    {% else %}
     <ul class="mb-3">
       {% for item in catalogo.items %}
       <li>
@@ -49,6 +55,7 @@
       </select>
       <button class="btn btn-primary btn-sm mt-2">Guardar candidatas</button>
     </form>
+    {% endif %}
   </div></div>
 </div>
 {% endblock %}

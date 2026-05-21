@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block title %}Panel solicitud #{{ row.id }}{% endblock %}
+{% block content %}
+<style>
+.td-shell { max-width: 1200px; margin: 0 auto; }
+.td-head { border-radius: 18px; background: linear-gradient(120deg, #0f2741, #13375a); color: #eaf3fb; padding: 18px; margin-bottom: 14px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.td-head h1 { margin: 0; font-size: 1.3rem; }
+.td-grid { display:grid; grid-template-columns: 1fr 320px; gap: 14px; }
+.td-card { border-radius: 14px; border: 1px solid #d9e7f3; background: #fff; padding: 14px; }
+.td-card h2 { margin:0 0 10px; font-size:1rem; }
+.td-kv { display:grid; gap:8px; }
+.td-kv p { margin:0; color:#29445b; }
+.td-kv strong { color:#102a40; }
+.td-state { border-radius: 999px; font-size: .75rem; padding: 5px 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; display:inline-block; }
+.td-state.nuevo { background: #e9f4ff; color: #1d5c9a; }
+.td-state.en_gestion { background: #fff4e6; color: #966012; }
+.td-state.contactado { background: #eaf9ef; color: #147347; }
+.td-state.cerrado { background: #f1f4f7; color: #5f707f; }
+.td-actions { display: grid; gap: 8px; }
+.td-actions form { margin: 0; }
+.td-progress { margin: 0; padding-left: 18px; color:#44617a; line-height:1.5; }
+.td-cands { margin-top: 12px; display:grid; gap:10px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.td-cand { border:1px solid #d9e7f3; border-radius:12px; padding:12px; background:#fff; }
+.td-cand-head { display:flex; gap:10px; }
+.td-photo { width:64px; height:64px; border-radius:10px; overflow:hidden; background:#e8f1f9; flex: 0 0 64px; }
+.td-photo img { width:100%; height:100%; object-fit:cover; }
+.td-fallback { font-size:.72rem; color:#5f778d; display:grid; place-items:center; height:100%; text-align:center; padding:4px; }
+.td-cand h3 { margin:0; font-size:1rem; }
+.td-cand-meta { margin:4px 0 0; color:#5e778d; font-size:.84rem; }
+.td-cand-status { margin:8px 0; padding:8px 10px; border-radius:10px; font-size:.84rem; font-weight:700; }
+.td-cand-status.success { background:#ebf8ef; color:#196b3e; border:1px solid #c2e6d0; }
+.td-cand-status.warning { background:#fff6e8; color:#8d5a13; border:1px solid #f0d6a8; }
+.td-cand-status.danger { background:#fff0f0; color:#8b2d2d; border:1px solid #f0c4c4; }
+.td-pills { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+.td-pill { border-radius:999px; border:1px solid #d4e3f0; background:#f5f9fd; color:#2d4f6a; font-size:.74rem; padding:4px 8px; }
+.td-cand-actions { margin-top: 8px; display:flex; gap:8px; flex-wrap:wrap; }
+@media (max-width: 1080px) {
+  .td-grid { grid-template-columns: 1fr; }
+  .td-cands { grid-template-columns: 1fr; }
+}
+</style>
+
+<div class="container py-4 td-shell">
+  <div class="td-head">
+    <h1>Panel de coordinación · Solicitud #{{ row.id }}</h1>
+    <a class="btn btn-outline-light" href="{{ url_for('admin.tienda_intereses_list') }}">Volver a bandeja</a>
+  </div>
+
+  <div class="td-grid">
+    <section class="td-card">
+      <h2>Datos del cliente</h2>
+      <div class="td-kv">
+        <p><strong>Nombre:</strong> {{ row.nombre_contacto }}</p>
+        <p><strong>Teléfono/WhatsApp:</strong> {{ row.telefono_contacto }}</p>
+        <p><strong>Comentario:</strong> {{ row.comentario or '—' }}</p>
+        <p><strong>Fecha de solicitud:</strong> {{ row.created_at }}</p>
+        <p><strong>Estado:</strong> <span class="td-state {{ row.estado }}">{{ (row.estado or 'nuevo').replace('_', ' ') }}</span></p>
+        <p><strong>Catálogo origen:</strong> #{{ row.catalogo_id }}{% if row.token_hint_usado %} · token {{ row.token_hint_usado }}{% endif %}</p>
+        <p><strong>Cliente vinculado:</strong> {{ row.cliente.nombre_completo if row.cliente else 'No vinculado' }}</p>
+      </div>
+    </section>
+
+    <aside class="td-card">
+      <h2>Acciones de gestión</h2>
+      <div class="td-actions">
+        <form method="post" action="{{ url_for('admin.tienda_intereses_update_estado', id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="estado" value="en_gestion">
+          <button class="btn btn-outline-warning w-100" type="submit">Cambiar a En gestión</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.tienda_intereses_update_estado', id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="estado" value="contactado">
+          <button class="btn btn-outline-success w-100" type="submit">Cambiar a Contactado</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.tienda_intereses_update_estado', id=row.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="estado" value="cerrado">
+          <button class="btn btn-outline-secondary w-100" type="submit">Cambiar a Cerrado</button>
+        </form>
+        {% if wa_link %}
+        <a class="btn btn-success w-100" target="_blank" rel="noopener" href="{{ wa_link }}">Copiar mensaje para WhatsApp</a>
+        {% endif %}
+      </div>
+      <h2 style="margin-top:14px;">Progreso</h2>
+      <ol class="td-progress">
+        <li>Solicitud recibida.</li>
+        <li>Validar disponibilidad de candidatas.</li>
+        <li>Contactar cliente y coordinar entrevistas.</li>
+      </ol>
+    </aside>
+  </div>
+
+  <section class="td-card mt-3">
+    <h2>Candidatas seleccionadas</h2>
+    <div class="td-cands">
+      {% for rowv in estado_view %}
+      {% set item = rowv.item %}
+      {% set c = rowv.candidata %}
+      {% set ficha = rowv.ficha %}
+      <article class="td-cand">
+        <div class="td-cand-head">
+          <div class="td-photo">
+            {% if ficha and ficha.foto_publica_url %}<img src="{{ ficha.foto_publica_url }}" alt="Foto pública de {{ ficha.nombre_publico or (c.nombre_completo if c else 'candidata') }}">{% else %}<div class="td-fallback">Sin foto pública</div>{% endif %}
+          </div>
+          <div>
+            <h3>{{ (ficha.nombre_publico if ficha and ficha.nombre_publico else 'Perfil público sin nombre') }}</h3>
+            <p class="td-cand-meta">Código/fila interna: {{ c.codigo if c and c.codigo else '—' }} / {{ item.candidata_id }}</p>
+            <p class="td-cand-meta">{{ (ficha.ciudad_publica if ficha and ficha.ciudad_publica else 'Ciudad no especificada') }}{% if ficha and ficha.sector_publico %} · {{ ficha.sector_publico }}{% endif %}</p>
+            <p class="td-cand-meta">Modalidad: {{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else 'A coordinar' }}</p>
+          </div>
+        </div>
+
+        <div class="td-cand-status {{ rowv.status_tone }}">{{ rowv.status_text }}</div>
+
+        <div class="td-pills">
+          <span class="td-pill">Visible: {{ 'Sí' if ficha and ficha.visible else 'No' }}</span>
+          <span class="td-pill">Estado web: {{ ficha.estado_publico if ficha and ficha.estado_publico else 'sin ficha' }}</span>
+          <span class="td-pill">Disponibilidad: {{ 'Inmediata' if ficha and ficha.disponible_inmediato else 'A coordinar' }}</span>
+          {% if ficha and ficha.tags_publicos %}<span class="td-pill">{{ ficha.tags_publicos }}</span>{% endif %}
+        </div>
+
+        <div class="td-cand-actions">
+          {% if c %}
+          <a class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener" href="{{ url_for('public.domesticas_store_detail', codigo_o_id=(c.codigo or c.fila)) }}">Ver perfil público</a>
+          <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.candidatas_web_detail', fila=c.fila) }}">Editar perfil público</a>
+          {% endif %}
+          <span class="btn btn-light btn-sm disabled" aria-disabled="true">Marcar como revisada (visual)</span>
+          {% if ficha and (not ficha.visible or ficha.estado_publico != 'disponible') %}
+          <span class="btn btn-light btn-sm disabled" aria-disabled="true">No disponible (requiere flujo editorial)</span>
+          {% endif %}
+        </div>
+      </article>
+      {% else %}
+      <article class="td-cand"><p class="td-cand-meta" style="margin:0;">No hay candidatas asociadas.</p></article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% endblock %}

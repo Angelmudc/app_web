@@ -2247,6 +2247,13 @@ class CatalogoPrivado(db.Model):
     solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
     token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     token_hint = db.Column(db.String(12), nullable=True)
+    scope_mode = db.Column(
+        db.String(32),
+        nullable=False,
+        default="manual_shortlist",
+        server_default=text("'manual_shortlist'"),
+        index=True,
+    )
     is_active = db.Column(
         db.Boolean,
         nullable=False,
@@ -2295,6 +2302,53 @@ class CatalogoPrivadoItem(db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
 
     catalogo = db.relationship("CatalogoPrivado", back_populates="items", lazy="joined")
+    candidata = db.relationship("Candidata", lazy="joined")
+
+
+class TiendaInteres(db.Model):
+    __tablename__ = "tienda_intereses"
+
+    id = db.Column(db.Integer, primary_key=True)
+    catalogo_id = db.Column(db.Integer, db.ForeignKey("catalogos_privados.id"), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+    nombre_contacto = db.Column(db.String(200), nullable=False)
+    telefono_contacto = db.Column(db.String(50), nullable=False)
+    comentario = db.Column(db.Text, nullable=True)
+    estado = db.Column(
+        db.String(20),
+        nullable=False,
+        default="nuevo",
+        server_default=text("'nuevo'"),
+        index=True,
+    )
+    token_hint_usado = db.Column(db.String(12), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive, index=True)
+
+    catalogo = db.relationship("CatalogoPrivado", lazy="joined")
+    cliente = db.relationship("Cliente", lazy="joined")
+    solicitud = db.relationship("Solicitud", lazy="joined")
+    items = db.relationship(
+        "TiendaInteresItem",
+        back_populates="interes",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class TiendaInteresItem(db.Model):
+    __tablename__ = "tienda_intereses_items"
+    __table_args__ = (
+        db.UniqueConstraint("interes_id", "candidata_id", name="uq_tienda_interes_item_interes_candidata"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    interes_id = db.Column(db.Integer, db.ForeignKey("tienda_intereses.id"), nullable=False, index=True)
+    candidata_id = db.Column(db.Integer, db.ForeignKey("candidatas.fila"), nullable=False, index=True)
+    orden = db.Column(db.Integer, nullable=True, index=True)
+
+    interes = db.relationship("TiendaInteres", back_populates="items", lazy="joined")
     candidata = db.relationship("Candidata", lazy="joined")
 
 

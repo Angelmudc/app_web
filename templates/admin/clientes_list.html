@@ -59,6 +59,21 @@
           <small>Gestionar enlaces y catálogos</small>
         </span>
       </a>
+      {% if has_endpoint('admin.tienda_intereses_list') %}
+      <a href="{{ url_for('admin.tienda_intereses_list') }}" class="clientes-quick-card">
+        <span class="clientes-quick-icon"><i class="fa-solid fa-user-check"></i></span>
+        <span class="clientes-quick-copy">
+          <strong>Solicitudes de entrevistas</strong>
+          <small>
+            {% if tienda_intereses_badge_count is defined %}
+              {{ tienda_intereses_badge_count() }} nuevas
+            {% else %}
+              Acceso a solicitudes de tienda
+            {% endif %}
+          </small>
+        </span>
+      </a>
+      {% endif %}
       {% if can_manage_public_intake %}
       <a href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}" class="clientes-quick-card">
         <span class="clientes-quick-icon"><i class="fa-solid fa-inbox"></i></span>

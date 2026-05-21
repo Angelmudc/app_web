@@ -20,6 +20,24 @@
     <input type="hidden" name="cliente_q" value="{{ cliente_q or '' }}">
     {% endif %}
     <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label">Tipo de acceso</label>
+        <select class="form-select" name="scope_mode" id="scope_mode">
+          <option value="all_available_store" {% if scope_mode_current == 'all_available_store' %}selected{% endif %}>
+            Tienda privada: todas las disponibles
+          </option>
+          <option value="manual_shortlist" {% if scope_mode_current == 'manual_shortlist' %}selected{% endif %}>
+            Shortlist manual: candidatas seleccionadas
+          </option>
+        </select>
+      </div>
+
+      <div class="col-12" id="all-available-help" {% if scope_mode_current != 'all_available_store' %}style="display:none;"{% endif %}>
+        <div class="alert alert-info mb-0">
+          Este enlace mostrará todas las domésticas disponibles publicadas.
+        </div>
+      </div>
+
       {% if catalogo %}
       <div class="col-md-6"><label class="form-label">Nombre</label><input class="form-control" name="nombre" value="{{ catalogo.nombre if catalogo else '' }}" required></div>
       <div class="col-md-6"><label class="form-label">Vence en</label><input class="form-control" type="datetime-local" name="expires_at" value="{{ catalogo.expires_at.strftime('%Y-%m-%dT%H:%M') if catalogo and catalogo.expires_at else '' }}"></div>
@@ -105,8 +123,10 @@
         <textarea class="form-control" rows="3" name="descripcion">{{ catalogo.descripcion if catalogo else '' }}</textarea>
         <div class="form-text">Este mensaje será visible para el cliente en el catálogo.</div>
       </div>
-      <div class="col-12">
+
+      <div class="col-12" id="manual-shortlist-block" {% if scope_mode_current != 'manual_shortlist' %}style="display:none;"{% endif %}>
         <label class="form-label">Candidatas</label>
+        <div class="form-text mb-2">Selecciona candidatas solo si este acceso es tipo shortlist manual.</div>
         <select class="form-select" name="candidata_ids" multiple size="12">
           {% for cd in candidatas %}
           <option value="{{ cd.fila }}" {% if cd.fila in selected_ids %}selected{% endif %}>{{ cd.fila }} · {{ cd.codigo or 'SIN-COD' }} · {{ cd.nombre_completo }}</option>
@@ -120,4 +140,19 @@
     </div>
   </form>
 </div>
+<script>
+  (function() {
+    const scope = document.getElementById('scope_mode');
+    const manual = document.getElementById('manual-shortlist-block');
+    const allInfo = document.getElementById('all-available-help');
+    if (!scope || !manual || !allInfo) return;
+    const sync = () => {
+      const isManual = scope.value === 'manual_shortlist';
+      manual.style.display = isManual ? '' : 'none';
+      allInfo.style.display = isManual ? 'none' : '';
+    };
+    scope.addEventListener('change', sync);
+    sync();
+  })();
+</script>
 {% endblock %}

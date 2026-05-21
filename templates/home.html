@@ -82,6 +82,23 @@
           </a>
         </div>
       </div>
+      {% if has_endpoint('admin.tienda_intereses_list') %}
+      <div class="col">
+        <div class="dashboard-card">
+          <h5>Solicitudes de entrevistas</h5>
+          <p>
+            {% if tienda_intereses_badge_count is defined %}
+              {{ tienda_intereses_badge_count() }} nuevas
+            {% else %}
+              Revisión de solicitudes desde tienda privada
+            {% endif %}
+          </p>
+          <a href="{{ url_for('admin.tienda_intereses_list') }}" class="btn btn-outline-primary w-100">
+            Ver solicitudes
+          </a>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

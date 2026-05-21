@@ -1,0 +1,9 @@
+{% extends "private_store/base_private_store.html" %}
+{% block title %}Solicitud enviada{% endblock %}
+{% block content %}
+<section class="container ps-state">
+  <h1>Solicitud enviada</h1>
+  <p>Recibimos tu solicitud de entrevistas. El equipo de la agencia te contactará para coordinar.</p>
+  <p><strong>Referencia:</strong> #{{ interes.id }}</p>
+</section>
+{% endblock %}
