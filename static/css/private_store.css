@@ -264,18 +264,62 @@ body.ps-page main { padding-top: 8px; }
   box-shadow: var(--ps-shadow-soft);
   overflow: hidden;
   animation: psIn .35s ease both;
+  transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease;
 }
-.ps-photo-wrap { position: relative; height: 180px; background: linear-gradient(140deg, #0d2740, #13365a); }
+.ps-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(163, 208, 242, 0.6);
+  box-shadow: 0 18px 38px rgba(3, 14, 25, 0.36);
+}
+.ps-photo-wrap { position: relative; height: 220px; background: linear-gradient(140deg, #0d2740, #13365a); }
 .ps-photo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ps-photo-fallback { color: #d7e5f3; font-weight: 800; text-align: center; padding: 20px; display: grid; place-items: center; height: 100%; }
+.ps-photo-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 28px 12px 12px;
+  background: linear-gradient(180deg, rgba(4, 10, 18, 0), rgba(4, 10, 18, 0.78));
+}
+.ps-photo-overlay h2 {
+  margin: 0;
+  font-size: 1rem;
+  color: #f7fbff;
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
+}
+.ps-photo-overlay p {
+  margin: 2px 0 0;
+  font-size: .8rem;
+  color: #d5e6f7;
+}
+.ps-photo-fallback {
+  color: #d7e5f3;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  background: radial-gradient(100% 100% at 0% 0%, rgba(55, 104, 151, 0.35), rgba(15, 38, 60, 0.84));
+}
+.ps-photo-fallback-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  border: 1px solid rgba(187, 214, 236, 0.5);
+  background: rgba(19, 46, 71, 0.7);
+  color: #e9f4ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 900;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
 .ps-badge-stack { position: absolute; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .ps-badge { border-radius: 999px; border: 1px solid rgba(146, 189, 223, 0.45); background: rgba(9, 37, 60, 0.86); color: #d8ebfc; padding: 4px 9px; font-size: .7rem; font-weight: 800; }
 .ps-badge-on { background: rgba(16, 91, 63, 0.84); color: #dcffe9; border-color: rgba(129, 228, 189, 0.55); }
 .ps-badge-premium { background: rgba(107, 76, 21, 0.84); color: #fff1ce; border-color: rgba(236, 206, 134, 0.55); }
 .ps-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-.ps-body h2 { margin: 0; font-size: 1.03rem; }
 .ps-meta { margin: 0; color: var(--ps-text-muted); font-size: .86rem; }
-.ps-chip { display: inline-flex; width: fit-content; padding: 5px 11px; border-radius: 999px; background: rgba(26, 61, 96, 0.88); color: #d8ebfc; font-size: .74rem; font-weight: 800; border: 1px solid rgba(134, 177, 214, 0.38); }
 .ps-summary {
   margin: 2px 0;
   color: #c8d8e8;
@@ -517,6 +561,12 @@ body.ps-page main { padding-top: 8px; }
 }
 .ps-item-thumb { background: rgba(14, 38, 60, 0.86); min-height: 74px; }
 .ps-item-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ps-item-thumb .ps-photo-fallback { min-height: 74px; }
+.ps-item-thumb .ps-photo-fallback-icon {
+  width: 38px;
+  height: 38px;
+  font-size: 1rem;
+}
 .ps-item-content { padding: 8px 0; }
 .ps-item-content h3 { margin: 0 0 4px; font-size: .92rem; }
 .ps-item-meta { margin: 0; color: #9fb0c3; font-size: .82rem; }

@@ -284,7 +284,8 @@ def test_private_store_detail_hides_interview_block_when_no_real_interview():
     assert "Entrevista de la candidata" not in html
     assert "Entrevista aún no disponible." not in html
     assert "Puedes revisar la entrevista protegida" not in html
-    assert "Perfil validado por la agencia" in html
+    assert "Perfil validado por la agencia" not in html
+    assert "ps-photo-fallback" in html
 
 
 def test_private_store_interview_protected_access_and_redaction():
