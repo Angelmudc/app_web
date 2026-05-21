@@ -4,7 +4,9 @@ import os
 import json
 import urllib.parse
 import time
+import imghdr
 from threading import Lock
+from typing import Optional
 
 from flask import (
     render_template,
@@ -272,6 +274,60 @@ def _domesticas_store_public_payload(candidata, ficha_web=None):
         "entrevista_publica_resumen": entrevista_publica_resumen,
         "estado_publico": (getattr(ficha_web, "estado_publico", "disponible") or "disponible").strip().lower(),
     }
+
+
+def _binary_image_mimetype(blob) -> Optional[str]:
+    if not isinstance(blob, (bytes, bytearray)) or not blob:
+        return None
+    kind = imghdr.what(None, h=bytes(blob))
+    if not kind:
+        return None
+    if kind == "jpeg":
+        return "image/jpeg"
+    if kind == "png":
+        return "image/png"
+    if kind == "gif":
+        return "image/gif"
+    if kind == "webp":
+        return "image/webp"
+    if kind == "bmp":
+        return "image/bmp"
+    return None
+
+
+def _private_store_detail_payload(candidata, ficha_web, *, token: str):
+    payload = _domesticas_store_public_payload(candidata, ficha_web=ficha_web)
+    estado_publico = (payload.get("estado_publico") or "disponible").strip().lower()
+    experiencia_resumen = (payload.get("experiencia_resumen") or "").strip() or "Experiencia no especificada."
+    experiencia_detallada = (payload.get("experiencia_detallada") or "").strip() or "Experiencia detallada no especificada."
+    entrevista_publica = (payload.get("entrevista_publica_resumen") or "").strip() or None
+    tags_publicos_raw = (payload.get("tags_publicos") or "").strip()
+    tags_publicos = [x.strip() for x in tags_publicos_raw.split(",") if x and x.strip()]
+    disponibilidad_texto = "Disponible inmediata" if bool(payload.get("disponible_inmediato")) else "Disponibilidad sujeta a coordinación"
+    ciudad_sector = " · ".join([x for x in [(payload.get("ciudad_publica") or "").strip(), (payload.get("sector_publico") or "").strip()] if x]).strip()
+    perfil_blob = getattr(candidata, "perfil", None)
+    perfil_url = None
+    if _binary_image_mimetype(perfil_blob):
+        perfil_url = url_for("public.private_store_profile_image", token=token, candidata_id=int(getattr(candidata, "fila", 0) or 0))
+    foto_publica_url = (payload.get("foto_publica_url") or "").strip() or None
+    foto_display_url = perfil_url or foto_publica_url
+    payload.update({
+        "edad_publica": payload.get("edad_publica") or "No especificada",
+        "modalidad_publica": payload.get("modalidad_publica") or "A coordinar",
+        "ciudad_sector": ciudad_sector or "Ciudad/sector no especificado",
+        "sueldo_texto_publico": payload.get("sueldo_texto_publico") or "Sueldo a coordinar según funciones.",
+        "experiencia_resumen": experiencia_resumen,
+        "experiencia_detallada": experiencia_detallada,
+        "entrevista_publica_resumen": entrevista_publica,
+        "entrevista_disponible": bool(entrevista_publica),
+        "tags_publicos_lista": tags_publicos,
+        "disponibilidad_texto": disponibilidad_texto,
+        "foto_publica_url": foto_display_url,
+        "foto_origen": "perfil_blob" if perfil_url else ("foto_publica_url" if foto_publica_url else "fallback"),
+        "estado_publico_label": "Disponible" if estado_publico == "disponible" else "Verificado",
+        "nota_confianza": "Perfil revisado por Doméstica del Cibao A&D.",
+    })
+    return payload
 
 
 _MI_SELECCION_SESSION_KEY = "mi_seleccion_candidatas"
@@ -1248,9 +1304,43 @@ def private_store_detail(token: str, codigo_o_id: str):
         "private_store/store_detail.html",
         catalogo=catalogo,
         token=token,
-        candidata={**_domesticas_store_public_payload(cand, ficha_web=ficha), "is_selected": int(cand.fila) in set(selected_ids)},
+        candidata={**_private_store_detail_payload(cand, ficha, token=token), "is_selected": int(cand.fila) in set(selected_ids)},
         selection_count=len(selected_ids),
     )
+
+
+@public_bp.route("/tienda/<token>/domesticas/<int:candidata_id>/perfil", methods=["GET"])
+def private_store_profile_image(token: str, candidata_id: int):
+    from models import Candidata, CandidataWeb
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        abort(404)
+    if status == "expired":
+        abort(410)
+
+    _scope_mode = str(getattr(catalogo, "scope_mode", "manual_shortlist") or "manual_shortlist").strip().lower()
+    row = (
+        db.session.query(Candidata, CandidataWeb)
+        .join(CandidataWeb, Candidata.fila == CandidataWeb.candidata_id)
+        .filter(Candidata.fila == int(candidata_id))
+        .filter(CandidataWeb.visible.is_(True))
+        .filter(CandidataWeb.estado_publico == "disponible")
+        .first()
+    )
+    if not row:
+        abort(404)
+    candidata, _ficha = row
+    blob = getattr(candidata, "perfil", None)
+    mimetype = _binary_image_mimetype(blob)
+    if not mimetype:
+        abort(404)
+
+    resp = make_response(bytes(blob))
+    resp.headers["Content-Type"] = mimetype
+    resp.headers["Cache-Control"] = "private, max-age=300"
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    return resp
 
 
 @public_bp.route("/tienda/<token>/mi-seleccion", methods=["GET"])

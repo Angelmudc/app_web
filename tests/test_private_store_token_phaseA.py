@@ -11,6 +11,12 @@ from models import Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.timezone import utc_now_naive
 
+_PNG_1X1 = (
+    b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+    b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDAT\x08\x99c\xf8\xff\xff?"
+    b"\x00\x05\xfe\x02\xfeA\xa9\x9f\x16\x00\x00\x00\x00IEND\xaeB`\x82"
+)
+
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
@@ -40,7 +46,7 @@ def _seed_catalog(token: str, *, scope_mode: str = "all_available_store", is_act
 
 def _seed_candidates(seed: int = 1) -> dict[str, int]:
     base = 997000 + seed * 10
-    ok = Candidata(fila=base + 1, nombre_completo='Ana Interna', cedula=f'{base + 1:011d}', codigo=f'PTA-OK-{seed}', numero_telefono='809-000-1111', direccion_completa='Calle X')
+    ok = Candidata(fila=base + 1, nombre_completo='Ana Interna', cedula=f'{base + 1:011d}', codigo=f'PTA-OK-{seed}', numero_telefono='809-000-1111', direccion_completa='Calle X', perfil=_PNG_1X1)
     hidden = Candidata(fila=base + 2, nombre_completo='Oculta', cedula=f'{base + 2:011d}', codigo=f'PTA-HID-{seed}')
     reserved = Candidata(fila=base + 3, nombre_completo='Reservada', cedula=f'{base + 3:011d}', codigo=f'PTA-RES-{seed}')
     nodisp = Candidata(fila=base + 4, nombre_completo='No disponible', cedula=f'{base + 4:011d}', codigo=f'PTA-NOD-{seed}')
@@ -133,6 +139,57 @@ def test_private_store_detail_ok_200_and_not_available_404():
     assert client.get(f"/tienda/tok_store_detail/domesticas/{ids['reserved']}", follow_redirects=False).status_code == 404
     assert client.get(f"/tienda/tok_store_detail/domesticas/{ids['nodisp']}", follow_redirects=False).status_code == 404
 
+
+def test_private_store_detail_premium_sections_privacy_and_profile_image_route():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_detail_premium', scope_mode='all_available_store')
+        ids = _seed_candidates(seed=8)
+
+    resp = client.get(f"/tienda/tok_store_detail_premium/domesticas/{ids['ok']}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Entrevista de la agencia" in html
+    assert "Entrevista validada por agencia." in html
+    assert "Agregar a mi selección" in html
+    assert "Ver mi selección" in html
+    assert 'href="/domesticas/' not in html
+    assert f"/tienda/tok_store_detail_premium/domesticas/{ids['ok']}/perfil" in html
+
+    lowered = html.lower()
+    for marker in ["cedula", "telefono", "dirección", "direccion", "referencias", "notas internas"]:
+        assert marker not in lowered
+
+    img = client.get(f"/tienda/tok_store_detail_premium/domesticas/{ids['ok']}/perfil", follow_redirects=False)
+    assert img.status_code == 200
+    assert (img.headers.get("Content-Type") or "").startswith("image/")
+
+
+def test_private_store_detail_shows_interview_pending_and_fallback_when_no_profile_blob():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_no_interview', scope_mode='all_available_store')
+        ids = _seed_candidates(seed=9)
+        c = Candidata.query.get(ids['ok'])
+        ficha = CandidataWeb.query.filter_by(candidata_id=ids['ok']).first()
+        assert c is not None and ficha is not None
+        c.perfil = None
+        ficha.entrevista_publica_resumen = None
+        db.session.commit()
+
+    resp = client.get(f"/tienda/tok_store_no_interview/domesticas/{ids['ok']}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Entrevista pública aún no disponible." in html
+    assert "Perfil validado por la agencia" in html
 
 def test_private_store_filters_work():
     flask_app.config['TESTING'] = True
