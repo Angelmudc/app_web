@@ -1404,7 +1404,7 @@ def private_store_detail(token: str, codigo_o_id: str):
         candidata={
             **_private_store_detail_payload(cand, ficha, token=token),
             "is_selected": int(cand.fila) in set(selected_ids),
-            "entrevista_protegida_disponible": has_protected_interview,
+            "has_protected_interview": has_protected_interview,
             "entrevista_protegida_url": (
                 url_for("public.private_store_interview_protected", token=token, candidata_id=int(cand.fila))
                 if has_protected_interview else None

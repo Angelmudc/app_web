@@ -30,15 +30,13 @@
 
           <section class="ps-section"><h2>Resumen</h2><p>{{ candidata.experiencia_resumen }}</p></section>
           <section class="ps-section"><h2>Experiencia</h2><p>{{ candidata.experiencia_detallada }}</p></section>
+          {% if candidata.has_protected_interview and candidata.entrevista_protegida_url %}
           <section class="ps-section">
             <h2>Entrevista de la candidata</h2>
-            <p>Puedes revisar la entrevista protegida. Algunos datos personales están ocultos por seguridad.</p>
-            {% if candidata.entrevista_protegida_disponible and candidata.entrevista_protegida_url %}
             <p><a class="ps-btn-add" href="{{ candidata.entrevista_protegida_url }}" style="display:inline-block; text-decoration:none;">Ver entrevista protegida</a></p>
-            {% else %}
-            <p>Entrevista aún no disponible.</p>
-            {% endif %}
+            <p>Datos personales protegidos por la agencia.</p>
           </section>
+          {% endif %}
           <section class="ps-section"><h2>Funciones destacadas</h2><p>{% if candidata.tags_publicos_lista %}{{ candidata.tags_publicos_lista|join(' · ') }}{% else %}Funciones a coordinar con la agencia.{% endif %}</p></section>
           <section class="ps-section"><h2>Disponibilidad</h2><p>{{ candidata.disponibilidad_texto }}</p></section>
           <section class="ps-section"><h2>Condiciones</h2><p>{{ candidata.modalidad_publica }} · {{ candidata.sueldo_texto_publico }}</p></section>

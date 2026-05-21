@@ -198,7 +198,7 @@ def test_private_store_detail_premium_sections_privacy_and_profile_image_route()
     assert (img.headers.get("Content-Type") or "").startswith("image/")
 
 
-def test_private_store_detail_shows_interview_pending_and_fallback_when_no_profile_blob():
+def test_private_store_detail_hides_interview_block_when_no_real_interview():
     flask_app.config['TESTING'] = True
     flask_app.config['WTF_CSRF_ENABLED'] = False
     client = flask_app.test_client()
@@ -218,7 +218,9 @@ def test_private_store_detail_shows_interview_pending_and_fallback_when_no_profi
     resp = client.get(f"/tienda/tok_store_no_interview/domesticas/{ids['ok']}", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Entrevista aún no disponible." in html
+    assert "Entrevista de la candidata" not in html
+    assert "Entrevista aún no disponible." not in html
+    assert "Puedes revisar la entrevista protegida" not in html
     assert "Perfil validado por la agencia" in html
 
 
