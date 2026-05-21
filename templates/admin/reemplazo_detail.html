@@ -72,7 +72,16 @@
         <div class="op-label mb-1">Próximo paso</div>
         <div class="op-value fw-semibold mb-2">{{ proximo_paso }}</div>
         <div class="d-flex flex-wrap gap-2 align-items-center">
+          {% if cta_action == 'open_search_panel' %}
+          <button class="btn {{ cta_style }} op-primary-btn"
+                  type="button"
+                  data-action="open-candidata-search"
+                  data-focus-target="#nuevaCandidataQuery">
+            ⚡ {{ cta_label }}
+          </button>
+          {% else %}
           <a class="btn {{ cta_style }} op-primary-btn" href="{{ cta_href }}">⚡ {{ cta_label }}</a>
+          {% endif %}
           <div class="dropdown">
             <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Más acciones</button>
             <ul class="dropdown-menu dropdown-menu-end">
@@ -129,8 +138,11 @@
             <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
             {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
             <div class="mt-2 d-flex gap-2 flex-wrap">
-              <button class="btn btn-outline-light btn-sm" type="button" id="toggleNuevaCandBtn">Cambiar candidata</button>
-              <a class="btn btn-success btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Finalizar reemplazo</a>
+              <button class="btn btn-outline-light btn-sm"
+                      type="button"
+                      data-action="open-candidata-search"
+                      data-focus-target="#nuevaCandidataQuery">Cambiar candidata</button>
+              <a class="btn btn-success btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Finalizar reemplazo con esta candidata</a>
             </div>
             {% endif %}
           </div>
@@ -142,7 +154,10 @@
         </div>
         {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
         <div class="mt-2 d-flex gap-2 flex-wrap">
-          <button class="btn btn-primary btn-sm" type="button" id="toggleNuevaCandBtn">Buscar nueva candidata</button>
+          <button class="btn btn-primary btn-sm"
+                  type="button"
+                  data-action="open-candidata-search"
+                  data-focus-target="#nuevaCandidataQuery">Buscar nueva candidata</button>
         </div>
         {% endif %}
         {% endif %}
@@ -255,14 +270,14 @@
   <script>
     (function () {
       var panel = document.getElementById('nuevaCandidataPanel');
-      var toggleBtn = document.getElementById('toggleNuevaCandBtn');
+      var openButtons = Array.prototype.slice.call(document.querySelectorAll('[data-action=\"open-candidata-search\"]'));
       var closeBtn = document.getElementById('cerrarNuevaCandBtn');
       var searchBtn = document.getElementById('buscarNuevaCandBtn');
       var input = document.getElementById('nuevaCandidataQuery');
       var state = document.getElementById('nuevaCandidataState');
       var results = document.getElementById('nuevaCandidataResults');
       var alertBox = document.getElementById('nuevaCandidataAlert');
-      if (!panel || !toggleBtn || !closeBtn || !searchBtn || !input || !state || !results || !alertBox) return;
+      if (!panel || !closeBtn || !searchBtn || !input || !state || !results || !alertBox) return;
 
       var reemplazoId = panel.getAttribute('data-reemplazo-id');
 
@@ -275,6 +290,11 @@
       function hideAlert() {
         alertBox.classList.add('d-none');
         alertBox.textContent = '';
+      }
+      function openPanelAndFocus() {
+        panel.classList.remove('d-none');
+        panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        window.setTimeout(function () { input.focus(); }, 220);
       }
 
       function renderRows(items) {
@@ -312,8 +332,14 @@
         results.innerHTML = '';
         var url = '/admin/reemplazos/candidatas-search?reemplazo_id=' + encodeURIComponent(reemplazoId) + '&q=' + encodeURIComponent(q);
         fetch(url, { credentials: 'same-origin' })
-          .then(function (resp) { return resp.json(); })
-          .then(function (data) { renderRows((data && data.results) || []); })
+          .then(function (resp) { return resp.json().then(function (data) { return { status: resp.status, data: data || {} }; }); })
+          .then(function (res) {
+            if (!(res.status >= 200 && res.status < 300)) {
+              state.textContent = (res.data && res.data.message) || 'No pudimos buscar candidatas ahora mismo.';
+              return;
+            }
+            renderRows((res.data && res.data.results) || []);
+          })
           .catch(function () {
             state.textContent = 'No pudimos buscar candidatas ahora mismo.';
           });
@@ -344,9 +370,8 @@
           });
       }
 
-      toggleBtn.addEventListener('click', function () {
-        panel.classList.remove('d-none');
-        input.focus();
+      openButtons.forEach(function (btn) {
+        btn.addEventListener('click', function () { openPanelAndFocus(); });
       });
       closeBtn.addEventListener('click', function () {
         panel.classList.add('d-none');
@@ -354,6 +379,9 @@
         state.textContent = 'Busca por nombre, código, ciudad o teléfono.';
         results.innerHTML = '';
       });
+      if (window.location.hash === '#nuevaCandidataPanel') {
+        openPanelAndFocus();
+      }
       searchBtn.addEventListener('click', doSearch);
       input.addEventListener('keydown', function (ev) {
         if (ev.key === 'Enter') {

@@ -110,6 +110,10 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert "Candidata anterior" in detail_html
     assert "Nueva candidata" in detail_html
     assert "Finalizar reemplazo" in detail_html
+    assert 'data-action="open-candidata-search"' in detail_html
+    assert 'id="nuevaCandidataResults"' in detail_html
+    assert 'id="nuevaCandidataQuery"' in detail_html
+    assert "/admin/reemplazo_nuevo_panel" not in detail_html
 
     resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)
     assert resp_pub.status_code == 200
@@ -271,6 +275,7 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
     assert "Buscar candidata por nombre, código, teléfono o ciudad" in detail_html
     assert "Cambiar candidata" in detail_html
     assert "Maritza Prueba" in detail_html
+    assert "Finalizar reemplazo con esta candidata" in detail_html
 
 
 def test_reemplazo_seleccionar_candidata_bloquea_cerrado():

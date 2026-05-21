@@ -17865,15 +17865,22 @@ def reemplazo_detail(reemplazo_id):
     elif has_new and not is_closed:
         resumen_humano = "✅ Cliente ya seleccionó nueva candidata. Pendiente coordinar entrada."
         proximo_paso = "Próximo paso recomendado: • Confirmar entrada de la nueva candidata."
-        cta_label = "Finalizar reemplazo"
+        cta_label = "Finalizar reemplazo con esta candidata"
         cta_href = url_for("admin.finalizar_reemplazo", s_id=solicitud.id, reemplazo_id=reemplazo.id) if solicitud else "#"
         cta_style = "btn-warning"
+        cta_action = "finalize"
     else:
         resumen_humano = "⚠️ La candidata anterior no se presentó. Actualmente estamos buscando una nueva candidata para este cliente."
         proximo_paso = "Próximo paso recomendado: • Enviar nuevas candidatas al cliente."
         cta_label = "Buscar nueva candidata"
-        cta_href = url_for("admin.reemplazo_nuevo_panel", cliente_id=(solicitud.cliente_id if solicitud else None), solicitud_id=(solicitud.id if solicitud else None))
+        cta_href = "#nuevaCandidataPanel"
         cta_style = "btn-primary"
+        cta_action = "open_search_panel"
+
+    if resultado in {"cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "cancelado"}:
+        cta_action = "navigate"
+    elif not has_new and not is_closed:
+        cta_action = "open_search_panel"
 
     funciones_humanas = []
     if solicitud is not None:
@@ -17952,6 +17959,7 @@ def reemplazo_detail(reemplazo_id):
         cta_label=cta_label,
         cta_href=cta_href,
         cta_style=cta_style,
+        cta_action=cta_action,
         funciones_humanas=funciones_humanas,
         timeline_humano=timeline_humano,
         logs=logs,
