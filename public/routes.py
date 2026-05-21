@@ -278,6 +278,8 @@ def _domesticas_store_public_payload(candidata, ficha_web=None):
 
 
 def _binary_image_mimetype(blob) -> Optional[str]:
+    if isinstance(blob, memoryview):
+        blob = blob.tobytes()
     if not isinstance(blob, (bytes, bytearray)) or not blob:
         return None
     kind = imghdr.what(None, h=bytes(blob))
@@ -310,8 +312,7 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
     perfil_url = None
     if _binary_image_mimetype(perfil_blob):
         perfil_url = url_for("public.private_store_profile_image", token=token, candidata_id=int(getattr(candidata, "fila", 0) or 0))
-    foto_publica_url = (payload.get("foto_publica_url") or "").strip() or None
-    foto_display_url = perfil_url or foto_publica_url
+    foto_display_url = perfil_url
     payload.update({
         "edad_publica": payload.get("edad_publica") or "No especificada",
         "modalidad_publica": payload.get("modalidad_publica") or "A coordinar",
@@ -324,10 +325,24 @@ def _private_store_detail_payload(candidata, ficha_web, *, token: str):
         "tags_publicos_lista": tags_publicos,
         "disponibilidad_texto": disponibilidad_texto,
         "foto_publica_url": foto_display_url,
-        "foto_origen": "perfil_blob" if perfil_url else ("foto_publica_url" if foto_publica_url else "fallback"),
+        "foto_origen": "perfil_blob" if perfil_url else "fallback",
         "estado_publico_label": "Disponible" if estado_publico == "disponible" else "Verificado",
         "nota_confianza": "Perfil revisado por Doméstica del Cibao A&D.",
     })
+    return payload
+
+
+def _private_store_card_payload(candidata, ficha_web, *, token: str):
+    payload = _domesticas_store_public_payload(candidata, ficha_web=ficha_web)
+    perfil_blob = getattr(candidata, "perfil", None)
+    perfil_url = None
+    if _binary_image_mimetype(perfil_blob):
+        perfil_url = url_for(
+            "public.private_store_profile_image",
+            token=token,
+            candidata_id=int(getattr(candidata, "fila", 0) or 0),
+        )
+    payload["foto_publica_url"] = perfil_url
     return payload
 
 
@@ -1095,7 +1110,7 @@ def domesticas_store_list():
     selected_set = set(selected_ids)
     cards = []
     for cand, ficha in (items or []):
-        payload = _domesticas_store_public_payload(cand, ficha_web=ficha)
+        payload = _private_store_card_payload(cand, ficha_web=ficha, token=token)
         payload["is_selected"] = int(payload["id"]) in selected_set
         cards.append(payload)
 
@@ -1171,7 +1186,7 @@ def mi_seleccion_list():
     valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in rows]
     if valid_ids != selected_ids:
         _mi_seleccion_set_ids(valid_ids)
-    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
+    cards = [_private_store_card_payload(cand, ficha_web=ficha, token=token) for cand, ficha in rows]
     return render_template(
         "public/mi_seleccion.html",
         cards=cards,
@@ -1366,7 +1381,7 @@ def private_store_list(token: str):
     selected_set = set(selected_ids)
     cards = []
     for cand, ficha in (items or []):
-        payload = _domesticas_store_public_payload(cand, ficha_web=ficha)
+        payload = _private_store_card_payload(cand, ficha_web=ficha, token=token)
         payload["is_selected"] = int(payload["id"]) in selected_set
         cards.append(payload)
 
@@ -1532,7 +1547,7 @@ def private_store_selection_list(token: str):
     valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in rows]
     if valid_ids != selected_ids:
         _private_store_set_ids(int(catalogo.id), valid_ids)
-    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
+    cards = [_private_store_card_payload(cand, ficha_web=ficha, token=token) for cand, ficha in rows]
     return render_template(
         "private_store/store_selection.html",
         catalogo=catalogo,

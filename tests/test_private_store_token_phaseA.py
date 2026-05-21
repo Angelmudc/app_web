@@ -123,7 +123,7 @@ def test_private_store_token_valido_all_available_200_and_privacy_html():
     with flask_app.app_context():
         _ensure_tables()
         _seed_catalog('tok_store_ok', scope_mode='all_available_store')
-        _seed_candidates(seed=1)
+        ids = _seed_candidates(seed=1)
 
     resp = client.get('/tienda/tok_store_ok', follow_redirects=False)
     assert resp.status_code == 200
@@ -134,6 +134,7 @@ def test_private_store_token_valido_all_available_200_and_privacy_html():
     assert 'No Debe Verse' not in html
     assert 'Reservada No Debe Verse' not in html
     assert 'No Disponible No Debe Verse' not in html
+    assert f"/tienda/tok_store_ok/domesticas/{ids['ok']}/perfil" in html
 
     forbidden = ['/admin', '/clientes', '/login', 'cedula', 'telefono', 'direccion', 'referencia', 'notas internas', 'score', 'token_hash', 'token_hint']
     lowered = html.lower()
@@ -260,6 +261,14 @@ def test_private_store_detail_premium_sections_privacy_and_profile_image_route()
     assert img.status_code == 200
     assert (img.headers.get("Content-Type") or "").startswith("image/")
 
+    with flask_app.app_context():
+        c = Candidata.query.get(ids["ok"])
+        assert c is not None
+        c.perfil = None
+        db.session.commit()
+    img_missing = client.get(f"/tienda/tok_store_detail_premium/domesticas/{ids['ok']}/perfil", follow_redirects=False)
+    assert img_missing.status_code == 404
+
 
 def test_private_store_detail_hides_interview_block_when_no_real_interview():
     flask_app.config['TESTING'] = True
@@ -286,6 +295,28 @@ def test_private_store_detail_hides_interview_block_when_no_real_interview():
     assert "Puedes revisar la entrevista protegida" not in html
     assert "Perfil validado por la agencia" not in html
     assert "ps-photo-fallback" in html
+
+
+def test_private_store_selection_uses_profile_image_endpoint_when_available():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_selection_photo', scope_mode='all_available_store')
+        ids = _seed_candidates(seed=13)
+
+    add = client.post(
+        "/tienda/tok_store_selection_photo/seleccion/agregar",
+        data={"candidata_id": str(ids["ok"])},
+        follow_redirects=False,
+    )
+    assert add.status_code in (302, 303)
+    sel = client.get("/tienda/tok_store_selection_photo/mi-seleccion", follow_redirects=False)
+    assert sel.status_code == 200
+    html = sel.get_data(as_text=True)
+    assert f"/tienda/tok_store_selection_photo/domesticas/{ids['ok']}/perfil" in html
 
 
 def test_private_store_interview_protected_access_and_redaction():
