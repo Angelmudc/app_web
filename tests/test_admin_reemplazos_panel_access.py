@@ -92,11 +92,16 @@ def test_reemplazo_nuevo_panel_uses_search_and_single_reason_field():
     assert "Buscar cliente" in html
     assert "/admin/reemplazos/clientes-search" in html
     assert "/admin/reemplazos/cliente/" in html
-    assert "name=\"motivo_reemplazo_code\"" in html
-    assert "Motivo (código)" not in html
+    assert "name=\"motivo\"" in html
+    assert "name=\"motivo_reemplazo_code\"" not in html
     assert "Fecha reporte" not in html
     assert "name=\"candidata_old_id\"" not in html
-    assert "Selecciona cliente" not in html
+    assert "Busca y selecciona un cliente para cargar sus solicitudes." in html
+    assert "Responsable:" in html
+    assert "se asignará automáticamente al usuario actual" in html
+    assert "name=\"responsable_id\"" not in html
+    assert "Solicitud seleccionada: ninguna" in html
+    assert "Motivo del reemplazo" in html
 
 
 def test_reemplazos_clientes_search_and_solicitudes_json_and_post_validation():
@@ -144,29 +149,77 @@ def test_reemplazos_clientes_search_and_solicitudes_json_and_post_validation():
 
     bad_post = client.post(
         "/admin/reemplazos/nuevo",
-        data={"cliente_id": str(c1_id), "solicitud_id": str(s2_id), "motivo_reemplazo_code": "inasistencia"},
+        data={"cliente_id": str(c1_id), "solicitud_id": str(s2_id), "motivo": "Motivo prueba"},
         follow_redirects=False,
     )
     assert bad_post.status_code in (302, 303)
+
+    missing_solicitud = client.post(
+        "/admin/reemplazos/nuevo",
+        data={"cliente_id": str(c1_id), "motivo": "Motivo sin solicitud"},
+        follow_redirects=False,
+    )
+    assert missing_solicitud.status_code in (302, 303)
+
+    missing_motivo = client.post(
+        "/admin/reemplazos/nuevo",
+        data={"cliente_id": str(c1_id), "solicitud_id": str(s1_id), "motivo": " "},
+        follow_redirects=False,
+    )
+    assert missing_motivo.status_code in (302, 303)
 
     ok_post = client.post(
         "/admin/reemplazos/nuevo",
         data={
             "cliente_id": str(c1_id),
             "solicitud_id": str(s1_id),
-            "motivo_reemplazo_code": "inasistencia",
+            "motivo": "La candidata renunció por cambio de horario",
             "nota": "Prueba",
             "prioridad": "critica",
             "fecha_reporte": "2001-01-01",
+            "responsable_id": str(c2_id),
         },
         follow_redirects=False,
     )
     assert ok_post.status_code in (302, 303)
     with flask_app.app_context():
         repl = Reemplazo.query.filter_by(solicitud_id=s1_id).order_by(Reemplazo.id.desc()).first()
+        staff = StaffUser.query.filter_by(username="Karla").first()
         assert repl is not None
         assert int(repl.candidata_old_id or 0) > 0
-        assert (repl.motivo_reemplazo_code or "") == "inasistencia"
+        assert (repl.motivo_fallo or "") == "La candidata renunció por cambio de horario"
+        assert repl.motivo_reemplazo_code is None
         assert (repl.prioridad or "") == "media"
+        if staff is not None:
+            assert int(repl.responsable_id or 0) == int(staff.id)
         now = admin_routes.utc_now_naive()
         assert abs((now - repl.fecha_reporte).total_seconds()) < 180
+
+
+def test_reemplazo_nuevo_rechaza_solicitud_sin_candidata_asignada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        token = secrets.token_hex(4)
+        c1 = Cliente(codigo=f"NC-{token}", nombre_completo=f"Cliente {token}", email=f"nc_{token}@x.com", telefono="8099990000")
+        db.session.add(c1)
+        db.session.flush()
+        s1 = Solicitud(cliente_id=int(c1.id), codigo_solicitud=f"SOL-NC-{token}", estado="activa", candidata_id=None, ciudad_sector="SD")
+        db.session.add(s1)
+        db.session.commit()
+        c1_id = int(c1.id)
+        s1_id = int(s1.id)
+    _login_staff(client)
+
+    resp = client.post(
+        "/admin/reemplazos/nuevo",
+        data={"cliente_id": str(c1_id), "solicitud_id": str(s1_id), "motivo": "Cliente solicita cambio"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        repl = Reemplazo.query.filter_by(solicitud_id=s1_id).first()
+        assert repl is None

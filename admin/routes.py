@@ -17101,20 +17101,9 @@ def reemplazo_nuevo_panel():
     solicitud_id = max(0, _safe_int(request.values.get("solicitud_id"), default=0))
 
     if request.method == "POST":
-        motivo_code = (request.form.get("motivo_reemplazo_code") or "").strip().lower()
-        motivo_label_map = {
-            "inasistencia": "Inasistencia",
-            "renuncia": "Renuncia",
-            "bajo_rendimiento": "Bajo rendimiento",
-            "incompatibilidad": "Incompatibilidad",
-            "horario": "Horario",
-            "salud_emergencia": "Salud/emergencia",
-            "solicitud_cliente": "Solicitud del cliente",
-            "otro": "Otro",
-        }
-        motivo = motivo_label_map.get(motivo_code, "")
+        motivo = (request.form.get("motivo") or "").strip()
         nota = (request.form.get("nota") or "").strip() or None
-        responsable_id = max(0, _safe_int(request.form.get("responsable_id"), default=0)) or None
+        responsable_id = max(0, _safe_int(getattr(current_user, "id", 0), default=0)) or None
 
         if solicitud_id <= 0:
             flash("Debes seleccionar una solicitud activa.", "warning")
@@ -17155,7 +17144,7 @@ def reemplazo_nuevo_panel():
             motivo_fallo=motivo,
             nota_adicional=nota,
             prioridad="media",
-            motivo_reemplazo_code=motivo_code or "otro",
+            motivo_reemplazo_code=None,
             responsable_id=responsable_id,
             estado_previo_solicitud=(sol.estado or "").strip().lower() or None,
             fecha_reporte=utc_now_naive(),
@@ -17190,13 +17179,11 @@ def reemplazo_nuevo_panel():
         )
     else:
         solicitudes = []
-    staff_users = StaffUser.query.order_by(StaffUser.username.asc()).all()
     return render_template(
         "admin/reemplazo_nuevo_panel.html",
         selected_cliente=selected_cliente,
         selected_solicitud_id=solicitud_id,
         solicitudes=solicitudes,
-        staff_users=staff_users,
     )
 
 

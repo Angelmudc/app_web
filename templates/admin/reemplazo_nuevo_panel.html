@@ -41,6 +41,8 @@
 
       <div class="col-12">
         <label class="form-label">2. Elegir solicitud del cliente</label>
+        <div class="small fw-semibold">Solicitudes disponibles del cliente</div>
+        <div class="small text-muted mb-2">La solicitud específica es obligatoria para abrir reemplazo.</div>
         <div id="solicitudesContainer" class="border rounded p-2">
           {% if selected_cliente %}
             {% if solicitudes %}
@@ -54,6 +56,8 @@
                         data-estado="{{ s.estado or '—' }}">
                   <div class="fw-semibold">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</div>
                   <div class="small text-muted">{{ s.ciudad_sector or '—' }} · {{ (s.modalidad_trabajo or 'No especificada')|replace('_', ' ')|title }} · {{ s.estado or '—' }}</div>
+                  <div class="small">Candidata actual: {{ s.candidata.nombre_completo if s.candidata else 'Sin candidata asignada' }}</div>
+                  <div class="small fw-semibold mt-1">Seleccionar solicitud</div>
                 </button>
                 {% endfor %}
               </div>
@@ -61,42 +65,28 @@
               <div class="text-muted small">No hay solicitudes activas para este cliente.</div>
             {% endif %}
           {% else %}
-            <div class="text-muted small">Selecciona un cliente para ver sus solicitudes activas.</div>
+            <div class="text-muted small">Busca y selecciona un cliente para cargar sus solicitudes.</div>
           {% endif %}
         </div>
+        <div id="solicitudSeleccionadaInfo" class="small mt-2 fw-semibold">Solicitud seleccionada: ninguna</div>
       </div>
 
       <div class="col-12">
         <label class="form-label">3. Candidata actual (automática)</label>
         <div id="candidataActualBox" class="form-control-plaintext border rounded px-2 py-2">Sin candidata asignada</div>
+        <div id="candidataActualAlert" class="small text-danger mt-1 d-none">Esta solicitud no tiene candidata asignada; no se puede abrir reemplazo.</div>
       </div>
 
       <div class="col-12">
         <label class="form-label">4. Motivo del reemplazo</label>
-        <select name="motivo_reemplazo_code" class="form-select" required>
-          <option value="">Selecciona motivo</option>
-          <option value="inasistencia">Inasistencia</option>
-          <option value="renuncia">Renuncia</option>
-          <option value="bajo_rendimiento">Bajo rendimiento</option>
-          <option value="incompatibilidad">Incompatibilidad</option>
-          <option value="horario">Horario</option>
-          <option value="salud_emergencia">Salud/emergencia</option>
-          <option value="solicitud_cliente">Solicitud del cliente</option>
-          <option value="otro">Otro</option>
-        </select>
+        <textarea name="motivo" class="form-control" rows="3" required placeholder="Ej: La candidata renunció, no se adaptó al horario, el cliente pidió cambio..."></textarea>
       </div>
       <div class="col-12">
         <label class="form-label">5. Nota interna</label>
         <textarea name="nota" class="form-control" rows="3"></textarea>
       </div>
-      <div class="col-md-6">
-        <label class="form-label">6. Responsable (opcional)</label>
-        <select name="responsable_id" class="form-select">
-          <option value="">Sin asignar</option>
-          {% for staff in (staff_users or []) %}
-          <option value="{{ staff.id }}">{{ staff.username }}</option>
-          {% endfor %}
-        </select>
+      <div class="col-12">
+        <div class="small text-muted"><strong>Responsable:</strong> se asignará automáticamente al usuario actual.</div>
       </div>
       <div class="col-12 form-check">
         <input type="checkbox" class="form-check-input" id="confirmar_duplicado" name="confirmar_duplicado" value="1">
@@ -104,7 +94,7 @@
       </div>
       <div class="col-12 d-flex justify-content-end gap-2">
         <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary">Cancelar</a>
-        <button class="btn btn-primary" type="submit">Crear reemplazo</button>
+        <button class="btn btn-primary" id="crearReemplazoBtn" type="submit">Crear reemplazo</button>
       </div>
     </form>
   </div>
@@ -119,11 +109,21 @@
     var solicitudesContainer = document.getElementById("solicitudesContainer");
     var clienteSeleccionado = document.getElementById("clienteSeleccionado");
     var candidataActualBox = document.getElementById("candidataActualBox");
+    var solicitudSeleccionadaInfo = document.getElementById("solicitudSeleccionadaInfo");
+    var candidataActualAlert = document.getElementById("candidataActualAlert");
+    var crearBtn = document.getElementById("crearReemplazoBtn");
 
     function esc(s) {
       return String(s || "").replace(/[&<>\"']/g, function (m) {
         return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m];
       });
+    }
+
+    function toggleSubmit() {
+      var hasSolicitud = !!(solicitudIdInput.value || "").trim();
+      var hasCandidata = (candidataActualBox.textContent || "").trim().toLowerCase() !== "sin candidata asignada";
+      if (candidataActualAlert) candidataActualAlert.classList.toggle("d-none", hasCandidata);
+      crearBtn.disabled = !(hasSolicitud && hasCandidata);
     }
 
     function setSelectedSolicitudFromNode(node) {
@@ -133,6 +133,8 @@
       node.classList.add("active");
       solicitudIdInput.value = node.getAttribute("data-solicitud-id") || "";
       candidataActualBox.textContent = node.getAttribute("data-candidata-actual") || "Sin candidata asignada";
+      solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: " + (node.getAttribute("data-solicitud-id") || "ninguna");
+      toggleSubmit();
     }
 
     function bindSolicitudButtons() {
@@ -142,14 +144,27 @@
           setSelectedSolicitudFromNode(this);
         });
       }
-      if (!solicitudIdInput.value && nodes.length > 0) setSelectedSolicitudFromNode(nodes[0]);
+      if (solicitudIdInput.value) {
+        for (var j = 0; j < nodes.length; j += 1) {
+          if ((nodes[j].getAttribute("data-solicitud-id") || "") === String(solicitudIdInput.value)) {
+            setSelectedSolicitudFromNode(nodes[j]);
+            break;
+          }
+        }
+      } else {
+        solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: ninguna";
+        candidataActualBox.textContent = "Sin candidata asignada";
+        toggleSubmit();
+      }
     }
 
     function renderSolicitudes(rows) {
       if (!rows || !rows.length) {
         solicitudesContainer.innerHTML = '<div class="text-muted small">No hay solicitudes activas para este cliente.</div>';
         solicitudIdInput.value = "";
+        solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: ninguna";
         candidataActualBox.textContent = "Sin candidata asignada";
+        toggleSubmit();
         return;
       }
       var html = '<div class="list-group">';
@@ -158,6 +173,8 @@
         html += '<button type="button" class="list-group-item list-group-item-action solicitud-item" data-solicitud-id="' + esc(s.id) + '" data-candidata-old-id="' + esc(s.candidata_old_id) + '" data-candidata-actual="' + esc(s.candidata_actual) + '" data-estado="' + esc(s.estado) + '">';
         html += '<div class="fw-semibold">' + esc(s.codigo) + '</div>';
         html += '<div class="small text-muted">' + esc(s.ciudad_sector) + ' · ' + esc(s.modalidad) + ' · ' + esc(s.estado) + '</div>';
+        html += '<div class="small">Candidata actual: ' + esc(s.candidata_actual || "Sin candidata asignada") + '</div>';
+        html += '<div class="small fw-semibold mt-1">Seleccionar solicitud</div>';
         html += '</button>';
       }
       html += '</div>';
@@ -167,9 +184,11 @@
 
     function loadSolicitudes(clienteId) {
       if (!clienteId) {
-        solicitudesContainer.innerHTML = '<div class="text-muted small">Selecciona un cliente para ver sus solicitudes activas.</div>';
+        solicitudesContainer.innerHTML = '<div class="text-muted small">Busca y selecciona un cliente para cargar sus solicitudes.</div>';
         solicitudIdInput.value = "";
+        solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: ninguna";
         candidataActualBox.textContent = "Sin candidata asignada";
+        toggleSubmit();
         return;
       }
       fetch('/admin/reemplazos/cliente/' + encodeURIComponent(clienteId) + '/solicitudes.json', { credentials: "same-origin" })
@@ -183,6 +202,7 @@
     function selectCliente(row) {
       clienteIdInput.value = String(row.id || "");
       clienteSeleccionado.textContent = "Cliente seleccionado: " + (row.codigo || ("#" + row.id)) + " · " + (row.nombre || "");
+      solicitudIdInput.value = "";
       loadSolicitudes(row.id);
     }
 
@@ -232,6 +252,7 @@
       }
     });
     bindSolicitudButtons();
+    toggleSubmit();
   })();
 </script>
 {% endblock %}
