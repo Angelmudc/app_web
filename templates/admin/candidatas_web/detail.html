@@ -42,6 +42,29 @@
   .cw-chip-input:checked + .cw-chip .cw-chip-check {
     opacity: 1;
   }
+  .cw-preview-card {
+    border: 1px solid rgba(110, 168, 254, 0.25);
+    background: linear-gradient(180deg, rgba(21, 28, 40, 0.95), rgba(16, 23, 33, 0.92));
+    color: #f5f8ff;
+  }
+  .cw-preview-card strong {
+    color: #ffffff;
+  }
+  .cw-photo-shell {
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px dashed rgba(255, 255, 255, 0.22);
+    border-radius: 0.75rem;
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .cw-photo-shell img {
+    width: 100%;
+    max-height: 360px;
+    object-fit: cover;
+    border-radius: 0.6rem;
+  }
 </style>
 <div class="container py-4" style="max-width: 1100px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
@@ -187,35 +210,51 @@
       </div>
 
       <div class="col-lg-5">
-        <div class="card">
+        <div class="card position-sticky" style="top: 1rem;">
           <div class="card-header"><strong>Preview rápido</strong></div>
           <div class="card-body">
             <p class="text-muted small mb-2">Vista aproximada de cómo se presentará públicamente.</p>
-            <div class="border rounded p-3">
-              <h2 class="h6 mb-1">{{ (ficha.nombre_publico if ficha and ficha.nombre_publico else candidata.nombre_completo) }}</h2>
-              <p class="small text-muted mb-2">
+            <div class="cw-preview-card border rounded p-3" data-preview-card="1">
+              <h2 class="h6 mb-1" data-preview-field="nombre">{{ (ficha.nombre_publico if ficha and ficha.nombre_publico else candidata.nombre_completo) }}</h2>
+              <p class="small text-muted mb-2" data-preview-field="edad_ciudad">
                 {{ (ficha.edad_publica if ficha and ficha.edad_publica else candidata.edad or 'Edad no especificada') }}
                 ·
                 {{ (ficha.ciudad_publica if ficha and ficha.ciudad_publica else 'Zona disponible bajo coordinación') }}
               </p>
-              <p class="mb-2"><strong>Sector:</strong> {{ ficha.sector_publico if ficha and ficha.sector_publico else 'Por definir' }}</p>
-              <p class="mb-2"><strong>Estado:</strong> {{ ficha.estado_publico if ficha else 'disponible' }}</p>
-              <p class="mb-2"><strong>Modalidad:</strong> {{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else (candidata.modalidad_trabajo_preferida or 'Por definir') }}</p>
-              <p class="mb-2"><strong>Sueldo:</strong> {{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else 'A coordinar' }}</p>
-              <p class="mb-2"><strong>Funciones:</strong>
-                {% if selected_tags %}
-                  {{ selected_tags|join(' · ') }}
-                {% else %}
-                  Por definir
-                {% endif %}
-              </p>
-              <p class="mb-2"><strong>Perfil/foto:</strong> {{ 'Disponible' if has_photo else 'No disponible' }}</p>
-              <p class="mb-2"><strong>Entrevista:</strong> {{ 'Realizada' if has_interview else 'No realizada' }}</p>
-              <p class="mb-2"><strong>Resumen:</strong> {{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else 'Sin resumen editorial.' }}</p>
+              <p class="mb-2"><strong>Sector:</strong> <span data-preview-field="sector">{{ ficha.sector_publico if ficha and ficha.sector_publico else 'Por definir' }}</span></p>
+              <p class="mb-2"><strong>Estado:</strong> <span data-preview-field="estado">{{ ficha.estado_publico if ficha else 'disponible' }}</span></p>
+              <p class="mb-2"><strong>Visible:</strong> <span data-preview-field="visible">{{ 'Sí' if (not ficha or ficha.visible) else 'No' }}</span></p>
+              <p class="mb-2"><strong>Disponible inmediato:</strong> <span data-preview-field="disponible_inmediato">{{ 'Sí' if (not ficha or ficha.disponible_inmediato) else 'No' }}</span></p>
+              <p class="mb-2"><strong>Modalidad:</strong> <span data-preview-field="modalidad">{{ ficha.modalidad_publica if ficha and ficha.modalidad_publica else (candidata.modalidad_trabajo_preferida or 'Por definir') }}</span></p>
+              <p class="mb-2"><strong>Sueldo:</strong> <span data-preview-field="sueldo">{{ ficha.sueldo_texto_publico if ficha and ficha.sueldo_texto_publico else 'A coordinar' }}</span></p>
+              <p class="mb-2"><strong>Funciones:</strong> <span data-preview-field="funciones">{% if selected_tags %}{{ selected_tags|join(' · ') }}{% else %}Por definir{% endif %}</span></p>
+              <p class="mb-2"><strong>Resumen:</strong> <span data-preview-field="resumen">{{ ficha.experiencia_resumen if ficha and ficha.experiencia_resumen else 'Sin resumen editorial.' }}</span></p>
             </div>
             <p class="text-muted small mt-3 mb-0">
               Este módulo no publica referencias, notas internas, teléfonos, cédula ni dirección exacta.
             </p>
+          </div>
+        </div>
+        <div class="card mt-3">
+          <div class="card-header"><strong>Foto del perfil</strong></div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+              <span class="badge {% if has_photo %}text-bg-success{% else %}text-bg-secondary{% endif %}" data-preview-photo-state>
+                Perfil/foto: {{ 'Disponible' if has_photo else 'No disponible' }}
+              </span>
+              <span class="badge {% if has_interview %}text-bg-success{% else %}text-bg-secondary{% endif %}" data-preview-interview-state>
+                Entrevista: {{ 'Realizada' if has_interview else 'No realizada' }}
+              </span>
+            </div>
+            <div class="cw-photo-shell">
+              {% if has_photo %}
+              <img src="{{ profile_photo_url }}" alt="Foto de {{ candidata.nombre_completo }}" data-preview-photo-img>
+              {% else %}
+              <div class="text-center px-3" data-preview-photo-placeholder>
+                <div class="small text-muted">Sin foto de perfil cargada.</div>
+              </div>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -227,4 +266,72 @@
     </div>
   </form>
 </div>
+<script>
+  (function () {
+    var form = document.querySelector('form[action*="/admin/candidatas-web/"]');
+    if (!form) return;
+    var q = function (s) { return form.querySelector(s); };
+    var qa = function (s) { return Array.prototype.slice.call(form.querySelectorAll(s)); };
+    var preview = {
+      nombre: document.querySelector('[data-preview-field="nombre"]'),
+      edadCiudad: document.querySelector('[data-preview-field="edad_ciudad"]'),
+      sector: document.querySelector('[data-preview-field="sector"]'),
+      estado: document.querySelector('[data-preview-field="estado"]'),
+      visible: document.querySelector('[data-preview-field="visible"]'),
+      disponibleInmediato: document.querySelector('[data-preview-field="disponible_inmediato"]'),
+      modalidad: document.querySelector('[data-preview-field="modalidad"]'),
+      sueldo: document.querySelector('[data-preview-field="sueldo"]'),
+      funciones: document.querySelector('[data-preview-field="funciones"]'),
+      resumen: document.querySelector('[data-preview-field="resumen"]')
+    };
+    var fields = {
+      nombre: q('[name="nombre_publico"]'),
+      edad: q('[name="edad_publica"]'),
+      ciudad: q('[name="ciudad_publica"]'),
+      sector: q('[name="sector_publico"]'),
+      estado: q('[name="estado_publico"]'),
+      visible: q('[name="visible"]'),
+      disponibleInmediato: q('[name="disponible_inmediato"]'),
+      modalidad: q('[name="modalidad_publica"]'),
+      sueldo: q('[name="sueldo_texto_publico"]'),
+      resumen: q('[name="experiencia_resumen"]'),
+      tags: qa('[name="tags_publicos"]')
+    };
+    var clean = function (v) { return (v || '').trim(); };
+    var selectedTags = function () {
+      return fields.tags.filter(function (cb) { return cb.checked; }).map(function (cb) { return clean(cb.value); }).filter(Boolean);
+    };
+    var setText = function (el, txt) { if (el) el.textContent = txt; };
+    var update = function () {
+      var nombre = clean(fields.nombre && fields.nombre.value) || {{ (candidata.nombre_completo or '')|tojson }};
+      var edad = clean(fields.edad && fields.edad.value) || 'Edad no especificada';
+      var ciudad = clean(fields.ciudad && fields.ciudad.value) || 'Zona disponible bajo coordinación';
+      var sector = clean(fields.sector && fields.sector.value) || 'Por definir';
+      var estado = clean(fields.estado && fields.estado.value) || 'disponible';
+      var visible = (fields.visible && fields.visible.value === '0') ? 'No' : 'Sí';
+      var disp = (fields.disponibleInmediato && fields.disponibleInmediato.value === '0') ? 'No' : 'Sí';
+      var modalidad = clean(fields.modalidad && fields.modalidad.value) || 'Por definir';
+      var sueldo = clean(fields.sueldo && fields.sueldo.value) || 'A coordinar';
+      var resumen = clean(fields.resumen && fields.resumen.value) || 'Sin resumen editorial.';
+      var tags = selectedTags();
+      setText(preview.nombre, nombre);
+      setText(preview.edadCiudad, edad + ' · ' + ciudad);
+      setText(preview.sector, sector);
+      setText(preview.estado, estado);
+      setText(preview.visible, visible);
+      setText(preview.disponibleInmediato, disp);
+      setText(preview.modalidad, modalidad);
+      setText(preview.sueldo, sueldo);
+      setText(preview.resumen, resumen);
+      setText(preview.funciones, tags.length ? tags.join(' · ') : 'Por definir');
+    };
+    ['input', 'change'].forEach(function (evt) {
+      form.addEventListener(evt, function (e) {
+        if (!e || !e.target) return;
+        update();
+      });
+    });
+    update();
+  })();
+</script>
 {% endblock %}

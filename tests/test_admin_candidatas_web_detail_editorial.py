@@ -209,6 +209,68 @@ def test_form_no_muestra_campos_retirados_ni_preview_legacy():
     assert "Sin resumen editorial de entrevista." not in html
 
 
+def test_editor_contiene_hooks_de_preview_realtime():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fila = 990514
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_candidata(fila)
+
+    _login_staff(client)
+    html = client.get(f"/admin/candidatas-web/{fila}", follow_redirects=False).get_data(as_text=True)
+    assert 'data-preview-card="1"' in html
+    assert 'data-preview-field="nombre"' in html
+    assert 'data-preview-field="funciones"' in html
+    assert 'data-preview-photo-state' in html
+    assert 'data-preview-interview-state' in html
+
+
+def test_editor_foto_y_estado_entrevista_en_bloque_debajo_del_preview():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fila_with = 990515
+    fila_without = 990516
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_candidata(fila_with, has_profile=True, entrevista_txt="Entrevista OK")
+        _seed_candidata(fila_without, has_profile=False)
+
+    _login_staff(client)
+    html_with = client.get(f"/admin/candidatas-web/{fila_with}", follow_redirects=False).get_data(as_text=True)
+    html_without = client.get(f"/admin/candidatas-web/{fila_without}", follow_redirects=False).get_data(as_text=True)
+    assert "Foto del perfil" in html_with
+    assert f'/perfil_candidata?fila={fila_with}' in html_with
+    assert "Perfil/foto: Disponible" in html_with
+    assert "Entrevista: Realizada" in html_with
+    assert "Perfil/foto: No disponible" in html_without
+    assert "Entrevista: No realizada" in html_without
+    assert "Entrevista OK" not in html_with
+
+
+def test_endpoint_perfil_candidata_requiere_acceso_y_devuelve_imagen():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fila = 990517
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_candidata(fila, has_profile=True)
+
+    resp_noauth = client.get(f"/perfil_candidata?fila={fila}", follow_redirects=False)
+    assert resp_noauth.status_code in (302, 401, 403)
+
+    _login_staff(client)
+    resp = client.get(f"/perfil_candidata?fila={fila}", follow_redirects=False)
+    assert resp.status_code == 200
+    assert (resp.content_type or "").startswith("image/")
+
+
 def test_listado_candidatas_web_sigue_operativo():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
