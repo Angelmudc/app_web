@@ -95,13 +95,15 @@
         {% if c.disponible_inmediato %}<span class="ps-badge ps-badge-premium">Disponible inmediata</span>{% endif %}
       </div>
       <div class="ps-photo-wrap ps-card-media">
-        {% if c.foto_publica_url %}
-        <img class="ps-card-photo" src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
-        {% else %}
-        <div class="ps-photo-fallback ps-card-photo-fallback" aria-label="Sin foto de perfil">
-          <span class="ps-photo-fallback-icon">{{ initials }}</span>
+        <div class="ps-card-media-inner">
+          {% if c.foto_publica_url %}
+          <img class="ps-card-photo" src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
+          {% else %}
+          <div class="ps-photo-fallback ps-card-photo-fallback" aria-label="Sin foto de perfil">
+            <span class="ps-photo-fallback-icon">{{ initials }}</span>
+          </div>
+          {% endif %}
         </div>
-        {% endif %}
       </div>
       <div class="ps-body">
         <h2>{{ c.nombre_publico }}</h2>

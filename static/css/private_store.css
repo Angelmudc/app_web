@@ -279,12 +279,20 @@ body.ps-page main { padding-top: 8px; }
 }
 .ps-photo-wrap {
   position: relative;
-  height: 248px;
-  margin: 10px 12px 0;
+  min-height: 256px;
+  margin: 8px 12px 0;
+  padding: 10px 8px;
   border-radius: 12px;
-  background: linear-gradient(140deg, rgba(10, 28, 46, 0.96), rgba(16, 40, 62, 0.9));
+  background: linear-gradient(150deg, rgba(11, 28, 43, 0.95), rgba(18, 42, 62, 0.88));
   border: 1px solid rgba(160, 193, 222, 0.35);
+}
+.ps-card-media-inner {
+  width: min(100%, 210px);
+  margin: 0 auto;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
   overflow: hidden;
+  background: radial-gradient(120% 120% at 0% 0%, rgba(59, 92, 123, 0.2), rgba(25, 39, 54, 0.35));
 }
 .ps-photo-wrap img,
 .ps-card-photo {
@@ -319,12 +327,12 @@ body.ps-page main { padding-top: 8px; }
 .ps-badge { border-radius: 999px; border: 1px solid rgba(146, 189, 223, 0.45); background: rgba(9, 37, 60, 0.86); color: #d8ebfc; padding: 4px 9px; font-size: .7rem; font-weight: 800; }
 .ps-badge-on { background: rgba(16, 91, 63, 0.84); color: #dcffe9; border-color: rgba(129, 228, 189, 0.55); }
 .ps-badge-premium { background: rgba(107, 76, 21, 0.84); color: #fff1ce; border-color: rgba(236, 206, 134, 0.55); }
-.ps-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ps-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 5px; }
 .ps-body h2 { margin: 0; font-size: 1rem; color: #edf5ff; }
 .ps-card-modality { margin: 0; color: #cae2f8; font-size: .82rem; font-weight: 700; }
 .ps-meta { margin: 0; color: var(--ps-text-muted); font-size: .86rem; }
 .ps-summary {
-  margin: 2px 0;
+  margin: 1px 0;
   color: #c8d8e8;
   line-height: 1.34;
   display: -webkit-box;
@@ -335,7 +343,7 @@ body.ps-page main { padding-top: 8px; }
 .ps-tags { display: flex; flex-wrap: wrap; gap: 6px; }
 .ps-tag { font-size: .72rem; padding: 4px 8px; border-radius: 999px; background: #f1f6fb; color: #35546f; border: 1px solid #d6e5f2; }
 .ps-salary { margin: 4px 0 0; font-size: .84rem; font-weight: 800; color: #1a3e63; }
-.ps-row-actions { margin-top: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.ps-row-actions { margin-top: 2px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .ps-inline-form { display: inline-flex; }
 .ps-link,
 .ps-link-secondary,
@@ -775,7 +783,8 @@ body.ps-page main { padding-top: 8px; }
   .ps-pagination { margin-top: 24px; }
   .ps-filter-row { grid-template-columns: 1.1fr 1fr .9fr; }
   .ps-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .ps-photo-wrap { height: 260px; }
+  .ps-photo-wrap { min-height: 274px; padding: 10px; }
+  .ps-card-media-inner { width: min(100%, 224px); }
   .ps-detail { padding: 24px 0 46px; }
   .ps-detail-head { display: flex; justify-content: space-between; align-items: center; }
   .ps-interview-head { align-items: flex-start; }
@@ -808,7 +817,8 @@ body.ps-page main { padding-top: 8px; }
 }
 
 @media (max-width: 760px) {
-  .ps-photo-wrap { height: 220px; }
+  .ps-photo-wrap { min-height: 236px; padding: 8px; }
+  .ps-card-media-inner { width: min(100%, 184px); }
   .ps-interview-head .ps-link-secondary { width: fit-content; }
   .ps-interview-shell { border-radius: 18px; }
   .ps-interview-shell .ps-detail-body { padding: 12px; }

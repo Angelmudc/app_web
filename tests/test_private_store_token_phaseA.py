@@ -137,6 +137,7 @@ def test_private_store_token_valido_all_available_200_and_privacy_html():
     assert f"/tienda/tok_store_ok/domesticas/{ids['ok']}/perfil" in html
     assert "ps-card-photo" in html
     assert "ps-card-media" in html
+    assert "ps-card-media-inner" in html
     assert "ps-card-badges" in html
     assert "ps-photo-overlay" not in html
 
