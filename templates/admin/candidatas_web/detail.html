@@ -1,6 +1,48 @@
 {% extends 'base.html' %}
 {% block title %}Perfil Público · {{ candidata.codigo or candidata.fila }}{% endblock %}
 {% block content %}
+<style>
+  .cw-chip-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .cw-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    background: rgba(21, 25, 33, 0.8);
+    color: #f3f6fb;
+    border-radius: 999px;
+    padding: 0.4rem 0.7rem;
+    cursor: pointer;
+    user-select: none;
+    transition: all .15s ease;
+  }
+  .cw-chip-input:focus-visible + .cw-chip {
+    outline: 2px solid #6ea8fe;
+    outline-offset: 1px;
+  }
+  .cw-chip-input:checked + .cw-chip {
+    background: rgba(25, 135, 84, 0.2);
+    border-color: #66d19e;
+    color: #dff7ec;
+  }
+  .cw-chip-check {
+    font-size: 0.8rem;
+    opacity: 0.35;
+  }
+  .cw-chip-input:checked + .cw-chip .cw-chip-check {
+    opacity: 1;
+  }
+</style>
 <div class="container py-4" style="max-width: 1100px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
@@ -122,9 +164,17 @@
                 <div class="d-flex flex-wrap gap-2">
                   {% for tag in tag_options %}
                   {% set checked = tag in selected_tags %}
-                  <label class="btn btn-sm {% if checked %}btn-primary{% else %}btn-outline-secondary{% endif %}">
-                    <input type="checkbox" class="d-none" name="tags_publicos" value="{{ tag }}" {% if checked %}checked{% endif %}>
-                    {{ tag }}
+                  {% set chip_id = "tag-publico-" ~ loop.index %}
+                  <input
+                    id="{{ chip_id }}"
+                    class="cw-chip-input"
+                    type="checkbox"
+                    name="tags_publicos"
+                    value="{{ tag }}"
+                    {% if checked %}checked{% endif %}>
+                  <label class="cw-chip" for="{{ chip_id }}">
+                    <span class="cw-chip-check" aria-hidden="true">✓</span>
+                    <span>{{ tag }}</span>
                   </label>
                   {% endfor %}
                 </div>

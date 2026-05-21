@@ -97,6 +97,55 @@ def test_tags_multiples_se_guardan_como_csv():
         assert ficha.tags_publicos == "Limpieza general,Cocinar,Lavar"
 
 
+def test_get_editor_renderiza_checkboxes_tags_y_precarga_checked():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fila = 990512
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_candidata(fila)
+        db.session.add(CandidataWeb(candidata_id=fila, tags_publicos="Limpieza general,Cocinar"))
+        db.session.commit()
+
+    _login_staff(client)
+    html = client.get(f"/admin/candidatas-web/{fila}", follow_redirects=False).get_data(as_text=True)
+    assert 'type="checkbox"' in html
+    assert 'name="tags_publicos"' in html
+    assert re.search(r'name="tags_publicos"[^>]*value="Limpieza general"[^>]*checked', html)
+    assert re.search(r'name="tags_publicos"[^>]*value="Cocinar"[^>]*checked', html)
+    assert "Tags públicos (coma)" not in html
+
+
+def test_post_tags_invalidos_se_ignoran():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fila = 990513
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_candidata(fila)
+
+    _login_staff(client)
+    payload = MultiDict(
+        [
+            ("estado_publico", "disponible"),
+            ("modalidad_publica", "Con dormida"),
+            ("tags_publicos", "Limpieza general"),
+            ("tags_publicos", "Hacker tag"),
+            ("tags_publicos", "Cocinar"),
+        ]
+    )
+    resp = client.post(f"/admin/candidatas-web/{fila}", data=payload, follow_redirects=False)
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        ficha = CandidataWeb.query.filter_by(candidata_id=fila).first()
+        assert ficha is not None
+        assert ficha.tags_publicos == "Limpieza general,Cocinar"
+
+
 def test_form_muestra_estado_foto_disponible_y_no_disponible():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
