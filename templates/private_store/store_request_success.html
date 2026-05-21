@@ -2,8 +2,10 @@
 {% block title %}Solicitud enviada{% endblock %}
 {% block content %}
 <section class="container ps-state">
-  <h1>Solicitud enviada</h1>
-  <p>Recibimos tu solicitud de entrevistas. El equipo de la agencia te contactará para coordinar.</p>
+  <h1>Solicitud enviada correctamente</h1>
+  <p>Recibimos tus candidatas seleccionadas.</p>
+  <p>La agencia te contactará por WhatsApp para coordinar entrevistas.</p>
   <p><strong>Referencia:</strong> #{{ interes.id }}</p>
+  <p><a class="ps-pill ps-pill-primary" href="{{ url_for('public.private_store_list', token=token) }}">Volver a la tienda</a></p>
 </section>
 {% endblock %}

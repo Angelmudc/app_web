@@ -1533,7 +1533,7 @@ def private_store_request_interviews(token: str):
         except SQLAlchemyError:
             db.session.rollback()
             current_app.logger.exception("private_store.checkout.persist.rollback.sqlalchemy %s", payload)
-            flash("No se pudo guardar tu solicitud en este momento. Inténtalo nuevamente.", "danger")
+            flash("No pudimos enviar tu solicitud. Intenta nuevamente o contáctanos por WhatsApp.", "danger")
             return render_template(
                 "private_store/store_request_interviews.html",
                 catalogo=catalogo,
@@ -1548,7 +1548,7 @@ def private_store_request_interviews(token: str):
         except Exception:
             db.session.rollback()
             current_app.logger.exception("private_store.checkout.persist.rollback.unexpected %s", payload)
-            flash("Ocurrió un error inesperado al enviar la solicitud.", "danger")
+            flash("No pudimos enviar tu solicitud. Intenta nuevamente o contáctanos por WhatsApp.", "danger")
             return render_template(
                 "private_store/store_request_interviews.html",
                 catalogo=catalogo,

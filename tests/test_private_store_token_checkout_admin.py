@@ -185,6 +185,12 @@ def test_checkout_requires_selection_and_post_creates_interes_items_and_admin_vi
     checkout_get = client.get("/tienda/tok_checkout/solicitar-entrevistas", follow_redirects=False)
     assert checkout_get.status_code == 200
     get_html = checkout_get.get_data(as_text=True)
+    assert 'id="ps-checkout-form"' in get_html
+    assert 'method="post"' in get_html
+    assert 'action="/tienda/tok_checkout/solicitar-entrevistas"' in get_html
+    assert 'name="csrf_token"' in get_html
+    assert 'type="submit"' in get_html
+    assert 'data-store-action=' not in get_html
     assert "Ana Cliente" in get_html
     assert "8095551111" in get_html
     assert "Confirmado por la agencia" in get_html
@@ -203,7 +209,10 @@ def test_checkout_requires_selection_and_post_creates_interes_items_and_admin_vi
     )
     assert send.status_code in (200, 302, 303)
     send_html = send.get_data(as_text=True)
-    assert "Solicitud enviada" in send_html
+    assert "Solicitud enviada correctamente" in send_html
+    assert "Recibimos tus candidatas seleccionadas" in send_html
+    assert "La agencia te contactará por WhatsApp" in send_html
+    assert "Volver a la tienda" in send_html
 
     with flask_app.app_context():
         interes = TiendaInteres.query.order_by(TiendaInteres.id.desc()).first()

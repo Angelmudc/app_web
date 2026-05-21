@@ -123,6 +123,27 @@
     });
   }
 
+  function bindCheckoutSubmitUX() {
+    var form = document.getElementById('ps-checkout-form');
+    if (!form) return;
+    var desktopBtn = form.querySelector('[data-checkout-submit]');
+    var mobileBtn = document.querySelector('[data-checkout-submit-mobile]');
+    var lock = false;
+
+    form.addEventListener('submit', function () {
+      if (lock) return;
+      lock = true;
+      if (desktopBtn) {
+        desktopBtn.disabled = true;
+        desktopBtn.textContent = 'Enviando solicitud...';
+      }
+      if (mobileBtn) {
+        mobileBtn.disabled = true;
+        mobileBtn.textContent = 'Enviando solicitud...';
+      }
+    });
+  }
+
   document.addEventListener('submit', function (event) {
     var form = event.target;
     if (!(form instanceof HTMLFormElement)) return;
@@ -190,6 +211,7 @@
   }
 
   bindDrawer();
+  bindCheckoutSubmitUX();
   window.setTimeout(function () {
     pollState();
     window.setInterval(pollState, 25000);
