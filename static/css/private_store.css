@@ -272,7 +272,8 @@ body.ps-page main { padding-top: 8px; }
   box-shadow: 0 18px 38px rgba(3, 14, 25, 0.36);
 }
 .ps-photo-wrap { position: relative; height: 220px; background: linear-gradient(140deg, #0d2740, #13365a); }
-.ps-photo-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ps-photo-wrap img,
+.ps-card-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
 .ps-photo-overlay {
   position: absolute;
   left: 0;
@@ -432,10 +433,37 @@ body.ps-page main { padding-top: 8px; }
   box-shadow: var(--ps-shadow);
 }
 .ps-detail-main { display: grid; grid-template-columns: 1fr; }
-.ps-detail-photo { min-height: 220px; background: linear-gradient(140deg, #0d2740, #13365a); padding: 14px; }
-.ps-detail-photo img { width: 100%; height: 100%; object-fit: cover; }
-.ps-detail-photo img,
-.ps-detail-photo .ps-photo-fallback { border-radius: 16px; border: 1px solid rgba(192, 218, 240, 0.35); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35); }
+.ps-detail-photo {
+  min-height: 240px;
+  background: linear-gradient(140deg, #0d2740, #13365a);
+  padding: 14px;
+}
+.ps-detail-photo-frame {
+  width: 100%;
+  max-height: 720px;
+  min-height: 260px;
+  border-radius: 16px;
+  border: 1px solid rgba(192, 218, 240, 0.35);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+  background: linear-gradient(165deg, rgba(8, 23, 38, 0.94), rgba(12, 30, 50, 0.88));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  overflow: auto;
+}
+.ps-detail-photo-img {
+  width: 100%;
+  max-height: 700px;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+.ps-detail-photo-fallback {
+  width: 100%;
+  min-height: 260px;
+  border-radius: 14px;
+}
 .ps-detail-body { padding: 14px; }
 .ps-detail-body h1 { margin: 0; font-size: 1.18rem; }
 .ps-detail-grid { display: grid; grid-template-columns: 1fr; gap: 8px; margin: 10px 0; }
@@ -753,8 +781,10 @@ body.ps-page main { padding-top: 8px; }
   .ps-interview-list { gap: 12px; }
   .ps-interview-item { padding: 12px 14px; }
   .ps-interview-name { font-size: 1.08rem; }
-  .ps-detail-layout { margin-top: 14px; grid-template-columns: 1.3fr .75fr; gap: 16px; }
-  .ps-detail-main { grid-template-columns: 320px 1fr; }
+  .ps-detail-layout { margin-top: 14px; grid-template-columns: 1.35fr .72fr; gap: 18px; }
+  .ps-detail-main { grid-template-columns: minmax(320px, 42%) 1fr; align-items: start; }
+  .ps-detail-photo { min-height: 320px; }
+  .ps-detail-photo-frame { min-height: 320px; max-height: 760px; }
   .ps-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .ps-sidebar,
   .ps-summary-box { position: sticky; top: 90px; align-self: start; }

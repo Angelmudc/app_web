@@ -11,14 +11,16 @@
     <article class="ps-detail-card">
       <div class="ps-detail-main">
         <div class="ps-detail-photo">
+          <div class="ps-detail-photo-frame">
           {% set initials = (candidata.nombre_publico or 'C')[:1]|upper %}
           {% if candidata.foto_publica_url %}
-          <img src="{{ candidata.foto_publica_url }}" alt="Foto de {{ candidata.nombre_publico }}" loading="lazy">
+          <img class="ps-detail-photo-img" src="{{ candidata.foto_publica_url }}" alt="Foto de {{ candidata.nombre_publico }}" loading="lazy">
           {% else %}
-          <div class="ps-photo-fallback" aria-label="Sin foto de perfil">
+          <div class="ps-photo-fallback ps-detail-photo-fallback" aria-label="Sin foto de perfil">
             <span class="ps-photo-fallback-icon">{{ initials }}</span>
           </div>
           {% endif %}
+          </div>
         </div>
         <div class="ps-detail-body">
           <h1>{{ candidata.nombre_publico }}</h1>

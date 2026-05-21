@@ -91,9 +91,9 @@
     <article class="ps-card">
       <div class="ps-photo-wrap">
         {% if c.foto_publica_url %}
-        <img src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
+        <img class="ps-card-photo" src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
         {% else %}
-        <div class="ps-photo-fallback" aria-label="Sin foto de perfil">
+        <div class="ps-photo-fallback ps-card-photo-fallback" aria-label="Sin foto de perfil">
           <span class="ps-photo-fallback-icon">{{ initials }}</span>
         </div>
         {% endif %}
