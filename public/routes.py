@@ -21,6 +21,7 @@ from flask import (
 )
 from flask_login import current_user
 from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from . import public_bp
 from config_app import db
 
@@ -1445,7 +1446,7 @@ def private_store_request_interviews(token: str):
     ids = _private_store_get_ids(int(catalogo.id))
     rows = _mi_seleccion_valid_rows(ids)
     cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
-    valid_ids = [int(getattr(c, "id", 0) or 0) for c in cards]
+    valid_ids = [int((c or {}).get("id") or 0) for c in cards if int((c or {}).get("id") or 0) > 0]
     if valid_ids != ids:
         _private_store_set_ids(int(catalogo.id), valid_ids)
         ids = valid_ids
@@ -1484,21 +1485,81 @@ def private_store_request_interviews(token: str):
                 telefono_contacto=default_telefono,
                 comentario=comentario,
             ), 400
-        interes = TiendaInteres(
-            catalogo_id=int(catalogo.id),
-            cliente_id=int(catalogo.cliente_id) if getattr(catalogo, "cliente_id", None) else None,
-            solicitud_id=int(catalogo.solicitud_id) if getattr(catalogo, "solicitud_id", None) else None,
-            nombre_contacto=default_nombre[:200],
-            telefono_contacto=default_telefono[:50],
-            comentario=comentario or None,
-            estado="nuevo",
-            token_hint_usado=(getattr(catalogo, "token_hint", None) or None),
-        )
-        db.session.add(interes)
-        db.session.flush()
-        for idx, candidata_id in enumerate(ids, start=1):
-            db.session.add(TiendaInteresItem(interes_id=int(interes.id), candidata_id=int(candidata_id), orden=idx))
-        db.session.commit()
+        payload = {
+            "token": str(token),
+            "catalogo_id": int(catalogo.id),
+            "cliente_id": int(catalogo.cliente_id) if getattr(catalogo, "cliente_id", None) else None,
+            "solicitud_id": int(catalogo.solicitud_id) if getattr(catalogo, "solicitud_id", None) else None,
+            "selection_ids": [int(x) for x in ids],
+            "selection_count": len(ids),
+            "posted_ids": [int(x) for x in posted_ids],
+            "nombre_contacto": default_nombre[:200],
+            "telefono_contacto": default_telefono[:50],
+            "token_hint_usado": (getattr(catalogo, "token_hint", None) or None),
+        }
+        current_app.logger.warning("private_store.checkout.persist.start %s", payload)
+        try:
+            if not all(int(x or 0) > 0 for x in ids):
+                current_app.logger.warning("private_store.checkout.persist.invalid_ids %s", payload)
+                flash("La selección contiene candidatas inválidas. Vuelve a seleccionar.", "danger")
+                return redirect(url_for("public.private_store_selection_list", token=token))
+            interes = TiendaInteres(
+                catalogo_id=int(catalogo.id),
+                cliente_id=int(catalogo.cliente_id) if getattr(catalogo, "cliente_id", None) else None,
+                solicitud_id=int(catalogo.solicitud_id) if getattr(catalogo, "solicitud_id", None) else None,
+                nombre_contacto=default_nombre[:200],
+                telefono_contacto=default_telefono[:50],
+                comentario=comentario or None,
+                estado="nuevo",
+                token_hint_usado=(getattr(catalogo, "token_hint", None) or None),
+            )
+            db.session.add(interes)
+            db.session.flush()
+            for idx, candidata_id in enumerate(ids, start=1):
+                db.session.add(TiendaInteresItem(interes_id=int(interes.id), candidata_id=int(candidata_id), orden=idx))
+            current_app.logger.warning(
+                "private_store.checkout.persist.created interes_id=%s item_count=%s",
+                int(interes.id),
+                len(ids),
+            )
+            db.session.commit()
+            current_app.logger.warning(
+                "private_store.checkout.persist.committed interes_id=%s catalogo_id=%s cliente_id=%s estado=%s",
+                int(interes.id),
+                int(interes.catalogo_id),
+                (int(interes.cliente_id) if interes.cliente_id else None),
+                str(interes.estado or ""),
+            )
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("private_store.checkout.persist.rollback.sqlalchemy %s", payload)
+            flash("No se pudo guardar tu solicitud en este momento. Inténtalo nuevamente.", "danger")
+            return render_template(
+                "private_store/store_request_interviews.html",
+                catalogo=catalogo,
+                token=token,
+                cards=cards,
+                selection_count=len(cards),
+                has_linked_cliente=has_linked_cliente,
+                nombre_contacto=default_nombre,
+                telefono_contacto=default_telefono,
+                comentario=comentario,
+            ), 500
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception("private_store.checkout.persist.rollback.unexpected %s", payload)
+            flash("Ocurrió un error inesperado al enviar la solicitud.", "danger")
+            return render_template(
+                "private_store/store_request_interviews.html",
+                catalogo=catalogo,
+                token=token,
+                cards=cards,
+                selection_count=len(cards),
+                has_linked_cliente=has_linked_cliente,
+                nombre_contacto=default_nombre,
+                telefono_contacto=default_telefono,
+                comentario=comentario,
+            ), 500
         _private_store_set_ids(int(catalogo.id), [])
         return render_template(
             "private_store/store_request_success.html",

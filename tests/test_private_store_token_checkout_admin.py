@@ -290,3 +290,57 @@ def test_manual_shortlist_mode_still_not_breaking_legacy_catalogo():
     resp = client.get("/tienda/tok_manual_legacy2", follow_redirects=False)
     assert resp.status_code in (301, 302, 303)
     assert "/catalogo/tok_manual_legacy2" in (resp.headers.get("Location") or "")
+
+
+def test_checkout_expired_catalog_returns_410():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog("tok_checkout_expired", exp_days=-1)
+
+    resp_get = client.get("/tienda/tok_checkout_expired/solicitar-entrevistas", follow_redirects=False)
+    assert resp_get.status_code == 410
+
+    resp_post = client.post(
+        "/tienda/tok_checkout_expired/solicitar-entrevistas",
+        data={"nombre_contacto": "Ana", "telefono_contacto": "8095551111"},
+        follow_redirects=False,
+    )
+    assert resp_post.status_code == 410
+
+
+def test_checkout_when_candidate_removed_before_post_keeps_valid_and_persists():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog("tok_checkout_removed", with_cliente=True)
+        c1, c2, _hidden = _seed_candidates(seed=28)
+
+    client.post("/tienda/tok_checkout_removed/seleccion/agregar", data={"candidata_id": str(c1)}, follow_redirects=False)
+    client.post("/tienda/tok_checkout_removed/seleccion/agregar", data={"candidata_id": str(c2)}, follow_redirects=False)
+    with flask_app.app_context():
+        row = CandidataWeb.query.filter_by(candidata_id=c2).first()
+        assert row is not None
+        row.estado_publico = "no_disponible"
+        db.session.commit()
+
+    post = client.post(
+        "/tienda/tok_checkout_removed/solicitar-entrevistas",
+        data={"comentario": "Solo disponible", "candidata_ids": [str(c1), str(c2)]},
+        follow_redirects=False,
+    )
+    assert post.status_code in (200, 302, 303)
+    assert "Solicitud enviada" in post.get_data(as_text=True)
+
+    with flask_app.app_context():
+        interes = TiendaInteres.query.order_by(TiendaInteres.id.desc()).first()
+        assert interes is not None
+        items = TiendaInteresItem.query.filter_by(interes_id=interes.id).order_by(TiendaInteresItem.orden.asc()).all()
+        assert len(items) == 1
+        assert int(items[0].candidata_id) == c1
