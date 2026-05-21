@@ -279,27 +279,26 @@ body.ps-page main { padding-top: 8px; }
 }
 .ps-photo-wrap {
   position: relative;
-  min-height: 256px;
-  margin: 8px 12px 0;
-  padding: 10px 8px;
-  border-radius: 12px;
-  background: linear-gradient(150deg, rgba(11, 28, 43, 0.95), rgba(18, 42, 62, 0.88));
-  border: 1px solid rgba(160, 193, 222, 0.35);
+  margin: 6px 12px 0;
+  padding: 0;
 }
 .ps-card-media-inner {
-  width: min(100%, 210px);
+  width: min(100%, 88%);
+  max-width: 320px;
   margin: 0 auto;
-  aspect-ratio: 3 / 4;
-  border-radius: 10px;
+  aspect-ratio: 4 / 5;
+  border-radius: 12px;
   overflow: hidden;
-  background: radial-gradient(120% 120% at 0% 0%, rgba(59, 92, 123, 0.2), rgba(25, 39, 54, 0.35));
+  border: 1px solid rgba(160, 193, 222, 0.35);
+  background: linear-gradient(155deg, rgba(13, 31, 48, 0.95), rgba(18, 41, 59, 0.88));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .ps-photo-wrap img,
 .ps-card-photo {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  object-position: center;
+  object-position: center top;
   display: block;
 }
 .ps-photo-fallback {
@@ -783,8 +782,8 @@ body.ps-page main { padding-top: 8px; }
   .ps-pagination { margin-top: 24px; }
   .ps-filter-row { grid-template-columns: 1.1fr 1fr .9fr; }
   .ps-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .ps-photo-wrap { min-height: 274px; padding: 10px; }
-  .ps-card-media-inner { width: min(100%, 224px); }
+  .ps-photo-wrap { margin-top: 4px; }
+  .ps-card-media-inner { width: min(100%, 90%); max-width: 320px; }
   .ps-detail { padding: 24px 0 46px; }
   .ps-detail-head { display: flex; justify-content: space-between; align-items: center; }
   .ps-interview-head { align-items: flex-start; }
@@ -817,8 +816,8 @@ body.ps-page main { padding-top: 8px; }
 }
 
 @media (max-width: 760px) {
-  .ps-photo-wrap { min-height: 236px; padding: 8px; }
-  .ps-card-media-inner { width: min(100%, 184px); }
+  .ps-photo-wrap { margin-top: 4px; }
+  .ps-card-media-inner { width: min(100%, 94%); max-width: 280px; }
   .ps-interview-head .ps-link-secondary { width: fit-content; }
   .ps-interview-shell { border-radius: 18px; }
   .ps-interview-shell .ps-detail-body { padding: 12px; }
