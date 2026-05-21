@@ -7,81 +7,33 @@
       <h1>Entrevista protegida</h1>
       <p class="ps-interview-name">{{ candidata.nombre_publico }}</p>
       <div class="ps-interview-badges">
-        <span class="ps-expire-chip">Acceso privado</span>
         <span class="ps-expire-chip">Datos protegidos</span>
       </div>
-      <p class="ps-interview-note">Esta entrevista muestra información autorizada. Dirección y referencias están protegidas por la agencia.</p>
     </div>
-    <p class="ps-watermark">Uso exclusivo de Doméstica del Cibao A&amp;D</p>
+    <a class="ps-link-secondary" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">Volver al perfil</a>
   </div>
+  <p class="ps-interview-note">Dirección y referencias están protegidas por la agencia.</p>
 
-  <div class="ps-detail-layout">
-    <article class="ps-detail-card">
-      <div class="ps-detail-body">
-        <section class="ps-section" style="margin-top:0; border-top:0; padding-top:0;">
-          <h2>Resumen de entrevista</h2>
-          <div class="ps-detail-grid">
-            {% for row in entrevista_summary %}
-            <article class="ps-quick">
-              <strong>{{ row.label }}</strong>
-              <span>{{ row.value }}</span>
-            </article>
-            {% endfor %}
-          </div>
-        </section>
-
-        {% for sec in entrevista_sections %}
-        <section class="ps-section">
-          <h2>{{ sec["title"] }}</h2>
-          <div class="ps-interview-list">
-            {% for item in sec["items"] %}
-            <article class="ps-interview-item">
-              <strong class="ps-interview-label">{{ item.label }}</strong>
-              {% if (item.value or '').strip().lower() == 'información protegida por la agencia' %}
-              <span class="ps-protected-chip">🔒 Información protegida por la agencia</span>
-              {% else %}
-              <span class="ps-interview-answer">{{ item.value }}</span>
-              {% endif %}
-            </article>
-            {% endfor %}
-          </div>
-        </section>
+  <article class="ps-detail-card ps-interview-shell">
+    <div class="ps-detail-body">
+      <div class="ps-interview-list">
+        {% for item in entrevista_items %}
+        <article class="ps-interview-item">
+          <strong class="ps-interview-label">{{ item.label }}</strong>
+          {% if (item.value or '').strip().lower() == 'información protegida por la agencia' %}
+          <span class="ps-protected-chip">🔒 Información protegida por la agencia</span>
+          {% else %}
+          <span class="ps-interview-answer">{{ item.value }}</span>
+          {% endif %}
+        </article>
         {% endfor %}
       </div>
-    </article>
-
-    <aside class="ps-sidebar">
-      <h3>Acciones</h3>
-      <p>Puedes seleccionar varias candidatas y solicitar entrevistas al final.</p>
-      <p><strong>{{ selection_count }}</strong> perfil{% if selection_count != 1 %}es{% endif %} en tu selección.</p>
-      <a class="ps-link-secondary" style="width:100%; margin-bottom:10px;" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">Volver al perfil</a>
-      {% if candidata.is_selected %}
-      <button class="ps-btn-selected" type="button" style="width:100%;" disabled>Ya en mi selección</button>
-      {% else %}
-      <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="ps-inline-form js-add-selection" data-store-action="add" data-candidata-id="{{ candidata.id }}" data-token="{{ token }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="candidata_id" value="{{ candidata.id }}">
-        <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
-        <button type="submit" class="ps-btn-add" style="width:100%;" data-add-button="{{ candidata.id }}">Agregar a mi selección</button>
-      </form>
-      {% endif %}
-    </aside>
-  </div>
-
-  <div class="ps-mobile-sticky-cta">
-    <div class="ps-row-actions" style="grid-template-columns:1fr 1fr;">
-      <a class="ps-link-secondary" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">Volver</a>
-      {% if candidata.is_selected %}
-      <button class="ps-btn-selected" type="button" disabled>Ya en selección</button>
-      {% else %}
-      <form method="post" action="{{ url_for('public.private_store_selection_add', token=token) }}" class="ps-inline-form js-add-selection" data-store-action="add" data-candidata-id="{{ candidata.id }}" data-token="{{ token }}">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="candidata_id" value="{{ candidata.id }}">
-        <input type="hidden" name="return_to" value="{{ request.full_path if request.query_string else request.path }}">
-        <button type="submit" class="ps-btn-add" data-add-button="{{ candidata.id }}">Agregar</button>
-      </form>
-      {% endif %}
     </div>
+  </article>
+
+  <div class="ps-interview-footer">
+    <a class="ps-link-secondary" href="{{ url_for('public.private_store_detail', token=token, codigo_o_id=candidata.id) }}">Volver al perfil</a>
+    <p class="ps-watermark">Uso exclusivo de Doméstica del Cibao A&amp;D</p>
   </div>
 </section>
 {% endblock %}

@@ -360,8 +360,13 @@ body.ps-page main { padding-top: 8px; }
 .ps-interview-head h1 { margin: 0; font-size: 1.2rem; }
 .ps-interview-name { margin: 4px 0 0; font-size: 1rem; color: #dce9f7; font-weight: 800; }
 .ps-interview-badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.ps-interview-note { margin: 8px 0 0; color: #b7cee3; font-size: .86rem; max-width: 760px; }
+.ps-interview-note { margin: 8px 0 12px; color: #b7cee3; font-size: .86rem; max-width: 760px; }
 .ps-watermark { margin: 4px 0 0; font-size: .76rem; opacity: .78; letter-spacing: .06em; color: #9fb7cc; }
+.ps-interview-shell {
+  border-radius: 22px;
+  border-color: rgba(170, 203, 228, 0.24);
+  background: linear-gradient(170deg, rgba(10, 28, 46, 0.94), rgba(9, 26, 43, 0.9));
+}
 .ps-back { text-decoration: none; color: #c8dcf1; font-weight: 800; }
 .ps-expire-chip { font-size: .76rem; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(171,203,229,.42); color: #b7cee4; width: fit-content; }
 .ps-detail-layout { margin-top: 12px; display: grid; gap: 12px; }
@@ -416,6 +421,13 @@ body.ps-page main { padding-top: 8px; }
   color: #ffeec7;
   font-size: .82rem;
   font-weight: 800;
+}
+.ps-interview-footer {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 .ps-section { margin-top: 12px; border-top: 1px solid rgba(142, 179, 211, 0.35); padding-top: 12px; }
 .ps-section h2 { margin: 0 0 8px; font-size: .95rem; }
@@ -649,6 +661,10 @@ body.ps-page main { padding-top: 8px; }
   .ps-photo-wrap { height: 230px; }
   .ps-detail { padding: 24px 0 46px; }
   .ps-detail-head { display: flex; justify-content: space-between; align-items: center; }
+  .ps-interview-head { align-items: flex-start; }
+  .ps-interview-shell .ps-detail-body { padding: 18px; }
+  .ps-interview-list { gap: 12px; }
+  .ps-interview-item { padding: 12px 14px; }
   .ps-detail-layout { margin-top: 14px; grid-template-columns: 1.3fr .75fr; gap: 16px; }
   .ps-detail-main { grid-template-columns: 320px 1fr; }
   .ps-detail-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
