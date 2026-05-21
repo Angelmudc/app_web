@@ -155,6 +155,13 @@ def test_admin_tienda_intereses_detail_status_visual_whatsapp_and_change_estado(
     assert "td-card-dark" in html
     assert "td-card-client" in html
     assert "background:#fff" not in html
+    assert "/domesticas/" not in html
+    assert "Ver perfil público" not in html
+    assert "Ver candidata" in html
+    assert "Editar perfil público" in html
+    assert "Marcar como revisada" in html
+    assert "Cambiar a En gestión" in html
+    assert "Copiar mensaje para WhatsApp" in html
     assert "Publica A" in html
     assert "Publica B" in html
     assert "Publica C" in html
@@ -172,5 +179,27 @@ def test_admin_tienda_intereses_detail_status_visual_whatsapp_and_change_estado(
 
     with flask_app.app_context():
         row = TiendaInteres.query.get(interes_id)
+        item_id = int((row.items or [])[0].id)
+
+    mark_reviewed = client.post(
+        f"/admin/tienda-intereses/{interes_id}/items/{item_id}/revisar",
+        data={},
+        follow_redirects=False,
+    )
+    assert mark_reviewed.status_code in (302, 303)
+
+    mark_state = client.post(
+        f"/admin/tienda-intereses/{interes_id}/items/{item_id}/estado-publico",
+        data={"estado_publico": "reservada"},
+        follow_redirects=False,
+    )
+    assert mark_state.status_code in (302, 303)
+
+    with flask_app.app_context():
+        row = TiendaInteres.query.get(interes_id)
         assert row is not None
         assert row.estado == "contactado"
+        assert "[revisada:" in str(row.comentario or "")
+        ficha = CandidataWeb.query.filter_by(candidata_id=int(row.items[0].candidata_id)).first()
+        assert ficha is not None
+        assert str(ficha.estado_publico) == "reservada"

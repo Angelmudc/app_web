@@ -211,6 +211,10 @@ def test_private_store_end_to_end_full_flow_and_admin_badge():
     detail_html = detail.get_data(as_text=True)
     assert "Perfil Publico Uno" in detail_html
     assert "Perfil Publico Dos" in detail_html
+    assert "/domesticas/" not in detail_html
+    assert "Ver perfil público" not in detail_html
+    assert "Editar perfil público" in detail_html
+    assert "Marcar como revisada" in detail_html
 
     update_estado = client.post(
         f"/admin/tienda-intereses/{interes_id}/estado",

@@ -65,6 +65,7 @@
 .td-btn-success { border-color: rgba(113,209,171,.45); color: #d6ffe8; background: rgba(26, 94, 66, .45); }
 .td-btn-secondary { border-color: rgba(165, 184, 207, .45); color: #d5dfeb; background: rgba(58, 75, 97, .4); }
 .td-btn-link { width: auto; min-height: 32px; font-size: .82rem; padding: 6px 10px; }
+.td-btn-danger { border-color: rgba(236, 152, 152, .45); color: #ffd2d2; background: rgba(114, 39, 39, .38); }
 .td-btn-disabled {
   width: auto;
   min-height: 32px;
@@ -161,18 +162,29 @@
           <span class="td-pill">Visible: {{ 'Sí' if ficha and ficha.visible else 'No' }}</span>
           <span class="td-pill">Estado web: {{ ficha.estado_publico if ficha and ficha.estado_publico else 'sin ficha' }}</span>
           <span class="td-pill">Disponibilidad: {{ 'Inmediata' if ficha and ficha.disponible_inmediato else 'A coordinar' }}</span>
+          <span class="td-pill">Revisión admin: {{ 'Revisada' if rowv.reviewed else 'Pendiente' }}</span>
           {% if ficha and ficha.tags_publicos %}<span class="td-pill">{{ ficha.tags_publicos }}</span>{% endif %}
         </div>
 
         <div class="td-cand-actions">
           {% if c %}
-          <a class="td-btn td-btn-link" target="_blank" rel="noopener" href="{{ url_for('public.domesticas_store_detail', codigo_o_id=(c.codigo or c.fila)) }}">Ver perfil público</a>
+          <a class="td-btn td-btn-link" href="{{ url_for('admin.candidatas_web_detail', fila=c.fila) }}">Ver candidata</a>
           <a class="td-btn td-btn-link" href="{{ url_for('admin.candidatas_web_detail', fila=c.fila) }}">Editar perfil público</a>
           {% endif %}
-          <span class="td-btn-disabled" aria-disabled="true">Marcar como revisada (visual)</span>
-          {% if ficha and (not ficha.visible or ficha.estado_publico != 'disponible') %}
-          <span class="td-btn-disabled" aria-disabled="true">No disponible (requiere flujo editorial)</span>
-          {% endif %}
+          <form method="post" action="{{ url_for('admin.tienda_intereses_item_mark_reviewed', id=row.id, item_id=item.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="td-btn td-btn-link" type="submit">Marcar como revisada</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.tienda_intereses_item_update_public_state', id=row.id, item_id=item.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="estado_publico" value="reservada">
+            <button class="td-btn td-btn-warning" type="submit">Revisar disponibilidad</button>
+          </form>
+          <form method="post" action="{{ url_for('admin.tienda_intereses_item_update_public_state', id=row.id, item_id=item.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="estado_publico" value="no_disponible">
+            <button class="td-btn td-btn-danger" type="submit">Marcar no disponible</button>
+          </form>
         </div>
       </article>
       {% else %}

@@ -25028,12 +25028,26 @@ def tienda_intereses_list():
 @staff_required
 def tienda_intereses_detail(id: int):
     row = TiendaInteres.query.get_or_404(int(id))
+    review_marks_raw = str(getattr(row, "comentario", "") or "")
+    reviewed_ids: set[int] = set()
+    for cand_match in re.findall(r"\[revisada:(\d+)\]", review_marks_raw):
+        try:
+            reviewed_ids.add(int(cand_match))
+        except Exception:
+            pass
     estado_view = []
+    selected_names: list[str] = []
     for item in (row.items or []):
         candidata = item.candidata
         ficha = getattr(candidata, "ficha_web", None) if candidata else None
         visible = bool(getattr(ficha, "visible", False))
         estado_publico = (getattr(ficha, "estado_publico", "") or "").strip().lower()
+        if ficha and getattr(ficha, "nombre_publico", None):
+            selected_names.append(str(ficha.nombre_publico).strip())
+        elif candidata and getattr(candidata, "codigo", None):
+            selected_names.append(f"Perfil {str(candidata.codigo).strip()}")
+        elif candidata and getattr(candidata, "fila", None):
+            selected_names.append(f"Perfil #{int(candidata.fila)}")
         if not ficha or not visible:
             status_tone = "danger"
             status_text = "Oculta del catálogo"
@@ -25052,9 +25066,14 @@ def tienda_intereses_detail(id: int):
             "ficha": ficha,
             "status_tone": status_tone,
             "status_text": status_text,
+            "reviewed": int(getattr(item, "candidata_id", 0) or 0) in reviewed_ids,
         })
     telefono_digits = re.sub(r"\D", "", row.telefono_contacto or "")
-    wa_text = f"Hola {row.nombre_contacto or 'cliente'}, recibimos tu selección de candidatas. Vamos a verificar disponibilidad y coordinar contigo las entrevistas."
+    selected_text = ", ".join([x for x in selected_names if x]) or "los perfiles seleccionados"
+    wa_text = (
+        f"Hola {row.nombre_contacto or 'cliente'}, recibimos tu selección ({selected_text}). "
+        "Estamos validando disponibilidad para coordinar entrevistas contigo por WhatsApp."
+    )
     wa_link = f"https://wa.me/{telefono_digits}?text={quote_plus(wa_text)}" if telefono_digits else None
     return render_template(
         "admin/tienda_intereses/detail.html",
@@ -25080,6 +25099,43 @@ def tienda_intereses_update_estado(id: int):
     next_url = (request.form.get("next") or "").strip()
     if next_url.startswith("/admin/tienda-intereses"):
         return redirect(next_url)
+    return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
+
+
+@admin_bp.route("/tienda-intereses/<int:id>/items/<int:item_id>/revisar", methods=["POST"])
+@login_required
+@staff_required
+def tienda_intereses_item_mark_reviewed(id: int, item_id: int):
+    row = TiendaInteres.query.get_or_404(int(id))
+    item = TiendaInteresItem.query.filter_by(id=int(item_id), interes_id=int(row.id)).first_or_404()
+    token = f"[revisada:{int(item.candidata_id)}]"
+    comentario_raw = str(getattr(row, "comentario", "") or "").strip()
+    if token not in comentario_raw:
+        row.comentario = (f"{comentario_raw}\n{token}".strip() if comentario_raw else token)
+        db.session.commit()
+        flash("Candidata marcada como revisada.", "success")
+    else:
+        flash("Esta candidata ya estaba marcada como revisada.", "info")
+    return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
+
+
+@admin_bp.route("/tienda-intereses/<int:id>/items/<int:item_id>/estado-publico", methods=["POST"])
+@login_required
+@staff_required
+def tienda_intereses_item_update_public_state(id: int, item_id: int):
+    row = TiendaInteres.query.get_or_404(int(id))
+    item = TiendaInteresItem.query.filter_by(id=int(item_id), interes_id=int(row.id)).first_or_404()
+    state = (request.form.get("estado_publico") or "").strip().lower()
+    if state not in {"disponible", "reservada", "no_disponible"}:
+        flash("Estado público inválido.", "danger")
+        return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
+    ficha = CandidataWeb.query.filter_by(candidata_id=int(item.candidata_id)).first()
+    if not ficha:
+        flash("La candidata no tiene ficha pública editable.", "warning")
+        return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
+    ficha.estado_publico = state
+    db.session.commit()
+    flash("Estado público actualizado.", "success")
     return redirect(url_for("admin.tienda_intereses_detail", id=row.id))
 
 
