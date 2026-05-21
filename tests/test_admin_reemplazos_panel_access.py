@@ -102,6 +102,10 @@ def test_reemplazo_nuevo_panel_uses_search_and_single_reason_field():
     assert "name=\"responsable_id\"" not in html
     assert "Solicitud seleccionada: ninguna" in html
     assert "Motivo del reemplazo" in html
+    assert 'id="selectedSolicitudId" value=""' in html
+    assert 'id="crearReemplazoBtn" type="submit" disabled' in html
+    assert "setSelectedSolicitudFromNode(nodes[0])" not in html
+    assert "Seleccionar esta solicitud" in html
 
 
 def test_reemplazos_clientes_search_and_solicitudes_json_and_post_validation():
@@ -121,12 +125,15 @@ def test_reemplazos_clientes_search_and_solicitudes_json_and_post_validation():
         db.session.flush()
         s1 = Solicitud(cliente_id=int(c1.id), codigo_solicitud=f"SOL-{token}-A", estado="activa", candidata_id=int(cand.fila), ciudad_sector="SD")
         s2 = Solicitud(cliente_id=int(c2.id), codigo_solicitud=f"SOL-{token}-B", estado="activa", candidata_id=int(cand.fila), ciudad_sector="STI")
+        s3 = Solicitud(cliente_id=int(c1.id), codigo_solicitud=f"SOL-{token}-C", estado="proceso", candidata_id=int(cand.fila), ciudad_sector="DN")
         db.session.add_all([s1, s2])
+        db.session.add(s3)
         db.session.commit()
         c1_id = int(c1.id)
         c2_id = int(c2.id)
         s1_id = int(s1.id)
         s2_id = int(s2.id)
+        s3_id = int(s3.id)
 
     _login_staff(client)
     by_code = client.get(f"/admin/reemplazos/clientes-search?q=CODE-{token}", follow_redirects=False)
@@ -145,7 +152,9 @@ def test_reemplazos_clientes_search_and_solicitudes_json_and_post_validation():
     assert sol_json.status_code == 200
     sol_rows = (sol_json.get_json() or {}).get("results") or []
     assert any(int(r.get("id") or 0) == s1_id for r in sol_rows)
+    assert any(int(r.get("id") or 0) == s3_id for r in sol_rows)
     assert all(int(r.get("id") or 0) != s2_id for r in sol_rows)
+    assert all((r.get("fecha_solicitud") or "") for r in sol_rows)
 
     bad_post = client.post(
         "/admin/reemplazos/nuevo",
@@ -223,3 +232,32 @@ def test_reemplazo_nuevo_rechaza_solicitud_sin_candidata_asignada():
     with flask_app.app_context():
         repl = Reemplazo.query.filter_by(solicitud_id=s1_id).first()
         assert repl is None
+
+
+def test_reemplazo_nuevo_cliente_con_una_sola_solicitud_no_autoselecciona():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        token = secrets.token_hex(4)
+        c1 = Cliente(codigo=f"ONE-{token}", nombre_completo=f"Cliente One {token}", email=f"one_{token}@x.com", telefono="8091212121")
+        db.session.add(c1)
+        db.session.flush()
+        cand = Candidata(nombre_completo=f"Cand one {token}", cedula="12345678901", numero_telefono="8092223333", estado="trabajando")
+        db.session.add(cand)
+        db.session.flush()
+        s1 = Solicitud(cliente_id=int(c1.id), codigo_solicitud=f"SOL-ONE-{token}", estado="activa", candidata_id=int(cand.fila), ciudad_sector="SD")
+        db.session.add(s1)
+        db.session.commit()
+        c1_id = int(c1.id)
+    _login_staff(client)
+
+    resp = client.get(f"/admin/reemplazos/nuevo?cliente_id={c1_id}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "SOL-ONE-" in html
+    assert 'id="selectedSolicitudId" value=""' in html
+    assert "Solicitud seleccionada: ninguna" in html
+    assert "solicitud-item active" not in html

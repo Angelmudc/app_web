@@ -20,7 +20,7 @@
       </div>
 
       <input type="hidden" name="cliente_id" id="selectedClienteId" value="{{ selected_cliente.id if selected_cliente else '' }}">
-      <input type="hidden" name="solicitud_id" id="selectedSolicitudId" value="{{ selected_solicitud_id or '' }}">
+      <input type="hidden" name="solicitud_id" id="selectedSolicitudId" value="">
 
       <div class="col-12">
         <label class="form-label">1. Buscar cliente</label>
@@ -49,15 +49,16 @@
               <div class="list-group" id="solicitudesListServerSeed">
                 {% for s in solicitudes %}
                 <button type="button"
-                        class="list-group-item list-group-item-action solicitud-item {% if selected_solicitud_id == s.id %}active{% endif %}"
+                        class="list-group-item list-group-item-action solicitud-item"
                         data-solicitud-id="{{ s.id }}"
                         data-candidata-old-id="{{ s.candidata_id or 0 }}"
                         data-candidata-actual="{{ s.candidata.nombre_completo if s.candidata else 'Sin candidata asignada' }}"
                         data-estado="{{ s.estado or '—' }}">
                   <div class="fw-semibold">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</div>
                   <div class="small text-muted">{{ s.ciudad_sector or '—' }} · {{ (s.modalidad_trabajo or 'No especificada')|replace('_', ' ')|title }} · {{ s.estado or '—' }}</div>
+                  <div class="small">Fecha solicitud: {{ (s.fecha_solicitud or s.fecha_registro or s.created_at).strftime('%Y-%m-%d') if (s.fecha_solicitud or s.fecha_registro or s.created_at) else '—' }}</div>
                   <div class="small">Candidata actual: {{ s.candidata.nombre_completo if s.candidata else 'Sin candidata asignada' }}</div>
-                  <div class="small fw-semibold mt-1">Seleccionar solicitud</div>
+                  <div class="small fw-semibold mt-1">Seleccionar esta solicitud</div>
                 </button>
                 {% endfor %}
               </div>
@@ -94,7 +95,7 @@
       </div>
       <div class="col-12 d-flex justify-content-end gap-2">
         <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary">Cancelar</a>
-        <button class="btn btn-primary" id="crearReemplazoBtn" type="submit">Crear reemplazo</button>
+        <button class="btn btn-primary" id="crearReemplazoBtn" type="submit" disabled>Crear reemplazo</button>
       </div>
     </form>
   </div>
@@ -144,18 +145,10 @@
           setSelectedSolicitudFromNode(this);
         });
       }
-      if (solicitudIdInput.value) {
-        for (var j = 0; j < nodes.length; j += 1) {
-          if ((nodes[j].getAttribute("data-solicitud-id") || "") === String(solicitudIdInput.value)) {
-            setSelectedSolicitudFromNode(nodes[j]);
-            break;
-          }
-        }
-      } else {
-        solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: ninguna";
-        candidataActualBox.textContent = "Sin candidata asignada";
-        toggleSubmit();
-      }
+      solicitudIdInput.value = "";
+      solicitudSeleccionadaInfo.textContent = "Solicitud seleccionada: ninguna";
+      candidataActualBox.textContent = "Sin candidata asignada";
+      toggleSubmit();
     }
 
     function renderSolicitudes(rows) {
@@ -173,8 +166,9 @@
         html += '<button type="button" class="list-group-item list-group-item-action solicitud-item" data-solicitud-id="' + esc(s.id) + '" data-candidata-old-id="' + esc(s.candidata_old_id) + '" data-candidata-actual="' + esc(s.candidata_actual) + '" data-estado="' + esc(s.estado) + '">';
         html += '<div class="fw-semibold">' + esc(s.codigo) + '</div>';
         html += '<div class="small text-muted">' + esc(s.ciudad_sector) + ' · ' + esc(s.modalidad) + ' · ' + esc(s.estado) + '</div>';
+        html += '<div class="small">Fecha solicitud: ' + esc(s.fecha_solicitud || "—") + '</div>';
         html += '<div class="small">Candidata actual: ' + esc(s.candidata_actual || "Sin candidata asignada") + '</div>';
-        html += '<div class="small fw-semibold mt-1">Seleccionar solicitud</div>';
+        html += '<div class="small fw-semibold mt-1">Seleccionar esta solicitud</div>';
         html += '</button>';
       }
       html += '</div>';

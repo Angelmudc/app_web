@@ -17182,7 +17182,6 @@ def reemplazo_nuevo_panel():
     return render_template(
         "admin/reemplazo_nuevo_panel.html",
         selected_cliente=selected_cliente,
-        selected_solicitud_id=solicitud_id,
         solicitudes=solicitudes,
     )
 
@@ -17285,12 +17284,18 @@ def reemplazos_solicitudes_por_cliente(cliente_id: int):
     out = []
     for s in (rows or []):
         cand = getattr(s, "candidata", None)
+        fecha_solicitud = (
+            getattr(s, "fecha_solicitud", None)
+            or getattr(s, "fecha_registro", None)
+            or getattr(s, "created_at", None)
+        )
         out.append({
             "id": int(getattr(s, "id", 0) or 0),
             "codigo": str(getattr(s, "codigo_solicitud", None) or f"SOL-{int(getattr(s, 'id', 0) or 0)}"),
             "ciudad_sector": str(getattr(s, "ciudad_sector", None) or "—"),
             "modalidad": _safe_modalidad_text(getattr(s, "modalidad_trabajo", None)),
             "estado": str(getattr(s, "estado", None) or "—"),
+            "fecha_solicitud": (to_rd(fecha_solicitud).strftime("%Y-%m-%d") if fecha_solicitud else "—"),
             "candidata_old_id": int(getattr(s, "candidata_id", 0) or 0),
             "candidata_actual": str(getattr(cand, "nombre_completo", None) or "Sin candidata asignada"),
         })
