@@ -1561,13 +1561,7 @@ def private_store_request_interviews(token: str):
                 comentario=comentario,
             ), 500
         _private_store_set_ids(int(catalogo.id), [])
-        return render_template(
-            "private_store/store_request_success.html",
-            catalogo=catalogo,
-            token=token,
-            interes=interes,
-            selection_count=0,
-        )
+        return redirect(url_for("public.private_store_request_interviews_success", token=token, interes_id=int(interes.id)), code=303)
 
     return render_template(
         "private_store/store_request_interviews.html",
@@ -1579,4 +1573,25 @@ def private_store_request_interviews(token: str):
         nombre_contacto=default_nombre,
         telefono_contacto=default_telefono,
         comentario=comentario,
+    )
+
+
+@public_bp.route("/tienda/<token>/solicitar-entrevistas/success/<int:interes_id>", methods=["GET"])
+def private_store_request_interviews_success(token: str, interes_id: int):
+    from models import TiendaInteres
+
+    catalogo, status = _resolver_catalogo_publico_por_token(token)
+    if status == "invalid":
+        return render_template("private_store/token_invalid.html"), 404
+    if status == "expired":
+        return render_template("private_store/token_expired.html"), 410
+    row = TiendaInteres.query.get_or_404(int(interes_id))
+    if int(getattr(row, "catalogo_id", 0) or 0) != int(catalogo.id):
+        abort(404)
+    return render_template(
+        "private_store/store_request_success.html",
+        catalogo=catalogo,
+        token=token,
+        interes=row,
+        selection_count=0,
     )

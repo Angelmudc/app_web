@@ -191,6 +191,7 @@ def test_checkout_requires_selection_and_post_creates_interes_items_and_admin_vi
     assert 'name="csrf_token"' in get_html
     assert 'type="submit"' in get_html
     assert 'data-store-action=' not in get_html
+    assert "Enviar solicitud de entrevistas" in get_html
     assert "Ana Cliente" in get_html
     assert "8095551111" in get_html
     assert "Confirmado por la agencia" in get_html
@@ -208,7 +209,12 @@ def test_checkout_requires_selection_and_post_creates_interes_items_and_admin_vi
         follow_redirects=False,
     )
     assert send.status_code in (200, 302, 303)
-    send_html = send.get_data(as_text=True)
+    if send.status_code in (302, 303):
+        follow = client.get(send.headers.get("Location") or "", follow_redirects=False)
+        assert follow.status_code == 200
+        send_html = follow.get_data(as_text=True)
+    else:
+        send_html = send.get_data(as_text=True)
     assert "Solicitud enviada correctamente" in send_html
     assert "Recibimos tus candidatas seleccionadas" in send_html
     assert "La agencia te contactará por WhatsApp" in send_html
@@ -345,7 +351,13 @@ def test_checkout_when_candidate_removed_before_post_keeps_valid_and_persists():
         follow_redirects=False,
     )
     assert post.status_code in (200, 302, 303)
-    assert "Solicitud enviada" in post.get_data(as_text=True)
+    if post.status_code in (302, 303):
+        follow = client.get(post.headers.get("Location") or "", follow_redirects=False)
+        assert follow.status_code == 200
+        success_html = follow.get_data(as_text=True)
+    else:
+        success_html = post.get_data(as_text=True)
+    assert "Solicitud enviada" in success_html
 
     with flask_app.app_context():
         interes = TiendaInteres.query.order_by(TiendaInteres.id.desc()).first()

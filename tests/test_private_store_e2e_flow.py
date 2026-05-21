@@ -160,6 +160,8 @@ def test_private_store_end_to_end_full_flow_and_admin_badge():
 
     checkout_get = client.get(f"/tienda/{token}/solicitar-entrevistas", follow_redirects=False)
     assert checkout_get.status_code == 200
+    checkout_html = checkout_get.get_data(as_text=True)
+    assert "Enviar solicitud de entrevistas" in checkout_html
 
     checkout_post = client.post(
         f"/tienda/{token}/solicitar-entrevistas",
@@ -172,7 +174,12 @@ def test_private_store_end_to_end_full_flow_and_admin_badge():
         follow_redirects=False,
     )
     assert checkout_post.status_code in (200, 302, 303)
-    success_html = checkout_post.get_data(as_text=True)
+    if checkout_post.status_code in (302, 303):
+        follow = client.get(checkout_post.headers.get("Location") or "", follow_redirects=False)
+        assert follow.status_code == 200
+        success_html = follow.get_data(as_text=True)
+    else:
+        success_html = checkout_post.get_data(as_text=True)
     assert "Solicitud enviada" in success_html
 
     with flask_app.app_context():

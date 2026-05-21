@@ -198,6 +198,7 @@ body.ps-page { padding-bottom: 94px; }
 .ps-mobile-filter-trigger { margin-bottom: 10px; }
 .ps-mobile-filter-trigger button { width: 100%; min-height: 44px; }
 .ps-filters { padding: 14px; }
+.ps-checkout-panel { padding: 14px; }
 .ps-filter-panel { display: grid; gap: 12px; }
 .ps-filter-block { border: 1px solid rgba(171, 202, 228, 0.3); border-radius: 13px; padding: 11px; background: rgba(12, 33, 54, 0.45); }
 .ps-filter-block h3 { margin: 0; font-size: .9rem; }

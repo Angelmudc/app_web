@@ -12,7 +12,7 @@
   </div>
 
   <div class="ps-checkout-layout">
-    <div class="ps-surface ps-filters">
+    <div class="ps-surface ps-checkout-panel">
       <form method="post" action="{{ url_for('public.private_store_request_interviews', token=token) }}" class="ps-form-grid" id="ps-checkout-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         {% for c in cards %}<input type="hidden" name="candidata_ids" value="{{ c.id }}">{% endfor %}
@@ -41,7 +41,7 @@
           <textarea id="comentario" name="comentario" rows="4" placeholder="Ej: Me interesa entrevistar primero a las candidatas con experiencia en niños...">{{ comentario or '' }}</textarea>
         </div>
 
-        <button class="ps-pill ps-pill-primary ps-cta-lg" type="submit" aria-label="Solicitar entrevistas" data-checkout-submit>Solicitar entrevistas</button>
+        <button class="ps-pill ps-pill-primary ps-cta-lg" type="submit" aria-label="Enviar solicitud de entrevistas" data-checkout-submit>Enviar solicitud de entrevistas</button>
       </form>
 
       <section class="ps-trust">
@@ -65,7 +65,7 @@
   </div>
 
   <div class="ps-mobile-checkout-cta">
-    <button class="ps-pill ps-pill-primary" type="submit" form="ps-checkout-form" data-checkout-submit-mobile>Solicitar entrevistas</button>
+    <button class="ps-pill ps-pill-primary" type="submit" form="ps-checkout-form" data-checkout-submit-mobile>Enviar solicitud de entrevistas</button>
   </div>
   {% else %}
   <div class="ps-empty">No tienes candidatas en tu selección. <a class="ps-link" href="{{ url_for('public.private_store_list', token=token) }}">Volver a tienda</a></div>
