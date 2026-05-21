@@ -41,6 +41,7 @@ def test_clientes_list_and_home_expose_reemplazos_panel_access():
         repl.iniciar_reemplazo()
         db.session.add(repl)
         db.session.commit()
+        cliente_id = int(cliente.id)
 
     _login_staff(client)
 
@@ -51,5 +52,25 @@ def test_clientes_list_and_home_expose_reemplazos_panel_access():
     resp_clientes = client.get(f"/admin/clientes?q={token}&per_page=10", follow_redirects=False)
     assert resp_clientes.status_code == 200
     html = resp_clientes.get_data(as_text=True)
-    assert "Gestionar reemplazos" in html
-    assert f"/admin/reemplazos?cliente_id=" in html
+    assert "Panel de reemplazos" in html
+    assert "Reemplazos" in html
+    assert "Nuevo reemplazo" in html
+    assert "activos /" in html
+    assert "total" in html
+    assert f"/admin/reemplazos?cliente_id={cliente_id}" in html
+    assert f"/admin/reemplazos/nuevo?cliente_id={cliente_id}" in html
+
+    resp_clientes_async = client.get(
+        f"/admin/clientes?q={token}&per_page=10",
+        headers={
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "X-Admin-Async": "1",
+        },
+        follow_redirects=False,
+    )
+    assert resp_clientes_async.status_code == 200
+    payload = resp_clientes_async.get_json() or {}
+    partial_html = payload.get("replace_html") or ""
+    assert "/admin/reemplazos?cliente_id=" in partial_html
+    assert "/admin/reemplazos/nuevo?cliente_id=" in partial_html

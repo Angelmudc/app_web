@@ -8,13 +8,13 @@ from datetime import timedelta
 from app import app as flask_app
 from config_app import db
 import admin.routes as admin_routes
-from models import Candidata, Cliente, Reemplazo, Solicitud, StaffAuditLog, StaffUser, SeguimientoCandidataCaso
+from models import Candidata, Cliente, DomainOutbox, Reemplazo, Solicitud, StaffAuditLog, StaffUser, SeguimientoCandidataCaso
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def _ensure_tables() -> None:
     ensure_sqlite_compat_tables(
-        [StaffUser, StaffAuditLog, Cliente, Candidata, Solicitud, Reemplazo, SeguimientoCandidataCaso],
+        [StaffUser, StaffAuditLog, Cliente, Candidata, Solicitud, Reemplazo, SeguimientoCandidataCaso, DomainOutbox],
         reset=True,
     )
     if StaffUser.query.get(1) is None:
