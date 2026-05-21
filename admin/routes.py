@@ -5,6 +5,7 @@ import re
 import os
 import time
 import json
+import math
 import hashlib
 import secrets
 import ipaddress
@@ -25163,41 +25164,79 @@ def candidatas_web_list():
     visible_filter = (request.args.get("visible") or "").strip().lower()
     destacada_filter = (request.args.get("destacada") or "").strip().lower()
     estado_filter = (request.args.get("estado_publico") or "").strip().lower()
+    ciudad_filter = (request.args.get("ciudad") or "").strip()
+    modalidad_filter = (request.args.get("modalidad") or "").strip()
     allowed_states = {"disponible", "reservada", "no_disponible"}
+    try:
+        page = max(1, int((request.args.get("page") or "1").strip()))
+    except Exception:
+        page = 1
+    try:
+        per_page = int((request.args.get("per_page") or "50").strip())
+    except Exception:
+        per_page = 50
+    per_page = min(100, max(1, per_page))
 
-    query = (
-        db.session.query(Candidata, CandidataWeb)
-        .outerjoin(CandidataWeb, CandidataWeb.candidata_id == Candidata.fila)
-    )
-
+    filters = []
     if q:
         pattern = f"%{q}%"
-        query = query.filter(
+        filters.append(
             or_(
                 Candidata.nombre_completo.ilike(pattern),
                 Candidata.codigo.ilike(pattern),
+                cast(Candidata.fila, db.String).ilike(pattern),
                 CandidataWeb.nombre_publico.ilike(pattern),
                 CandidataWeb.ciudad_publica.ilike(pattern),
+                CandidataWeb.sector_publico.ilike(pattern),
+                CandidataWeb.modalidad_publica.ilike(pattern),
+                CandidataWeb.estado_publico.ilike(pattern),
             )
         )
 
     if visible_filter in {"1", "0"}:
         if visible_filter == "1":
-            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.visible.is_(True)))
+            filters.append(or_(CandidataWeb.id.is_(None), CandidataWeb.visible.is_(True)))
         else:
-            query = query.filter(CandidataWeb.visible.is_(False))
+            filters.append(CandidataWeb.visible.is_(False))
 
     if destacada_filter in {"1", "0"}:
         if destacada_filter == "1":
-            query = query.filter(CandidataWeb.es_destacada.is_(True))
+            filters.append(CandidataWeb.es_destacada.is_(True))
         else:
-            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.es_destacada.is_(False)))
+            filters.append(or_(CandidataWeb.id.is_(None), CandidataWeb.es_destacada.is_(False)))
 
     if estado_filter in allowed_states:
         if estado_filter == "disponible":
-            query = query.filter(or_(CandidataWeb.id.is_(None), CandidataWeb.estado_publico == "disponible"))
+            filters.append(or_(CandidataWeb.id.is_(None), CandidataWeb.estado_publico == "disponible"))
         else:
-            query = query.filter(CandidataWeb.estado_publico == estado_filter)
+            filters.append(CandidataWeb.estado_publico == estado_filter)
+
+    if ciudad_filter:
+        filters.append(CandidataWeb.ciudad_publica.ilike(f"%{ciudad_filter}%"))
+
+    if modalidad_filter:
+        filters.append(CandidataWeb.modalidad_publica.ilike(f"%{modalidad_filter}%"))
+
+    query = (
+        db.session.query(Candidata, CandidataWeb)
+        .outerjoin(CandidataWeb, CandidataWeb.candidata_id == Candidata.fila)
+    )
+    if filters:
+        query = query.filter(*filters)
+
+    count_query = (
+        db.session.query(func.count(Candidata.fila))
+        .select_from(Candidata)
+        .outerjoin(CandidataWeb, CandidataWeb.candidata_id == Candidata.fila)
+    )
+    if filters:
+        count_query = count_query.filter(*filters)
+    total_results = int(count_query.scalar() or 0)
+
+    total_pages = max(1, math.ceil(total_results / float(per_page))) if total_results else 1
+    if page > total_pages:
+        page = total_pages
+    offset = (page - 1) * per_page
 
     rows = (
         query.order_by(
@@ -25205,7 +25244,8 @@ def candidatas_web_list():
             CandidataWeb.orden_lista.asc().nullslast(),
             Candidata.fila.desc(),
         )
-        .limit(300)
+        .limit(per_page)
+        .offset(offset)
         .all()
     )
     return render_template(
@@ -25215,7 +25255,14 @@ def candidatas_web_list():
         visible_filter=visible_filter,
         destacada_filter=destacada_filter,
         estado_filter=estado_filter,
+        ciudad_filter=ciudad_filter,
+        modalidad_filter=modalidad_filter,
         allowed_states=sorted(list(allowed_states)),
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        total_results=total_results,
+        shown_count=len(rows),
     )
 
 

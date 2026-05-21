@@ -4,14 +4,14 @@
 <div class="container py-4" style="max-width: 1200px;">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h1 class="h4 mb-0">Perfiles públicos editoriales</h1>
-    <span class="text-muted small">{{ rows|length }} resultado(s)</span>
+    <span class="text-muted small">{{ shown_count }} mostrado(s) de {{ total_results }} resultado(s)</span>
   </div>
 
   <form class="card card-body mb-3" method="get">
     <div class="row g-2 align-items-end">
-      <div class="col-md-5">
-        <label class="form-label">Buscar (nombre, código, ciudad)</label>
-        <input class="form-control" name="q" value="{{ q }}" placeholder="Ej: Ana, COD-101, Santiago">
+      <div class="col-md-4">
+        <label class="form-label">Buscar</label>
+        <input class="form-control" name="q" value="{{ q }}" placeholder="Busca por nombre, código, ciudad o modalidad">
       </div>
       <div class="col-md-2">
         <label class="form-label">Visibilidad</label>
@@ -38,11 +38,35 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-1 d-grid">
+      <div class="col-md-2">
+        <label class="form-label">Ciudad</label>
+        <input class="form-control" name="ciudad" value="{{ ciudad_filter or '' }}" placeholder="Ej: Santiago">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Modalidad</label>
+        <input class="form-control" name="modalidad" value="{{ modalidad_filter or '' }}" placeholder="Ej: Dormida">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label">Registros</label>
+        <select class="form-select" name="per_page">
+          {% for size in [25, 50, 100] %}
+          <option value="{{ size }}" {% if per_page == size %}selected{% endif %}>{{ size }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-grid">
         <button class="btn btn-primary" type="submit">Filtrar</button>
       </div>
     </div>
   </form>
+
+  <p class="text-muted small mb-3">
+    {% if q %}
+      Mostrando {{ shown_count }} de {{ total_results }} resultados. Usa los filtros para refinar.
+    {% else %}
+      Mostrando perfiles recientes. Usa búsqueda para encontrar más candidatas.
+    {% endif %}
+  </p>
 
   <div class="table-responsive">
     <table class="table table-sm align-middle">
@@ -61,7 +85,7 @@
       </thead>
       <tbody>
         {% for cand, ficha in rows %}
-        <tr>
+        <tr data-cw-row="1">
           <td>{{ cand.fila }}</td>
           <td>{{ cand.codigo or 'SIN-COD' }}</td>
           <td>{{ ficha.nombre_publico if ficha and ficha.nombre_publico else cand.nombre_completo }}</td>
@@ -86,8 +110,33 @@
           </td>
         </tr>
         {% endfor %}
+        {% if not rows %}
+        <tr>
+          <td colspan="9" class="text-center text-muted py-4">No hay resultados para los filtros aplicados.</td>
+        </tr>
+        {% endif %}
       </tbody>
     </table>
+  </div>
+
+  {% set prev_page = page - 1 %}
+  {% set next_page = page + 1 %}
+  {% set has_prev = page > 1 %}
+  {% set has_next = page < total_pages %}
+  {% set args_prev = request.args.to_dict() %}
+  {% set args_next = request.args.to_dict() %}
+  {% set _ = args_prev.update({'page': prev_page}) %}
+  {% set _ = args_next.update({'page': next_page}) %}
+  <div class="d-flex justify-content-between align-items-center">
+    <a class="btn btn-outline-secondary btn-sm {% if not has_prev %}disabled{% endif %}"
+       {% if has_prev %}href="{{ url_for('admin.candidatas_web_list', **args_prev) }}"{% else %}aria-disabled="true"{% endif %}>
+      Anterior
+    </a>
+    <span class="text-muted small">Página {{ page }} de {{ total_pages }}</span>
+    <a class="btn btn-outline-secondary btn-sm {% if not has_next %}disabled{% endif %}"
+       {% if has_next %}href="{{ url_for('admin.candidatas_web_list', **args_next) }}"{% else %}aria-disabled="true"{% endif %}>
+      Siguiente
+    </a>
   </div>
 </div>
 {% endblock %}
