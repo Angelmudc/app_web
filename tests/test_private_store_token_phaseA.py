@@ -141,6 +141,59 @@ def test_private_store_token_valido_all_available_200_and_privacy_html():
         assert marker not in lowered
 
 
+def test_private_store_list_pagination_premium_and_query_params_preserved():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_pagination', scope_mode='all_available_store')
+        base = 998500
+        for i in range(1, 17):
+            cand = Candidata(
+                fila=base + i,
+                nombre_completo=f'Paginacion {i}',
+                cedula=f'{base + i:011d}',
+                codigo=f'PTA-PAG-{i}',
+            )
+            db.session.add(cand)
+            db.session.flush()
+            db.session.add(
+                CandidataWeb(
+                    candidata_id=cand.fila,
+                    visible=True,
+                    estado_publico='disponible',
+                    nombre_publico=f'Perfil Paginacion {i}',
+                    ciudad_publica='Santiago',
+                    modalidad_publica='Salida diaria',
+                    tags_publicos='Limpieza, Cocina',
+                    experiencia_resumen='Perfil de prueba para paginación.',
+                    entrevista_publica_resumen='Entrevista validada por agencia.',
+                    disponible_inmediato=True,
+                )
+            )
+        db.session.commit()
+
+    resp = client.get(
+        '/tienda/tok_store_pagination?ciudad=Santiago&modalidad=Salida+diaria&funciones=Limpieza+general&disponible_inmediato=1&per_page=12&page=2',
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'class="ps-pagination"' in html
+    assert 'class="ps-pager"' not in html
+    assert '← Anterior' in html
+    assert 'Siguiente →' in html
+    assert 'Página 2 de 2' in html
+    assert 'page=1' in html
+    assert 'ciudad=Santiago' in html
+    assert 'modalidad=Salida+diaria' in html or 'modalidad=Salida%20diaria' in html
+    assert 'funciones=Limpieza+general' in html or 'funciones=Limpieza%20general' in html
+    assert 'disponible_inmediato=1' in html
+    assert 'per_page=12' in html
+
+
 def test_private_store_token_invalido_404():
     flask_app.config['TESTING'] = True
     client = flask_app.test_client()

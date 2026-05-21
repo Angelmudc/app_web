@@ -126,7 +126,21 @@
   {% endif %}
 
   {% if pages > 1 %}
-  <nav class="ps-pager" aria-label="Paginación">{% if has_prev %}<a href="{{ url_for('public.private_store_list', token=token, page=prev_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Anterior</a>{% endif %}<span>Página {{ page }} de {{ pages }}</span>{% if has_next %}<a href="{{ url_for('public.private_store_list', token=token, page=next_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}">Siguiente</a>{% endif %}</nav>
+  <nav class="ps-pagination" aria-label="Paginación">
+    {% if has_prev %}
+    <a class="ps-page-btn" href="{{ url_for('public.private_store_list', token=token, page=prev_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" aria-label="Página anterior">← Anterior</a>
+    {% else %}
+    <span class="ps-page-btn is-disabled" aria-disabled="true">← Anterior</span>
+    {% endif %}
+
+    <span class="ps-page-current" aria-live="polite">Página {{ page }} de {{ pages }}</span>
+
+    {% if has_next %}
+    <a class="ps-page-btn" href="{{ url_for('public.private_store_list', token=token, page=next_num, ciudad=ciudad, modalidad=modalidad, funciones=funciones, disponible_inmediato=disponible_inmediato, per_page=per_page) }}" aria-label="Página siguiente">Siguiente →</a>
+    {% else %}
+    <span class="ps-page-btn is-disabled" aria-disabled="true">Siguiente →</span>
+    {% endif %}
+  </nav>
   {% endif %}
 </section>
 {% endblock %}
