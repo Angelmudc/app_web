@@ -137,4 +137,25 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
         seg = SeguimientoCandidataCaso.query.filter_by(solicitud_id=solicitud_id).first()
         assert repl is not None and sol is not None and seg is not None
         assert admin_routes._reemplazo_operativo_estado(reemplazo=repl, solicitud=sol, seguimiento=seg) == "Vencido"
-        assert admin_routes._reemplazo_prioridad_derivada(reemplazo=repl, solicitud=sol, seguimiento=seg) in {"alta", "critica"}
+        assert admin_routes._reemplazo_prioridad_derivada(reemplazo=repl, solicitud=sol, seguimiento=seg) in {"media", "alta", "urgente", "critica"}
+
+
+def test_reemplazo_prioridad_derivada_por_dias_abiertos():
+    sol = object()
+    seg = None
+
+    r1 = type("R", (), {"dias_en_reemplazo": 0})()
+    r2 = type("R", (), {"dias_en_reemplazo": 1})()
+    r3 = type("R", (), {"dias_en_reemplazo": 2})()
+    r4 = type("R", (), {"dias_en_reemplazo": 6})()
+    r5 = type("R", (), {"dias_en_reemplazo": 7})()
+    r6 = type("R", (), {"dias_en_reemplazo": 13})()
+    r7 = type("R", (), {"dias_en_reemplazo": 14})()
+
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r1, solicitud=sol, seguimiento=seg) == "media"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r2, solicitud=sol, seguimiento=seg) == "media"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r3, solicitud=sol, seguimiento=seg) == "alta"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r4, solicitud=sol, seguimiento=seg) == "alta"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r5, solicitud=sol, seguimiento=seg) == "urgente"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r6, solicitud=sol, seguimiento=seg) == "urgente"
+    assert admin_routes._reemplazo_prioridad_derivada(reemplazo=r7, solicitud=sol, seguimiento=seg) == "critica"

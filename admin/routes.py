@@ -16998,6 +16998,13 @@ def _mask_cedula(cedula: str | None) -> str:
     return f"{raw[:3]}***{raw[-2:]}"
 
 
+def _mask_phone(phone: str | None) -> str:
+    raw = re.sub(r"\D", "", str(phone or "").strip())
+    if len(raw) < 4:
+        return "—"
+    return f"***-***-{raw[-4:]}"
+
+
 def _safe_modalidad_text(raw) -> str:
     val = str(raw or "").strip()
     if not val:
@@ -17012,7 +17019,7 @@ def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud |
     funciones = format_funciones(getattr(solicitud, "funciones", None), extra_text=getattr(solicitud, "funciones_otro", None)) if solicitud else ""
     funciones = (funciones or "").strip() or "Según perfil"
     sueldo = (getattr(solicitud, "sueldo", None) or "").strip() or "A discutir"
-    prioridad = (getattr(reemplazo, "prioridad", None) or "").strip().lower() or _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=None)
+    prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=None)
     nota = (getattr(reemplazo, "nota_adicional", None) or "").strip()
     nota_short = (nota[:120] + "...") if len(nota) > 120 else nota
     return "\n".join([
@@ -17048,21 +17055,16 @@ def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | 
 
 
 def _reemplazo_prioridad_derivada(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
-    seg_priority = (getattr(seguimiento, "prioridad", "") or "").strip().lower()
-    if seg_priority in {"urgente"}:
-        return "critica"
-    if seg_priority in {"alta"}:
-        return "alta"
-    if solicitud and bool(getattr(solicitud, "es_prioritaria", False)):
-        return "critica"
     dias = int(getattr(reemplazo, "dias_en_reemplazo", 0) or 0)
-    if dias >= 3:
+    if dias >= 14:
         return "critica"
+    if dias >= 7:
+        return "urgente"
     if dias >= 2:
         return "alta"
-    if dias == 1:
+    if dias >= 0:
         return "media"
-    return "baja"
+    return "media"
 
 
 def reemplazos_badge_counts() -> dict[str, int]:
@@ -17099,12 +17101,20 @@ def reemplazo_nuevo_panel():
     solicitud_id = max(0, _safe_int(request.values.get("solicitud_id"), default=0))
 
     if request.method == "POST":
-        motivo = (request.form.get("motivo") or "").strip()
-        prioridad = (request.form.get("prioridad") or "").strip().lower() or None
+        motivo_code = (request.form.get("motivo_reemplazo_code") or "").strip().lower()
+        motivo_label_map = {
+            "inasistencia": "Inasistencia",
+            "renuncia": "Renuncia",
+            "bajo_rendimiento": "Bajo rendimiento",
+            "incompatibilidad": "Incompatibilidad",
+            "horario": "Horario",
+            "salud_emergencia": "Salud/emergencia",
+            "solicitud_cliente": "Solicitud del cliente",
+            "otro": "Otro",
+        }
+        motivo = motivo_label_map.get(motivo_code, "")
         nota = (request.form.get("nota") or "").strip() or None
         responsable_id = max(0, _safe_int(request.form.get("responsable_id"), default=0)) or None
-        motivo_code = (request.form.get("motivo_code") or "").strip().lower() or None
-        fecha_reporte_raw = (request.form.get("fecha_reporte") or "").strip()
 
         if solicitud_id <= 0:
             flash("Debes seleccionar una solicitud activa.", "warning")
@@ -17125,9 +17135,7 @@ def reemplazo_nuevo_panel():
             flash("Ya existe un reemplazo activo para esta solicitud.", "warning")
             return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
 
-        cand_old_id = max(0, _safe_int(request.form.get("candidata_old_id"), default=0))
-        if cand_old_id <= 0:
-            cand_old_id = max(0, _safe_int(getattr(sol, "candidata_id", 0), default=0))
+        cand_old_id = max(0, _safe_int(getattr(sol, "candidata_id", 0), default=0))
         if cand_old_id <= 0:
             flash("La solicitud no tiene candidata actual para abrir reemplazo.", "warning")
             return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
@@ -17136,13 +17144,6 @@ def reemplazo_nuevo_panel():
         if cand_old is None:
             flash("La candidata actual no existe.", "danger")
             return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
-
-        fecha_reporte = utc_now_naive()
-        if fecha_reporte_raw:
-            try:
-                fecha_reporte = datetime.strptime(fecha_reporte_raw, "%Y-%m-%d")
-            except Exception:
-                pass
 
         if not motivo:
             flash("Debes indicar el motivo del reemplazo.", "warning")
@@ -17153,11 +17154,11 @@ def reemplazo_nuevo_panel():
             candidata_old_id=int(cand_old.fila),
             motivo_fallo=motivo,
             nota_adicional=nota,
-            prioridad=prioridad,
-            motivo_reemplazo_code=motivo_code,
+            prioridad="media",
+            motivo_reemplazo_code=motivo_code or "otro",
             responsable_id=responsable_id,
             estado_previo_solicitud=(sol.estado or "").strip().lower() or None,
-            fecha_reporte=fecha_reporte,
+            fecha_reporte=utc_now_naive(),
         )
         r.iniciar_reemplazo()
         _set_solicitud_estado(sol, "reemplazo")
@@ -17174,12 +17175,6 @@ def reemplazo_nuevo_panel():
         return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
 
     selected_cliente = Cliente.query.get(cliente_id) if cliente_id > 0 else None
-    clientes = (
-        Cliente.query
-        .order_by(Cliente.fecha_registro.desc())
-        .limit(50)
-        .all()
-    )
     solicitudes_q = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente), joinedload(Solicitud.candidata))
@@ -17187,21 +17182,132 @@ def reemplazo_nuevo_panel():
     )
     if cliente_id > 0:
         solicitudes_q = solicitudes_q.filter(Solicitud.cliente_id == cliente_id)
-    solicitudes = (
-        solicitudes_q
-        .order_by(Solicitud.id.desc())
-        .limit(120)
-        .all()
-    )
+        solicitudes = (
+            solicitudes_q
+            .order_by(Solicitud.id.desc())
+            .limit(120)
+            .all()
+        )
+    else:
+        solicitudes = []
     staff_users = StaffUser.query.order_by(StaffUser.username.asc()).all()
     return render_template(
         "admin/reemplazo_nuevo_panel.html",
-        clientes=clientes,
         selected_cliente=selected_cliente,
         selected_solicitud_id=solicitud_id,
         solicitudes=solicitudes,
         staff_users=staff_users,
     )
+
+
+@admin_bp.route("/reemplazos/clientes-search", methods=["GET"])
+@login_required
+@staff_required
+def reemplazos_clientes_search():
+    q = (request.args.get("q") or "").strip()
+    if len(q) < 2:
+        return jsonify({"ok": True, "results": []}), 200
+
+    q_digits = _only_digits(q)
+    filtros = [Cliente.codigo.ilike(f"%{q}%"), Cliente.nombre_completo.ilike(f"%{q}%")]
+    if q_digits and len(q_digits) >= 6:
+        try:
+            phone_digits_expr = func.replace(
+                func.replace(
+                    func.replace(
+                        func.replace(
+                            func.replace(
+                                func.replace(
+                                    func.replace(func.coalesce(Cliente.telefono, ''), ' ', ''),
+                                    '-',
+                                    '',
+                                ),
+                                '(',
+                                '',
+                            ),
+                            ')',
+                            '',
+                        ),
+                        '+',
+                        '',
+                    ),
+                    '.',
+                    '',
+                ),
+                '/',
+                '',
+            )
+            filtros.append(phone_digits_expr.like(f"%{q_digits}%"))
+        except Exception:
+            filtros.append(Cliente.telefono.ilike(f"%{q}%"))
+    else:
+        filtros.append(Cliente.telefono.ilike(f"%{q}%"))
+
+    rows = (
+        Cliente.query
+        .options(load_only(Cliente.id, Cliente.codigo, Cliente.nombre_completo, Cliente.telefono))
+        .filter(or_(*filtros))
+        .order_by(Cliente.fecha_registro.desc())
+        .limit(20)
+        .all()
+    )
+    cliente_ids = [int(getattr(c, "id", 0) or 0) for c in (rows or []) if int(getattr(c, "id", 0) or 0) > 0]
+    counts: dict[int, int] = {}
+    if cliente_ids:
+        active_rows = (
+            db.session.query(Solicitud.cliente_id, func.count(Solicitud.id))
+            .filter(
+                Solicitud.cliente_id.in_(cliente_ids),
+                Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")),
+            )
+            .group_by(Solicitud.cliente_id)
+            .all()
+        )
+        counts = {int(cid): int(cnt or 0) for cid, cnt in (active_rows or [])}
+    out = []
+    for c in (rows or []):
+        cid = int(getattr(c, "id", 0) or 0)
+        out.append({
+            "id": cid,
+            "codigo": str(getattr(c, "codigo", "") or ""),
+            "nombre": str(getattr(c, "nombre_completo", "") or ""),
+            "telefono_masked": _mask_phone(getattr(c, "telefono", None)),
+            "solicitudes_activas": int(counts.get(cid, 0)),
+        })
+    return jsonify({"ok": True, "results": out}), 200
+
+
+@admin_bp.route("/reemplazos/cliente/<int:cliente_id>/solicitudes.json", methods=["GET"])
+@login_required
+@staff_required
+def reemplazos_solicitudes_por_cliente(cliente_id: int):
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return jsonify({"ok": True, "results": []}), 200
+    rows = (
+        Solicitud.query
+        .options(joinedload(Solicitud.candidata))
+        .filter(
+            Solicitud.cliente_id == cid,
+            Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")),
+        )
+        .order_by(Solicitud.id.desc())
+        .limit(120)
+        .all()
+    )
+    out = []
+    for s in (rows or []):
+        cand = getattr(s, "candidata", None)
+        out.append({
+            "id": int(getattr(s, "id", 0) or 0),
+            "codigo": str(getattr(s, "codigo_solicitud", None) or f"SOL-{int(getattr(s, 'id', 0) or 0)}"),
+            "ciudad_sector": str(getattr(s, "ciudad_sector", None) or "—"),
+            "modalidad": _safe_modalidad_text(getattr(s, "modalidad_trabajo", None)),
+            "estado": str(getattr(s, "estado", None) or "—"),
+            "candidata_old_id": int(getattr(s, "candidata_id", 0) or 0),
+            "candidata_actual": str(getattr(cand, "nombre_completo", None) or "Sin candidata asignada"),
+        })
+    return jsonify({"ok": True, "results": out}), 200
 
 
 @admin_bp.route("/reemplazos/<int:reemplazo_id>/cancelar", methods=["POST"])
@@ -17378,7 +17484,7 @@ def reemplazos_dashboard():
         seg = seg_by_solicitud.get(int(getattr(row, "solicitud_id", 0) or 0))
         sol = getattr(row, "solicitud", None)
         estado_operativo = _reemplazo_operativo_estado(reemplazo=row, solicitud=sol, seguimiento=seg)
-        prioridad = (getattr(row, "prioridad", "") or "").strip().lower() or _reemplazo_prioridad_derivada(reemplazo=row, solicitud=sol, seguimiento=seg)
+        prioridad = _reemplazo_prioridad_derivada(reemplazo=row, solicitud=sol, seguimiento=seg)
         dias_abierto = int(getattr(row, "dias_en_reemplazo", 0) or 0)
         if q_prioridad and prioridad != q_prioridad:
             continue

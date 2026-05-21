@@ -12,66 +12,91 @@
 
   <div class="glass-card p-3">
     <form method="post" class="row g-3">
-      <div class="col-md-6">
-        <label class="form-label">Cliente</label>
-        <select name="cliente_id" class="form-select" onchange="this.form.submit()">
-          <option value="">Selecciona cliente</option>
-          {% for c in (clientes or []) %}
-          <option value="{{ c.id }}" {% if selected_cliente and selected_cliente.id == c.id %}selected{% endif %}>{{ c.codigo }} · {{ c.nombre_completo }}</option>
-          {% endfor %}
+      <div class="col-12">
+        <div class="alert alert-info mb-0">
+          <div><strong>Fecha de reporte:</strong> se usará la fecha actual automáticamente.</div>
+          <div><strong>Prioridad operativa:</strong> derivada automáticamente por tiempo abierto (0-1 media, 2-6 alta, 7-13 urgente, 14+ crítica).</div>
+        </div>
+      </div>
+
+      <input type="hidden" name="cliente_id" id="selectedClienteId" value="{{ selected_cliente.id if selected_cliente else '' }}">
+      <input type="hidden" name="solicitud_id" id="selectedSolicitudId" value="{{ selected_solicitud_id or '' }}">
+
+      <div class="col-12">
+        <label class="form-label">1. Buscar cliente</label>
+        <div class="input-group">
+          <input type="text" id="clienteSearchInput" class="form-control" placeholder="Código, nombre o teléfono" autocomplete="off">
+          <button class="btn btn-outline-secondary" type="button" id="clienteSearchBtn">Buscar</button>
+        </div>
+        <div id="clienteSearchHelp" class="form-text">Búsqueda principal por código. También acepta nombre y teléfono.</div>
+        <div id="clienteResults" class="list-group mt-2"></div>
+        <div id="clienteSeleccionado" class="small mt-2 fw-semibold">
+          {% if selected_cliente %}
+            Cliente seleccionado: {{ selected_cliente.codigo or ('#' ~ selected_cliente.id) }} · {{ selected_cliente.nombre_completo }}
+          {% else %}
+            Cliente seleccionado: ninguno
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">2. Elegir solicitud del cliente</label>
+        <div id="solicitudesContainer" class="border rounded p-2">
+          {% if selected_cliente %}
+            {% if solicitudes %}
+              <div class="list-group" id="solicitudesListServerSeed">
+                {% for s in solicitudes %}
+                <button type="button"
+                        class="list-group-item list-group-item-action solicitud-item {% if selected_solicitud_id == s.id %}active{% endif %}"
+                        data-solicitud-id="{{ s.id }}"
+                        data-candidata-old-id="{{ s.candidata_id or 0 }}"
+                        data-candidata-actual="{{ s.candidata.nombre_completo if s.candidata else 'Sin candidata asignada' }}"
+                        data-estado="{{ s.estado or '—' }}">
+                  <div class="fw-semibold">{{ s.codigo_solicitud or ('SOL-' ~ s.id) }}</div>
+                  <div class="small text-muted">{{ s.ciudad_sector or '—' }} · {{ (s.modalidad_trabajo or 'No especificada')|replace('_', ' ')|title }} · {{ s.estado or '—' }}</div>
+                </button>
+                {% endfor %}
+              </div>
+            {% else %}
+              <div class="text-muted small">No hay solicitudes activas para este cliente.</div>
+            {% endif %}
+          {% else %}
+            <div class="text-muted small">Selecciona un cliente para ver sus solicitudes activas.</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">3. Candidata actual (automática)</label>
+        <div id="candidataActualBox" class="form-control-plaintext border rounded px-2 py-2">Sin candidata asignada</div>
+      </div>
+
+      <div class="col-12">
+        <label class="form-label">4. Motivo del reemplazo</label>
+        <select name="motivo_reemplazo_code" class="form-select" required>
+          <option value="">Selecciona motivo</option>
+          <option value="inasistencia">Inasistencia</option>
+          <option value="renuncia">Renuncia</option>
+          <option value="bajo_rendimiento">Bajo rendimiento</option>
+          <option value="incompatibilidad">Incompatibilidad</option>
+          <option value="horario">Horario</option>
+          <option value="salud_emergencia">Salud/emergencia</option>
+          <option value="solicitud_cliente">Solicitud del cliente</option>
+          <option value="otro">Otro</option>
         </select>
       </div>
-      <div class="col-md-6">
-        <label class="form-label">Solicitud activa</label>
-        <select name="solicitud_id" class="form-select" required>
-          <option value="">Selecciona solicitud</option>
-          {% for s in (solicitudes or []) %}
-          <option value="{{ s.id }}" {% if selected_solicitud_id == s.id %}selected{% endif %}>{{ s.codigo_solicitud or ('SOL-' ~ s.id) }} · {{ s.estado }} · {{ s.ciudad_sector or '—' }}</option>
-          {% endfor %}
-        </select>
+      <div class="col-12">
+        <label class="form-label">5. Nota interna</label>
+        <textarea name="nota" class="form-control" rows="3"></textarea>
       </div>
       <div class="col-md-6">
-        <label class="form-label">Candidata actual</label>
-        <select name="candidata_old_id" class="form-select">
-          <option value="">Usar candidata de solicitud</option>
-          {% for s in (solicitudes or []) if s.candidata %}
-          <option value="{{ s.candidata.fila }}">{{ s.candidata.nombre_completo }} · SOL {{ s.codigo_solicitud or s.id }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label">Responsable</label>
+        <label class="form-label">6. Responsable (opcional)</label>
         <select name="responsable_id" class="form-select">
           <option value="">Sin asignar</option>
           {% for staff in (staff_users or []) %}
           <option value="{{ staff.id }}">{{ staff.username }}</option>
           {% endfor %}
         </select>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Prioridad</label>
-        <select name="prioridad" class="form-select">
-          <option value="media">Media</option>
-          <option value="baja">Baja</option>
-          <option value="alta">Alta</option>
-          <option value="critica">Crítica</option>
-        </select>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Motivo (código)</label>
-        <input name="motivo_code" class="form-control" maxlength="50" placeholder="ej: inasistencia">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label">Fecha reporte</label>
-        <input type="date" name="fecha_reporte" class="form-control">
-      </div>
-      <div class="col-12">
-        <label class="form-label">Motivo</label>
-        <textarea name="motivo" class="form-control" rows="3" required></textarea>
-      </div>
-      <div class="col-12">
-        <label class="form-label">Nota interna</label>
-        <textarea name="nota" class="form-control" rows="3"></textarea>
       </div>
       <div class="col-12 form-check">
         <input type="checkbox" class="form-check-input" id="confirmar_duplicado" name="confirmar_duplicado" value="1">
@@ -84,4 +109,129 @@
     </form>
   </div>
 </div>
+<script>
+  (function () {
+    var searchInput = document.getElementById("clienteSearchInput");
+    var searchBtn = document.getElementById("clienteSearchBtn");
+    var resultsBox = document.getElementById("clienteResults");
+    var clienteIdInput = document.getElementById("selectedClienteId");
+    var solicitudIdInput = document.getElementById("selectedSolicitudId");
+    var solicitudesContainer = document.getElementById("solicitudesContainer");
+    var clienteSeleccionado = document.getElementById("clienteSeleccionado");
+    var candidataActualBox = document.getElementById("candidataActualBox");
+
+    function esc(s) {
+      return String(s || "").replace(/[&<>\"']/g, function (m) {
+        return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m];
+      });
+    }
+
+    function setSelectedSolicitudFromNode(node) {
+      if (!node) return;
+      var all = solicitudesContainer.querySelectorAll(".solicitud-item");
+      for (var i = 0; i < all.length; i += 1) all[i].classList.remove("active");
+      node.classList.add("active");
+      solicitudIdInput.value = node.getAttribute("data-solicitud-id") || "";
+      candidataActualBox.textContent = node.getAttribute("data-candidata-actual") || "Sin candidata asignada";
+    }
+
+    function bindSolicitudButtons() {
+      var nodes = solicitudesContainer.querySelectorAll(".solicitud-item");
+      for (var i = 0; i < nodes.length; i += 1) {
+        nodes[i].addEventListener("click", function () {
+          setSelectedSolicitudFromNode(this);
+        });
+      }
+      if (!solicitudIdInput.value && nodes.length > 0) setSelectedSolicitudFromNode(nodes[0]);
+    }
+
+    function renderSolicitudes(rows) {
+      if (!rows || !rows.length) {
+        solicitudesContainer.innerHTML = '<div class="text-muted small">No hay solicitudes activas para este cliente.</div>';
+        solicitudIdInput.value = "";
+        candidataActualBox.textContent = "Sin candidata asignada";
+        return;
+      }
+      var html = '<div class="list-group">';
+      for (var i = 0; i < rows.length; i += 1) {
+        var s = rows[i];
+        html += '<button type="button" class="list-group-item list-group-item-action solicitud-item" data-solicitud-id="' + esc(s.id) + '" data-candidata-old-id="' + esc(s.candidata_old_id) + '" data-candidata-actual="' + esc(s.candidata_actual) + '" data-estado="' + esc(s.estado) + '">';
+        html += '<div class="fw-semibold">' + esc(s.codigo) + '</div>';
+        html += '<div class="small text-muted">' + esc(s.ciudad_sector) + ' · ' + esc(s.modalidad) + ' · ' + esc(s.estado) + '</div>';
+        html += '</button>';
+      }
+      html += '</div>';
+      solicitudesContainer.innerHTML = html;
+      bindSolicitudButtons();
+    }
+
+    function loadSolicitudes(clienteId) {
+      if (!clienteId) {
+        solicitudesContainer.innerHTML = '<div class="text-muted small">Selecciona un cliente para ver sus solicitudes activas.</div>';
+        solicitudIdInput.value = "";
+        candidataActualBox.textContent = "Sin candidata asignada";
+        return;
+      }
+      fetch('/admin/reemplazos/cliente/' + encodeURIComponent(clienteId) + '/solicitudes.json', { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (payload) { renderSolicitudes(payload.results || []); })
+        .catch(function () {
+          solicitudesContainer.innerHTML = '<div class="text-danger small">No fue posible cargar solicitudes.</div>';
+        });
+    }
+
+    function selectCliente(row) {
+      clienteIdInput.value = String(row.id || "");
+      clienteSeleccionado.textContent = "Cliente seleccionado: " + (row.codigo || ("#" + row.id)) + " · " + (row.nombre || "");
+      loadSolicitudes(row.id);
+    }
+
+    function renderClientes(rows) {
+      if (!rows || !rows.length) {
+        resultsBox.innerHTML = '<div class="list-group-item small text-muted">Sin resultados.</div>';
+        return;
+      }
+      var html = "";
+      for (var i = 0; i < rows.length; i += 1) {
+        var c = rows[i];
+        html += '<button type="button" class="list-group-item list-group-item-action cliente-result" data-cliente=\'' + JSON.stringify(c).replace(/'/g, "&#39;") + '\'>';
+        html += '<div class="fw-semibold">' + esc(c.codigo || ("#" + c.id)) + ' · ' + esc(c.nombre) + '</div>';
+        html += '<div class="small text-muted">' + esc(c.telefono_masked || "—") + ' · ' + esc(c.solicitudes_activas) + ' solicitudes activas</div>';
+        html += '</button>';
+      }
+      resultsBox.innerHTML = html;
+      var buttons = resultsBox.querySelectorAll(".cliente-result");
+      for (var j = 0; j < buttons.length; j += 1) {
+        buttons[j].addEventListener("click", function () {
+          var row = JSON.parse(this.getAttribute("data-cliente") || "{}");
+          selectCliente(row);
+          resultsBox.innerHTML = "";
+        });
+      }
+    }
+
+    function runSearch() {
+      var q = (searchInput.value || "").trim();
+      if (q.length < 2) {
+        resultsBox.innerHTML = '<div class="list-group-item small text-muted">Escribe al menos 2 caracteres.</div>';
+        return;
+      }
+      fetch('/admin/reemplazos/clientes-search?q=' + encodeURIComponent(q), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (payload) { renderClientes(payload.results || []); })
+        .catch(function () {
+          resultsBox.innerHTML = '<div class="list-group-item small text-danger">No fue posible buscar clientes.</div>';
+        });
+    }
+
+    searchBtn.addEventListener("click", runSearch);
+    searchInput.addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        runSearch();
+      }
+    });
+    bindSolicitudButtons();
+  })();
+</script>
 {% endblock %}
