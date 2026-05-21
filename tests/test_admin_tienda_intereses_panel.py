@@ -152,6 +152,9 @@ def test_admin_tienda_intereses_detail_status_visual_whatsapp_and_change_estado(
     assert detail.status_code == 200
     html = detail.get_data(as_text=True)
     assert "Datos del cliente" in html
+    assert "td-card-dark" in html
+    assert "td-card-client" in html
+    assert "background:#fff" not in html
     assert "Publica A" in html
     assert "Publica B" in html
     assert "Publica C" in html

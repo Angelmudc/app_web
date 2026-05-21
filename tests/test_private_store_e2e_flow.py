@@ -133,6 +133,8 @@ def test_private_store_end_to_end_full_flow_and_admin_badge():
     store_html = store.get_data(as_text=True)
     assert "Perfil Publico Uno" in store_html
     assert "Perfil Publico Dos" in store_html
+    assert "Ver perfil" in store_html
+    assert "Agregar" in store_html
 
     forbidden = ["cedula", "dirección", "direccion", "referencias", "notas internas", "score", "/admin", "/clientes", "token_hash"]
     lowered = store_html.lower()
