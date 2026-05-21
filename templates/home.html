@@ -82,6 +82,17 @@
           </a>
         </div>
       </div>
+      {% if has_endpoint('admin.candidatas_web_list') %}
+      <div class="col">
+        <div class="dashboard-card">
+          <h5>Candidatas en tienda</h5>
+          <p>Publica, edita u oculta los perfiles que los clientes verán en sus enlaces privados.</p>
+          <a href="{{ url_for('admin.candidatas_web_list') }}" class="btn btn-outline-primary w-100">
+            Gestionar perfiles
+          </a>
+        </div>
+      </div>
+      {% endif %}
       {% if has_endpoint('admin.tienda_intereses_list') %}
       <div class="col">
         <div class="dashboard-card">

@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from app import app as flask_app
 from config_app import db
-from models import Cliente, TiendaInteres
+from models import Candidata, Cliente, Solicitud, TiendaInteres, TiendaInteresItem
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.timezone import utc_now_naive
 
@@ -22,10 +22,16 @@ def _login_owner(client) -> None:
     assert resp.status_code in (302, 303)
 
 
+def _login_secretaria(client) -> None:
+    client.get("/admin/login", follow_redirects=False)
+    resp = client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+    assert resp.status_code in (302, 303)
+
+
 def _ensure_tables() -> None:
     from models import CatalogoPrivado, CatalogoPrivadoItem
 
-    ensure_sqlite_compat_tables([Cliente, CatalogoPrivado, CatalogoPrivadoItem, TiendaInteres], reset=False)
+    ensure_sqlite_compat_tables([Candidata, Cliente, Solicitud, CatalogoPrivado, CatalogoPrivadoItem, TiendaInteres, TiendaInteresItem], reset=False)
 
 
 def _seed_nav_data() -> int:
@@ -98,3 +104,20 @@ def test_admin_nav_y_clientes_muestran_acceso_y_badge_tienda_intereses():
     assert "Ver solicitudes tienda" in clientes_html
     assert f"/admin/tienda-intereses?cliente_id={cliente_id}" in clientes_html
     assert "Ver solicitudes tienda (1)" in clientes_html
+
+
+def test_home_secretaria_ve_acceso_candidatas_en_tienda_interno():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    _login_secretaria(client)
+
+    home = client.get("/home", follow_redirects=False)
+    assert home.status_code == 200
+    html = home.get_data(as_text=True)
+    assert "Candidatas en tienda" in html
+    assert "Gestionar perfiles" in html
+    assert "/admin/candidatas-web" in html
+    assert "/domesticas/" not in html
+    assert "/tienda/" not in html
