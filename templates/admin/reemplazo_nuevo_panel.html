@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Nuevo Reemplazo{% endblock %}
+{% block content %}
+<div class="container py-4" style="max-width: 980px;">
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="h4 mb-1">Crear reemplazo</h1>
+      <div class="small text-muted">Abre caso sin entrar al detalle del cliente</div>
+    </div>
+    <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary btn-sm">Volver al panel</a>
+  </div>
+
+  <div class="glass-card p-3">
+    <form method="post" class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Cliente</label>
+        <select name="cliente_id" class="form-select" onchange="this.form.submit()">
+          <option value="">Selecciona cliente</option>
+          {% for c in (clientes or []) %}
+          <option value="{{ c.id }}" {% if selected_cliente and selected_cliente.id == c.id %}selected{% endif %}>{{ c.codigo }} · {{ c.nombre_completo }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Solicitud activa</label>
+        <select name="solicitud_id" class="form-select" required>
+          <option value="">Selecciona solicitud</option>
+          {% for s in (solicitudes or []) %}
+          <option value="{{ s.id }}" {% if selected_solicitud_id == s.id %}selected{% endif %}>{{ s.codigo_solicitud or ('SOL-' ~ s.id) }} · {{ s.estado }} · {{ s.ciudad_sector or '—' }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Candidata actual</label>
+        <select name="candidata_old_id" class="form-select">
+          <option value="">Usar candidata de solicitud</option>
+          {% for s in (solicitudes or []) if s.candidata %}
+          <option value="{{ s.candidata.fila }}">{{ s.candidata.nombre_completo }} · SOL {{ s.codigo_solicitud or s.id }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6">
+        <label class="form-label">Responsable</label>
+        <select name="responsable_id" class="form-select">
+          <option value="">Sin asignar</option>
+          {% for staff in (staff_users or []) %}
+          <option value="{{ staff.id }}">{{ staff.username }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Prioridad</label>
+        <select name="prioridad" class="form-select">
+          <option value="media">Media</option>
+          <option value="baja">Baja</option>
+          <option value="alta">Alta</option>
+          <option value="critica">Crítica</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Motivo (código)</label>
+        <input name="motivo_code" class="form-control" maxlength="50" placeholder="ej: inasistencia">
+      </div>
+      <div class="col-md-4">
+        <label class="form-label">Fecha reporte</label>
+        <input type="date" name="fecha_reporte" class="form-control">
+      </div>
+      <div class="col-12">
+        <label class="form-label">Motivo</label>
+        <textarea name="motivo" class="form-control" rows="3" required></textarea>
+      </div>
+      <div class="col-12">
+        <label class="form-label">Nota interna</label>
+        <textarea name="nota" class="form-control" rows="3"></textarea>
+      </div>
+      <div class="col-12 form-check">
+        <input type="checkbox" class="form-check-input" id="confirmar_duplicado" name="confirmar_duplicado" value="1">
+        <label class="form-check-label" for="confirmar_duplicado">Permitir crear aunque exista reemplazo activo para la solicitud</label>
+      </div>
+      <div class="col-12 d-flex justify-content-end gap-2">
+        <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary">Cancelar</a>
+        <button class="btn btn-primary" type="submit">Crear reemplazo</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

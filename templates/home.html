@@ -110,6 +110,20 @@
         </div>
       </div>
       {% endif %}
+      {% if has_endpoint('admin.reemplazos_dashboard') %}
+      <div class="col">
+        <div class="dashboard-card">
+          <h5>Panel de reemplazos</h5>
+          <p>
+            Activos: {{ (reemplazos_badge.activos if reemplazos_badge is defined else 0) }} ·
+            Críticos: {{ (reemplazos_badge.criticos if reemplazos_badge is defined else 0) }}
+          </p>
+          <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-primary w-100">
+            Gestionar reemplazos
+          </a>
+        </div>
+      </div>
+      {% endif %}
     </div>
   </div>
 

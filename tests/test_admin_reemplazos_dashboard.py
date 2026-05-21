@@ -87,12 +87,15 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     resp = client.get("/admin/reemplazos", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Panel operativo de reemplazos" in html
+    assert "Panel de reemplazos" in html
     assert "No se presentó" in html
+
+    resp_cliente = client.get("/admin/reemplazos?cliente_id=1", follow_redirects=False)
+    assert resp_cliente.status_code == 200
 
     resp_activos = client.get("/admin/reemplazos?estado=activos", follow_redirects=False)
     assert resp_activos.status_code == 200
-    assert f"#{repl_active_id}" in resp_activos.get_data(as_text=True)
+    assert f"/admin/reemplazos/{repl_active_id}" in resp_activos.get_data(as_text=True)
 
     resp_cerrados = client.get("/admin/reemplazos?estado=cerrados", follow_redirects=False)
     assert resp_cerrados.status_code == 200
@@ -103,6 +106,30 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert "Reemplazo #" in detail_html
     assert "Cliente" in detail_html
     assert "Solicitud" in detail_html
+    assert "Texto operativo" in detail_html
+    assert "Disponible reemplazo" in detail_html
+
+    resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)
+    assert resp_pub.status_code == 200
+    payload = resp_pub.get_json() or {}
+    assert "Disponible reemplazo" in (payload.get("texto") or "")
+
+    with flask_app.app_context():
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        create_resp = client.post(
+            "/admin/reemplazos/nuevo",
+            data={
+                "cliente_id": str(sol.cliente_id),
+                "solicitud_id": str(sol.id),
+                "candidata_old_id": str(sol.candidata_id or ""),
+                "motivo": "Incidencia operativa",
+                "prioridad": "alta",
+                "confirmar_duplicado": "1",
+            },
+            follow_redirects=False,
+        )
+        assert create_resp.status_code in (302, 303)
 
     with flask_app.app_context():
         repl = Reemplazo.query.get(repl_active_id)

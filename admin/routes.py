@@ -7513,6 +7513,36 @@ def listar_clientes():
         [int(getattr(c, "id", 0) or 0) for c in (clientes or [])],
         solo_nuevos=True,
     ) if (has_search and clientes) else {}
+    cliente_ids = [int(getattr(c, "id", 0) or 0) for c in (clientes or []) if int(getattr(c, "id", 0) or 0) > 0]
+    reemplazos_activos_por_cliente: dict[int, int] = {}
+    reemplazos_total_por_cliente: dict[int, int] = {}
+    if cliente_ids:
+        try:
+            activos_rows = (
+                db.session.query(Solicitud.cliente_id, func.count(Reemplazo.id))
+                .join(Reemplazo, Reemplazo.solicitud_id == Solicitud.id)
+                .filter(
+                    Solicitud.cliente_id.in_(cliente_ids),
+                    Reemplazo.fecha_inicio_reemplazo.isnot(None),
+                    Reemplazo.fecha_fin_reemplazo.is_(None),
+                )
+                .group_by(Solicitud.cliente_id)
+                .all()
+            )
+            reemplazos_activos_por_cliente = {int(cid): int(cnt or 0) for cid, cnt in (activos_rows or [])}
+        except Exception:
+            reemplazos_activos_por_cliente = {}
+        try:
+            total_rows = (
+                db.session.query(Solicitud.cliente_id, func.count(Reemplazo.id))
+                .join(Reemplazo, Reemplazo.solicitud_id == Solicitud.id)
+                .filter(Solicitud.cliente_id.in_(cliente_ids))
+                .group_by(Solicitud.cliente_id)
+                .all()
+            )
+            reemplazos_total_por_cliente = {int(cid): int(cnt or 0) for cid, cnt in (total_rows or [])}
+        except Exception:
+            reemplazos_total_por_cliente = {}
 
     role = str(role_for_user(current_user) or "").strip().lower()
     can_manage_public_intake = role in {"owner", "admin"}
@@ -7531,6 +7561,8 @@ def listar_clientes():
             server_paginated=True,
             tienda_intereses_counts=tienda_intereses_counts,
             tienda_intereses_nuevos_counts=tienda_intereses_nuevos_counts,
+            reemplazos_activos_por_cliente=reemplazos_activos_por_cliente,
+            reemplazos_total_por_cliente=reemplazos_total_por_cliente,
         )
         return jsonify(_admin_async_payload(
             success=True,
@@ -7562,6 +7594,8 @@ def listar_clientes():
         public_intake_new_count=public_intake_new_count,
         tienda_intereses_counts=tienda_intereses_counts,
         tienda_intereses_nuevos_counts=tienda_intereses_nuevos_counts,
+        reemplazos_activos_por_cliente=reemplazos_activos_por_cliente,
+        reemplazos_total_por_cliente=reemplazos_total_por_cliente,
     )
 
 
@@ -12561,6 +12595,8 @@ def nuevo_reemplazo(s_id):
                 candidata_old_id=cand_old.fila,
                 motivo_fallo=(form.motivo_fallo.data or '').strip(),
                 estado_previo_solicitud=(sol.estado or '').strip().lower() or None,
+                responsable_id=(int(getattr(current_user, "id", 0) or 0) or None),
+                fecha_reporte=utc_now_naive(),
             )
 
             ahora = utc_now_naive()
@@ -13022,6 +13058,10 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 
             if hasattr(r, 'fecha_fin_reemplazo'):
                 r.fecha_fin_reemplazo = ahora
+            if hasattr(r, "resultado_final"):
+                r.resultado_final = "exitoso"
+            if hasattr(r, "fecha_resolucion"):
+                r.fecha_resolucion = ahora
             elif hasattr(r, 'fecha_fin'):
                 r.fecha_fin = ahora
 
@@ -13397,6 +13437,10 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         r.cerrar_reemplazo()
         if hasattr(r, "oportunidad_nueva"):
             r.oportunidad_nueva = False
+        if hasattr(r, "resultado_final"):
+            r.resultado_final = "cancelado"
+        if hasattr(r, "fecha_resolucion"):
+            r.fecha_resolucion = utc_now_naive()
 
         estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
         if estado_restore not in ("proceso", "activa", "pagada", "cancelada"):
@@ -13654,6 +13698,10 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
 
     try:
         r.cerrar_reemplazo(cand_new.fila)
+        if hasattr(r, "resultado_final"):
+            r.resultado_final = "exitoso"
+        if hasattr(r, "fecha_resolucion"):
+            r.fecha_resolucion = utc_now_naive()
 
         s.candidata_id = cand_new.fila
         estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
@@ -16950,8 +16998,43 @@ def _mask_cedula(cedula: str | None) -> str:
     return f"{raw[:3]}***{raw[-2:]}"
 
 
+def _safe_modalidad_text(raw) -> str:
+    val = str(raw or "").strip()
+    if not val:
+        return "No especificada"
+    return val.replace("_", " ").title()
+
+
+def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud | None) -> str:
+    ciudad = (getattr(solicitud, "ciudad_sector", None) or "").strip() or "No especificada"
+    modalidad = _safe_modalidad_text(getattr(solicitud, "modalidad_trabajo", None))
+    horario = (getattr(solicitud, "horario", None) or "").strip() or "A coordinar"
+    funciones = format_funciones(getattr(solicitud, "funciones", None), extra_text=getattr(solicitud, "funciones_otro", None)) if solicitud else ""
+    funciones = (funciones or "").strip() or "Según perfil"
+    sueldo = (getattr(solicitud, "sueldo", None) or "").strip() or "A discutir"
+    prioridad = (getattr(reemplazo, "prioridad", None) or "").strip().lower() or _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=None)
+    nota = (getattr(reemplazo, "nota_adicional", None) or "").strip()
+    nota_short = (nota[:120] + "...") if len(nota) > 120 else nota
+    return "\n".join([
+        "Disponible reemplazo",
+        f"Cliente en: {ciudad}",
+        f"Modalidad: {modalidad}",
+        f"Horario: {horario}",
+        f"Funciones: {funciones}",
+        f"Sueldo: {sueldo}",
+        "Motivo: reemplazo",
+        f"Urgencia: {prioridad}",
+        f"Nota: {nota_short or 'Sin nota adicional'}",
+    ])
+
+
 def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
     now = utc_now_naive()
+    resultado_final = (getattr(reemplazo, "resultado_final", "") or "").strip().lower()
+    if resultado_final == "cancelado":
+        return "Cancelado"
+    if resultado_final == "cerrado_fallido":
+        return "Cerrado fallido"
     if seguimiento and getattr(seguimiento, "due_at", None) and getattr(seguimiento, "closed_at", None) is None:
         if seguimiento.due_at < now:
             return "Vencido"
@@ -16982,6 +17065,199 @@ def _reemplazo_prioridad_derivada(*, reemplazo: Reemplazo, solicitud: Solicitud 
     return "baja"
 
 
+def reemplazos_badge_counts() -> dict[str, int]:
+    try:
+        activos = int(
+            db.session.query(func.count(Reemplazo.id))
+            .filter(Reemplazo.fecha_inicio_reemplazo.isnot(None), Reemplazo.fecha_fin_reemplazo.is_(None))
+            .scalar()
+            or 0
+        )
+    except Exception:
+        activos = 0
+    try:
+        criticos = int(
+            db.session.query(func.count(Reemplazo.id))
+            .filter(
+                Reemplazo.fecha_inicio_reemplazo.isnot(None),
+                Reemplazo.fecha_fin_reemplazo.is_(None),
+                or_(func.lower(cast(Reemplazo.prioridad, db.String)) == "critica", Reemplazo.fecha_inicio_reemplazo <= (utc_now_naive() - timedelta(days=3))),
+            )
+            .scalar()
+            or 0
+        )
+    except Exception:
+        criticos = 0
+    return {"activos": max(0, activos), "criticos": max(0, criticos)}
+
+
+@admin_bp.route("/reemplazos/nuevo", methods=["GET", "POST"])
+@login_required
+@staff_required
+def reemplazo_nuevo_panel():
+    cliente_id = max(0, _safe_int(request.values.get("cliente_id"), default=0))
+    solicitud_id = max(0, _safe_int(request.values.get("solicitud_id"), default=0))
+
+    if request.method == "POST":
+        motivo = (request.form.get("motivo") or "").strip()
+        prioridad = (request.form.get("prioridad") or "").strip().lower() or None
+        nota = (request.form.get("nota") or "").strip() or None
+        responsable_id = max(0, _safe_int(request.form.get("responsable_id"), default=0)) or None
+        motivo_code = (request.form.get("motivo_code") or "").strip().lower() or None
+        fecha_reporte_raw = (request.form.get("fecha_reporte") or "").strip()
+
+        if solicitud_id <= 0:
+            flash("Debes seleccionar una solicitud activa.", "warning")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=cliente_id or None))
+
+        sol = Solicitud.query.filter_by(id=solicitud_id).first()
+        if sol is None:
+            flash("La solicitud seleccionada no existe.", "danger")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=cliente_id or None))
+
+        if cliente_id > 0 and int(getattr(sol, "cliente_id", 0) or 0) != cliente_id:
+            flash("La solicitud no pertenece al cliente seleccionado.", "danger")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=cliente_id or None))
+
+        active = _active_reemplazo_for_solicitud(sol)
+        allow_duplicate = str(request.form.get("confirmar_duplicado") or "").strip().lower() in {"1", "true", "on", "yes"}
+        if active and not allow_duplicate:
+            flash("Ya existe un reemplazo activo para esta solicitud.", "warning")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
+
+        cand_old_id = max(0, _safe_int(request.form.get("candidata_old_id"), default=0))
+        if cand_old_id <= 0:
+            cand_old_id = max(0, _safe_int(getattr(sol, "candidata_id", 0), default=0))
+        if cand_old_id <= 0:
+            flash("La solicitud no tiene candidata actual para abrir reemplazo.", "warning")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
+
+        cand_old = Candidata.query.filter_by(fila=cand_old_id).first()
+        if cand_old is None:
+            flash("La candidata actual no existe.", "danger")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
+
+        fecha_reporte = utc_now_naive()
+        if fecha_reporte_raw:
+            try:
+                fecha_reporte = datetime.strptime(fecha_reporte_raw, "%Y-%m-%d")
+            except Exception:
+                pass
+
+        if not motivo:
+            flash("Debes indicar el motivo del reemplazo.", "warning")
+            return redirect(url_for("admin.reemplazo_nuevo_panel", cliente_id=sol.cliente_id, solicitud_id=sol.id))
+
+        r = Reemplazo(
+            solicitud_id=int(sol.id),
+            candidata_old_id=int(cand_old.fila),
+            motivo_fallo=motivo,
+            nota_adicional=nota,
+            prioridad=prioridad,
+            motivo_reemplazo_code=motivo_code,
+            responsable_id=responsable_id,
+            estado_previo_solicitud=(sol.estado or "").strip().lower() or None,
+            fecha_reporte=fecha_reporte,
+        )
+        r.iniciar_reemplazo()
+        _set_solicitud_estado(sol, "reemplazo")
+        db.session.add(r)
+        db.session.commit()
+        _audit_log(
+            action_type="REEMPLAZO_ABRIR_PANEL",
+            entity_type="Reemplazo",
+            entity_id=r.id,
+            summary=f"Reemplazo creado desde panel para solicitud {sol.codigo_solicitud or sol.id}",
+            metadata={"solicitud_id": sol.id, "cliente_id": sol.cliente_id},
+        )
+        flash("Reemplazo creado correctamente.", "success")
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+
+    selected_cliente = Cliente.query.get(cliente_id) if cliente_id > 0 else None
+    clientes = (
+        Cliente.query
+        .order_by(Cliente.fecha_registro.desc())
+        .limit(50)
+        .all()
+    )
+    solicitudes_q = (
+        Solicitud.query
+        .options(joinedload(Solicitud.cliente), joinedload(Solicitud.candidata))
+        .filter(Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")))
+    )
+    if cliente_id > 0:
+        solicitudes_q = solicitudes_q.filter(Solicitud.cliente_id == cliente_id)
+    solicitudes = (
+        solicitudes_q
+        .order_by(Solicitud.id.desc())
+        .limit(120)
+        .all()
+    )
+    staff_users = StaffUser.query.order_by(StaffUser.username.asc()).all()
+    return render_template(
+        "admin/reemplazo_nuevo_panel.html",
+        clientes=clientes,
+        selected_cliente=selected_cliente,
+        selected_solicitud_id=solicitud_id,
+        solicitudes=solicitudes,
+        staff_users=staff_users,
+    )
+
+
+@admin_bp.route("/reemplazos/<int:reemplazo_id>/cancelar", methods=["POST"])
+@login_required
+@admin_required
+def reemplazo_cancelar_panel(reemplazo_id):
+    r = Reemplazo.query.get_or_404(int(reemplazo_id))
+    return cancelar_reemplazo(int(r.solicitud_id), int(r.id))
+
+
+@admin_bp.route("/reemplazos/<int:reemplazo_id>/cerrar", methods=["POST"])
+@login_required
+@staff_required
+def reemplazo_cerrar_panel(reemplazo_id):
+    r = Reemplazo.query.get_or_404(int(reemplazo_id))
+    s = Solicitud.query.get_or_404(int(r.solicitud_id))
+    resultado_final = (request.form.get("resultado_final") or "").strip().lower()
+    if resultado_final in {"exitoso", "cerrado_exitoso"}:
+        return cerrar_reemplazo_asignando(int(s.id), int(r.id))
+    if getattr(r, "fecha_fin_reemplazo", None):
+        flash("Este reemplazo ya está cerrado.", "warning")
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+    if resultado_final not in {"fallido", "cerrado_fallido"}:
+        flash("Resultado final inválido.", "warning")
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+    r.cerrar_reemplazo()
+    r.resultado_final = "cerrado_fallido"
+    r.fecha_resolucion = utc_now_naive()
+    if hasattr(r, "nota_adicional"):
+        note = (request.form.get("nota_cierre") or "").strip()
+        if note:
+            r.nota_adicional = (f"{(r.nota_adicional or '').strip()}\n\n[Cierre fallido] {note}").strip()
+    estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
+    if estado_restore in {"", "reemplazo"}:
+        estado_restore = "activa"
+    _set_solicitud_estado(s, estado_restore)
+    db.session.commit()
+    _audit_log(
+        action_type="REEMPLAZO_CERRAR_FALLIDO",
+        entity_type="Reemplazo",
+        entity_id=r.id,
+        summary=f"Reemplazo cerrado fallido ({s.codigo_solicitud or s.id})",
+        metadata={"solicitud_id": s.id, "cliente_id": s.cliente_id},
+    )
+    flash("Reemplazo cerrado como fallido.", "success")
+    return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+
+
+@admin_bp.route("/reemplazos/<int:reemplazo_id>/publicacion", methods=["GET"])
+@login_required
+@staff_required
+def reemplazo_publicacion_texto(reemplazo_id):
+    r = Reemplazo.query.options(joinedload(Reemplazo.solicitud)).get_or_404(int(reemplazo_id))
+    return jsonify({"ok": True, "texto": _reemplazo_publicacion_texto(reemplazo=r, solicitud=getattr(r, "solicitud", None))}), 200
+
+
 @admin_bp.route("/reemplazos", methods=["GET"])
 @login_required
 @staff_required
@@ -16990,15 +17266,21 @@ def reemplazos_dashboard():
     if estado not in {"activos", "cerrados", "todos"}:
         estado = "activos"
     q_cliente = (request.args.get("cliente") or "").strip()
+    q_cliente_id = max(0, _safe_int(request.args.get("cliente_id"), default=0))
     q_solicitud = (request.args.get("solicitud") or "").strip()
     q_candidata = (request.args.get("candidata") or "").strip()
     q_motivo = (request.args.get("motivo") or "").strip()
     q_prioridad = (request.args.get("prioridad") or "").strip().lower()
     q_ciudad = (request.args.get("ciudad") or "").strip()
-    q_dias = (request.args.get("dias_abierto") or "").strip()
+    q_modalidad = (request.args.get("modalidad") or "").strip().lower()
+    q_responsable = (request.args.get("responsable") or "").strip().lower()
+    q_vencidos = str(request.args.get("vencidos") or "").strip().lower() in {"1", "true", "on", "yes"}
+    q_sin_candidata_nueva = str(request.args.get("sin_candidata_nueva") or "").strip().lower() in {"1", "true", "on", "yes"}
+    q_fecha_desde = (request.args.get("fecha_desde") or "").strip()
+    q_fecha_hasta = (request.args.get("fecha_hasta") or "").strip()
 
     page = max(1, _safe_int(request.args.get("page"), default=1))
-    per_page = min(100, max(10, _safe_int(request.args.get("per_page"), default=25)))
+    per_page = min(100, max(10, _safe_int(request.args.get("per_page"), default=50)))
 
     query = (
         Reemplazo.query
@@ -17015,6 +17297,8 @@ def reemplazos_dashboard():
         query = query.filter(Reemplazo.fecha_fin_reemplazo.is_(None), Reemplazo.fecha_inicio_reemplazo.isnot(None))
     elif estado == "cerrados":
         query = query.filter(Reemplazo.fecha_fin_reemplazo.isnot(None))
+    if q_cliente_id > 0:
+        query = query.filter(Cliente.id == q_cliente_id)
     if q_cliente:
         like = f"%{q_cliente}%"
         query = query.filter(or_(Cliente.nombre_completo.ilike(like), Cliente.codigo.ilike(like)))
@@ -17041,6 +17325,30 @@ def reemplazos_dashboard():
         query = query.filter(Reemplazo.motivo_fallo.ilike(f"%{q_motivo}%"))
     if q_ciudad:
         query = query.filter(Solicitud.ciudad_sector.ilike(f"%{q_ciudad}%"))
+    if q_modalidad:
+        query = query.filter(func.lower(cast(Solicitud.modalidad_trabajo, db.String)).like(f"%{q_modalidad}%"))
+    if q_responsable:
+        query = query.join(StaffUser, StaffUser.id == Reemplazo.responsable_id, isouter=True)
+        query = query.filter(func.lower(cast(StaffUser.username, db.String)).like(f"%{q_responsable}%"))
+    if q_sin_candidata_nueva:
+        query = query.filter(Reemplazo.candidata_new_id.is_(None))
+
+    fecha_desde_dt = None
+    fecha_hasta_dt = None
+    try:
+        if q_fecha_desde:
+            fecha_desde_dt = datetime.strptime(q_fecha_desde, "%Y-%m-%d")
+    except Exception:
+        fecha_desde_dt = None
+    try:
+        if q_fecha_hasta:
+            fecha_hasta_dt = datetime.strptime(q_fecha_hasta, "%Y-%m-%d") + timedelta(days=1)
+    except Exception:
+        fecha_hasta_dt = None
+    if fecha_desde_dt is not None:
+        query = query.filter(func.coalesce(Reemplazo.fecha_reporte, Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) >= fecha_desde_dt)
+    if fecha_hasta_dt is not None:
+        query = query.filter(func.coalesce(Reemplazo.fecha_reporte, Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) < fecha_hasta_dt)
 
     items = (
         query.order_by(
@@ -17070,17 +17378,11 @@ def reemplazos_dashboard():
         seg = seg_by_solicitud.get(int(getattr(row, "solicitud_id", 0) or 0))
         sol = getattr(row, "solicitud", None)
         estado_operativo = _reemplazo_operativo_estado(reemplazo=row, solicitud=sol, seguimiento=seg)
-        prioridad = _reemplazo_prioridad_derivada(reemplazo=row, solicitud=sol, seguimiento=seg)
+        prioridad = (getattr(row, "prioridad", "") or "").strip().lower() or _reemplazo_prioridad_derivada(reemplazo=row, solicitud=sol, seguimiento=seg)
         dias_abierto = int(getattr(row, "dias_en_reemplazo", 0) or 0)
         if q_prioridad and prioridad != q_prioridad:
             continue
-        if q_dias == "0" and dias_abierto != 0:
-            continue
-        if q_dias == "1" and dias_abierto != 1:
-            continue
-        if q_dias == "2" and dias_abierto != 2:
-            continue
-        if q_dias == "3+" and dias_abierto < 3:
+        if q_vencidos and estado_operativo != "Vencido":
             continue
         cards.append(
             {
@@ -17091,6 +17393,7 @@ def reemplazos_dashboard():
                 "estado_operativo": estado_operativo,
                 "prioridad": prioridad,
                 "dias_abierto": dias_abierto,
+                "publicacion_texto": _reemplazo_publicacion_texto(reemplazo=row, solicitud=sol),
                 "old_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_old", None), "cedula", None)),
                 "new_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_new", None), "cedula", None)),
             }
@@ -17098,15 +17401,19 @@ def reemplazos_dashboard():
 
     now = utc_now_naive()
     week_start = (to_rd(now).date() - timedelta(days=to_rd(now).weekday()))
-    metric_activos = sum(1 for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None) is None)
+    activos_rows = [c for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None) is None]
+    metric_activos = len(activos_rows)
     metric_hoy = sum(1 for c in cards if getattr(c["reemplazo"], "fecha_inicio_reemplazo", None) and to_rd(c["reemplazo"].fecha_inicio_reemplazo).date() == to_rd(now).date())
     metric_criticos = sum(1 for c in cards if c["prioridad"] == "critica")
     metric_vencidos = sum(1 for c in cards if c["estado_operativo"] == "Vencido")
+    metric_sin_candidata_nueva = sum(1 for c in activos_rows if getattr(c["reemplazo"], "candidata_new_id", None) is None)
+    metric_esperando_cliente = sum(1 for c in activos_rows if c["estado_operativo"] == "Coordinando entrada")
     metric_cerrados_semana = sum(
         1 for c in cards
         if getattr(c["reemplazo"], "fecha_fin_reemplazo", None)
         and to_rd(c["reemplazo"].fecha_fin_reemplazo).date() >= week_start
     )
+    metric_promedio_dias = int(round(sum((c["dias_abierto"] or 0) for c in activos_rows) / len(activos_rows))) if activos_rows else 0
 
     return render_template(
         "admin/reemplazos_dashboard.html",
@@ -17117,8 +17424,14 @@ def reemplazos_dashboard():
         candidata=q_candidata,
         motivo=q_motivo,
         prioridad=q_prioridad,
-        dias_abierto=q_dias,
         ciudad=q_ciudad,
+        cliente_id=q_cliente_id,
+        modalidad=q_modalidad,
+        responsable=q_responsable,
+        vencidos=q_vencidos,
+        sin_candidata_nueva=q_sin_candidata_nueva,
+        fecha_desde=q_fecha_desde,
+        fecha_hasta=q_fecha_hasta,
         page=page,
         per_page=per_page,
         total=int(items.total or 0),
@@ -17127,7 +17440,10 @@ def reemplazos_dashboard():
         metric_hoy=metric_hoy,
         metric_criticos=metric_criticos,
         metric_vencidos=metric_vencidos,
+        metric_sin_candidata_nueva=metric_sin_candidata_nueva,
+        metric_esperando_cliente=metric_esperando_cliente,
         metric_cerrados_semana=metric_cerrados_semana,
+        metric_promedio_dias=metric_promedio_dias,
     )
 
 
@@ -17155,6 +17471,7 @@ def reemplazo_detail(reemplazo_id):
         )
     estado_operativo = _reemplazo_operativo_estado(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
     prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
+    publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
 
     logs = []
     if solicitud is not None:
@@ -17197,6 +17514,7 @@ def reemplazo_detail(reemplazo_id):
         seguimiento=seguimiento,
         estado_operativo=estado_operativo,
         prioridad=prioridad,
+        publicacion_texto=publicacion_texto,
         logs=logs,
         outbox_events=outbox,
         seg_eventos=seg_eventos,

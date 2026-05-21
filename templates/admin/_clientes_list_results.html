@@ -57,6 +57,12 @@
               {% else %}
               <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
               {% endif %}
+              <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">
+                Gestionar reemplazos
+                {% set _repl_act = (reemplazos_activos_por_cliente.get(c.id, 0) if reemplazos_activos_por_cliente is defined else 0) %}
+                {% set _repl_total = (reemplazos_total_por_cliente.get(c.id, 0) if reemplazos_total_por_cliente is defined else 0) %}
+                {% if _repl_act or _repl_total %}<span class="ms-1">({{ _repl_act }}/{{ _repl_total }})</span>{% endif %}
+              </a>
               <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
               {% if has_endpoint('admin.tienda_intereses_list') %}
               {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}
@@ -116,6 +122,12 @@
         {% else %}
         <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
         {% endif %}
+        <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">
+          Reemplazos
+          {% set _repl_act = (reemplazos_activos_por_cliente.get(c.id, 0) if reemplazos_activos_por_cliente is defined else 0) %}
+          {% set _repl_total = (reemplazos_total_por_cliente.get(c.id, 0) if reemplazos_total_por_cliente is defined else 0) %}
+          {% if _repl_act or _repl_total %}<span class="ms-1">({{ _repl_act }}/{{ _repl_total }})</span>{% endif %}
+        </a>
         <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
         {% if has_endpoint('admin.tienda_intereses_list') %}
         {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}

@@ -1,73 +1,80 @@
 {% extends 'base.html' %}
 {% block title %}Reemplazos{% endblock %}
 {% block content %}
-<div class="container py-4" style="max-width: 1240px;">
+<div class="container py-4" style="max-width: 1380px;">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
-      <h1 class="h4 mb-1">Panel operativo de reemplazos</h1>
-      <div class="small text-muted">Fase 1 sin migraciones</div>
+      <h1 class="h4 mb-1">Panel de reemplazos</h1>
+      <div class="small text-muted">Centro operativo separado del detalle de cliente</div>
     </div>
-    <a href="{{ url_for('admin.listar_solicitudes', estado='reemplazo') }}" class="btn btn-outline-secondary btn-sm">Ver solicitudes en reemplazo</a>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin.reemplazo_nuevo_panel') }}" class="btn btn-primary btn-sm">Nuevo reemplazo</a>
+      <a href="{{ url_for('admin.listar_solicitudes', estado='reemplazo') }}" class="btn btn-outline-secondary btn-sm">Solicitudes en reemplazo</a>
+    </div>
   </div>
 
   <div class="row g-2 mb-3">
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Activos</div><div class="h5 mb-0">{{ metric_activos }}</div></div></div>
-    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Abiertos hoy</div><div class="h5 mb-0">{{ metric_hoy }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Nuevos hoy</div><div class="h5 mb-0">{{ metric_hoy }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Críticos</div><div class="h5 mb-0 text-danger">{{ metric_criticos }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Vencidos</div><div class="h5 mb-0 text-warning">{{ metric_vencidos }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Sin candidata nueva</div><div class="h5 mb-0">{{ metric_sin_candidata_nueva }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Esperando cliente</div><div class="h5 mb-0">{{ metric_esperando_cliente }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Cerrados semana</div><div class="h5 mb-0">{{ metric_cerrados_semana }}</div></div></div>
+    <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Promedio días abiertos</div><div class="h5 mb-0">{{ metric_promedio_dias }}</div></div></div>
   </div>
 
   <div class="glass-card p-3 mb-3">
     <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-2">
-        <label class="form-label small mb-1">Estado</label>
-        <select name="estado" class="form-select form-select-sm">
-          <option value="activos" {% if estado == 'activos' %}selected{% endif %}>Activos</option>
-          <option value="cerrados" {% if estado == 'cerrados' %}selected{% endif %}>Cerrados</option>
-          <option value="todos" {% if estado == 'todos' %}selected{% endif %}>Todos</option>
-        </select>
-      </div>
       <div class="col-md-2"><label class="form-label small mb-1">Cliente</label><input class="form-control form-control-sm" name="cliente" value="{{ cliente or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Solicitud</label><input class="form-control form-control-sm" name="solicitud" value="{{ solicitud or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Candidata</label><input class="form-control form-control-sm" name="candidata" value="{{ candidata or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Estado</label><select name="estado" class="form-select form-select-sm"><option value="activos" {% if estado == 'activos' %}selected{% endif %}>Activos</option><option value="cerrados" {% if estado == 'cerrados' %}selected{% endif %}>Cerrados</option><option value="todos" {% if estado == 'todos' %}selected{% endif %}>Todos</option></select></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Prioridad</label><select name="prioridad" class="form-select form-select-sm"><option value="">Todas</option><option value="baja" {% if prioridad == 'baja' %}selected{% endif %}>Baja</option><option value="media" {% if prioridad == 'media' %}selected{% endif %}>Media</option><option value="alta" {% if prioridad == 'alta' %}selected{% endif %}>Alta</option><option value="critica" {% if prioridad == 'critica' %}selected{% endif %}>Crítica</option></select></div>
       <div class="col-md-2"><label class="form-label small mb-1">Motivo</label><input class="form-control form-control-sm" name="motivo" value="{{ motivo or '' }}"></div>
       <div class="col-md-2"><label class="form-label small mb-1">Ciudad</label><input class="form-control form-control-sm" name="ciudad" value="{{ ciudad or '' }}"></div>
-      <div class="col-md-2">
-        <label class="form-label small mb-1">Prioridad</label>
-        <select name="prioridad" class="form-select form-select-sm">
-          <option value="">Todas</option><option value="baja" {% if prioridad == 'baja' %}selected{% endif %}>Baja</option><option value="media" {% if prioridad == 'media' %}selected{% endif %}>Media</option><option value="alta" {% if prioridad == 'alta' %}selected{% endif %}>Alta</option><option value="critica" {% if prioridad == 'critica' %}selected{% endif %}>Crítica</option>
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small mb-1">Días abierto</label>
-        <select name="dias_abierto" class="form-select form-select-sm">
-          <option value="">Todos</option><option value="0" {% if dias_abierto == '0' %}selected{% endif %}>0</option><option value="1" {% if dias_abierto == '1' %}selected{% endif %}>1</option><option value="2" {% if dias_abierto == '2' %}selected{% endif %}>2</option><option value="3+" {% if dias_abierto == '3+' %}selected{% endif %}>3+</option>
-        </select>
-      </div>
+      <div class="col-md-2"><label class="form-label small mb-1">Modalidad</label><input class="form-control form-control-sm" name="modalidad" value="{{ modalidad or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Responsable</label><input class="form-control form-control-sm" name="responsable" value="{{ responsable or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Fecha desde</label><input type="date" class="form-control form-control-sm" name="fecha_desde" value="{{ fecha_desde or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Fecha hasta</label><input type="date" class="form-control form-control-sm" name="fecha_hasta" value="{{ fecha_hasta or '' }}"></div>
+      <div class="col-md-2"><label class="form-label small mb-1">Por página</label><select name="per_page" class="form-select form-select-sm"><option value="50" {% if per_page == 50 %}selected{% endif %}>50</option><option value="100" {% if per_page == 100 %}selected{% endif %}>100</option></select></div>
+      <div class="col-md-2 form-check mt-4 ms-2"><input class="form-check-input" type="checkbox" value="1" id="vencidos" name="vencidos" {% if vencidos %}checked{% endif %}><label class="form-check-label" for="vencidos">Solo vencidos</label></div>
+      <div class="col-md-3 form-check mt-4"><input class="form-check-input" type="checkbox" value="1" id="sin_candidata_nueva" name="sin_candidata_nueva" {% if sin_candidata_nueva %}checked{% endif %}><label class="form-check-label" for="sin_candidata_nueva">Sin candidata nueva</label></div>
       <div class="col-md-2 d-grid"><button class="btn btn-primary btn-sm">Filtrar</button></div>
     </form>
   </div>
 
   <div class="table-responsive glass-card">
     <table class="table table-sm align-middle mb-0">
-      <thead><tr><th>ID</th><th>Cliente</th><th>Solicitud</th><th>Saliente</th><th>Entrante</th><th>Motivo</th><th>Inicio</th><th>Días</th><th>Estado</th><th>Responsable</th><th>Prioridad</th><th></th></tr></thead>
+      <thead><tr><th>Prioridad</th><th>Estado</th><th>Cliente</th><th>Solicitud</th><th>Ciudad/Modalidad</th><th>Saliente</th><th>Entrante</th><th>Motivo</th><th>Inicio</th><th>Días</th><th>Responsable</th><th>Acciones</th></tr></thead>
       <tbody>
       {% for row in (rows or []) %}
       {% set r = row.reemplazo %}
       <tr>
-        <td>#{{ r.id }}</td>
+        <td><span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad == 'alta' %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">{{ row.prioridad }}</span></td>
+        <td><span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo == 'Cerrado' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ row.estado_operativo }}</span></td>
         <td>{{ row.cliente and row.cliente.nombre_completo or '—' }}</td>
         <td>{{ row.solicitud and (row.solicitud.codigo_solicitud or ('SOL-' ~ row.solicitud.id)) or '—' }}</td>
-        <td>{{ r.candidata_old and r.candidata_old.nombre_completo or '—' }}{% if row.old_cedula_masked %}<div class="small text-muted">{{ row.old_cedula_masked }}</div>{% endif %}</td>
-        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}{% if row.new_cedula_masked %}<div class="small text-muted">{{ row.new_cedula_masked }}</div>{% endif %}</td>
+        <td>{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}<div class="small text-muted">{{ row.solicitud and row.solicitud.modalidad_trabajo or '—' }}</div></td>
+        <td>{{ r.candidata_old and r.candidata_old.nombre_completo or '—' }}</td>
+        <td>{{ r.candidata_new and r.candidata_new.nombre_completo or '—' }}</td>
         <td class="text-truncate" style="max-width: 200px;">{{ (r.motivo_fallo or '')[:120] }}</td>
         <td>{{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</td>
         <td>{{ row.dias_abierto }}</td>
-        <td><span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo == 'Cerrado' %}text-bg-secondary{% else %}text-bg-primary{% endif %}">{{ row.estado_operativo }}</span></td>
-        <td>{{ row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username or '—' }}</td>
-        <td><span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad == 'alta' %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">{{ row.prioridad }}</span></td>
-        <td><a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Detalle</a></td>
+        <td>{{ r.responsable and r.responsable.username or (row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username) or '—' }}</td>
+        <td>
+          <div class="d-flex flex-wrap gap-1">
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Ver</a>
+            <button type="button" class="btn btn-outline-dark btn-sm" onclick="window.prompt('Texto para publicar', {{ row.publicacion_texto|tojson }})">Publicar</button>
+            <button type="button" class="btn btn-outline-dark btn-sm" onclick="navigator.clipboard && navigator.clipboard.writeText({{ row.publicacion_texto|tojson }});">Copiar</button>
+            {% if not r.fecha_fin_reemplazo %}
+              <a class="btn btn-warning btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=row.solicitud.id, reemplazo_id=r.id) }}">Cerrar</a>
+              {% if (current_user.role|default('')|lower) in ['admin','owner'] %}
+              <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=r.id) }}" class="d-inline"><button class="btn btn-outline-danger btn-sm" type="submit">Cancelar</button></form>
+              {% endif %}
+            {% endif %}
+            {% if row.solicitud %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.detalle_solicitud', cliente_id=row.solicitud.cliente_id, id=row.solicitud.id) }}">Ver solicitud</a>{% endif %}
+            {% if row.cliente and row.cliente.telefono %}<a class="btn btn-outline-success btn-sm" target="_blank" rel="noopener" href="https://wa.me/{{ row.cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a>{% endif %}
+          </div>
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="12" class="text-center text-muted py-4">No hay reemplazos para mostrar</td></tr>
@@ -81,8 +88,8 @@
     {% set shown_end = [page * per_page, total or 0]|min %}
     <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }}</small>
     <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, dias_abierto=dias_abierto, ciudad=ciudad, page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
-      <a class="btn btn-sm btn-outline-secondary {% if not has_more %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, dias_abierto=dias_abierto, ciudad=ciudad, page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
+      <a class="btn btn-sm btn-outline-secondary {% if page <= 1 %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
+      <a class="btn btn-sm btn-outline-secondary {% if not has_more %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
     </div>
   </div>
 </div>

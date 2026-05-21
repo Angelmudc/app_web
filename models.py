@@ -1492,6 +1492,12 @@ class Reemplazo(db.Model):
 
     # Notas internas del reemplazo
     nota_adicional         = db.Column(db.Text,    nullable=True)
+    motivo_reemplazo_code  = db.Column(db.String(50), nullable=True, index=True)
+    prioridad              = db.Column(db.String(20), nullable=True, index=True)
+    resultado_final        = db.Column(db.String(30), nullable=True, index=True)
+    responsable_id         = db.Column(db.Integer, db.ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True, index=True)
+    fecha_reporte          = db.Column(db.DateTime, nullable=True)
+    fecha_resolucion       = db.Column(db.DateTime, nullable=True)
     estado_previo_solicitud = db.Column(
         db.String(50),
         nullable=True,
@@ -1505,6 +1511,7 @@ class Reemplazo(db.Model):
     solicitud              = db.relationship('Solicitud', back_populates='reemplazos')
     candidata_old          = db.relationship('Candidata', foreign_keys=[candidata_old_id])
     candidata_new          = db.relationship('Candidata', foreign_keys=[candidata_new_id])
+    responsable            = db.relationship('StaffUser', foreign_keys=[responsable_id], lazy='select')
 
     # ──────────────────────────────────────────────
     # Helpers de estado (solo lógica, no BD)

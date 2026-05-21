@@ -57,10 +57,18 @@ def home():
     if not bool(legacy.session.get("is_admin_session")):
         return legacy.redirect(legacy.url_for('login'))
     # Evita UTC si tu app es local/DR; suficiente con fecha local del servidor
+    reemplazos_badge = {"activos": 0, "criticos": 0}
+    admin_routes = _admin_mfa_helpers()
+    if admin_routes is not None:
+        try:
+            reemplazos_badge = dict(admin_routes.reemplazos_badge_counts() or {})
+        except Exception:
+            reemplazos_badge = {"activos": 0, "criticos": 0}
     return legacy.render_template(
         'home.html',
         usuario=legacy.session['usuario'],
-        current_year=legacy.rd_today().year
+        current_year=legacy.rd_today().year,
+        reemplazos_badge=reemplazos_badge,
     )
 
 

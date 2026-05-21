@@ -1,74 +1,83 @@
 {% extends 'base.html' %}
 {% block title %}Reemplazo #{{ reemplazo.id }}{% endblock %}
 {% block content %}
-<div class="container py-4" style="max-width: 1120px;">
+<div class="container py-4" style="max-width: 1180px;">
   <div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
     <div>
       <h1 class="h4 mb-1">Reemplazo #{{ reemplazo.id }}</h1>
-      <div class="small text-muted">Estado operativo: <span class="badge text-bg-primary">{{ estado_operativo }}</span> · Prioridad: <span class="badge text-bg-secondary">{{ prioridad }}</span></div>
+      <div class="small text-muted">Estado operativo: <span class="badge text-bg-primary">{{ estado_operativo }}</span> · Prioridad: <span class="badge text-bg-secondary">{{ prioridad }}</span> · Días abierto: {{ reemplazo.dias_en_reemplazo or 0 }}</div>
     </div>
     <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-secondary btn-sm">Volver al panel</a>
   </div>
 
   <div class="glass-card p-3 mb-3">
+    <h2 class="h6">Encabezado</h2>
     <div class="row g-3">
       <div class="col-md-6"><strong>Cliente:</strong> {{ cliente and cliente.nombre_completo or '—' }}</div>
       <div class="col-md-6"><strong>Solicitud:</strong> {{ solicitud and (solicitud.codigo_solicitud or ('SOL-' ~ solicitud.id)) or '—' }}</div>
-      <div class="col-md-6"><strong>Candidata saliente:</strong> {{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or '—' }}</div>
-      <div class="col-md-6"><strong>Candidata entrante:</strong> {{ reemplazo.candidata_new and reemplazo.candidata_new.nombre_completo or '—' }}</div>
-      <div class="col-md-12"><strong>Motivo:</strong> {{ reemplazo.motivo_fallo or '—' }}</div>
-      <div class="col-md-12"><strong>Notas:</strong> {{ reemplazo.nota_adicional or '—' }}</div>
-      <div class="col-md-4"><strong>Inicio:</strong> {{ reemplazo.fecha_inicio_reemplazo and reemplazo.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
-      <div class="col-md-4"><strong>Fin:</strong> {{ reemplazo.fecha_fin_reemplazo and reemplazo.fecha_fin_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
-      <div class="col-md-4"><strong>Días abierto:</strong> {{ reemplazo.dias_en_reemplazo or 0 }}</div>
+      <div class="col-md-4"><strong>Responsable:</strong> {{ reemplazo.responsable and reemplazo.responsable.username or '—' }}</div>
+      <div class="col-md-4"><strong>Motivo:</strong> {{ reemplazo.motivo_fallo or '—' }}</div>
+      <div class="col-md-4"><strong>Resultado final:</strong> {{ reemplazo.resultado_final or '—' }}</div>
     </div>
+  </div>
 
+  <div class="glass-card p-3 mb-3">
+    <h2 class="h6">Candidatas</h2>
+    <div class="row g-2">
+      <div class="col-md-6"><strong>Saliente:</strong> {{ reemplazo.candidata_old and reemplazo.candidata_old.nombre_completo or '—' }}</div>
+      <div class="col-md-6"><strong>Entrante:</strong> {{ reemplazo.candidata_new and reemplazo.candidata_new.nombre_completo or '—' }}</div>
+    </div>
     <div class="d-flex gap-2 flex-wrap mt-3">
-      {% if solicitud %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Ver solicitud</a>{% endif %}
-      {% if cliente %}<a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">Ver cliente</a>{% endif %}
       {% if reemplazo.candidata_old %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=reemplazo.candidata_old.fila) }}">Ver candidata saliente</a>{% endif %}
       {% if reemplazo.candidata_new %}<a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.monitoreo_candidata_historial', candidata_entity_id=reemplazo.candidata_new.fila) }}">Ver candidata entrante</a>{% endif %}
-      {% if solicitud and not reemplazo.fecha_fin_reemplazo %}<a class="btn btn-sm btn-warning" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Ir a finalizar reemplazo</a>{% endif %}
-      {% if seguimiento %}
-      <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.seguimiento_candidatas_caso_detail', caso_id=seguimiento.id) }}">Ir a seguimiento</a>
-      {% elif solicitud %}
-      <a class="btn btn-sm btn-success" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Crear/abrir seguimiento</a>
+      {% if solicitud and not reemplazo.fecha_fin_reemplazo %}<a class="btn btn-sm btn-warning" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Cambiar candidata entrante / finalizar</a>{% endif %}
+    </div>
+  </div>
+
+  <div class="glass-card p-3 mb-3">
+    <h2 class="h6">Datos de solicitud</h2>
+    <div class="row g-2">
+      <div class="col-md-4"><strong>Ciudad/Sector:</strong> {{ solicitud and solicitud.ciudad_sector or '—' }}</div>
+      <div class="col-md-4"><strong>Modalidad:</strong> {{ solicitud and solicitud.modalidad_trabajo or '—' }}</div>
+      <div class="col-md-4"><strong>Horario:</strong> {{ solicitud and solicitud.horario or '—' }}</div>
+      <div class="col-md-6"><strong>Funciones:</strong> {{ solicitud and solicitud.funciones or '—' }}</div>
+      <div class="col-md-3"><strong>Sueldo:</strong> {{ solicitud and solicitud.sueldo or '—' }}</div>
+      <div class="col-md-3"><strong>Notas:</strong> {{ reemplazo.nota_adicional or '—' }}</div>
+    </div>
+  </div>
+
+  <div class="glass-card p-3 mb-3">
+    <h2 class="h6">Acciones rápidas</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <button class="btn btn-sm btn-outline-dark" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button>
+      {% if cliente and cliente.telefono %}<a class="btn btn-sm btn-outline-success" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a>{% endif %}
+      {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+      <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+        <input type="hidden" name="resultado_final" value="exitoso">
+        <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
+        <button class="btn btn-sm btn-success" type="submit">Cerrar exitoso</button>
+      </form>
+      <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+        <input type="hidden" name="resultado_final" value="fallido">
+        <button class="btn btn-sm btn-outline-warning" type="submit">Cerrar fallido</button>
+      </form>
+      {% if (current_user.role|default('')|lower) in ['admin','owner'] %}
+      <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+        <button class="btn btn-sm btn-outline-danger" type="submit">Cancelar</button>
+      </form>
       {% endif %}
-      <button class="btn btn-sm btn-outline-dark" type="button" onclick="navigator.clipboard.writeText(`Reemplazo #{{ reemplazo.id }} · Cliente: {{ cliente and cliente.nombre_completo or '' }} · Solicitud: {{ solicitud and (solicitud.codigo_solicitud or solicitud.id) or '' }} · Estado: {{ estado_operativo }} · Prioridad: {{ prioridad }}`)">Copiar resumen WhatsApp</button>
+      {% endif %}
+    </div>
+    <div class="mt-2">
+      <label class="form-label small">Texto operativo</label>
+      <textarea class="form-control form-control-sm" rows="6" readonly>{{ publicacion_texto }}</textarea>
     </div>
   </div>
 
   <div class="row g-3">
-    <div class="col-md-4">
-      <div class="glass-card p-3">
-        <h2 class="h6">StaffAuditLog</h2>
-        <ul class="small mb-0">
-          {% for log in (logs or []) %}
-          <li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>
-          {% else %}<li class="text-muted">Sin eventos</li>{% endfor %}
-        </ul>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="glass-card p-3">
-        <h2 class="h6">DomainOutbox</h2>
-        <ul class="small mb-0">
-          {% for ev in (outbox_events or []) %}
-          <li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>
-          {% else %}<li class="text-muted">Sin eventos</li>{% endfor %}
-        </ul>
-      </div>
-    </div>
-    <div class="col-md-4">
-      <div class="glass-card p-3">
-        <h2 class="h6">SeguimientoCandidataEvento</h2>
-        <ul class="small mb-0">
-          {% for ev in (seg_eventos or []) %}
-          <li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>
-          {% else %}<li class="text-muted">Sin eventos</li>{% endfor %}
-        </ul>
-      </div>
-    </div>
+    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">StaffAuditLog</h2><ul class="small mb-0">{% for log in (logs or []) %}<li>{{ log.created_at and log.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ log.action_type }} · {{ log.summary or '' }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
+    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">DomainOutbox</h2><ul class="small mb-0">{% for ev in (outbox_events or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
+    <div class="col-md-4"><div class="glass-card p-3"><h2 class="h6">Seguimiento</h2><div class="small mb-2">{% if seguimiento %}Caso #{{ seguimiento.id }} · prioridad {{ seguimiento.prioridad }}{% else %}Sin caso de seguimiento{% endif %}</div><ul class="small mb-0">{% for ev in (seg_eventos or []) %}<li>{{ ev.created_at and ev.created_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }} · {{ ev.event_type }}{% if ev.note %} · {{ ev.note }}{% endif %}</li>{% else %}<li class="text-muted">Sin eventos</li>{% endfor %}</ul></div></div>
   </div>
 </div>
 {% endblock %}
