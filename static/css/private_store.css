@@ -271,27 +271,28 @@ body.ps-page main { padding-top: 8px; }
   border-color: rgba(163, 208, 242, 0.6);
   box-shadow: 0 18px 38px rgba(3, 14, 25, 0.36);
 }
-.ps-photo-wrap { position: relative; height: 220px; background: linear-gradient(140deg, #0d2740, #13365a); }
+.ps-card-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 0;
+}
+.ps-photo-wrap {
+  position: relative;
+  height: 248px;
+  margin: 10px 12px 0;
+  border-radius: 12px;
+  background: linear-gradient(140deg, rgba(10, 28, 46, 0.96), rgba(16, 40, 62, 0.9));
+  border: 1px solid rgba(160, 193, 222, 0.35);
+  overflow: hidden;
+}
 .ps-photo-wrap img,
-.ps-card-photo { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ps-photo-overlay {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 28px 12px 12px;
-  background: linear-gradient(180deg, rgba(4, 10, 18, 0), rgba(4, 10, 18, 0.78));
-}
-.ps-photo-overlay h2 {
-  margin: 0;
-  font-size: 1rem;
-  color: #f7fbff;
-  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.45);
-}
-.ps-photo-overlay p {
-  margin: 2px 0 0;
-  font-size: .8rem;
-  color: #d5e6f7;
+.ps-card-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
 }
 .ps-photo-fallback {
   color: #d7e5f3;
@@ -315,11 +316,12 @@ body.ps-page main { padding-top: 8px; }
   font-weight: 900;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
-.ps-badge-stack { position: absolute; left: 10px; top: 10px; display: flex; flex-wrap: wrap; gap: 6px; }
 .ps-badge { border-radius: 999px; border: 1px solid rgba(146, 189, 223, 0.45); background: rgba(9, 37, 60, 0.86); color: #d8ebfc; padding: 4px 9px; font-size: .7rem; font-weight: 800; }
 .ps-badge-on { background: rgba(16, 91, 63, 0.84); color: #dcffe9; border-color: rgba(129, 228, 189, 0.55); }
 .ps-badge-premium { background: rgba(107, 76, 21, 0.84); color: #fff1ce; border-color: rgba(236, 206, 134, 0.55); }
 .ps-body { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.ps-body h2 { margin: 0; font-size: 1rem; color: #edf5ff; }
+.ps-card-modality { margin: 0; color: #cae2f8; font-size: .82rem; font-weight: 700; }
 .ps-meta { margin: 0; color: var(--ps-text-muted); font-size: .86rem; }
 .ps-summary {
   margin: 2px 0;
@@ -773,7 +775,7 @@ body.ps-page main { padding-top: 8px; }
   .ps-pagination { margin-top: 24px; }
   .ps-filter-row { grid-template-columns: 1.1fr 1fr .9fr; }
   .ps-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-  .ps-photo-wrap { height: 230px; }
+  .ps-photo-wrap { height: 260px; }
   .ps-detail { padding: 24px 0 46px; }
   .ps-detail-head { display: flex; justify-content: space-between; align-items: center; }
   .ps-interview-head { align-items: flex-start; }
@@ -806,6 +808,7 @@ body.ps-page main { padding-top: 8px; }
 }
 
 @media (max-width: 760px) {
+  .ps-photo-wrap { height: 220px; }
   .ps-interview-head .ps-link-secondary { width: fit-content; }
   .ps-interview-shell { border-radius: 18px; }
   .ps-interview-shell .ps-detail-body { padding: 12px; }

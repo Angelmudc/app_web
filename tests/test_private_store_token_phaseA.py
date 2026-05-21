@@ -136,6 +136,9 @@ def test_private_store_token_valido_all_available_200_and_privacy_html():
     assert 'No Disponible No Debe Verse' not in html
     assert f"/tienda/tok_store_ok/domesticas/{ids['ok']}/perfil" in html
     assert "ps-card-photo" in html
+    assert "ps-card-media" in html
+    assert "ps-card-badges" in html
+    assert "ps-photo-overlay" not in html
 
     forbidden = ['/admin', '/clientes', '/login', 'cedula', 'telefono', 'direccion', 'referencia', 'notas internas', 'score', 'token_hash', 'token_hint']
     lowered = html.lower()
@@ -300,6 +303,7 @@ def test_private_store_detail_hides_interview_block_when_no_real_interview():
     assert "Perfil validado por la agencia" not in html
     assert "ps-photo-fallback" in html
     assert "ps-detail-photo-fallback" in html
+    assert "ps-card-photo-fallback" not in html
 
 
 def test_private_store_selection_uses_profile_image_endpoint_when_available():

@@ -89,7 +89,12 @@
     {% for c in cards %}
     {% set initials = (c.nombre_publico or 'C')[:1]|upper %}
     <article class="ps-card">
-      <div class="ps-photo-wrap">
+      <div class="ps-card-badges">
+        <span class="ps-badge">Verificada</span>
+        <span class="ps-badge ps-badge-on">Disponible</span>
+        {% if c.disponible_inmediato %}<span class="ps-badge ps-badge-premium">Disponible inmediata</span>{% endif %}
+      </div>
+      <div class="ps-photo-wrap ps-card-media">
         {% if c.foto_publica_url %}
         <img class="ps-card-photo" src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
         {% else %}
@@ -97,17 +102,10 @@
           <span class="ps-photo-fallback-icon">{{ initials }}</span>
         </div>
         {% endif %}
-        <div class="ps-photo-overlay">
-          <h2>{{ c.nombre_publico }}</h2>
-          <p>{{ c.modalidad_publica or 'Modalidad a coordinar' }}</p>
-        </div>
-        <div class="ps-badge-stack">
-          <span class="ps-badge">Verificada</span>
-          <span class="ps-badge ps-badge-on">Disponible</span>
-          {% if c.disponible_inmediato %}<span class="ps-badge ps-badge-premium">Disponible inmediata</span>{% endif %}
-        </div>
       </div>
       <div class="ps-body">
+        <h2>{{ c.nombre_publico }}</h2>
+        <p class="ps-card-modality">{{ c.modalidad_publica or 'Modalidad a coordinar' }}</p>
         <p class="ps-meta">{{ c.ciudad_publica or 'Ciudad no especificada' }} · {{ 'Inmediata' if c.disponible_inmediato else 'A coordinar' }}</p>
         {% if c.experiencia_resumen %}<p class="ps-summary">{{ c.experiencia_resumen }}</p>{% endif %}
         <div class="ps-row-actions">
