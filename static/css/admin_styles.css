@@ -56,6 +56,7 @@
 
 .reemplazos-dashboard .reemp-table{
   table-layout: fixed;
+  width: 100%;
   margin-bottom: 0;
 }
 
@@ -133,15 +134,23 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.28rem;
+  align-items: flex-start;
+  max-width: 220px;
+  overflow: hidden;
 }
 
 .reemplazos-dashboard .reemp-indicator{
+  display: inline-block;
   font-size: 0.7rem;
   padding: 0.2rem 0.42rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
   color: #cbd5e1;
   background: rgba(30, 41, 59, 0.7);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .reemplazos-dashboard .reemp-indicator-danger{ background: rgba(153, 27, 27, 0.42); border-color: rgba(248, 113, 113, 0.4); color: #fecaca; }
@@ -149,15 +158,42 @@
 .reemplazos-dashboard .reemp-indicator-info{ background: rgba(8, 145, 178, 0.36); border-color: rgba(34, 211, 238, 0.4); color: #bae6fd; }
 
 .reemplazos-dashboard .reemp-actions{
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.32rem;
-  justify-content: flex-end;
-  align-items: center;
+  justify-items: stretch;
+  align-items: stretch;
 }
 
 .reemplazos-dashboard .reemp-actions .btn{
   white-space: nowrap;
+  width: 100%;
+}
+
+.reemplazos-dashboard .reemp-actions .dropdown{
+  grid-column: 2;
+  justify-self: stretch;
+}
+
+.reemplazos-dashboard .reemp-actions .dropdown .btn{
+  width: 100%;
+}
+
+.reemplazos-dashboard .reemp-action-close{
+  grid-column: 1 / -1;
+}
+
+.reemplazos-dashboard .reemp-actions-col,
+.reemplazos-dashboard .reemp-col-acc{
+  width: 150px;
+  min-width: 150px;
+  max-width: 150px;
+}
+
+.reemplazos-dashboard .reemp-indicators-col,
+.reemplazos-dashboard .reemp-col-ind{
+  width: 220px;
+  max-width: 220px;
 }
 
 .reemplazos-dashboard .reemp-table-shell .dropdown-menu{
@@ -177,8 +213,8 @@
 .reemplazos-dashboard .reemp-col-dias { width: 8%; text-align: center; }
 .reemplazos-dashboard .reemp-col-prio { width: 9%; }
 .reemplazos-dashboard .reemp-col-resp { width: 12%; }
-.reemplazos-dashboard .reemp-col-ind { width: 20%; }
-.reemplazos-dashboard .reemp-col-acc { width: 15%; }
+.reemplazos-dashboard .reemp-col-ind { width: 220px; }
+.reemplazos-dashboard .reemp-col-acc { width: 150px; }
 
 @media (max-width: 991px){
   .reemplazos-dashboard .reemp-table{

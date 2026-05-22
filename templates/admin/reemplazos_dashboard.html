@@ -47,6 +47,17 @@
 
   <div class="table-responsive glass-card reemp-table-shell">
     <table class="table table-sm align-middle mb-0 reemp-table">
+      <colgroup>
+        <col class="reemp-col-cliente">
+        <col class="reemp-col-ciudad">
+        <col class="reemp-col-modalidad">
+        <col class="reemp-col-estado">
+        <col class="reemp-col-dias">
+        <col class="reemp-col-prio">
+        <col class="reemp-col-resp">
+        <col class="reemp-col-ind">
+        <col class="reemp-col-acc">
+      </colgroup>
       <thead>
         <tr>
           <th class="reemp-col-cliente">Cliente</th>
@@ -84,7 +95,7 @@
           </span>
         </td>
         <td><div class="reemp-truncate">{{ r.responsable and r.responsable.username or (row.seguimiento and row.seguimiento.owner_staff_user and row.seguimiento.owner_staff_user.username) or '—' }}</div></td>
-        <td>
+        <td class="reemp-indicators-col">
           <div class="reemp-indicators">
             <span class="reemp-indicator" title="{{ row.motivo_full or row.motivo_compacto }}">📝 {{ row.motivo_compacto }}</span>
             <span class="reemp-indicator {% if row.indicador_critica %}reemp-indicator-danger{% endif %}">⏱ {{ row.dias_abierto }}d</span>
@@ -93,12 +104,12 @@
             {% if row.indicador_vencido or row.indicador_seguimiento_vencido %}<span class="reemp-indicator reemp-indicator-warn">📅 seguimiento vencido</span>{% endif %}
           </div>
         </td>
-        <td>
+        <td class="reemp-actions-col">
           <div class="reemp-actions">
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Ver</a>
             <button type="button" class="btn btn-outline-dark btn-sm" onclick="window.prompt('Texto para publicar', {{ row.publicacion_texto|tojson }})">Publicar</button>
             {% if not r.fecha_fin_reemplazo %}
-              <a class="btn btn-warning btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Cerrar</a>
+              <a class="btn btn-warning btn-sm reemp-action-close" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Cerrar</a>
             {% endif %}
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
