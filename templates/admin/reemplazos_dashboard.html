@@ -1,32 +1,8 @@
 {% extends 'base.html' %}
 {% block title %}Reemplazos{% endblock %}
 {% block content %}
-<div class="container py-4" style="max-width: 1380px;">
-  <style>
-    .reemp-table { table-layout: fixed; }
-    .reemp-table th, .reemp-table td { vertical-align: middle; }
-    .reemp-main { display: flex; flex-direction: column; gap: .15rem; min-width: 0; }
-    .reemp-secondary { font-size: .78rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .reemp-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .reemp-indicators { display: flex; flex-wrap: wrap; gap: .25rem; }
-    .reemp-indicator { font-size: .72rem; padding: .2rem .42rem; border-radius: 999px; border: 1px solid rgba(0,0,0,.08); background: #f6f7f9; }
-    .reemp-indicator-danger { background: #fce8ea; color: #8b1e2c; border-color: #f5c2c7; }
-    .reemp-indicator-warn { background: #fff3cd; color: #664d03; border-color: #ffe69c; }
-    .reemp-indicator-info { background: #e7f1ff; color: #0a3a72; border-color: #b6d4fe; }
-    .reemp-actions { display: flex; flex-wrap: wrap; gap: .28rem; justify-content: flex-end; }
-    .reemp-col-cliente { width: 20%; }
-    .reemp-col-ciudad { width: 12%; }
-    .reemp-col-modalidad { width: 14%; }
-    .reemp-col-estado { width: 11%; }
-    .reemp-col-dias { width: 8%; text-align: center; }
-    .reemp-col-prio { width: 9%; }
-    .reemp-col-resp { width: 12%; }
-    .reemp-col-ind { width: 20%; }
-    .reemp-col-acc { width: 15%; }
-    @media (max-width: 991px) {
-      .reemp-table { min-width: 1050px; }
-    }
-  </style>
+<div class="container py-4 reemplazos-dashboard" style="max-width: 1380px;">
+  <div class="reemplazos-panel">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
     <div>
       <h1 class="h4 mb-1">Panel de reemplazos</h1>
@@ -38,7 +14,7 @@
     </div>
   </div>
 
-  <div class="row g-2 mb-3">
+  <div class="row g-2 mb-3 reemplazos-kpis">
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Activos</div><div class="h5 mb-0">{{ metric_activos }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Nuevos hoy</div><div class="h5 mb-0">{{ metric_hoy }}</div></div></div>
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Críticos</div><div class="h5 mb-0 text-danger">{{ metric_criticos }}</div></div></div>
@@ -51,7 +27,7 @@
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Prom. resolución</div><div class="h5 mb-0">{{ metric_promedio_resolucion }}</div></div></div>
   </div>
 
-  <div class="glass-card p-3 mb-3">
+  <div class="glass-card p-3 mb-3 reemp-filter-card">
     <form method="get" class="row g-2 align-items-end">
       <div class="col-md-2"><label class="form-label small mb-1">Cliente</label><input class="form-control form-control-sm" name="cliente" value="{{ cliente or '' }}"></div>
       <div class="col-md-2"><label class="form-label small mb-1">Estado</label><select name="estado" class="form-select form-select-sm"><option value="activos" {% if estado == 'activos' %}selected{% endif %}>Activos</option><option value="cerrados" {% if estado == 'cerrados' %}selected{% endif %}>Cerrados</option><option value="todos" {% if estado == 'todos' %}selected{% endif %}>Todos</option></select></div>
@@ -69,7 +45,7 @@
     </form>
   </div>
 
-  <div class="table-responsive glass-card">
+  <div class="table-responsive glass-card reemp-table-shell">
     <table class="table table-sm align-middle mb-0 reemp-table">
       <thead>
         <tr>
@@ -97,13 +73,13 @@
         <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}</div></td>
         <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.modalidad_trabajo or '—' }}</div></td>
         <td>
-          <span class="badge {% if row.estado_operativo == 'Vencido' %}text-bg-warning{% elif row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado'] %}text-bg-secondary{% elif row.estado_operativo == 'Coordinando entrada' %}text-bg-info{% else %}text-bg-primary{% endif %}">
+          <span class="badge reemp-badge {% if row.estado_operativo == 'Vencido' %}reemp-badge-estado-vencido{% elif row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado'] %}reemp-badge-estado-cerrado{% elif row.estado_operativo == 'Coordinando entrada' %}reemp-badge-estado-coordinando{% else %}reemp-badge-estado-activo{% endif %}">
             {{ row.estado_operativo }}
           </span>
         </td>
         <td class="text-center"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
         <td>
-          <span class="badge {% if row.prioridad == 'critica' %}text-bg-danger{% elif row.prioridad in ['urgente', 'alta'] %}text-bg-warning{% elif row.prioridad == 'media' %}text-bg-info{% else %}text-bg-light{% endif %}">
+          <span class="badge reemp-badge {% if row.prioridad == 'critica' %}reemp-badge-prio-critica{% elif row.prioridad in ['urgente', 'alta'] %}reemp-badge-prio-alta{% elif row.prioridad == 'media' %}reemp-badge-prio-media{% else %}reemp-badge-prio-baja{% endif %}">
             {{ row.prioridad }}
           </span>
         </td>
@@ -145,7 +121,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center text-muted py-4">No hay reemplazos para mostrar</td></tr>
+      <tr><td colspan="9" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -160,5 +136,6 @@
       <a class="btn btn-sm btn-outline-secondary {% if not has_more %}disabled{% endif %}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
     </div>
   </div>
+</div>
 </div>
 {% endblock %}
