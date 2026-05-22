@@ -73,6 +73,13 @@
       <div class="op-card">
         <div class="op-label mb-1">Próximo paso</div>
         <div class="op-value fw-semibold mb-2">{{ proximo_paso }}</div>
+        {% if cta_action == 'finalize_direct' and solicitud and reemplazo.candidata_new_id and not _reemplazo_ya_cerrado %}
+        <form id="cerrarReemplazoConCandidataForm" method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-none" data-single-submit-form="1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="resultado_final" value="exitoso">
+          <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
+        </form>
+        {% endif %}
         <div class="d-flex flex-wrap gap-2 align-items-center">
           {% if cta_action == 'open_search_panel' %}
           <button class="btn {{ cta_style }} op-primary-btn"
@@ -82,11 +89,7 @@
             ⚡ {{ cta_label }}
           </button>
           {% elif cta_action == 'finalize_direct' and solicitud and reemplazo.candidata_new_id %}
-          <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
-            <input type="hidden" name="resultado_final" value="exitoso">
-            <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
-            <button class="btn {{ cta_style }} op-primary-btn" type="submit" data-single-submit data-loading-text="Finalizando...">⚡ {{ cta_label }}</button>
-          </form>
+          <button class="btn {{ cta_style }} op-primary-btn" type="submit" form="cerrarReemplazoConCandidataForm" data-single-submit data-loading-text="Finalizando...">⚡ {{ cta_label }}</button>
           {% else %}
           <a class="btn {{ cta_style }} op-primary-btn" href="{{ cta_href }}">⚡ {{ cta_label }}</a>
           {% endif %}
@@ -150,11 +153,7 @@
                       type="button"
                       data-action="open-candidata-search"
                       data-focus-target="#nuevaCandidataQuery">Cambiar candidata</button>
-              <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
-                <input type="hidden" name="resultado_final" value="exitoso">
-                <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
-                <button class="btn btn-success btn-sm" type="submit" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo con esta candidata</button>
-              </form>
+              <button class="btn btn-success btn-sm" type="submit" form="cerrarReemplazoConCandidataForm" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo con esta candidata</button>
             </div>
             {% endif %}
           </div>
@@ -227,12 +226,11 @@
     <div class="op-card mt-2">
       <div class="op-label mb-2">Acciones de cierre</div>
       <div class="d-flex gap-2 flex-wrap">
-        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
-          <input type="hidden" name="resultado_final" value="exitoso">
-          <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
-          <button class="btn btn-success btn-sm" type="submit" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo</button>
-        </form>
+        {% if reemplazo.candidata_new_id %}
+        <span class="op-secondary">Lista para finalizar</span>
+        {% endif %}
         <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" name="resultado_final" value="fallido">
           <button class="btn btn-outline-warning btn-sm" type="submit">Marcar como no resuelto</button>
         </form>
@@ -279,15 +277,21 @@
   {{ super() }}
   <script>
     (function () {
-      var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-single-submit-form=\"1\"]'));
-      forms.forEach(function (form) {
-        form.addEventListener('submit', function () {
-          var btn = form.querySelector('button[data-single-submit]');
-          if (!btn || btn.disabled) return;
-          btn.dataset.originalText = btn.textContent || '';
-          btn.textContent = btn.getAttribute('data-loading-text') || 'Finalizando...';
-          btn.disabled = true;
+      var armed = false;
+      function lock(btn) {
+        if (!btn || btn.disabled || armed) return;
+        armed = true;
+        btn.dataset.originalText = btn.textContent || '';
+        btn.textContent = btn.getAttribute('data-loading-text') || 'Finalizando...';
+        btn.disabled = true;
+        var peers = Array.prototype.slice.call(document.querySelectorAll('button[data-single-submit]'));
+        peers.forEach(function (peer) {
+          if (peer !== btn) peer.disabled = true;
         });
+      }
+      var buttons = Array.prototype.slice.call(document.querySelectorAll('button[data-single-submit]'));
+      buttons.forEach(function (btn) {
+        btn.addEventListener('click', function () { lock(btn); });
       });
     })();
   </script>

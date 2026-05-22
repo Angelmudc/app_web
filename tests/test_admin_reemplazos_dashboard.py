@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from datetime import timedelta
 from unittest.mock import patch
@@ -112,7 +113,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert "Próximo paso" in detail_html
     assert "Candidata anterior" in detail_html
     assert "Nueva candidata" in detail_html
-    assert "Finalizar reemplazo" in detail_html
+    assert ("Finalizar reemplazo" in detail_html) or ("Buscar nueva candidata" in detail_html)
     assert 'data-action="open-candidata-search"' in detail_html
     assert detail_html.count('data-action="open-candidata-search"') == 1
     assert 'id="nuevaCandidataResults"' in detail_html
@@ -288,6 +289,12 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
     assert "Finalizar reemplazo con esta candidata" in detail_html
     assert "/finalizar" not in detail_html
     assert f"/admin/reemplazos/{repl_id}/cerrar" in detail_html
+    assert detail_html.count('id="cerrarReemplazoConCandidataForm"') == 1
+    assert detail_html.count('form="cerrarReemplazoConCandidataForm"') == 2
+    assert 'name="csrf_token"' in detail_html
+    close_forms = re.findall(r'<form[^>]+action="/admin/reemplazos/%d/cerrar"[^>]*>' % repl_id, detail_html)
+    assert len(close_forms) == 2
+    assert all('method="post"' in form_tag for form_tag in close_forms)
 
     with patch("admin.routes.cerrar_reemplazo_asignando", return_value=("", 200)) as close_mock:
         resp_finalize = client.post(
