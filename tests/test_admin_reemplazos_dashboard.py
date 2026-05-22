@@ -129,7 +129,9 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)
     assert resp_pub.status_code == 200
     payload = resp_pub.get_json() or {}
-    assert "Disponible reemplazo" in (payload.get("texto") or "")
+    pub_text = payload.get("texto") or ""
+    assert "Disponible (" in pub_text
+    assert "Motivo del reemplazo:" in pub_text
 
     with flask_app.app_context():
         sol = Solicitud.query.get(solicitud_id)
@@ -204,9 +206,50 @@ def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
     assert "dropdown-item" in html
     assert "⋮" in html
     assert "reemp-actions" in html
+    assert "Gestionar" in html
+    assert "Publicar" in html
+    assert "Ver</a>" not in html
+    assert "reemp-action-close" not in html
     assert "reemp-action-menu" in html
     assert "/finalizar" not in html
 
+
+def test_reemplazos_dashboard_accion_gestionar_apunta_a_detalle_y_publicar_reusa_texto_base():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, solicitud_id = _seed_case(closed=False, motivo="Cliente pidió reemplazo urgente")
+
+    _login_staff(client)
+
+    resp_dash = client.get("/admin/reemplazos?estado=todos&per_page=50", follow_redirects=False)
+    assert resp_dash.status_code == 200
+    html = resp_dash.get_data(as_text=True)
+    assert "Gestionar" in html
+    assert f"/admin/reemplazos/{repl_id}" in html
+    assert "Ver</a>" not in html
+    assert "reemp-action-close" not in html
+    assert "/finalizar" not in html
+
+    resp_repl_texto = client.get(f"/admin/reemplazos/{repl_id}/publicacion", follow_redirects=False)
+    assert resp_repl_texto.status_code == 200
+    payload_repl = resp_repl_texto.get_json() or {}
+    texto_repl = (payload_repl.get("texto") or "").strip()
+    assert texto_repl
+    assert "Motivo del reemplazo:" in texto_repl
+
+    with flask_app.app_context():
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        texto_sol = admin_routes._admin_build_order_text_for_copiar(
+            sol,
+            label_maps=admin_routes._admin_copiar_form_label_maps(),
+        ).strip()
+    assert texto_sol
+    assert texto_sol in texto_repl
 
 def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
     flask_app.config["TESTING"] = True

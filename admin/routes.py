@@ -17061,26 +17061,39 @@ def _safe_modalidad_text(raw) -> str:
 
 
 def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud | None) -> str:
-    ciudad = (getattr(solicitud, "ciudad_sector", None) or "").strip() or "No especificada"
-    modalidad = _safe_modalidad_text(getattr(solicitud, "modalidad_trabajo", None))
-    horario = (getattr(solicitud, "horario", None) or "").strip() or "A coordinar"
-    funciones = format_funciones(getattr(solicitud, "funciones", None), extra_text=getattr(solicitud, "funciones_otro", None)) if solicitud else ""
-    funciones = (funciones or "").strip() or "Según perfil"
-    sueldo = (getattr(solicitud, "sueldo", None) or "").strip() or "A discutir"
-    prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=None)
+    motivo = (getattr(reemplazo, "motivo_fallo", None) or "").strip()
     nota = (getattr(reemplazo, "nota_adicional", None) or "").strip()
-    nota_short = (nota[:120] + "...") if len(nota) > 120 else nota
-    return "\n".join([
-        "Disponible reemplazo",
-        f"Cliente en: {ciudad}",
-        f"Modalidad: {modalidad}",
-        f"Horario: {horario}",
-        f"Funciones: {funciones}",
-        f"Sueldo: {sueldo}",
-        "Motivo: reemplazo",
-        f"Urgencia: {prioridad}",
-        f"Nota: {nota_short or 'Sin nota adicional'}",
-    ])
+    nota_short = (nota[:240] + "...") if len(nota) > 240 else nota
+
+    if solicitud is None:
+        ciudad = "No especificada"
+        modalidad = "No especificada"
+        horario = "A coordinar"
+        funciones = "Según perfil"
+        sueldo = "A discutir"
+        base = "\n".join(
+            [
+                "Disponible reemplazo",
+                f"📍 {ciudad}",
+                f"Modalidad: {modalidad}",
+                f"Horario: {horario}",
+                f"Funciones: {funciones}",
+                f"Sueldo: {sueldo}",
+            ]
+        )
+    else:
+        # Reutiliza EXACTAMENTE la misma estructura operativa de copiar/publicar solicitudes.
+        label_maps = _admin_copiar_form_label_maps()
+        base = _admin_build_order_text_for_copiar(solicitud, label_maps=label_maps).strip()
+
+    extra_lines = []
+    if motivo:
+        extra_lines.append(f"Motivo del reemplazo: {motivo}")
+    if nota_short:
+        extra_lines.append(f"Nota importante: {nota_short}")
+    if not extra_lines:
+        return base
+    return f"{base}\n\n" + "\n".join(extra_lines)
 
 
 def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:

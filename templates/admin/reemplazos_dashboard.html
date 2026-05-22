@@ -103,15 +103,15 @@
         </td>
         <td class="reemp-actions-col">
           <div class="reemp-actions">
-            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Ver</a>
-            <button type="button" class="btn btn-outline-dark btn-sm" onclick="window.prompt('Texto para publicar', {{ row.publicacion_texto|tojson }})">Publicar</button>
-            {% if not r.fecha_fin_reemplazo %}
-              <a class="btn btn-warning btn-sm reemp-action-close" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Cerrar</a>
-            {% endif %}
+            <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Gestionar</a>
+            <button
+              type="button"
+              class="btn btn-outline-dark btn-sm js-reemp-copy-publicacion"
+              data-publicacion-texto="{{ row.publicacion_texto|tojson|forceescape }}"
+            >Publicar</button>
             <div class="dropdown reemp-action-menu">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
               <ul class="dropdown-menu dropdown-menu-end">
-                <li><button type="button" class="dropdown-item" onclick="navigator.clipboard && navigator.clipboard.writeText({{ row.publicacion_texto|tojson }});">Copiar</button></li>
                 {% if row.solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=row.solicitud.cliente_id, id=row.solicitud.id) }}">Timeline solicitud</a></li>{% endif %}
                 <li><a class="dropdown-item" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Seguimiento y auditoría</a></li>
                 {% if row.cliente and row.cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ row.cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
@@ -156,4 +156,27 @@
   </div>
 </div>
 </div>
+<script>
+document.addEventListener('click', async function(ev) {
+  var btn = ev.target && ev.target.closest ? ev.target.closest('.js-reemp-copy-publicacion') : null;
+  if (!btn) return;
+  var raw = btn.getAttribute('data-publicacion-texto') || '""';
+  var text = '';
+  try {
+    text = JSON.parse(raw);
+  } catch (_parseErr) {
+    text = raw || '';
+  }
+  if (!text.trim()) return;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'Copiado';
+      window.setTimeout(function() { btn.textContent = 'Publicar'; }, 1200);
+      return;
+    }
+  } catch (_err) {}
+  window.prompt('Copia este texto para publicar', text);
+});
+</script>
 {% endblock %}
