@@ -17404,18 +17404,32 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
     candidata_id = _safe_int(candidata_raw, default=0)
 
     wants_json = _admin_async_wants_json() or request.is_json
+    is_json_request = bool(request.is_json)
+    has_csrf_form = bool((request.form.get("csrf_token") or "").strip())
+    has_csrf_header = bool((request.headers.get("X-CSRFToken") or request.headers.get("X-CSRF-Token") or "").strip())
 
     def _respond(*, ok: bool, message: str, category: str, status: int = 200, error_code: str | None = None):
+        if not ok and int(status) == 400:
+            current_app.logger.info(
+                "reemplazo_seleccionar_candidata_400 reason=%s reemplazo_id=%s json=%s form_csrf=%s header_csrf=%s",
+                str(error_code or "invalid_input"),
+                int(reemplazo.id),
+                str(is_json_request).lower(),
+                str(has_csrf_form).lower(),
+                str(has_csrf_header).lower(),
+            )
         if wants_json:
             return jsonify(
                 {
                     "ok": bool(ok),
                     "success": bool(ok),
                     "message": str(message or ""),
+                    "error": (None if ok else str(error_code or "error")),
                     "category": str(category or "info"),
                     "error_code": error_code,
                     "reemplazo_id": int(reemplazo.id),
                     "candidata_new_id": int(getattr(reemplazo, "candidata_new_id", 0) or 0) or None,
+                    "redirect_url": (url_for("admin.reemplazo_detail", reemplazo_id=reemplazo.id) if ok else None),
                 }
             ), int(status)
         flash(message, category)
@@ -17433,10 +17447,10 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
     if candidata_id <= 0:
         return _respond(
             ok=False,
-            message="Debes seleccionar una candidata válida.",
+            message="No se recibió la candidata seleccionada. Intenta de nuevo.",
             category="warning",
             status=400,
-            error_code="invalid_input",
+            error_code="missing_candidata_id",
         )
 
     candidata = Candidata.query.filter_by(fila=int(candidata_id)).first()

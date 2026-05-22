@@ -114,7 +114,9 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert detail_html.count('data-action="open-candidata-search"') == 1
     assert 'id="nuevaCandidataResults"' in detail_html
     assert 'id="nuevaCandidataQuery"' in detail_html
+    assert 'id="reemplazoCsrfToken"' in detail_html
     assert "openPanelAndFocus" in detail_html
+    assert "credentials: 'same-origin'" in detail_html
     assert "Busca candidatas compatibles para este servicio." in detail_html
     assert "Próximo paso: Buscar candidatas compatibles para este servicio." not in detail_html
     assert "/admin/reemplazo_nuevo_panel" not in detail_html
@@ -307,3 +309,45 @@ def test_reemplazo_seleccionar_candidata_bloquea_cerrado():
         follow_redirects=False,
     )
     assert resp.status_code == 409
+
+
+def test_reemplazo_seleccionar_candidata_form_data_y_missing_id():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        cand = Candidata(
+            nombre_completo="Candidata Form",
+            cedula="55566677788",
+            numero_telefono="8092020202",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.commit()
+        cand_id = int(cand.fila)
+    _login_staff(client)
+
+    resp_missing = client.post(
+        f"/admin/reemplazos/{repl_id}/seleccionar-candidata",
+        data={},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp_missing.status_code == 400
+    data_missing = resp_missing.get_json() or {}
+    assert data_missing.get("ok") is False
+    assert data_missing.get("error") == "missing_candidata_id"
+
+    resp_ok = client.post(
+        f"/admin/reemplazos/{repl_id}/seleccionar-candidata",
+        data={"candidata_id": str(cand_id), "csrf_token": "dummy"},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp_ok.status_code == 200
+    data_ok = resp_ok.get_json() or {}
+    assert data_ok.get("ok") is True
+    assert (data_ok.get("redirect_url") or "").endswith(f"/admin/reemplazos/{repl_id}")

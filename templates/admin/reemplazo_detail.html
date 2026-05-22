@@ -155,6 +155,7 @@
         {% endif %}
         {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
         <div id="nuevaCandidataPanel" class="op-search-panel d-none" data-reemplazo-id="{{ reemplazo.id }}">
+          <input type="hidden" id="reemplazoCsrfToken" value="{{ csrf_token() }}">
           <label class="form-label mb-1">Buscar candidata por nombre, código, teléfono o ciudad</label>
           <div class="d-flex gap-2 flex-wrap">
             <input type="text" id="nuevaCandidataQuery" class="form-control" placeholder="Buscar candidata por nombre, código, teléfono o ciudad" autocomplete="off">
@@ -266,12 +267,14 @@
       var closeBtn = document.getElementById('cerrarNuevaCandBtn');
       var searchBtn = document.getElementById('buscarNuevaCandBtn');
       var input = document.getElementById('nuevaCandidataQuery');
+      var csrfTokenInput = document.getElementById('reemplazoCsrfToken');
       var state = document.getElementById('nuevaCandidataState');
       var results = document.getElementById('nuevaCandidataResults');
       var alertBox = document.getElementById('nuevaCandidataAlert');
-      if (!panel || !closeBtn || !searchBtn || !input || !state || !results || !alertBox) return;
+      if (!panel || !closeBtn || !searchBtn || !input || !results || !state || !alertBox || !csrfTokenInput) return;
 
       var reemplazoId = panel.getAttribute('data-reemplazo-id');
+      var csrfToken = (csrfTokenInput.value || '').trim();
 
       function showAlert(message, level) {
         alertBox.className = 'alert mt-2 mb-2 py-2 px-3 alert-' + (level || 'info');
@@ -340,11 +343,14 @@
       function seleccionar(candidataId) {
         hideAlert();
         state.textContent = 'Asignando candidata...';
+        var fd = new FormData();
+        fd.append('candidata_id', String(candidataId || ''));
+        if (csrfToken) fd.append('csrf_token', csrfToken);
         fetch('/admin/reemplazos/' + encodeURIComponent(reemplazoId) + '/seleccionar-candidata', {
           method: 'POST',
           credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Admin-Async': '1' },
-          body: JSON.stringify({ candidata_id: candidataId })
+          headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-Admin-Async': '1', 'X-CSRFToken': csrfToken },
+          body: fd
         })
           .then(function (resp) { return resp.json().then(function (data) { return { status: resp.status, data: data || {} }; }); })
           .then(function (res) {
@@ -353,11 +359,17 @@
               window.setTimeout(function () { window.location.reload(); }, 650);
               return;
             }
-            showAlert((res.data && res.data.message) || 'No se pudo seleccionar candidata.', 'warning');
+            var err = (res.data && (res.data.error || res.data.error_code)) || '';
+            var msg = (res.data && res.data.message) || 'No se pudo seleccionar la candidata.';
+            if (err === 'missing_candidata_id') msg = 'No se recibió la candidata seleccionada. Intenta de nuevo.';
+            else if (err === 'csrf') msg = 'La sesión de seguridad expiró. Recarga la página.';
+            else if (err === 'not_found' || err === 'invalid_input') msg = 'La candidata seleccionada no está disponible o no existe.';
+            else if (err === 'conflict') msg = 'Este reemplazo ya fue cerrado o la candidata no está disponible.';
+            showAlert(msg, 'warning');
             state.textContent = '';
           })
           .catch(function () {
-            showAlert('No se pudo seleccionar candidata.', 'danger');
+            showAlert('No se pudo seleccionar la candidata.', 'danger');
             state.textContent = '';
           });
       }
