@@ -248,6 +248,7 @@
         {% set _interno = resumen_interno %}
       {% endif %}
 
+      {% set _interno_clean = (_interno or '')|trim %}
       <div class="glass-card detail-focus-card p-3 p-md-4">
         <ul class="list-group list-unstyled mb-0">
           <li class="list-group-item detail-focus-row p-3 bg-body text-body border-bottom">
@@ -278,14 +279,25 @@
               <div class="text-end">
                 <button
                   type="button"
-                  class="btn btn-sm btn-primary copy-btn-interno"
+                  class="btn btn-sm btn-outline-light copy-btn-interno"
                   data-order-text='{{ _interno | tojson | safe }}'
                   aria-label="Copiar resumen interno"
+                  {% if not _interno_clean %}disabled{% endif %}
                 >
                   <i class="bi bi-clipboard-check me-1"></i> Copiar interno
                 </button>
               </div>
             </div>
+            {% if _interno_clean %}
+            <div class="mt-3">
+              <textarea class="form-control solicitud-copy-box" rows="7" readonly>{{ _interno }}</textarea>
+            </div>
+            {% else %}
+            <div class="solicitud-empty-state mt-3">
+              <strong class="d-block mb-1">No hay resumen interno generado todavía.</strong>
+              <span class="small">Cuando haya datos operativos suficientes, el equipo podrá copiarlo desde aquí.</span>
+            </div>
+            {% endif %}
           </li>
         </ul>
       </div>
@@ -294,12 +306,12 @@
 
   <!-- Historial de Envíos -->
   <div class="glass-card mb-4">
-    <div class="glass-header bg-info">
+    <div class="glass-header">
       <i class="bi bi-send-fill"></i> Historial de Envíos
     </div>
     {% if envios %}
       <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle">
+        <table class="table table-hover mb-0 align-middle solicitud-dark-table">
           <thead>
             <tr>
               <th>📦 Tipo</th>
@@ -319,7 +331,7 @@
         </table>
       </div>
     {% else %}
-      <div class="empty-block">
+      <div class="solicitud-empty-state m-3">
         <i class="bi bi-inbox fs-3 d-block mb-2"></i>
         No hay envíos registrados.
       </div>
@@ -329,11 +341,11 @@
   <!-- Cancelaciones -->
   {% if solicitud.estado == 'cancelada' %}
   <div class="glass-card mb-4">
-    <div class="glass-header bg-danger">
+    <div class="glass-header">
       <i class="bi bi-x-octagon-fill"></i> Cancelaciones
     </div>
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0 solicitud-dark-table">
         <thead>
           <tr>
             <th>#</th>
@@ -355,12 +367,12 @@
 
   <!-- Reemplazos -->
   <div class="glass-card mb-4">
-    <div class="glass-header bg-warning text-dark">
+    <div class="glass-header">
       <i class="bi bi-arrow-repeat"></i> Reemplazos
     </div>
     {% if reemplazos %}
       <div class="table-responsive">
-        <table class="table table-hover mb-0 align-middle">
+        <table class="table table-hover mb-0 align-middle solicitud-dark-table">
           <thead>
             <tr>
               <th>#</th>
@@ -392,7 +404,7 @@
         </table>
       </div>
     {% else %}
-      <div class="empty-block">
+      <div class="solicitud-empty-state m-3">
         <i class="bi bi-emoji-frown fs-3 d-block mb-2"></i>
         No hay reemplazos registrados.
       </div>

@@ -3,159 +3,119 @@
 
 {% block head %}
 <style>
+  .solicitud-detail-contrast {
+    color: #f8fafc;
+  }
+
   .solicitud-detail-contrast .glass-card {
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 251, 255, 0.96));
-    background-color: #ffffff !important;
-    border: 1px solid rgba(18, 52, 97, 0.14);
-    box-shadow: 0 12px 28px rgba(18, 52, 97, 0.08);
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(17, 24, 39, 0.96)) !important;
+    border: 1px solid rgba(148, 163, 184, 0.25) !important;
+    box-shadow: 0 18px 36px rgba(2, 6, 23, 0.38);
+    color: #f8fafc !important;
+    border-radius: 0.9rem;
   }
 
   .solicitud-detail-contrast .glass-header {
     font-weight: 700;
     letter-spacing: 0.01em;
-    border-bottom: 1px solid rgba(18, 52, 97, 0.16);
-    background: linear-gradient(90deg, rgba(12, 98, 209, 0.14), rgba(12, 98, 209, 0.06));
-    color: #0f172a;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    background: linear-gradient(90deg, rgba(30, 64, 175, 0.44), rgba(15, 23, 42, 0.86));
+    color: #e2e8f0 !important;
+    padding: 0.85rem 1rem;
   }
 
-  .solicitud-detail-contrast .solicitud-detail-secondary {
-    color: #475467 !important;
-    font-weight: 500;
+  .solicitud-detail-contrast .solicitud-detail-secondary,
+  .solicitud-detail-contrast .text-body-secondary,
+  .solicitud-detail-contrast .text-muted,
+  .solicitud-detail-contrast small {
+    color: #cbd5e1 !important;
   }
 
-  .solicitud-detail-contrast .detail-focus-card {
-    border-color: rgba(12, 98, 209, 0.26);
-    box-shadow: 0 14px 34px rgba(12, 98, 209, 0.11);
+  .solicitud-detail-contrast :is(h1, h2, h3, h4, h5, h6, dt, dd, label, strong, li, span, div, p) {
+    color: inherit;
   }
 
-  .solicitud-detail-contrast .detail-focus-row {
-    border: 1px solid rgba(18, 52, 97, 0.12);
-    border-radius: 0.75rem;
-    background: rgba(255, 255, 255, 0.96);
-  }
-
-  .solicitud-detail-contrast .operativa-data-item {
-    background: rgba(249, 251, 255, 0.95);
-    border: 1px solid rgba(18, 52, 97, 0.14);
-    border-radius: 0.75rem;
-    padding: 0.65rem 0.75rem;
-    min-height: 100%;
-  }
-
-  .solicitud-detail-contrast .operativa-data-item strong {
-    color: #1d2939;
-    font-weight: 700;
-  }
-
-  .solicitud-detail-contrast .solicitud-callout {
-    border-width: 1px !important;
-    border-style: solid !important;
-    box-shadow: 0 6px 18px rgba(18, 52, 97, 0.08);
-  }
-
-  .solicitud-detail-contrast .solicitud-callout-neutral {
-    background: rgba(247, 250, 255, 0.94);
-    border-color: rgba(18, 52, 97, 0.18) !important;
-  }
-
-  .solicitud-detail-contrast .solicitud-callout-info {
-    background: rgba(238, 246, 255, 0.95);
-    border-color: rgba(12, 98, 209, 0.24) !important;
-  }
-
-  .solicitud-detail-contrast .solicitud-callout-warn {
-    background: rgba(255, 247, 230, 0.96);
-    border-color: rgba(245, 158, 11, 0.36) !important;
-  }
-
-  .solicitud-detail-contrast .solicitud-callout .fw-semibold {
-    color: #172b4d;
-  }
-
-  .solicitud-detail-contrast,
-  .solicitud-detail-contrast .glass-card,
-  .solicitud-detail-contrast .detail-focus-card,
-  .solicitud-detail-contrast .detail-focus-row,
-  .solicitud-detail-contrast .operativa-data-item,
   .solicitud-detail-contrast .text-body,
-  .solicitud-detail-contrast .text-body-emphasis {
-    color: #111827 !important;
+  .solicitud-detail-contrast .text-body-emphasis,
+  .solicitud-detail-contrast .fw-semibold {
+    color: #f8fafc !important;
   }
 
-  .solicitud-detail-contrast .bg-white,
-  .solicitud-detail-contrast .bg-body {
-    background-color: #ffffff !important;
-    color: #111827 !important;
-  }
-
-  .solicitud-detail-contrast .detail-focus-row {
-    background: #ffffff !important;
-  }
-
-  html[data-theme="dark"] .solicitud-detail-contrast .glass-card,
-  html[data-theme="dark"] .solicitud-detail-contrast .detail-focus-card,
-  html[data-theme="dark"] .solicitud-detail-contrast .detail-focus-row,
-  html[data-theme="dark"] .solicitud-detail-contrast .operativa-data-item,
-  html[data-theme="dark"] .solicitud-detail-contrast .bg-body {
-    background-color: #ffffff !important;
-    background-image: none !important;
-    color: #111827 !important;
-    border-color: rgba(18, 52, 97, 0.16) !important;
-  }
-
-  html[data-theme="dark"] .solicitud-detail-contrast .text-body,
-  html[data-theme="dark"] .solicitud-detail-contrast .text-body-emphasis,
-  html[data-theme="dark"] .solicitud-detail-contrast .text-body-secondary,
-  html[data-theme="dark"] .solicitud-detail-contrast .text-muted,
-  html[data-theme="dark"] .solicitud-detail-contrast .solicitud-detail-secondary,
-  html[data-theme="dark"] .solicitud-detail-contrast :is(dt, dd, label, span, small, strong, li) {
-    color: #334155 !important;
-  }
-
-  html[data-theme="dark"] .solicitud-detail-contrast :is(h1, h2, h3, h4, h5, h6, .fw-semibold) {
-    color: #0f172a !important;
-  }
-
-  .solicitud-detail-contrast :is(h1, h2, h3, h4, h5, h6, dt, dd, label, strong) {
-    color: #111827;
-  }
-
-  .solicitud-detail-contrast :is(.text-body, .text-body-emphasis) {
-    color: #111827 !important;
-  }
-
-  .solicitud-detail-contrast :is(.text-body-secondary, .text-muted, small) {
-    color: #475569 !important;
+  .solicitud-detail-contrast .operativa-data-item,
+  .solicitud-detail-contrast .detail-focus-row,
+  .solicitud-detail-contrast .detail-focus-card {
+    background: rgba(15, 23, 42, 0.84) !important;
+    border: 1px solid rgba(148, 163, 184, 0.24) !important;
+    color: #f8fafc !important;
+    border-radius: 0.75rem;
   }
 
   .solicitud-detail-contrast .alert.alert-light {
-    background: #f8fafc !important;
-    border-color: #cbd5e1 !important;
-    color: #0f172a !important;
+    background: rgba(15, 23, 42, 0.72) !important;
+    border-color: rgba(148, 163, 184, 0.35) !important;
+    color: #e2e8f0 !important;
   }
 
   .solicitud-detail-contrast .alert.alert-warning {
-    background: #fff7d6 !important;
-    border-color: #f7cf66 !important;
-    color: #7a4b00 !important;
+    background: rgba(113, 63, 18, 0.45) !important;
+    border-color: rgba(245, 158, 11, 0.45) !important;
+    color: #fde68a !important;
   }
 
   .solicitud-detail-contrast .alert.alert-primary {
-    background: #eaf3ff !important;
-    border-color: #b7d2ff !important;
-    color: #123b78 !important;
+    background: rgba(30, 64, 175, 0.34) !important;
+    border-color: rgba(96, 165, 250, 0.45) !important;
+    color: #dbeafe !important;
   }
 
-  .solicitud-detail-contrast .table :is(th, td) {
-    color: #111827 !important;
+  .solicitud-detail-contrast .solicitud-copy-box {
+    width: 100%;
+    min-height: 190px;
+    max-height: 340px;
+    resize: vertical;
+    background: rgba(15, 23, 42, 0.78) !important;
+    border: 1px solid rgba(148, 163, 184, 0.3) !important;
+    color: #f8fafc !important;
+    line-height: 1.5;
   }
 
-  .solicitud-detail-contrast .table thead th {
-    color: #0f172a !important;
+  .solicitud-detail-contrast .solicitud-copy-box::placeholder {
+    color: #94a3b8;
   }
 
-  .solicitud-detail-contrast .table tbody tr {
-    background: #ffffff;
+  .solicitud-detail-contrast .solicitud-empty-state {
+    border: 1px dashed rgba(148, 163, 184, 0.45);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.42);
+    color: #cbd5e1;
+  }
+
+  .solicitud-detail-contrast .solicitud-dark-table {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 0.75rem;
+    overflow: hidden;
+    background: rgba(15, 23, 42, 0.78);
+    margin-bottom: 0;
+  }
+
+  .solicitud-detail-contrast .solicitud-dark-table thead th {
+    background: linear-gradient(90deg, rgba(30, 64, 175, 0.42), rgba(15, 23, 42, 0.95)) !important;
+    color: #e2e8f0 !important;
+    border-color: rgba(148, 163, 184, 0.2) !important;
+  }
+
+  .solicitud-detail-contrast .solicitud-dark-table tbody tr {
+    background: rgba(15, 23, 42, 0.62);
+  }
+
+  .solicitud-detail-contrast .solicitud-dark-table tbody tr:nth-child(even) {
+    background: rgba(30, 41, 59, 0.7);
+  }
+
+  .solicitud-detail-contrast .solicitud-dark-table :is(td, th) {
+    color: #e2e8f0 !important;
+    border-color: rgba(148, 163, 184, 0.16) !important;
   }
 </style>
 {% endblock %}
@@ -193,6 +153,7 @@
   </div>
 
   <!-- 🔥 Resumen listo para enviar al cliente -->
+  {% set _resumen_cliente_clean = (resumen_cliente or '')|trim %}
   <div class="glass-card mb-4">
     <div class="glass-header">
       <i class="bi bi-clipboard-check"></i> Resumen para enviar al cliente
@@ -201,10 +162,18 @@
       <p class="small solicitud-detail-secondary mb-2">
         Texto organizado con emojis, listo para copiar y pegar en WhatsApp o correo.
       </p>
+      {% if _resumen_cliente_clean %}
       <div class="mb-3">
-        <textarea id="resumenCliente" class="form-control" rows="12" readonly>{{ resumen_cliente }}</textarea>
+        <textarea id="resumenCliente" class="form-control solicitud-copy-box" rows="8" readonly>{{ resumen_cliente }}</textarea>
       </div>
-      <button type="button" class="btn btn-secondary js-copy-resumen-cliente">
+      {% else %}
+      <div class="solicitud-empty-state mb-3">
+        <strong class="d-block mb-1">No hay resumen generado todavía.</strong>
+        <span class="small">Completa o actualiza la información de la solicitud para generar un resumen listo para envío.</span>
+      </div>
+      <textarea id="resumenCliente" class="form-control solicitud-copy-box d-none" rows="8" readonly></textarea>
+      {% endif %}
+      <button type="button" class="btn btn-outline-light js-copy-resumen-cliente" {% if not _resumen_cliente_clean %}disabled{% endif %}>
         <i class="bi bi-clipboard me-1"></i> Copiar resumen
       </button>
       <div id="resumenCopyFeedback" class="alert d-none py-2 px-3 mt-2 mb-0" role="alert" aria-live="polite"></div>
