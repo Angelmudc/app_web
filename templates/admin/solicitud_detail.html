@@ -14,6 +14,7 @@
     letter-spacing: 0.01em;
     border-bottom: 1px solid rgba(18, 52, 97, 0.16);
     background: linear-gradient(90deg, rgba(12, 98, 209, 0.14), rgba(12, 98, 209, 0.06));
+    color: #0f172a;
   }
 
   .solicitud-detail-contrast .solicitud-detail-secondary {
@@ -68,6 +69,62 @@
 
   .solicitud-detail-contrast .solicitud-callout .fw-semibold {
     color: #172b4d;
+  }
+
+  .solicitud-detail-contrast,
+  .solicitud-detail-contrast .glass-card,
+  .solicitud-detail-contrast .detail-focus-card,
+  .solicitud-detail-contrast .detail-focus-row,
+  .solicitud-detail-contrast .operativa-data-item {
+    color: #111827 !important;
+  }
+
+  .solicitud-detail-contrast .bg-white,
+  .solicitud-detail-contrast .bg-body {
+    background-color: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .solicitud-detail-contrast :is(h1, h2, h3, h4, h5, h6, dt, dd, label, strong) {
+    color: #111827;
+  }
+
+  .solicitud-detail-contrast :is(.text-body, .text-body-emphasis) {
+    color: #111827 !important;
+  }
+
+  .solicitud-detail-contrast :is(.text-body-secondary, .text-muted, small) {
+    color: #475569 !important;
+  }
+
+  .solicitud-detail-contrast .alert.alert-light {
+    background: #f8fafc !important;
+    border-color: #cbd5e1 !important;
+    color: #0f172a !important;
+  }
+
+  .solicitud-detail-contrast .alert.alert-warning {
+    background: #fff7d6 !important;
+    border-color: #f7cf66 !important;
+    color: #7a4b00 !important;
+  }
+
+  .solicitud-detail-contrast .alert.alert-primary {
+    background: #eaf3ff !important;
+    border-color: #b7d2ff !important;
+    color: #123b78 !important;
+  }
+
+  .solicitud-detail-contrast .table :is(th, td) {
+    color: #111827 !important;
+  }
+
+  .solicitud-detail-contrast .table thead th {
+    color: #0f172a !important;
+  }
+
+  .solicitud-detail-contrast .table tbody tr {
+    background: #ffffff;
   }
 </style>
 {% endblock %}
