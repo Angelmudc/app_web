@@ -160,14 +160,22 @@
 .reemplazos-dashboard .reemp-actions{
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0.32rem;
+  gap: 0.38rem;
   justify-items: stretch;
   align-items: stretch;
+  width: 100%;
 }
 
 .reemplazos-dashboard .reemp-actions .btn{
   white-space: nowrap;
   width: 100%;
+  min-height: 36px;
+  border-radius: 10px;
+  font-size: 0.83rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .reemplazos-dashboard .reemp-actions .dropdown{
@@ -180,6 +188,13 @@
 }
 
 .reemplazos-dashboard .reemp-action-close{
+  grid-column: 1 / -1;
+  background: rgba(245, 158, 11, 0.2) !important;
+  border-color: rgba(245, 158, 11, 0.42) !important;
+  color: #fde68a !important;
+}
+
+.reemplazos-dashboard .reemp-action-menu{
   grid-column: 1 / -1;
 }
 

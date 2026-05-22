@@ -17673,7 +17673,7 @@ def reemplazos_dashboard():
     q_fecha_hasta = (request.args.get("fecha_hasta") or "").strip()
 
     page = max(1, _safe_int(request.args.get("page"), default=1))
-    per_page = min(100, max(10, _safe_int(request.args.get("per_page"), default=50)))
+    per_page = min(100, max(2, _safe_int(request.args.get("per_page"), default=50)))
 
     query = (
         Reemplazo.query
@@ -17743,14 +17743,18 @@ def reemplazos_dashboard():
     if fecha_hasta_dt is not None:
         query = query.filter(func.coalesce(Reemplazo.fecha_reporte, Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) < fecha_hasta_dt)
 
-    items = (
-        query.order_by(
-            Reemplazo.fecha_inicio_reemplazo.desc().nullslast(),
-            Reemplazo.created_at.desc(),
-            Reemplazo.id.desc(),
-        ).paginate(page=page, per_page=per_page, error_out=False)
+    ordered_query = query.order_by(
+        Reemplazo.fecha_inicio_reemplazo.desc().nullslast(),
+        Reemplazo.created_at.desc(),
+        Reemplazo.id.desc(),
     )
-    reemplazos = list(items.items or [])
+    derived_filters = bool(q_prioridad or q_vencidos)
+    items = None
+    if derived_filters:
+        reemplazos = list(ordered_query.all() or [])
+    else:
+        items = ordered_query.paginate(page=page, per_page=per_page, error_out=False)
+        reemplazos = list(items.items or [])
     solicitud_ids = [int(r.solicitud_id) for r in reemplazos if int(getattr(r, "solicitud_id", 0) or 0) > 0]
     seguimientos = []
     if solicitud_ids:
@@ -17767,7 +17771,7 @@ def reemplazos_dashboard():
             seg_by_solicitud[sid] = seg
 
     now = utc_now_naive()
-    cards = []
+    cards_all = []
     for row in reemplazos:
         seg = seg_by_solicitud.get(int(getattr(row, "solicitud_id", 0) or 0))
         sol = getattr(row, "solicitud", None)
@@ -17789,7 +17793,7 @@ def reemplazos_dashboard():
         indicador_seguimiento_vencido = bool(
             seg and getattr(seg, "due_at", None) and getattr(seg, "closed_at", None) is None and getattr(seg, "due_at", None) < now
         )
-        cards.append(
+        cards_all.append(
             {
                 "reemplazo": row,
                 "solicitud": sol,
@@ -17810,6 +17814,22 @@ def reemplazos_dashboard():
                 "new_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_new", None), "cedula", None)),
             }
         )
+
+    if derived_filters:
+        total_cards = len(cards_all)
+        total_pages = max(1, ((total_cards - 1) // per_page) + 1) if total_cards > 0 else 1
+        if page > total_pages:
+            page = total_pages
+        start = (page - 1) * per_page
+        end = start + per_page
+        cards = cards_all[start:end]
+        total_rows = total_cards
+        has_more = page < total_pages
+    else:
+        cards = cards_all
+        total_rows = int(items.total or 0) if items is not None else len(cards_all)
+        total_pages = int(items.pages or 1) if items is not None else 1
+        has_more = bool(items.has_next) if items is not None else False
 
     week_start = (to_rd(now).date() - timedelta(days=to_rd(now).weekday()))
     activos_rows = [c for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None) is None]
@@ -17858,8 +17878,9 @@ def reemplazos_dashboard():
         fecha_hasta=q_fecha_hasta,
         page=page,
         per_page=per_page,
-        total=int(items.total or 0),
-        has_more=bool(items.has_next),
+        total=total_rows,
+        total_pages=total_pages,
+        has_more=has_more,
         metric_activos=metric_activos,
         metric_hoy=metric_hoy,
         metric_criticos=metric_criticos,

@@ -202,6 +202,65 @@ def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
     assert "📝" in html
     assert "dropdown-item" in html
     assert "⋮" in html
+    assert "reemp-actions" in html
+    assert "reemp-action-menu" in html
+    assert "/finalizar" not in html
+
+
+def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        for _ in range(5):
+            _seed_case(closed=False, motivo="No se presentó para turno de prueba")
+
+    _login_staff(client)
+    resp_p1 = client.get("/admin/reemplazos?estado=activos&motivo=No%20se&per_page=2&page=1", follow_redirects=False)
+    assert resp_p1.status_code == 200
+    html_p1 = resp_p1.get_data(as_text=True)
+    assert "Mostrando 1–2 de" in html_p1
+    assert "page=2" in html_p1
+    assert "per_page=2" in html_p1
+    assert "motivo=No+se" in html_p1
+    next_match_p1 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*>Siguiente</a>', html_p1)
+    assert next_match_p1 is not None
+    assert "disabled" not in (next_match_p1.group(1) or "")
+
+    resp_p2 = client.get("/admin/reemplazos?estado=activos&motivo=No%20se&per_page=2&page=2", follow_redirects=False)
+    assert resp_p2.status_code == 200
+    html_p2 = resp_p2.get_data(as_text=True)
+    assert "página 2 de" in html_p2
+    assert "page=1" in html_p2
+    assert "per_page=2" in html_p2
+    assert "motivo=No+se" in html_p2
+    prev_match_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*>Anterior</a>', html_p2)
+    assert prev_match_p2 is not None
+    assert "disabled" not in (prev_match_p2.group(1) or "")
+
+
+def test_reemplazos_dashboard_paginacion_una_sola_pagina_desactiva_botones():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_case(closed=False, motivo="Caso único de paginación")
+
+    _login_staff(client)
+    resp = client.get("/admin/reemplazos?estado=activos&per_page=50&page=1", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "página 1 de 1" in html
+    assert 'Anterior</a>' in html
+    assert 'Siguiente</a>' in html
+    prev_match = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*aria-disabled="true"[^>]*>Anterior</a>', html)
+    next_match = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*aria-disabled="true"[^>]*>Siguiente</a>', html)
+    assert prev_match is not None and "disabled" in (prev_match.group(1) or "")
+    assert next_match is not None and "disabled" in (next_match.group(1) or "")
 
 
 def test_reemplazo_detail_busqueda_y_seleccion_candidata():
