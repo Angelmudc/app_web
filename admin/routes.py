@@ -20470,7 +20470,11 @@ def _admin_build_order_text_for_copiar(
     if isinstance(edad_req_val, str):
         edad_req = _s(edad_req_val)
     elif isinstance(edad_req_val, (list, tuple, set, dict)):
-        edad_req = ", ".join([_s(x) for x in _as_list(edad_req_val)])
+        edad_parts = [_s(x) for x in _as_list(edad_req_val) if _s(x)]
+        if edad_parts and all(len(p) == 1 for p in edad_parts):
+            edad_req = "".join(edad_parts)
+        else:
+            edad_req = ", ".join(edad_parts)
     else:
         edad_req = _s(edad_req_val)
 
