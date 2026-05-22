@@ -242,6 +242,87 @@ def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
     assert "disabled" not in (prev_match_p2.group(1) or "")
 
 
+def test_reemplazos_dashboard_paginacion_multipagina_exacta_page_1_2_3():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        for _ in range(5):
+            _seed_case(closed=False, motivo="Caso multi pagina")
+
+    _login_staff(client)
+
+    resp_p1 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=1", follow_redirects=False)
+    assert resp_p1.status_code == 200
+    html_p1 = resp_p1.get_data(as_text=True)
+    assert "Mostrando 1–2 de 5 (página 1 de 3)" in html_p1
+    next_href_p1 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p1)
+    assert next_href_p1 is not None
+    assert "disabled" not in (next_href_p1.group(1) or "")
+    assert "page=2" in (next_href_p1.group(2) or "")
+    assert "per_page=2" in (next_href_p1.group(2) or "")
+
+    resp_p2 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=2", follow_redirects=False)
+    assert resp_p2.status_code == 200
+    html_p2 = resp_p2.get_data(as_text=True)
+    assert "Mostrando 3–4 de 5 (página 2 de 3)" in html_p2
+    prev_href_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Anterior</a>', html_p2)
+    next_href_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p2)
+    assert prev_href_p2 is not None and "disabled" not in (prev_href_p2.group(1) or "")
+    assert next_href_p2 is not None and "disabled" not in (next_href_p2.group(1) or "")
+    assert "page=1" in (prev_href_p2.group(2) or "")
+    assert "page=3" in (next_href_p2.group(2) or "")
+    assert "per_page=2" in (prev_href_p2.group(2) or "")
+    assert "per_page=2" in (next_href_p2.group(2) or "")
+
+    resp_p3 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=3", follow_redirects=False)
+    assert resp_p3.status_code == 200
+    html_p3 = resp_p3.get_data(as_text=True)
+    assert "Mostrando 5–5 de 5 (página 3 de 3)" in html_p3
+    prev_href_p3 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Anterior</a>', html_p3)
+    next_href_p3 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p3)
+    assert prev_href_p3 is not None and "disabled" not in (prev_href_p3.group(1) or "")
+    assert next_href_p3 is not None and "disabled" in (next_href_p3.group(1) or "")
+    assert "page=2" in (prev_href_p3.group(2) or "")
+
+
+def test_reemplazos_dashboard_paginacion_conserva_todos_filtros_en_links():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        for _ in range(5):
+            _seed_case(closed=False, motivo="Filtro avanzado")
+
+    _login_staff(client)
+    query = (
+        "/admin/reemplazos?per_page=2&page=1&estado=activos&cliente=Cliente&prioridad=media"
+        "&motivo=Filtro&ciudad=Santo&responsable=&fecha_desde=&fecha_hasta=&vencidos=&sin_candidata_nueva="
+    )
+    resp = client.get(query, follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    next_href = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html)
+    assert next_href is not None
+    href = next_href.group(2) or ""
+    assert "page=2" in href
+    assert "per_page=2" in href
+    assert "estado=activos" in href
+    assert "cliente=Cliente" in href
+    assert "prioridad=media" in href
+    assert "motivo=Filtro" in href
+    assert "ciudad=Santo" in href
+    assert "responsable=" in href
+    assert "fecha_desde=" in href
+    assert "fecha_hasta=" in href
+    assert "vencidos=" in href
+    assert "sin_candidata_nueva=" in href
+
+
 def test_reemplazos_dashboard_paginacion_una_sola_pagina_desactiva_botones():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
