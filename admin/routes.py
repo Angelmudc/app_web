@@ -13624,7 +13624,15 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             error_code="conflict",
         )
 
-    if getattr(r, "fecha_fin_reemplazo", None):
+    resultado_actual = (getattr(r, "resultado_final", "") or "").strip().lower()
+    ya_cerrado = bool(getattr(r, "fecha_fin_reemplazo", None)) or resultado_actual in {
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+    }
+    if ya_cerrado:
         if _admin_noop_repeat_blocked(
             scope="admin_reemplazo_close_assign",
             entity_type="Reemplazo",
@@ -13634,14 +13642,14 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
         ):
             return _action_response(
                 ok=False,
-                message="Acción bloqueada temporalmente: este reemplazo ya está cerrado.",
+                message="Acción bloqueada temporalmente: este reemplazo ya fue cerrado.",
                 category="warning",
                 http_status=429,
                 error_code="rate_limit",
             )
         return _action_response(
             ok=False,
-            message="Este reemplazo ya está cerrado.",
+            message="Este reemplazo ya fue cerrado.",
             category="warning",
             http_status=409,
             error_code="conflict",
@@ -17555,12 +17563,20 @@ def reemplazo_cancelar_panel(reemplazo_id):
 def reemplazo_cerrar_panel(reemplazo_id):
     r = Reemplazo.query.get_or_404(int(reemplazo_id))
     s = Solicitud.query.get_or_404(int(r.solicitud_id))
+    resultado_actual = (getattr(r, "resultado_final", "") or "").strip().lower()
+    ya_cerrado = bool(getattr(r, "fecha_fin_reemplazo", None)) or resultado_actual in {
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+    }
+    if ya_cerrado:
+        flash("Este reemplazo ya fue cerrado.", "warning")
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
     resultado_final = (request.form.get("resultado_final") or "").strip().lower()
     if resultado_final in {"exitoso", "cerrado_exitoso"}:
         return cerrar_reemplazo_asignando(int(s.id), int(r.id))
-    if getattr(r, "fecha_fin_reemplazo", None):
-        flash("Este reemplazo ya está cerrado.", "warning")
-        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
     if resultado_final not in {"fallido", "cerrado_fallido"}:
         flash("Resultado final inválido.", "warning")
         return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
@@ -17844,7 +17860,13 @@ def reemplazo_detail(reemplazo_id):
     publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
     resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
     has_new = bool(getattr(reemplazo, "candidata_new_id", None))
-    is_closed = bool(getattr(reemplazo, "fecha_fin_reemplazo", None))
+    is_closed = bool(getattr(reemplazo, "fecha_fin_reemplazo", None)) or resultado in {
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+    }
 
     estado_tone = "info"
     if resultado == "cancelado":

@@ -53,6 +53,7 @@ def _seed_case(*, closed: bool, motivo: str = "No se presentó") -> tuple[int, i
     repl.iniciar_reemplazo()
     if closed:
         repl.cerrar_reemplazo(int(new.fila))
+        repl.resultado_final = "exitoso"
     db.session.add(repl)
     db.session.flush()
 
@@ -387,3 +388,77 @@ def test_reemplazo_cerrar_exitoso_sin_candidata_devuelve_error_claro():
     payload = resp.get_json() or {}
     assert payload.get("success") is False
     assert "Debes indicar la candidata nueva" in (payload.get("message") or "")
+
+
+def test_reemplazo_cerrar_segunda_vez_no_duplica_operacion():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, solicitud_id = _seed_case(closed=True)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand_pick_id = int(repl.candidata_new_id or 0)
+    _login_staff(client)
+
+    outbox_count_before = 0
+    audit_count_before = 0
+    with flask_app.app_context():
+        outbox_count_before = DomainOutbox.query.filter_by(
+            aggregate_type="Solicitud",
+            aggregate_id=str(solicitud_id),
+            event_type="REEMPLAZO_CERRADO_ASIGNANDO",
+        ).count()
+        audit_count_before = StaffAuditLog.query.filter_by(
+            entity_type="Solicitud",
+            entity_id=str(solicitud_id),
+            action_type="REEMPLAZO_CERRAR",
+        ).count()
+
+    resp_second = client.post(
+        f"/admin/reemplazos/{repl_id}/cerrar",
+        data={"resultado_final": "exitoso", "candidata_new_id": str(cand_pick_id)},
+        follow_redirects=False,
+    )
+    assert resp_second.status_code in (302, 303)
+
+    with flask_app.app_context():
+        repl_after = Reemplazo.query.get(repl_id)
+        assert repl_after is not None
+        assert repl_after.fecha_fin_reemplazo is not None
+        assert (repl_after.resultado_final or "").strip().lower() == "exitoso"
+        outbox_count_second = DomainOutbox.query.filter_by(
+            aggregate_type="Solicitud",
+            aggregate_id=str(solicitud_id),
+            event_type="REEMPLAZO_CERRADO_ASIGNANDO",
+        ).count()
+        audit_count_second = StaffAuditLog.query.filter_by(
+            entity_type="Solicitud",
+            entity_id=str(solicitud_id),
+            action_type="REEMPLAZO_CERRAR",
+        ).count()
+        assert outbox_count_second == outbox_count_before
+        assert audit_count_second == audit_count_before
+
+
+def test_reemplazo_detalle_cerrado_oculta_boton_finalizar_y_muestra_estado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=True)
+    _login_staff(client)
+
+    resp = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Reemplazo cerrado" in html
+    assert "Resultado: Exitoso" in html
+    assert "Finalizar reemplazo con esta candidata" not in html
+    assert "Finalizar reemplazo" not in html
+    assert "Ver solicitud" in html
+    assert "Ver candidata" in html

@@ -2,6 +2,8 @@
 {% block title %}Reemplazo #{{ reemplazo.id }}{% endblock %}
 {% block content %}
 <div class="container py-4" style="max-width: 1180px;">
+  {% set _resultado_norm = (reemplazo.resultado_final or '')|lower %}
+  {% set _reemplazo_ya_cerrado = reemplazo.fecha_fin_reemplazo or _resultado_norm in ['cerrado','cerrado_exitoso','exitoso','cerrado_fallido','fallido'] %}
   <style>
     .op-shell { background: linear-gradient(180deg, #151a25 0%, #111722 100%); border-radius: 18px; border: 1px solid rgba(255,255,255,.08); padding: 1rem; }
     .op-card { border: 1px solid rgba(255,255,255,.12); border-radius: 12px; background: rgba(22,30,46,.9); box-shadow: 0 8px 22px rgba(0,0,0,.18); padding: .95rem; }
@@ -52,7 +54,7 @@
   <div class="op-shell">
     <div class="op-header-row">
       <div class="op-header-left">
-        <div class="op-title">{% if reemplazo.fecha_fin_reemplazo %}Reemplazo cerrado{% else %}Reemplazo activo{% endif %}</div>
+        <div class="op-title">{% if _reemplazo_ya_cerrado %}Reemplazo cerrado{% else %}Reemplazo activo{% endif %}</div>
         <div class="op-subtitle reemp-truncate">{{ cliente and cliente.nombre_completo or ('Caso #' ~ reemplazo.id) }} · {{ solicitud and solicitud.ciudad_sector or 'Ciudad no indicada' }} · {{ solicitud and solicitud.modalidad_trabajo or 'Modalidad no indicada' }}</div>
       </div>
       <div class="op-header-right">
@@ -80,10 +82,10 @@
             ⚡ {{ cta_label }}
           </button>
           {% elif cta_action == 'finalize_direct' and solicitud and reemplazo.candidata_new_id %}
-          <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
             <input type="hidden" name="resultado_final" value="exitoso">
             <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
-            <button class="btn {{ cta_style }} op-primary-btn" type="submit">⚡ {{ cta_label }}</button>
+            <button class="btn {{ cta_style }} op-primary-btn" type="submit" data-single-submit data-loading-text="Finalizando...">⚡ {{ cta_label }}</button>
           </form>
           {% else %}
           <a class="btn {{ cta_style }} op-primary-btn" href="{{ cta_href }}">⚡ {{ cta_label }}</a>
@@ -95,7 +97,7 @@
               {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
               {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
               <li><button class="dropdown-item" type="button" data-bs-toggle="collapse" data-bs-target="#techEvents" aria-expanded="false">Ver eventos técnicos</button></li>
-              {% if (current_user.role|default('')|lower) in ['admin','owner'] and not reemplazo.fecha_fin_reemplazo %}
+              {% if (current_user.role|default('')|lower) in ['admin','owner'] and not _reemplazo_ya_cerrado %}
               <li><hr class="dropdown-divider"></li>
               <li>
                 <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1">
@@ -131,9 +133,9 @@
             <div class="op-value fw-semibold">{{ reemplazo.candidata_new.nombre_completo }}</div>
             <div class="op-secondary">
               Estado:
-              {% if reemplazo.fecha_fin_reemplazo and (reemplazo.resultado_final or '') in ['cerrado_exitoso', 'exitoso'] %}
+              {% if _reemplazo_ya_cerrado and (reemplazo.resultado_final or '') in ['cerrado_exitoso', 'exitoso'] %}
                 trabajando
-              {% elif reemplazo.fecha_fin_reemplazo %}
+              {% elif _reemplazo_ya_cerrado %}
                 enviada
               {% elif solicitud and (solicitud.estado or '') == 'reemplazo' %}
                 aprobada
@@ -141,17 +143,17 @@
                 pendiente
               {% endif %}
             </div>
-            <div class="op-secondary mt-1">Resultado: {{ reemplazo.resultado_final or 'pendiente' }}</div>
-            {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+            <div class="op-secondary mt-1">Resultado: {{ (reemplazo.resultado_final or 'pendiente')|replace('_', ' ')|title }}</div>
+            {% if solicitud and not _reemplazo_ya_cerrado %}
             <div class="mt-2 d-flex gap-2 flex-wrap">
               <button class="btn btn-outline-light btn-sm"
                       type="button"
                       data-action="open-candidata-search"
                       data-focus-target="#nuevaCandidataQuery">Cambiar candidata</button>
-              <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+              <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
                 <input type="hidden" name="resultado_final" value="exitoso">
                 <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
-                <button class="btn btn-success btn-sm" type="submit">Finalizar reemplazo con esta candidata</button>
+                <button class="btn btn-success btn-sm" type="submit" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo con esta candidata</button>
               </form>
             </div>
             {% endif %}
@@ -163,7 +165,7 @@
           <div class="op-secondary">Busca candidatas compatibles para este servicio.</div>
         </div>
         {% endif %}
-        {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+        {% if solicitud and not _reemplazo_ya_cerrado %}
         <div id="nuevaCandidataPanel" class="op-search-panel d-none" data-reemplazo-id="{{ reemplazo.id }}">
           <input type="hidden" id="reemplazoCsrfToken" value="{{ csrf_token() }}">
           <label class="form-label mb-1">Buscar candidata por nombre, código, teléfono o ciudad</label>
@@ -202,7 +204,7 @@
         </div>
         <div class="op-service-block">
           <div class="op-label">Resultado</div>
-          <div class="op-value">{{ reemplazo.resultado_final or 'Pendiente' }}</div>
+          <div class="op-value">{{ (reemplazo.resultado_final or 'Pendiente')|replace('_', ' ')|title }}</div>
         </div>
         <div class="op-service-block">
           <div class="op-label">Responsable</div>
@@ -221,14 +223,14 @@
       </div>
     </div>
 
-    {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+    {% if solicitud and not _reemplazo_ya_cerrado %}
     <div class="op-card mt-2">
       <div class="op-label mb-2">Acciones de cierre</div>
       <div class="d-flex gap-2 flex-wrap">
-        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline" data-single-submit-form="1">
           <input type="hidden" name="resultado_final" value="exitoso">
           <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id or '' }}">
-          <button class="btn btn-success btn-sm" type="submit">Finalizar reemplazo</button>
+          <button class="btn btn-success btn-sm" type="submit" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo</button>
         </form>
         <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
           <input type="hidden" name="resultado_final" value="fallido">
@@ -262,6 +264,12 @@
 
     <div class="mt-2">
       <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-light btn-sm">Volver al panel</a>
+      {% if solicitud %}
+      <a href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}" class="btn btn-outline-light btn-sm">Ver solicitud</a>
+      {% endif %}
+      {% if reemplazo.candidata_new_id %}
+      <a href="{{ url_for('admin.candidatas_web_detail', fila=reemplazo.candidata_new_id) }}" class="btn btn-outline-light btn-sm">Ver candidata</a>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -269,7 +277,21 @@
 
 {% block scripts %}
   {{ super() }}
-  {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
+  <script>
+    (function () {
+      var forms = Array.prototype.slice.call(document.querySelectorAll('form[data-single-submit-form=\"1\"]'));
+      forms.forEach(function (form) {
+        form.addEventListener('submit', function () {
+          var btn = form.querySelector('button[data-single-submit]');
+          if (!btn || btn.disabled) return;
+          btn.dataset.originalText = btn.textContent || '';
+          btn.textContent = btn.getAttribute('data-loading-text') || 'Finalizando...';
+          btn.disabled = true;
+        });
+      });
+    })();
+  </script>
+  {% if solicitud and not _reemplazo_ya_cerrado %}
   <script>
     (function () {
       var panel = document.getElementById('nuevaCandidataPanel');
