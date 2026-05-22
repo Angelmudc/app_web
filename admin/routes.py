@@ -17060,11 +17060,34 @@ def _safe_modalidad_text(raw) -> str:
     return val.replace("_", " ").title()
 
 
-def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud | None) -> str:
-    motivo = (getattr(reemplazo, "motivo_fallo", None) or "").strip()
-    nota = (getattr(reemplazo, "nota_adicional", None) or "").strip()
-    nota_short = (nota[:240] + "...") if len(nota) > 240 else nota
+def _reemplazo_publicacion_missing_fields(solicitud: Solicitud | None) -> list[str]:
+    if solicitud is None:
+        return ["edad", "experiencia", "hogar", "adultos", "ninos"]
+    missing: list[str] = []
+    edad = getattr(solicitud, "edad_requerida", None)
+    experiencia = _s(getattr(solicitud, "experiencia", None))
+    tipo_lugar = _s(getattr(solicitud, "tipo_lugar", None))
+    habitaciones = getattr(solicitud, "habitaciones", None)
+    banos = getattr(solicitud, "banos", None)
+    area_otro = _s(getattr(solicitud, "area_otro", None))
+    areas = [a for a in _as_list(getattr(solicitud, "areas_comunes", None)) if _s(a)]
+    adultos = getattr(solicitud, "adultos", None)
+    ninos = getattr(solicitud, "ninos", None)
 
+    if not _s(edad):
+        missing.append("edad")
+    if not experiencia:
+        missing.append("experiencia")
+    if not (tipo_lugar or habitaciones not in (None, "", 0, "0") or banos not in (None, "", 0, "0", 0.0) or area_otro or areas):
+        missing.append("hogar")
+    if adultos in (None, ""):
+        missing.append("adultos")
+    if ninos in (None, ""):
+        missing.append("ninos")
+    return missing
+
+
+def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud | None) -> str:
     if solicitud is None:
         ciudad = "No especificada"
         modalidad = "No especificada"
@@ -17082,18 +17105,14 @@ def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud |
             ]
         )
     else:
-        # Reutiliza EXACTAMENTE la misma estructura operativa de copiar/publicar solicitudes.
+        # Reutiliza estructura operativa de copiar/publicar solicitudes sin anexar metadata interna.
         label_maps = _admin_copiar_form_label_maps()
-        base = _admin_build_order_text_for_copiar(solicitud, label_maps=label_maps).strip()
-
-    extra_lines = []
-    if motivo:
-        extra_lines.append(f"Motivo del reemplazo: {motivo}")
-    if nota_short:
-        extra_lines.append(f"Nota importante: {nota_short}")
-    if not extra_lines:
-        return base
-    return f"{base}\n\n" + "\n".join(extra_lines)
+        base = _admin_build_order_text_for_copiar(
+            solicitud,
+            label_maps=label_maps,
+            include_nota_cliente=False,
+        ).strip()
+    return base
 
 
 def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
@@ -17806,6 +17825,7 @@ def reemplazos_dashboard():
         indicador_seguimiento_vencido = bool(
             seg and getattr(seg, "due_at", None) and getattr(seg, "closed_at", None) is None and getattr(seg, "due_at", None) < now
         )
+        publicacion_missing_fields = _reemplazo_publicacion_missing_fields(sol)
         cards_all.append(
             {
                 "reemplazo": row,
@@ -17822,6 +17842,8 @@ def reemplazos_dashboard():
                 "indicador_vencido": indicador_vencido,
                 "indicador_critica": indicador_critica,
                 "indicador_seguimiento_vencido": indicador_seguimiento_vencido,
+                "indicador_publicacion_incompleta": bool(publicacion_missing_fields),
+                "publicacion_missing_fields": publicacion_missing_fields,
                 "publicacion_texto": _reemplazo_publicacion_texto(reemplazo=row, solicitud=sol),
                 "old_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_old", None), "cedula", None)),
                 "new_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_new", None), "cedula", None)),
@@ -20369,7 +20391,12 @@ def _admin_copiar_form_label_maps():
     }
 
 
-def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = None) -> str:
+def _admin_build_order_text_for_copiar(
+    s: Solicitud,
+    label_maps: dict | None = None,
+    *,
+    include_nota_cliente: bool = True,
+) -> str:
     labels = label_maps or _admin_copiar_form_label_maps()
     FUNCIONES_LABELS = dict(labels.get("funciones") or {})
     NINERA_TAREAS_LABELS = dict(labels.get("ninera_tareas") or {})
@@ -20440,7 +20467,9 @@ def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = N
     rutas_cercanas = _s(getattr(s, "rutas_cercanas", None))
 
     edad_req_val = getattr(s, "edad_requerida", None)
-    if isinstance(edad_req_val, (list, tuple, set, dict, str)):
+    if isinstance(edad_req_val, str):
+        edad_req = _s(edad_req_val)
+    elif isinstance(edad_req_val, (list, tuple, set, dict)):
         edad_req = ", ".join([_s(x) for x in _as_list(edad_req_val)])
     else:
         edad_req = _s(edad_req_val)
@@ -20580,7 +20609,7 @@ def _admin_build_order_text_for_copiar(s: Solicitud, label_maps: dict | None = N
         "",
         sueldo_block if sueldo_block else None,
         "",
-        (nota_cli if nota_cli else None),
+        (nota_cli if include_nota_cliente and nota_cli else None),
     ]
     cleaned = []
     for p in parts:

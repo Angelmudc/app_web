@@ -40,7 +40,26 @@ def _seed_case(*, closed: bool, motivo: str = "No se presentó") -> tuple[int, i
     db.session.add_all([old, new])
     db.session.flush()
 
-    solicitud = Solicitud(cliente_id=int(cliente.id), codigo_solicitud=f"SOL-RPL-{token}", estado="reemplazo", candidata_id=int(old.fila), ciudad_sector="Santo Domingo")
+    solicitud = Solicitud(
+        cliente_id=int(cliente.id),
+        codigo_solicitud=f"SOL-RPL-{token}",
+        estado="reemplazo",
+        candidata_id=int(old.fila),
+        ciudad_sector="Santo Domingo",
+        rutas_cercanas="27 de Febrero",
+        modalidad_trabajo="Con dormida - lunes a sabado",
+        edad_requerida="25-40",
+        experiencia="Limpieza general y cocina básica",
+        funciones="limpieza,lavar,planchar",
+        horario="Lunes a viernes de 8:00 AM a 5:00 PM",
+        tipo_lugar="Apartamento",
+        habitaciones=3,
+        banos=2,
+        adultos=2,
+        ninos=1,
+        edades_ninos="7",
+        sueldo="RD$20,000",
+    )
     db.session.add(solicitud)
     db.session.flush()
 
@@ -131,7 +150,9 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     payload = resp_pub.get_json() or {}
     pub_text = payload.get("texto") or ""
     assert "Disponible (" in pub_text
-    assert "Motivo del reemplazo:" in pub_text
+    assert "Motivo del reemplazo:" not in pub_text
+    assert "Nota importante:" not in pub_text
+    assert "QA-REEMP-SEED" not in pub_text
 
     with flask_app.app_context():
         sol = Solicitud.query.get(solicitud_id)
@@ -239,7 +260,8 @@ def test_reemplazos_dashboard_accion_gestionar_apunta_a_detalle_y_publicar_reusa
     payload_repl = resp_repl_texto.get_json() or {}
     texto_repl = (payload_repl.get("texto") or "").strip()
     assert texto_repl
-    assert "Motivo del reemplazo:" in texto_repl
+    assert "Motivo del reemplazo:" not in texto_repl
+    assert "Nota importante:" not in texto_repl
 
     with flask_app.app_context():
         sol = Solicitud.query.get(solicitud_id)
@@ -247,9 +269,45 @@ def test_reemplazos_dashboard_accion_gestionar_apunta_a_detalle_y_publicar_reusa
         texto_sol = admin_routes._admin_build_order_text_for_copiar(
             sol,
             label_maps=admin_routes._admin_copiar_form_label_maps(),
+            include_nota_cliente=False,
         ).strip()
     assert texto_sol
     assert texto_sol in texto_repl
+
+
+def test_reemplazo_publicacion_texto_no_inventa_y_dashboard_marca_incompleta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, solicitud_id = _seed_case(closed=False, motivo="Cliente pidió reemplazo urgente")
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.edad_requerida = None
+        sol.experiencia = None
+        sol.tipo_lugar = None
+        sol.habitaciones = None
+        sol.banos = None
+        sol.adultos = None
+        sol.ninos = None
+        db.session.commit()
+
+    _login_staff(client)
+    resp_repl_texto = client.get(f"/admin/reemplazos/{repl_id}/publicacion", follow_redirects=False)
+    assert resp_repl_texto.status_code == 200
+    payload_repl = resp_repl_texto.get_json() or {}
+    texto_repl = (payload_repl.get("texto") or "").strip()
+    assert "Edad:" not in texto_repl
+    assert "Experiencia en:" not in texto_repl
+    assert "Adultos:" not in texto_repl
+    assert "Niños:" not in texto_repl
+
+    resp_dash = client.get("/admin/reemplazos?estado=activos&per_page=50", follow_redirects=False)
+    assert resp_dash.status_code == 200
+    html = resp_dash.get_data(as_text=True)
+    assert "publicación incompleta" in html
 
 def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
     flask_app.config["TESTING"] = True

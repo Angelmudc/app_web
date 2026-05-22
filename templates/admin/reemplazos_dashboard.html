@@ -99,6 +99,9 @@
             {% if row.indicador_sin_candidata %}<span class="reemp-indicator reemp-indicator-danger">⚠ sin candidata</span>{% endif %}
             {% if row.indicador_esperando_cliente %}<span class="reemp-indicator reemp-indicator-info">👤 esperando cliente</span>{% endif %}
             {% if row.indicador_vencido or row.indicador_seguimiento_vencido %}<span class="reemp-indicator reemp-indicator-warn">📅 seguimiento vencido</span>{% endif %}
+            {% if row.indicador_publicacion_incompleta %}
+            <span class="reemp-indicator reemp-indicator-warn" title="Faltan: {{ (row.publicacion_missing_fields or [])|join(', ') }}">⚠ publicación incompleta</span>
+            {% endif %}
           </div>
         </td>
         <td class="reemp-actions-col">
