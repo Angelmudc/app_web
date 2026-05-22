@@ -291,7 +291,11 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
     assert f"/admin/reemplazos/{repl_id}/cerrar" in detail_html
     assert detail_html.count('id="cerrarReemplazoConCandidataForm"') == 1
     assert detail_html.count('form="cerrarReemplazoConCandidataForm"') == 2
-    assert 'name="csrf_token"' in detail_html
+    assert re.search(
+        rf'<form[^>]*id="cerrarReemplazoConCandidataForm"[^>]*method="post"[^>]*action="/admin/reemplazos/{repl_id}/cerrar"[^>]*>.*?name="csrf_token"',
+        detail_html,
+        re.DOTALL,
+    )
     close_forms = re.findall(r'<form[^>]+action="/admin/reemplazos/%d/cerrar"[^>]*>' % repl_id, detail_html)
     assert len(close_forms) == 2
     assert all('method="post"' in form_tag for form_tag in close_forms)

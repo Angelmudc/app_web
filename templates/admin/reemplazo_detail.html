@@ -277,21 +277,48 @@
   {{ super() }}
   <script>
     (function () {
+      var form = document.getElementById('cerrarReemplazoConCandidataForm');
+      if (!form) return;
       var armed = false;
-      function lock(btn) {
-        if (!btn || btn.disabled || armed) return;
-        armed = true;
-        btn.dataset.originalText = btn.textContent || '';
-        btn.textContent = btn.getAttribute('data-loading-text') || 'Finalizando...';
-        btn.disabled = true;
-        var peers = Array.prototype.slice.call(document.querySelectorAll('button[data-single-submit]'));
-        peers.forEach(function (peer) {
-          if (peer !== btn) peer.disabled = true;
-        });
+      var fallbackTimer = null;
+
+      function showSubmitFallbackMessage() {
+        var host = form.parentElement || document.body;
+        var existing = document.getElementById('cerrarReemplazoFallbackAlert');
+        if (existing) existing.remove();
+        var box = document.createElement('div');
+        box.id = 'cerrarReemplazoFallbackAlert';
+        box.className = 'alert alert-warning mt-2 mb-0 py-2 px-3';
+        box.textContent = 'No se pudo finalizar. Intenta de nuevo.';
+        host.appendChild(box);
       }
-      var buttons = Array.prototype.slice.call(document.querySelectorAll('button[data-single-submit]'));
-      buttons.forEach(function (btn) {
-        btn.addEventListener('click', function () { lock(btn); });
+
+      form.addEventListener('submit', function (event) {
+        if (armed) return;
+        armed = true;
+        var submitter = event.submitter || document.activeElement;
+        var peers = Array.prototype.slice.call(document.querySelectorAll('button[data-single-submit]'));
+        peers.forEach(function (btn) {
+          if (!btn) return;
+          if (submitter && btn === submitter) {
+            btn.dataset.originalText = btn.textContent || '';
+            btn.textContent = btn.getAttribute('data-loading-text') || 'Finalizando...';
+          }
+          btn.disabled = true;
+        });
+        fallbackTimer = window.setTimeout(function () {
+          armed = false;
+          peers.forEach(function (btn) {
+            if (!btn) return;
+            if (btn.dataset.originalText) btn.textContent = btn.dataset.originalText;
+            btn.disabled = false;
+          });
+          showSubmitFallbackMessage();
+        }, 5000);
+      });
+
+      window.addEventListener('beforeunload', function () {
+        if (fallbackTimer) window.clearTimeout(fallbackTimer);
       });
     })();
   </script>
