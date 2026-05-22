@@ -79,6 +79,12 @@
                   data-focus-target="#nuevaCandidataQuery">
             ⚡ {{ cta_label }}
           </button>
+          {% elif cta_action == 'finalize_direct' and solicitud and reemplazo.candidata_new_id %}
+          <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+            <input type="hidden" name="resultado_final" value="exitoso">
+            <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
+            <button class="btn {{ cta_style }} op-primary-btn" type="submit">⚡ {{ cta_label }}</button>
+          </form>
           {% else %}
           <a class="btn {{ cta_style }} op-primary-btn" href="{{ cta_href }}">⚡ {{ cta_label }}</a>
           {% endif %}
@@ -142,7 +148,11 @@
                       type="button"
                       data-action="open-candidata-search"
                       data-focus-target="#nuevaCandidataQuery">Cambiar candidata</button>
-              <a class="btn btn-success btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">Finalizar reemplazo con esta candidata</a>
+              <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+                <input type="hidden" name="resultado_final" value="exitoso">
+                <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
+                <button class="btn btn-success btn-sm" type="submit">Finalizar reemplazo con esta candidata</button>
+              </form>
             </div>
             {% endif %}
           </div>

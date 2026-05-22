@@ -17880,9 +17880,9 @@ def reemplazo_detail(reemplazo_id):
         resumen_humano = "✅ Cliente ya seleccionó nueva candidata. Pendiente coordinar entrada."
         proximo_paso = "Próximo paso recomendado: • Confirmar entrada de la nueva candidata."
         cta_label = "Finalizar reemplazo con esta candidata"
-        cta_href = url_for("admin.finalizar_reemplazo", s_id=solicitud.id, reemplazo_id=reemplazo.id) if solicitud else "#"
+        cta_href = "#"
         cta_style = "btn-warning"
-        cta_action = "finalize"
+        cta_action = "finalize_direct"
     else:
         resumen_humano = "⚠️ La candidata anterior no se presentó. Actualmente estamos buscando una nueva candidata para este cliente."
         proximo_paso = "Próximo paso recomendado: • Enviar nuevas candidatas al cliente."

@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import secrets
 from datetime import timedelta
+from unittest.mock import patch
 
 from app import app as flask_app
 from config_app import db
@@ -282,6 +283,17 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
     assert "Cambiar candidata" in detail_html
     assert "Maritza Prueba" in detail_html
     assert "Finalizar reemplazo con esta candidata" in detail_html
+    assert "/finalizar" not in detail_html
+    assert f"/admin/reemplazos/{repl_id}/cerrar" in detail_html
+
+    with patch("admin.routes.cerrar_reemplazo_asignando", return_value=("", 200)) as close_mock:
+        resp_finalize = client.post(
+            f"/admin/reemplazos/{repl_id}/cerrar",
+            data={"resultado_final": "exitoso", "candidata_new_id": str(cand_pick_id)},
+            follow_redirects=False,
+        )
+    assert resp_finalize.status_code == 200
+    close_mock.assert_called_once()
 
 
 def test_reemplazo_seleccionar_candidata_bloquea_cerrado():
@@ -351,3 +363,25 @@ def test_reemplazo_seleccionar_candidata_form_data_y_missing_id():
     data_ok = resp_ok.get_json() or {}
     assert data_ok.get("ok") is True
     assert (data_ok.get("redirect_url") or "").endswith(f"/admin/reemplazos/{repl_id}")
+
+
+def test_reemplazo_cerrar_exitoso_sin_candidata_devuelve_error_claro():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+    _login_staff(client)
+
+    resp = client.post(
+        f"/admin/reemplazos/{repl_id}/cerrar",
+        data={"resultado_final": "exitoso", "_async_target": "#solicitudesAsyncRegion"},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    payload = resp.get_json() or {}
+    assert payload.get("success") is False
+    assert "Debes indicar la candidata nueva" in (payload.get("message") or "")
