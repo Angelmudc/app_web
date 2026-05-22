@@ -90,6 +90,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     html = resp.get_data(as_text=True)
     assert "Panel de reemplazos" in html
     assert "No se presentó" in html
+    assert "/finalizar" not in html
 
     resp_cliente = client.get("/admin/reemplazos?cliente_id=1", follow_redirects=False)
     assert resp_cliente.status_code == 200
@@ -120,6 +121,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert "credentials: 'same-origin'" in detail_html
     assert "Busca candidatas compatibles para este servicio." in detail_html
     assert "Próximo paso: Buscar candidatas compatibles para este servicio." not in detail_html
+    assert "/finalizar" not in detail_html
     assert "/admin/reemplazo_nuevo_panel" not in detail_html
 
     resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)

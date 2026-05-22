@@ -122,7 +122,7 @@
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Ver</a>
             <button type="button" class="btn btn-outline-dark btn-sm" onclick="window.prompt('Texto para publicar', {{ row.publicacion_texto|tojson }})">Publicar</button>
             {% if not r.fecha_fin_reemplazo %}
-              <a class="btn btn-warning btn-sm" href="{{ url_for('admin.finalizar_reemplazo', s_id=row.solicitud.id, reemplazo_id=r.id) }}">Cerrar</a>
+              <a class="btn btn-warning btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Cerrar</a>
             {% endif %}
             <div class="dropdown">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
