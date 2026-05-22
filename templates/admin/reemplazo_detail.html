@@ -150,16 +150,8 @@
         {% else %}
         <div class="op-empty">
           <div class="fw-semibold mb-1">No hay nueva candidata asignada todavía</div>
-          <div class="op-secondary">Próximo paso: Buscar candidatas compatibles para este servicio.</div>
+          <div class="op-secondary">Busca candidatas compatibles para este servicio.</div>
         </div>
-        {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
-        <div class="mt-2 d-flex gap-2 flex-wrap">
-          <button class="btn btn-primary btn-sm"
-                  type="button"
-                  data-action="open-candidata-search"
-                  data-focus-target="#nuevaCandidataQuery">Buscar nueva candidata</button>
-        </div>
-        {% endif %}
         {% endif %}
         {% if solicitud and not reemplazo.fecha_fin_reemplazo %}
         <div id="nuevaCandidataPanel" class="op-search-panel d-none" data-reemplazo-id="{{ reemplazo.id }}">

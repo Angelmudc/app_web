@@ -111,8 +111,12 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert "Nueva candidata" in detail_html
     assert "Finalizar reemplazo" in detail_html
     assert 'data-action="open-candidata-search"' in detail_html
+    assert detail_html.count('data-action="open-candidata-search"') == 1
     assert 'id="nuevaCandidataResults"' in detail_html
     assert 'id="nuevaCandidataQuery"' in detail_html
+    assert "openPanelAndFocus" in detail_html
+    assert "Busca candidatas compatibles para este servicio." in detail_html
+    assert "Próximo paso: Buscar candidatas compatibles para este servicio." not in detail_html
     assert "/admin/reemplazo_nuevo_panel" not in detail_html
 
     resp_pub = client.get(f"/admin/reemplazos/{repl_active_id}/publicacion", follow_redirects=False)
