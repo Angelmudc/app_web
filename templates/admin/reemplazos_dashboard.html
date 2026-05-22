@@ -135,13 +135,23 @@
     </table>
   </div>
 
-  <div class="d-flex justify-content-between align-items-center mt-3">
+  {% set is_single_page = (total_pages or 1) <= 1 %}
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 reemp-pagination">
     {% set shown_start = ((page - 1) * per_page) + 1 if (total or 0) > 0 else 0 %}
     {% set shown_end = [page * per_page, total or 0]|min %}
-    <small class="text-muted">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }} (página {{ page }} de {{ total_pages or 1 }})</small>
+    <div class="d-flex flex-column gap-1">
+      {% if is_single_page %}
+      <small class="text-muted reemp-pagination-summary">Mostrando {{ total or 0 }} resultados (una sola página) • {{ per_page }} por página</small>
+      {% if (total or 0) <= (per_page or 0) %}
+      <small class="text-muted reemp-pagination-hint">Reduce “por página” para dividir resultados.</small>
+      {% endif %}
+      {% else %}
+      <small class="text-muted reemp-pagination-summary">Mostrando {{ shown_start }}–{{ shown_end }} de {{ total or 0 }} (página {{ page }} de {{ total_pages or 1 }}) • {{ per_page }} por página</small>
+      {% endif %}
+    </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary {% if page <= 1 %}disabled{% endif %}" aria-disabled="{{ 'true' if page <= 1 else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
-      <a class="btn btn-sm btn-outline-secondary {% if not has_more %}disabled{% endif %}" aria-disabled="{{ 'true' if not has_more else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
+      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if page <= 1 %}disabled{% endif %}" aria-disabled="{{ 'true' if page <= 1 else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
+      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if not has_more %}disabled{% endif %}" aria-disabled="{{ 'true' if not has_more else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
     </div>
   </div>
 </div>

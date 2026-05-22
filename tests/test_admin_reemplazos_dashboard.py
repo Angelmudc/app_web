@@ -257,7 +257,7 @@ def test_reemplazos_dashboard_paginacion_multipagina_exacta_page_1_2_3():
     resp_p1 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=1", follow_redirects=False)
     assert resp_p1.status_code == 200
     html_p1 = resp_p1.get_data(as_text=True)
-    assert "Mostrando 1–2 de 5 (página 1 de 3)" in html_p1
+    assert "Mostrando 1–2 de 5 (página 1 de 3) • 2 por página" in html_p1
     next_href_p1 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p1)
     assert next_href_p1 is not None
     assert "disabled" not in (next_href_p1.group(1) or "")
@@ -267,7 +267,7 @@ def test_reemplazos_dashboard_paginacion_multipagina_exacta_page_1_2_3():
     resp_p2 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=2", follow_redirects=False)
     assert resp_p2.status_code == 200
     html_p2 = resp_p2.get_data(as_text=True)
-    assert "Mostrando 3–4 de 5 (página 2 de 3)" in html_p2
+    assert "Mostrando 3–4 de 5 (página 2 de 3) • 2 por página" in html_p2
     prev_href_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Anterior</a>', html_p2)
     next_href_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p2)
     assert prev_href_p2 is not None and "disabled" not in (prev_href_p2.group(1) or "")
@@ -280,7 +280,7 @@ def test_reemplazos_dashboard_paginacion_multipagina_exacta_page_1_2_3():
     resp_p3 = client.get("/admin/reemplazos?estado=activos&per_page=2&page=3", follow_redirects=False)
     assert resp_p3.status_code == 200
     html_p3 = resp_p3.get_data(as_text=True)
-    assert "Mostrando 5–5 de 5 (página 3 de 3)" in html_p3
+    assert "Mostrando 5–5 de 5 (página 3 de 3) • 2 por página" in html_p3
     prev_href_p3 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Anterior</a>', html_p3)
     next_href_p3 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*href="([^"]*)"[^>]*>Siguiente</a>', html_p3)
     assert prev_href_p3 is not None and "disabled" not in (prev_href_p3.group(1) or "")
@@ -336,13 +336,33 @@ def test_reemplazos_dashboard_paginacion_una_sola_pagina_desactiva_botones():
     resp = client.get("/admin/reemplazos?estado=activos&per_page=50&page=1", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "página 1 de 1" in html
+    assert "Mostrando 1 resultados (una sola página) • 50 por página" in html
+    assert "Reduce “por página” para dividir resultados." in html
     assert 'Anterior</a>' in html
     assert 'Siguiente</a>' in html
-    prev_match = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*aria-disabled="true"[^>]*>Anterior</a>', html)
-    next_match = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*aria-disabled="true"[^>]*>Siguiente</a>', html)
+    prev_match = re.search(r'<a class="btn btn-sm btn-outline-secondary reemp-pagination-link ([^"]*)"[^>]*aria-disabled="true"[^>]*>Anterior</a>', html)
+    next_match = re.search(r'<a class="btn btn-sm btn-outline-secondary reemp-pagination-link ([^"]*)"[^>]*aria-disabled="true"[^>]*>Siguiente</a>', html)
     assert prev_match is not None and "disabled" in (prev_match.group(1) or "")
     assert next_match is not None and "disabled" in (next_match.group(1) or "")
+
+
+def test_reemplazos_dashboard_paginacion_multipagina_no_muestra_hint_una_sola_pagina():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        for _ in range(5):
+            _seed_case(closed=False, motivo="Caso multipagina con hint")
+
+    _login_staff(client)
+    resp = client.get("/admin/reemplazos?estado=activos&per_page=2&page=1", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Mostrando 1–2 de 5 (página 1 de 3) • 2 por página" in html
+    assert "una sola página" not in html
+    assert "Reduce “por página” para dividir resultados." not in html
 
 
 def test_reemplazo_detail_busqueda_y_seleccion_candidata():

@@ -235,6 +235,29 @@
   font-weight: 800;
 }
 
+.reemplazos-dashboard .reemp-pagination-summary{
+  font-size: 0.9rem;
+}
+
+.reemplazos-dashboard .reemp-pagination-hint{
+  font-size: 0.8rem;
+  color: #a5b4fc !important;
+}
+
+.reemplazos-dashboard .reemp-pagination-link{
+  min-width: 100px;
+}
+
+.reemplazos-dashboard .reemp-pagination-link.disabled,
+.reemplazos-dashboard .reemp-pagination-link[aria-disabled="true"]{
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  border-color: rgba(148, 163, 184, 0.35) !important;
+  color: #94a3b8 !important;
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+
 @media (max-width: 991px){
   .reemplazos-dashboard .reemp-table{
     min-width: 1050px;
