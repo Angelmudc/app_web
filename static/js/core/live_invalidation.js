@@ -137,12 +137,6 @@
     function reportObservability(eventName, payload) {
       if (!observabilityUrl || !eventName || !isViewActive()) return;
       const body = JSON.stringify(Object.assign({ event: String(eventName) }, payload || {}));
-      try {
-        if (navigator.sendBeacon && window.Blob) {
-          const blob = new Blob([body], { type: "application/json" });
-          if (navigator.sendBeacon(observabilityUrl, blob)) return;
-        }
-      } catch (_) {}
       fetch(observabilityUrl, {
         method: "POST",
         credentials: "same-origin",

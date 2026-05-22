@@ -73,7 +73,9 @@ def test_live_observability_ingest_updates_fallback_and_refetch_metrics():
         follow_redirects=False,
     )
     assert ping_fallback.status_code == 200
-    assert (ping_fallback.get_json() or {}).get("accepted") is True
+    payload_fallback = ping_fallback.get_json() or {}
+    assert payload_fallback.get("accepted") is True
+    assert payload_fallback.get("reason") == "accepted"
 
     ping_open = client.post(
         "/admin/live/observability",
@@ -81,7 +83,9 @@ def test_live_observability_ingest_updates_fallback_and_refetch_metrics():
         follow_redirects=False,
     )
     assert ping_open.status_code == 200
-    assert (ping_open.get_json() or {}).get("accepted") is True
+    payload_open = ping_open.get_json() or {}
+    assert payload_open.get("accepted") is True
+    assert payload_open.get("reason") == "accepted"
 
     ping_refetch = client.post(
         "/admin/live/observability",
@@ -97,6 +101,45 @@ def test_live_observability_ingest_updates_fallback_and_refetch_metrics():
     refetch_payload = ping_refetch.get_json() or {}
     assert refetch_payload.get("accepted") is True
     assert refetch_payload.get("region") == "prioridadsummaryasyncregion"
+    assert refetch_payload.get("reason") == "accepted"
+
+    ping_unknown = client.post(
+        "/admin/live/observability",
+        json={"event": "x_foo_unknown"},
+        follow_redirects=False,
+    )
+    assert ping_unknown.status_code == 200
+    payload_unknown = ping_unknown.get_json() or {}
+    assert payload_unknown.get("accepted") is False
+    assert payload_unknown.get("reason") == "unknown_event_type"
+
+    ping_empty = client.post(
+        "/admin/live/observability",
+        json={},
+        follow_redirects=False,
+    )
+    assert ping_empty.status_code == 200
+    payload_empty = ping_empty.get_json() or {}
+    assert payload_empty.get("accepted") is False
+    assert payload_empty.get("reason") == "missing_event_type"
+
+
+def test_live_observability_ingest_invalid_json_returns_specific_reason():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login(client).status_code in (302, 303)
+
+    resp = client.post(
+        "/admin/live/observability",
+        data="{invalid",
+        content_type="application/json",
+        follow_redirects=False,
+    )
+    assert resp.status_code == 400
+    payload = resp.get_json() or {}
+    assert payload.get("error") == "invalid_json"
+    assert payload.get("reason") == "invalid_json"
 
     after = client.get("/admin/health/operational?format=json", follow_redirects=False).get_json() or {}
     after_metrics = after.get("metrics") or {}

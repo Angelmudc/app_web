@@ -7025,7 +7025,18 @@ def admin_health_operational_trends():
 @login_required
 @staff_required
 def live_observability_ingest():
-    data = request.get_json(silent=True) or {}
+    parsed = request.get_json(silent=True)
+    if parsed is None:
+        raw_body = (request.get_data(cache=False, as_text=True) or "").strip()
+        if raw_body:
+            return jsonify({
+                "ok": False,
+                "accepted": False,
+                "error": "invalid_json",
+                "reason": "invalid_json",
+            }), 400
+        parsed = {}
+    data = parsed or {}
     uid = None
     try:
         if current_user and getattr(current_user, "is_authenticated", False):

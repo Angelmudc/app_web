@@ -1147,7 +1147,10 @@ def ingest_live_observability_event(payload: dict[str, Any] | None, *, user_id: 
     ok_flag = bool(data.get("ok", True))
 
     accepted = False
-    if event == "fallback_entered":
+    reason = ""
+    if not event:
+        reason = "missing_event_type"
+    elif event == "fallback_entered":
         _safe_bp_incr_counter("live:fallback_entered_count")
         accepted = True
     elif event == "sse_open":
@@ -1169,12 +1172,15 @@ def ingest_live_observability_event(payload: dict[str, Any] | None, *, user_id: 
         except Exception:
             pass
         accepted = True
+    else:
+        reason = "unknown_event_type"
 
     return {
         "ok": True,
         "accepted": bool(accepted),
         "event": event,
         "region": region,
+        "reason": reason if not accepted else "accepted",
         "user_id": int(user_id) if user_id is not None else None,
     }
 
