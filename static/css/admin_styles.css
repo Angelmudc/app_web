@@ -223,13 +223,17 @@
 
 .reemplazos-dashboard .reemp-col-cliente { width: 20%; }
 .reemplazos-dashboard .reemp-col-ciudad { width: 12%; }
-.reemplazos-dashboard .reemp-col-modalidad { width: 14%; }
-.reemplazos-dashboard .reemp-col-estado { width: 11%; }
-.reemplazos-dashboard .reemp-col-dias { width: 8%; text-align: center; }
+.reemplazos-dashboard .reemp-col-estado { width: 150px; min-width: 150px; }
+.reemplazos-dashboard .reemp-col-dias { width: 70px; min-width: 70px; text-align: center; }
 .reemplazos-dashboard .reemp-col-prio { width: 9%; }
 .reemplazos-dashboard .reemp-col-resp { width: 12%; }
 .reemplazos-dashboard .reemp-col-ind { width: 220px; }
 .reemplazos-dashboard .reemp-col-acc { width: 150px; }
+
+.reemplazos-dashboard .reemp-days-cell{
+  text-align: center;
+  font-weight: 800;
+}
 
 @media (max-width: 991px){
   .reemplazos-dashboard .reemp-table{

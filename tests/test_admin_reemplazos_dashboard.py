@@ -196,6 +196,7 @@ def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
     assert "Saliente" not in html
     assert "Entrante" not in html
     assert "<th>Solicitud</th>" not in html
+    assert "<th class=\"reemp-col-modalidad\">Modalidad</th>" not in html
     assert 'title="No se adaptó al horario de entrada/salida y faltó coordinación con el cliente para el relevo"' in html
     assert "📝 No se adaptó al horario de entrada/salida" in html
     assert "..." in html

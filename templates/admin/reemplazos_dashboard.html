@@ -50,7 +50,6 @@
       <colgroup>
         <col class="reemp-col-cliente">
         <col class="reemp-col-ciudad">
-        <col class="reemp-col-modalidad">
         <col class="reemp-col-estado">
         <col class="reemp-col-dias">
         <col class="reemp-col-prio">
@@ -62,7 +61,6 @@
         <tr>
           <th class="reemp-col-cliente">Cliente</th>
           <th class="reemp-col-ciudad">Ciudad</th>
-          <th class="reemp-col-modalidad">Modalidad</th>
           <th class="reemp-col-estado">Estado operativo</th>
           <th class="reemp-col-dias">Días</th>
           <th class="reemp-col-prio">Prioridad</th>
@@ -82,13 +80,12 @@
           </div>
         </td>
         <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}</div></td>
-        <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.modalidad_trabajo or '—' }}</div></td>
         <td>
           <span class="badge reemp-badge {% if row.estado_operativo == 'Vencido' %}reemp-badge-estado-vencido{% elif row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado'] %}reemp-badge-estado-cerrado{% elif row.estado_operativo == 'Coordinando entrada' %}reemp-badge-estado-coordinando{% else %}reemp-badge-estado-activo{% endif %}">
             {{ row.estado_operativo }}
           </span>
         </td>
-        <td class="text-center"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
+        <td class="reemp-days-cell"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
         <td>
           <span class="badge reemp-badge {% if row.prioridad == 'critica' %}reemp-badge-prio-critica{% elif row.prioridad in ['urgente', 'alta'] %}reemp-badge-prio-alta{% elif row.prioridad == 'media' %}reemp-badge-prio-media{% else %}reemp-badge-prio-baja{% endif %}">
             {{ row.prioridad }}
@@ -132,7 +129,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
+      <tr><td colspan="8" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
       {% endfor %}
       </tbody>
     </table>
