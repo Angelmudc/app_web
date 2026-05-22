@@ -252,7 +252,7 @@ class AdminReemplazoFinAsyncTest(unittest.TestCase):
         self.assertEqual(repl.nota_adicional, "nota interna")
         self.assertIsNotNone(repl.fecha_fin_reemplazo)
         self.assertEqual(sol.candidata_id, 2)
-        self.assertEqual(sol.estado, "proceso")
+        self.assertEqual(sol.estado, "espera_pago")
         self.assertEqual(cand_new.estado, "trabajando")
         self.assertEqual(cand_new.monto_total, Decimal("10000.00"))
         self.assertEqual(cand_new.porciento, Decimal("2500.00"))

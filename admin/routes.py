@@ -11310,6 +11310,35 @@ def _percent_paid(monto_total, monto_pagado) -> Decimal:
     pct = _clamp_decimal(pct, Decimal('0.00'), Decimal('100.00'))
     return pct.quantize(Decimal('0.01'))
 
+
+def _resolver_estado_post_reemplazo(solicitud) -> str:
+    """Resuelve estado de solicitud al cerrar reemplazo exitoso según pagos reales."""
+    estado_actual = (getattr(solicitud, "estado", "") or "").strip().lower()
+    if estado_actual == "pagada":
+        return "pagada"
+
+    monto_pagado = _to_decimal_safe(getattr(solicitud, "monto_pagado", None))
+    abono = _to_decimal_safe(getattr(solicitud, "abono", None))
+    sueldo = _to_decimal_safe(getattr(solicitud, "sueldo", None))
+    monto_requerido = abono if abono > Decimal("0.00") else (sueldo * Decimal("0.25")).quantize(Decimal("0.01"))
+    saldo_pendiente = (monto_requerido - monto_pagado).quantize(Decimal("0.01"))
+
+    if monto_requerido > Decimal("0.00") and saldo_pendiente <= Decimal("0.00"):
+        return "pagada"
+    if monto_requerido > Decimal("0.00") and saldo_pendiente > Decimal("0.00"):
+        return "espera_pago"
+    if monto_pagado > Decimal("0.00"):
+        return "pagada"
+    return "activa"
+
+
+def _fallback_estado_operativo_post_reemplazo(reemplazo) -> str:
+    estado_restore = (getattr(reemplazo, "estado_previo_solicitud", None) or "").strip().lower()
+    if estado_restore in {"proceso", "activa"}:
+        return estado_restore
+    return "activa"
+
+
 def _choice_codes(choices):
     """Devuelve set de códigos válidos de choices [(code,label), ...]."""
     out = set()
@@ -13078,10 +13107,10 @@ def finalizar_reemplazo(s_id, reemplazo_id):
 
             # Reasignar solicitud
             s.candidata_id = cand_new.fila
-            estado_restore = (getattr(r, "estado_previo_solicitud", None) or "activa").strip().lower()
-            if estado_restore == "reemplazo":
-                estado_restore = "activa"
-            _set_solicitud_estado(s, estado_restore, now_dt=ahora)
+            estado_resuelto = _resolver_estado_post_reemplazo(s)
+            if estado_resuelto == "activa":
+                estado_resuelto = _fallback_estado_operativo_post_reemplazo(r)
+            _set_solicitud_estado(s, estado_resuelto, now_dt=ahora)
             _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
             _mark_candidata_estado(cand_new, "trabajando")
 
@@ -13127,7 +13156,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                     "reemplazo_id": int(r.id),
                     "candidata_old_id": int(getattr(r, "candidata_old_id", 0) or 0) or None,
                     "candidata_new_id": int(cand_new.fila),
-                    "estado_restaurado": estado_restore,
+                    "estado_restaurado": estado_resuelto,
                 },
             )
             _set_idempotency_response(idem_row, status=200, code="ok")
@@ -13454,7 +13483,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             r.fecha_resolucion = utc_now_naive()
 
         estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
-        if estado_restore not in ("proceso", "activa", "pagada", "cancelada"):
+        if estado_restore not in ("proceso", "activa", "espera_pago", "pagada", "cancelada"):
             estado_restore = "activa"
         _set_solicitud_estado(s, estado_restore)
 
@@ -13723,10 +13752,10 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             r.fecha_resolucion = utc_now_naive()
 
         s.candidata_id = cand_new.fila
-        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
-        if estado_restore in ("", "reemplazo", "cancelada"):
-            estado_restore = "activa"
-        _set_solicitud_estado(s, estado_restore)
+        estado_resuelto = _resolver_estado_post_reemplazo(s)
+        if estado_resuelto == "activa":
+            estado_resuelto = _fallback_estado_operativo_post_reemplazo(r)
+        _set_solicitud_estado(s, estado_resuelto)
 
         _sync_solicitud_candidatas_after_assignment(s, cand_new.fila)
         _mark_candidata_estado(cand_new, "trabajando")
@@ -13741,7 +13770,7 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
                 "reemplazo_id": int(r.id),
                 "candidata_old_id": int(getattr(r, "candidata_old_id", 0) or 0) or None,
                 "candidata_new_id": int(cand_new.fila),
-                "estado_restaurado": estado_restore,
+                "estado_restaurado": estado_resuelto,
             },
         )
         _set_idempotency_response(idem_row, status=200, code="ok")

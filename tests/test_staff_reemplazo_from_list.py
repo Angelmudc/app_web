@@ -18,6 +18,9 @@ class _SolicitudStub:
         self.cliente_id = 7
         self.estado = "reemplazo"
         self.candidata_id = 1
+        self.sueldo = None
+        self.abono = None
+        self.monto_pagado = None
         self.fecha_ultima_actividad = None
         self.fecha_ultima_modificacion = None
 
@@ -197,6 +200,54 @@ class ReemplazoFromListTest(unittest.TestCase):
         self.assertEqual(sol.estado, "activa")
         self.assertEqual(cand.estado, "trabajando")
         self.assertGreaterEqual(commit_mock.call_count, 1)
+
+    def test_culminar_reemplazo_con_saldo_pendiente_pasa_a_espera_pago(self):
+        self._login("Karla", "9989")
+        sol = _SolicitudStub()
+        sol.sueldo = "14000.00"
+        sol.monto_pagado = "0.00"
+        repl = _ReemplazoStub()
+        cand = _CandidataStub(fila=2, estado="lista_para_trabajar")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQuery(cand)), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment"), \
+                 patch(
+                     "admin.routes._mark_candidata_estado",
+                     side_effect=lambda c, estado, **_kwargs: setattr(c, "estado", estado),
+                 ), \
+                 patch("admin.routes.db.session.commit"):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cerrar_asignando",
+                    data={"candidata_new_id": "2", "next": "/admin/solicitudes?estado=reemplazo"},
+                    follow_redirects=False,
+                )
+
+        self.assertIn(resp.status_code, (302, 303))
+        self.assertEqual(sol.estado, "espera_pago")
+
+    def test_cancelar_reemplazo_restaurando_espera_pago(self):
+        sol = _SolicitudStub()
+        sol.estado = "reemplazo"
+        repl = _ReemplazoStub()
+        repl.estado_previo_solicitud = "espera_pago"
+
+        self.client = flask_app.test_client()
+        self._login("Cruz", "8998")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)), \
+                 patch("admin.routes.db.session.commit"):
+                resp_ok = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cancelar",
+                    data={"next": "/admin/solicitudes?estado=reemplazo&page=1"},
+                    follow_redirects=False,
+                )
+
+        self.assertIn(resp_ok.status_code, (302, 303))
+        self.assertEqual(sol.estado, "espera_pago")
 
     def test_culminar_reemplazo_bloquea_si_candidata_descalificada(self):
         self._login("Karla", "9989")
