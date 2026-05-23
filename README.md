@@ -29,6 +29,14 @@ Mover el acceso interno del panel admin (`admin/secretaria`) desde `config.USUAR
 5. Cuando confirmes que todo está bien:
    - cambiar `ADMIN_LEGACY_ENABLED=0`
 
+## Checklist rápida de migraciones (reemplazos)
+- Ver versión actual:
+  - `venv/bin/flask --app app.py db current`
+- Aplicar pendientes:
+  - `venv/bin/flask --app app.py db upgrade`
+- Si falla `/admin/reemplazos` por columnas faltantes:
+  - confirmar que `reemplazos` tenga: `fase`, `fecha_entrada_programada`, `seguimiento_24h_at`, `seguimiento_7d_at`, `motivo_reemplazo_categoria`.
+
 ## Compatibilidad legacy
 - Si `ADMIN_LEGACY_ENABLED=1`, sigue funcionando el login por `USUARIOS` de configuración.
 - Aunque `ADMIN_LEGACY_ENABLED=0`, si aún no existen registros en `staff_users`, se permite login legacy para evitar bloqueo.

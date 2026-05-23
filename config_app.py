@@ -716,6 +716,10 @@ def create_app():
 
     @app.errorhandler(Exception)
     def _handle_unexpected_error(err):
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         if isinstance(err, HTTPException):
             code = int(getattr(err, "code", 500) or 500)
             if code < 500:

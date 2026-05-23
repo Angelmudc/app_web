@@ -17143,6 +17143,13 @@ _REEMPLAZO_FASE_LABELS = {
     "seguimiento_7d": "Seguimiento 7 días",
     "cerrado": "Cerrado",
 }
+_REEMPLAZOS_REQUIRED_COLUMNS = {
+    "fase",
+    "fecha_entrada_programada",
+    "seguimiento_24h_at",
+    "seguimiento_7d_at",
+    "motivo_reemplazo_categoria",
+}
 
 
 def _reemplazo_fase_normalizada(reemplazo: Reemplazo | None) -> str:
@@ -17160,6 +17167,16 @@ def _reemplazo_set_fase(reemplazo: Reemplazo, fase: str) -> None:
     fase_norm = str(fase or "").strip().lower()
     if fase_norm in _REEMPLAZO_FASES:
         reemplazo.fase = fase_norm
+
+
+def _reemplazos_schema_check() -> tuple[bool, list[str]]:
+    try:
+        inspector = sa_inspect(db.engine)
+        cols = {c.get("name") for c in (inspector.get_columns("reemplazos") or [])}
+        missing = sorted([c for c in _REEMPLAZOS_REQUIRED_COLUMNS if c not in cols])
+        return (len(missing) == 0), missing
+    except Exception:
+        return False, sorted(_REEMPLAZOS_REQUIRED_COLUMNS)
 
 
 def _reemplazo_estado_principal(*, reemplazo: Reemplazo) -> str:
@@ -17819,6 +17836,15 @@ def reemplazo_publicacion_texto(reemplazo_id):
 @login_required
 @staff_required
 def reemplazos_dashboard():
+    schema_ok, missing_cols = _reemplazos_schema_check()
+    if not schema_ok:
+        return (
+            "Faltan columnas en tabla reemplazos: "
+            + ", ".join(missing_cols)
+            + ". Ejecuta: venv/bin/flask --app app.py db upgrade",
+            503,
+        )
+
     estado = (request.args.get("estado") or "activos").strip().lower()
     if estado not in {"activos", "cerrados", "todos"}:
         estado = "activos"
@@ -18075,6 +18101,15 @@ def reemplazos_dashboard():
 @login_required
 @staff_required
 def reemplazo_detail(reemplazo_id):
+    schema_ok, missing_cols = _reemplazos_schema_check()
+    if not schema_ok:
+        return (
+            "Faltan columnas en tabla reemplazos: "
+            + ", ".join(missing_cols)
+            + ". Ejecuta: venv/bin/flask --app app.py db upgrade",
+            503,
+        )
+
     reemplazo = (
         Reemplazo.query
         .options(
