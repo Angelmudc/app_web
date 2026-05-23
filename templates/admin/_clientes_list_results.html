@@ -56,6 +56,13 @@
               {% if _repl_act > 0 %}
                 <span class="badge text-bg-danger ms-1">{{ _repl_act }} activos</span>
               {% endif %}
+              {% if _repl_total >= 5 %}
+                <span class="badge text-bg-danger ms-1">Riesgo crítico</span>
+              {% elif _repl_total >= 3 %}
+                <span class="badge text-bg-warning ms-1">Riesgo alto</span>
+              {% elif _repl_total >= 2 %}
+                <span class="badge text-bg-info ms-1">Riesgo medio</span>
+              {% endif %}
             </div>
             <div class="d-flex flex-wrap gap-2">
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">Ver</a>
@@ -112,6 +119,13 @@
             <strong>Reemplazos:</strong> {{ _repl_act }} activos / {{ _repl_total }} total
             {% if _repl_act > 0 %}
               <span class="badge text-bg-danger ms-1">{{ _repl_act }} activos</span>
+            {% endif %}
+            {% if _repl_total >= 5 %}
+              <span class="badge text-bg-danger ms-1">Riesgo crítico</span>
+            {% elif _repl_total >= 3 %}
+              <span class="badge text-bg-warning ms-1">Riesgo alto</span>
+            {% elif _repl_total >= 2 %}
+              <span class="badge text-bg-info ms-1">Riesgo medio</span>
             {% endif %}
           </div>
         </div>

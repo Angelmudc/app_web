@@ -1467,6 +1467,18 @@ class Solicitud(db.Model):
 
 class Reemplazo(db.Model):
     __tablename__ = 'reemplazos'
+    FASES_OPERATIVAS = (
+        "reportado",
+        "validando",
+        "busqueda",
+        "seleccionada",
+        "coordinacion",
+        "entrada_programada",
+        "entregada",
+        "seguimiento_24h",
+        "seguimiento_7d",
+        "cerrado",
+    )
 
     id                     = db.Column(db.Integer, primary_key=True)
     solicitud_id           = db.Column(db.Integer, db.ForeignKey('solicitudes.id'), nullable=False)
@@ -1498,6 +1510,11 @@ class Reemplazo(db.Model):
     responsable_id         = db.Column(db.Integer, db.ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True, index=True)
     fecha_reporte          = db.Column(db.DateTime, nullable=True)
     fecha_resolucion       = db.Column(db.DateTime, nullable=True)
+    fase                   = db.Column(db.String(30), nullable=True, index=True)
+    fecha_entrada_programada = db.Column(db.DateTime, nullable=True)
+    seguimiento_24h_at     = db.Column(db.DateTime, nullable=True)
+    seguimiento_7d_at      = db.Column(db.DateTime, nullable=True)
+    motivo_reemplazo_categoria = db.Column(db.String(50), nullable=True)
     estado_previo_solicitud = db.Column(
         db.String(50),
         nullable=True,
@@ -1553,6 +1570,7 @@ class Reemplazo(db.Model):
         self.fecha_inicio_reemplazo = ahora
         self.fecha_fin_reemplazo = None
         self.oportunidad_nueva = True
+        self.fase = (self.fase or "reportado").strip().lower()
 
     def cerrar_reemplazo(self, candidata_nueva_id: Optional[int] = None):
         """
@@ -1564,6 +1582,7 @@ class Reemplazo(db.Model):
         ahora = utc_now_naive()
         self.fecha_fin_reemplazo = ahora
         self.oportunidad_nueva = False
+        self.fase = "cerrado"
         if candidata_nueva_id is not None:
             self.candidata_new_id = candidata_nueva_id
 

@@ -176,7 +176,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
         sol = Solicitud.query.get(solicitud_id)
         seg = SeguimientoCandidataCaso.query.filter_by(solicitud_id=solicitud_id).first()
         assert repl is not None and sol is not None and seg is not None
-        assert admin_routes._reemplazo_operativo_estado(reemplazo=repl, solicitud=sol, seguimiento=seg) == "Vencido"
+        assert admin_routes._reemplazo_operativo_estado(reemplazo=repl, solicitud=sol, seguimiento=seg) == "Abierto"
         assert admin_routes._reemplazo_prioridad_derivada(reemplazo=repl, solicitud=sol, seguimiento=seg) in {"media", "alta", "urgente", "critica"}
 
 

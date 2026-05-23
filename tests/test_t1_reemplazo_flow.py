@@ -135,8 +135,19 @@ def test_t1b_happy_path_reemplazo_abre_y_cierra_asignando():
         assert repl is not None
         assert solicitud_mid.estado == "reemplazo"
         assert repl.fecha_inicio_reemplazo is not None
+        assert (repl.fase or "") == "reportado"
         v2 = int(solicitud_mid.row_version or 0)
         repl_id = int(repl.id)
+
+    fase_busqueda = client.post(f"/admin/reemplazos/{repl_id}/fase", data={"fase": "busqueda"}, follow_redirects=False)
+    assert fase_busqueda.status_code in (302, 303)
+
+    fase_entrada = client.post(
+        f"/admin/reemplazos/{repl_id}/fase",
+        data={"fase": "entrada_programada", "fecha_entrada_programada": "2026-05-22T10:30:00"},
+        follow_redirects=False,
+    )
+    assert fase_entrada.status_code in (302, 303)
 
     resp_close = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cerrar_asignando",
@@ -167,6 +178,7 @@ def test_t1b_happy_path_reemplazo_abre_y_cierra_asignando():
         assert int(solicitud_end.candidata_id or 0) == cand_new_id
         assert repl_end.fecha_fin_reemplazo is not None
         assert int(repl_end.candidata_new_id or 0) == cand_new_id
+        assert (repl_end.fase or "") == "cerrado"
 
         assert int(solicitud_end.candidata_id or 0) != cand_old_id
         assert (cand_new_end.estado or "").strip().lower() == "trabajando"
@@ -194,6 +206,11 @@ def test_t1b_happy_path_reemplazo_abre_y_cierra_asignando():
         )
         assert idem_close is not None
         assert int(idem_close.response_status or 0) == 200
+
+
+def test_reemplazo_model_has_operational_min_fields():
+    for field_name in ("fase", "fecha_entrada_programada", "seguimiento_24h_at", "seguimiento_7d_at", "motivo_reemplazo_categoria"):
+        assert hasattr(Reemplazo, field_name)
 
 
 def test_t1b_negativo_conflicto_row_version_en_cierre_reemplazo():

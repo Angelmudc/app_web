@@ -61,6 +61,7 @@
         <span class="op-chip {% if prioridad == 'critica' %}op-chip-danger{% elif prioridad in ['urgente', 'alta'] %}op-chip-warning{% else %}op-chip-info{% endif %}">Prioridad {{ prioridad }}</span>
         <span class="op-chip">⏱ {{ reemplazo.dias_en_reemplazo or 0 }}d</span>
         <span class="op-chip {% if estado_tone == 'danger' %}op-chip-danger{% elif estado_tone == 'warning' %}op-chip-warning{% elif estado_tone == 'success' %}op-chip-success{% else %}op-chip-info{% endif %}">{{ estado_operativo }}</span>
+        <span class="op-chip op-chip-info">{{ fase_operativa }}</span>
       </div>
     </div>
 
@@ -68,7 +69,10 @@
       <div class="op-card">
         <div class="op-label mb-1">Qué está pasando</div>
         <div class="op-value fw-semibold">{{ resumen_humano }}</div>
-        <div class="op-secondary mt-1">Estado actual del reemplazo: <strong>{{ estado_operativo }}</strong></div>
+        <div class="op-secondary mt-1">Estado: <strong>{{ estado_operativo }}</strong> · Fase: <strong>{{ fase_operativa }}</strong></div>
+        {% if alertas_activas %}
+        <div class="mt-2 d-flex flex-wrap gap-2">{% for al in alertas_activas %}<span class="op-chip op-chip-warning">{{ al }}</span>{% endfor %}</div>
+        {% endif %}
       </div>
       <div class="op-card">
         <div class="op-label mb-1">Próximo paso</div>
@@ -226,6 +230,32 @@
     <div class="op-card mt-2">
       <div class="op-label mb-2">Acciones de cierre</div>
       <div class="d-flex gap-2 flex-wrap">
+        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="busqueda">
+          <button class="btn btn-outline-light btn-sm" type="submit">Marcar búsqueda iniciada</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline d-flex gap-1 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="entrada_programada">
+          <input type="datetime-local" name="fecha_entrada_programada" class="form-control form-control-sm">
+          <button class="btn btn-outline-primary btn-sm" type="submit">Programar entrada</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="entregada">
+          <button class="btn btn-outline-success btn-sm" type="submit">Confirmar entrega</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="seguimiento_24h">
+          <button class="btn btn-outline-info btn-sm" type="submit">Registrar seguimiento 24h</button>
+        </form>
+        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="seguimiento_7d">
+          <button class="btn btn-outline-info btn-sm" type="submit">Registrar seguimiento 7 días</button>
+        </form>
         {% if reemplazo.candidata_new_id %}
         <span class="op-secondary">Lista para finalizar</span>
         {% endif %}
@@ -237,6 +267,13 @@
       </div>
     </div>
     {% endif %}
+
+    <div class="op-card mt-2">
+      <div class="op-label mb-2">Checklist de flujo</div>
+      <div class="op-secondary">
+        1) Abrir reemplazo · 2) Búsqueda · 3) Selección · 4) Coordinación · 5) Entrega · 6) Seguimiento 24h · 7) Seguimiento 7 días · 8) Cierre
+      </div>
+    </div>
 
     <div class="op-card mt-2">
       <div class="op-label mb-2">Línea de tiempo del caso</div>

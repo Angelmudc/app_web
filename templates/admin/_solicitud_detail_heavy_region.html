@@ -370,6 +370,11 @@
     <div class="glass-header">
       <i class="bi bi-arrow-repeat"></i> Reemplazos
     </div>
+    {% if reemplazos and (reemplazos|length) >= 2 %}
+    <div class="alert alert-warning m-3 mb-0">
+      Solicitud con reemplazos previos ({{ reemplazos|length }}). Revisar caso conflictivo.
+    </div>
+    {% endif %}
     {% if reemplazos %}
       <div class="table-responsive">
         <table class="table table-hover mb-0 align-middle solicitud-dark-table">

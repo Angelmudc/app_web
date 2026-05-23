@@ -51,6 +51,7 @@
         <col class="reemp-col-cliente">
         <col class="reemp-col-ciudad">
         <col class="reemp-col-estado">
+        <col class="reemp-col-estado">
         <col class="reemp-col-dias">
         <col class="reemp-col-prio">
         <col class="reemp-col-resp">
@@ -61,11 +62,12 @@
         <tr>
           <th class="reemp-col-cliente">Cliente</th>
           <th class="reemp-col-ciudad">Ciudad</th>
-          <th class="reemp-col-estado">Estado operativo</th>
+          <th class="reemp-col-estado">Estado</th>
+          <th class="reemp-col-estado">Fase</th>
           <th class="reemp-col-dias">Días</th>
           <th class="reemp-col-prio">Prioridad</th>
           <th class="reemp-col-resp">Responsable</th>
-          <th class="reemp-col-ind">Indicadores</th>
+          <th class="reemp-col-ind">Alertas</th>
           <th class="reemp-col-acc text-end">Acciones</th>
         </tr>
       </thead>
@@ -81,10 +83,11 @@
         </td>
         <td><div class="reemp-truncate">{{ row.solicitud and row.solicitud.ciudad_sector or '—' }}</div></td>
         <td>
-          <span class="badge reemp-badge {% if row.estado_operativo == 'Vencido' %}reemp-badge-estado-vencido{% elif row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado'] %}reemp-badge-estado-cerrado{% elif row.estado_operativo == 'Coordinando entrada' %}reemp-badge-estado-coordinando{% else %}reemp-badge-estado-activo{% endif %}">
+          <span class="badge reemp-badge {% if row.estado_operativo in ['Cerrado', 'Cerrado fallido', 'Cancelado', 'Cerrado exitoso'] %}reemp-badge-estado-cerrado{% else %}reemp-badge-estado-activo{% endif %}">
             {{ row.estado_operativo }}
           </span>
         </td>
+        <td><span class="badge reemp-badge reemp-badge-estado-coordinando">{{ row.fase_operativa }}</span></td>
         <td class="reemp-days-cell"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
         <td>
           <span class="badge reemp-badge {% if row.prioridad == 'critica' %}reemp-badge-prio-critica{% elif row.prioridad in ['urgente', 'alta'] %}reemp-badge-prio-alta{% elif row.prioridad == 'media' %}reemp-badge-prio-media{% else %}reemp-badge-prio-baja{% endif %}">
@@ -98,9 +101,12 @@
             <span class="reemp-indicator {% if row.indicador_critica %}reemp-indicator-danger{% endif %}">⏱ {{ row.dias_abierto }}d</span>
             {% if row.indicador_sin_candidata %}<span class="reemp-indicator reemp-indicator-danger">⚠ sin candidata</span>{% endif %}
             {% if row.indicador_esperando_cliente %}<span class="reemp-indicator reemp-indicator-info">👤 esperando cliente</span>{% endif %}
-            {% if row.indicador_vencido or row.indicador_seguimiento_vencido %}<span class="reemp-indicator reemp-indicator-warn">📅 seguimiento vencido</span>{% endif %}
+            {% for al in (row.alertas_activas or []) %}<span class="reemp-indicator reemp-indicator-warn">{{ al }}</span>{% endfor %}
             {% if row.indicador_publicacion_incompleta %}
             <span class="reemp-indicator reemp-indicator-warn" title="Faltan: {{ (row.publicacion_missing_fields or [])|join(', ') }}">⚠ publicación incompleta</span>
+            {% endif %}
+            {% if row.cliente_riesgo and row.cliente_riesgo.nivel != 'bajo' %}
+            <span class="reemp-indicator reemp-indicator-danger">Riesgo {{ row.cliente_riesgo.nivel }}</span>
             {% endif %}
           </div>
         </td>
@@ -132,7 +138,7 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
+      <tr><td colspan="9" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
       {% endfor %}
       </tbody>
     </table>

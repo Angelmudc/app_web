@@ -12642,6 +12642,7 @@ def nuevo_reemplazo(s_id):
             ahora = utc_now_naive()
             r.fecha_fallo = ahora
             r.iniciar_reemplazo()
+            _reemplazo_set_fase(r, "reportado")
             if getattr(r, 'fecha_inicio_reemplazo', None) is None:
                 r.fecha_inicio_reemplazo = ahora
                 r.oportunidad_nueva = True
@@ -13100,6 +13101,7 @@ def finalizar_reemplazo(s_id, reemplazo_id):
                 r.fecha_fin_reemplazo = ahora
             if hasattr(r, "resultado_final"):
                 r.resultado_final = "exitoso"
+            _reemplazo_set_fase(r, "cerrado")
             if hasattr(r, "fecha_resolucion"):
                 r.fecha_resolucion = ahora
             elif hasattr(r, 'fecha_fin'):
@@ -13475,6 +13477,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
 
     try:
         r.cerrar_reemplazo()
+        _reemplazo_set_fase(r, "cerrado")
         if hasattr(r, "oportunidad_nueva"):
             r.oportunidad_nueva = False
         if hasattr(r, "resultado_final"):
@@ -13746,6 +13749,7 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
 
     try:
         r.cerrar_reemplazo(cand_new.fila)
+        _reemplazo_set_fase(r, "cerrado")
         if hasattr(r, "resultado_final"):
             r.resultado_final = "exitoso"
         if hasattr(r, "fecha_resolucion"):
@@ -17115,23 +17119,111 @@ def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud |
     return base
 
 
-def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
-    now = utc_now_naive()
+_REEMPLAZO_FASES = (
+    "reportado",
+    "validando",
+    "busqueda",
+    "seleccionada",
+    "coordinacion",
+    "entrada_programada",
+    "entregada",
+    "seguimiento_24h",
+    "seguimiento_7d",
+    "cerrado",
+)
+_REEMPLAZO_FASE_LABELS = {
+    "reportado": "Reportado",
+    "validando": "Validando",
+    "busqueda": "Buscando candidata",
+    "seleccionada": "Candidata seleccionada",
+    "coordinacion": "Coordinando entrada",
+    "entrada_programada": "Entrada programada",
+    "entregada": "Entregada",
+    "seguimiento_24h": "Seguimiento 24h",
+    "seguimiento_7d": "Seguimiento 7 días",
+    "cerrado": "Cerrado",
+}
+
+
+def _reemplazo_fase_normalizada(reemplazo: Reemplazo | None) -> str:
+    fase = str(getattr(reemplazo, "fase", "") or "").strip().lower()
+    if fase in _REEMPLAZO_FASES:
+        return fase
+    if getattr(reemplazo, "fecha_fin_reemplazo", None):
+        return "cerrado"
+    if getattr(reemplazo, "candidata_new_id", None):
+        return "seleccionada"
+    return "busqueda" if getattr(reemplazo, "fecha_inicio_reemplazo", None) else "reportado"
+
+
+def _reemplazo_set_fase(reemplazo: Reemplazo, fase: str) -> None:
+    fase_norm = str(fase or "").strip().lower()
+    if fase_norm in _REEMPLAZO_FASES:
+        reemplazo.fase = fase_norm
+
+
+def _reemplazo_estado_principal(*, reemplazo: Reemplazo) -> str:
     resultado_final = (getattr(reemplazo, "resultado_final", "") or "").strip().lower()
     if resultado_final == "cancelado":
         return "Cancelado"
-    if resultado_final == "cerrado_fallido":
+    if resultado_final in {"cerrado_fallido", "fallido"}:
         return "Cerrado fallido"
-    if seguimiento and getattr(seguimiento, "due_at", None) and getattr(seguimiento, "closed_at", None) is None:
-        if seguimiento.due_at < now:
-            return "Vencido"
     if getattr(reemplazo, "fecha_fin_reemplazo", None):
-        return "Cerrado"
-    if not getattr(reemplazo, "candidata_new_id", None):
-        return "Buscando candidata"
-    if solicitud and (getattr(solicitud, "estado", "") or "").strip().lower() == "reemplazo":
-        return "Reemplazo activo"
-    return "Coordinando entrada"
+        return "Cerrado exitoso" if resultado_final in {"cerrado_exitoso", "exitoso"} else "Cerrado"
+    return "Abierto"
+
+
+def _reemplazo_operativo_estado(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
+    # Compatibilidad: ahora el estado principal no usa "Vencido".
+    return _reemplazo_estado_principal(reemplazo=reemplazo)
+
+
+def _reemplazo_fase_label(reemplazo: Reemplazo) -> str:
+    return _REEMPLAZO_FASE_LABELS.get(_reemplazo_fase_normalizada(reemplazo), "Reportado")
+
+
+def _reemplazo_alertas_activas(*, reemplazo: Reemplazo, now_dt: datetime | None = None) -> list[str]:
+    now_dt = now_dt or utc_now_naive()
+    alerts: list[str] = []
+    fase = _reemplazo_fase_normalizada(reemplazo)
+    estado = _reemplazo_estado_principal(reemplazo=reemplazo)
+    is_open = estado == "Abierto"
+    dias = int(getattr(reemplazo, "dias_en_reemplazo", 0) or 0)
+    if is_open and not getattr(reemplazo, "candidata_new_id", None):
+        alerts.append("Sin candidata nueva")
+    if is_open and dias >= 14:
+        alerts.append("+14 días abierto")
+    elif is_open and dias >= 7:
+        alerts.append("+7 días abierto")
+    fecha_entrada = getattr(reemplazo, "fecha_entrada_programada", None)
+    if fecha_entrada and fecha_entrada < now_dt and fase not in {"entregada", "seguimiento_24h", "seguimiento_7d", "cerrado"}:
+        alerts.append("Entrada programada vencida")
+    entrega_anchor = fecha_entrada or getattr(reemplazo, "fecha_inicio_reemplazo", None) or getattr(reemplazo, "created_at", None)
+    if is_open and entrega_anchor and fase in {"entregada", "seguimiento_24h", "seguimiento_7d"}:
+        if not getattr(reemplazo, "seguimiento_24h_at", None) and entrega_anchor + timedelta(hours=24) < now_dt:
+            alerts.append("Seguimiento atrasado")
+        if not getattr(reemplazo, "seguimiento_7d_at", None) and entrega_anchor + timedelta(days=7) < now_dt:
+            alerts.append("Seguimiento atrasado")
+    return alerts
+
+
+def _cliente_riesgo_desde_reemplazos(cliente_id: int) -> dict[str, int | str]:
+    cid = int(cliente_id or 0)
+    if cid <= 0:
+        return {"historico": 0, "ultimos_90_dias": 0, "activos": 0, "nivel": "bajo"}
+    cutoff = utc_now_naive() - timedelta(days=90)
+    q_base = db.session.query(Reemplazo).join(Solicitud, Reemplazo.solicitud_id == Solicitud.id).filter(Solicitud.cliente_id == cid)
+    historico = int(q_base.count() or 0)
+    recientes = int(q_base.filter(func.coalesce(Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) >= cutoff).count() or 0)
+    activos = int(q_base.filter(Reemplazo.fecha_inicio_reemplazo.isnot(None), Reemplazo.fecha_fin_reemplazo.is_(None)).count() or 0)
+    nivel = "bajo"
+    if historico >= 5:
+        nivel = "critica"
+    elif historico >= 3:
+        nivel = "alta"
+    elif recientes >= 2:
+        nivel = "media"
+    return {"historico": historico, "ultimos_90_dias": recientes, "activos": activos, "nivel": nivel}
 
 
 def _reemplazo_prioridad_derivada(*, reemplazo: Reemplazo, solicitud: Solicitud | None, seguimiento: SeguimientoCandidataCaso | None) -> str:
@@ -17230,6 +17322,7 @@ def reemplazo_nuevo_panel():
             fecha_reporte=utc_now_naive(),
         )
         r.iniciar_reemplazo()
+        _reemplazo_set_fase(r, "reportado")
         _set_solicitud_estado(sol, "reemplazo")
         db.session.add(r)
         db.session.commit()
@@ -17569,6 +17662,7 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
 
     try:
         reemplazo.candidata_new_id = int(candidata.fila)
+        _reemplazo_set_fase(reemplazo, "seleccionada")
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CANDIDATA_SELECCIONADA",
             aggregate_type="Solicitud",
@@ -17621,6 +17715,43 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
     )
 
 
+@admin_bp.route("/reemplazos/<int:reemplazo_id>/fase", methods=["POST"])
+@login_required
+@staff_required
+def reemplazo_avanzar_fase_panel(reemplazo_id):
+    r = Reemplazo.query.get_or_404(int(reemplazo_id))
+    fase = (request.form.get("fase") or "").strip().lower()
+    if fase not in _REEMPLAZO_FASES:
+        flash("Fase inválida.", "warning")
+        return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+    now_dt = utc_now_naive()
+    if fase == "busqueda":
+        _reemplazo_set_fase(r, "busqueda")
+    elif fase == "coordinacion":
+        _reemplazo_set_fase(r, "coordinacion")
+    elif fase == "entrada_programada":
+        fecha_raw = (request.form.get("fecha_entrada_programada") or "").strip()
+        if not fecha_raw:
+            flash("Debes indicar la fecha de entrada programada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        try:
+            r.fecha_entrada_programada = datetime.fromisoformat(fecha_raw)
+        except Exception:
+            flash("Fecha de entrada inválida.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        _reemplazo_set_fase(r, "entrada_programada")
+    elif fase == "entregada":
+        _reemplazo_set_fase(r, "entregada")
+    elif fase == "seguimiento_24h":
+        r.seguimiento_24h_at = now_dt
+        _reemplazo_set_fase(r, "seguimiento_24h")
+    elif fase == "seguimiento_7d":
+        r.seguimiento_7d_at = now_dt
+        _reemplazo_set_fase(r, "seguimiento_7d")
+    db.session.commit()
+    return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+
+
 @admin_bp.route("/reemplazos/<int:reemplazo_id>/cancelar", methods=["POST"])
 @login_required
 @admin_required
@@ -17653,6 +17784,7 @@ def reemplazo_cerrar_panel(reemplazo_id):
         flash("Resultado final inválido.", "warning")
         return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
     r.cerrar_reemplazo()
+    _reemplazo_set_fase(r, "cerrado")
     r.resultado_final = "cerrado_fallido"
     r.fecha_resolucion = utc_now_naive()
     if hasattr(r, "nota_adicional"):
@@ -17807,24 +17939,31 @@ def reemplazos_dashboard():
     for row in reemplazos:
         seg = seg_by_solicitud.get(int(getattr(row, "solicitud_id", 0) or 0))
         sol = getattr(row, "solicitud", None)
-        estado_operativo = _reemplazo_operativo_estado(reemplazo=row, solicitud=sol, seguimiento=seg)
+        estado_operativo = _reemplazo_estado_principal(reemplazo=row)
+        fase_operativa = _reemplazo_fase_label(row)
         prioridad = _reemplazo_prioridad_derivada(reemplazo=row, solicitud=sol, seguimiento=seg)
+        alertas_activas = _reemplazo_alertas_activas(reemplazo=row, now_dt=now)
+        cliente_riesgo = _cliente_riesgo_desde_reemplazos(int(getattr(sol, "cliente_id", 0) or 0)) if sol else {"historico": 0, "ultimos_90_dias": 0, "activos": 0, "nivel": "bajo"}
+        if int(cliente_riesgo.get("historico", 0) or 0) >= 3:
+            alertas_activas.append("Cliente con historial de reemplazos")
+        if str(cliente_riesgo.get("nivel", "bajo")) in {"alta", "critica"}:
+            alertas_activas.append("Cliente de alto riesgo")
+        solicitud_reemplazos_total = int(len(getattr(sol, "reemplazos", []) or []) if sol else 0)
+        if solicitud_reemplazos_total >= 2:
+            alertas_activas.append("Solicitud con reemplazos previos")
         dias_abierto = int(getattr(row, "dias_en_reemplazo", 0) or 0)
         if q_prioridad and prioridad != q_prioridad:
             continue
-        if q_vencidos and estado_operativo != "Vencido":
+        if q_vencidos and "Seguimiento atrasado" not in set(alertas_activas):
             continue
         motivo_full = str(getattr(row, "motivo_fallo", None) or "").strip()
         motivo_compacto = motivo_full[:47].rstrip()
         if len(motivo_full) > 47:
             motivo_compacto = f"{motivo_compacto}..."
         indicador_sin_candidata = bool(getattr(row, "candidata_new_id", None) is None and getattr(row, "fecha_fin_reemplazo", None) is None)
-        indicador_esperando_cliente = bool(estado_operativo == "Coordinando entrada")
-        indicador_vencido = bool(estado_operativo == "Vencido")
+        indicador_esperando_cliente = bool(fase_operativa == "Coordinando entrada")
         indicador_critica = bool(prioridad == "critica")
-        indicador_seguimiento_vencido = bool(
-            seg and getattr(seg, "due_at", None) and getattr(seg, "closed_at", None) is None and getattr(seg, "due_at", None) < now
-        )
+        indicador_seguimiento_vencido = "Seguimiento atrasado" in set(alertas_activas)
         publicacion_missing_fields = _reemplazo_publicacion_missing_fields(sol)
         cards_all.append(
             {
@@ -17833,13 +17972,16 @@ def reemplazos_dashboard():
                 "cliente": getattr(sol, "cliente", None) if sol else None,
                 "seguimiento": seg,
                 "estado_operativo": estado_operativo,
+                "fase_operativa": fase_operativa,
                 "prioridad": prioridad,
+                "alertas_activas": sorted(set(alertas_activas)),
+                "cliente_riesgo": cliente_riesgo,
+                "solicitud_reemplazos_total": solicitud_reemplazos_total,
                 "dias_abierto": dias_abierto,
                 "motivo_compacto": motivo_compacto or "Motivo no registrado",
                 "motivo_full": motivo_full,
                 "indicador_sin_candidata": indicador_sin_candidata,
                 "indicador_esperando_cliente": indicador_esperando_cliente,
-                "indicador_vencido": indicador_vencido,
                 "indicador_critica": indicador_critica,
                 "indicador_seguimiento_vencido": indicador_seguimiento_vencido,
                 "indicador_publicacion_incompleta": bool(publicacion_missing_fields),
@@ -17871,7 +18013,7 @@ def reemplazos_dashboard():
     metric_activos = len(activos_rows)
     metric_hoy = sum(1 for c in cards if getattr(c["reemplazo"], "fecha_inicio_reemplazo", None) and to_rd(c["reemplazo"].fecha_inicio_reemplazo).date() == to_rd(now).date())
     metric_criticos = sum(1 for c in cards if c["prioridad"] == "critica")
-    metric_vencidos = sum(1 for c in cards if c["estado_operativo"] == "Vencido")
+    metric_vencidos = sum(1 for c in cards if "Seguimiento atrasado" in set(c.get("alertas_activas") or []))
     metric_sin_candidata_nueva = sum(1 for c in activos_rows if getattr(c["reemplazo"], "candidata_new_id", None) is None)
     metric_esperando_cliente = sum(1 for c in activos_rows if c["estado_operativo"] == "Coordinando entrada")
     metric_sin_responsable = sum(
@@ -17952,7 +18094,10 @@ def reemplazo_detail(reemplazo_id):
             .first()
         )
     estado_operativo = _reemplazo_operativo_estado(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
+    fase_operativa = _reemplazo_fase_label(reemplazo)
     prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
+    alertas_activas = _reemplazo_alertas_activas(reemplazo=reemplazo)
+    cliente_riesgo = _cliente_riesgo_desde_reemplazos(int(getattr(solicitud, "cliente_id", 0) or 0)) if solicitud else {"historico": 0, "ultimos_90_dias": 0, "activos": 0, "nivel": "bajo"}
     publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
     resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
     has_new = bool(getattr(reemplazo, "candidata_new_id", None))
@@ -17973,7 +18118,7 @@ def reemplazo_detail(reemplazo_id):
         estado_tone = "danger"
     elif prioridad == "critica":
         estado_tone = "danger"
-    elif estado_operativo in {"Vencido"}:
+    elif "Seguimiento atrasado" in set(alertas_activas):
         estado_tone = "warning"
 
     if resultado in {"cerrado_exitoso", "exitoso"}:
@@ -18083,7 +18228,10 @@ def reemplazo_detail(reemplazo_id):
         cliente=getattr(solicitud, "cliente", None) if solicitud else None,
         seguimiento=seguimiento,
         estado_operativo=estado_operativo,
+        fase_operativa=fase_operativa,
         prioridad=prioridad,
+        alertas_activas=sorted(set(alertas_activas)),
+        cliente_riesgo=cliente_riesgo,
         publicacion_texto=publicacion_texto,
         resumen_humano=resumen_humano,
         proximo_paso=proximo_paso,
