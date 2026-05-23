@@ -109,6 +109,7 @@
   function statusMessage(status) {
     if (status === 400) return "Solicitud inválida. Revisa los datos e inténtalo de nuevo.";
     if (status === 401) return "Tu sesión expiró. Inicia sesión nuevamente.";
+    if (status === 419) return "Tu sesión de seguridad expiró. Recarga la página e intenta de nuevo.";
     if (status === 403) return "No tienes permisos para esta acción o la sesión expiró.";
     if (status === 404) return "No encontramos el recurso solicitado.";
     if (status === 409) return "La acción no se pudo aplicar por estado actual. Refresca y reintenta.";
@@ -659,6 +660,29 @@
     }
   }
 
+  function isAuthRedirectUrl(url) {
+    if (!url) return false;
+    try {
+      const parsed = new URL(String(url), window.location.origin);
+      const path = String(parsed.pathname || "").toLowerCase();
+      if (path === "/login" || path === "/admin/login" || path === "/clientes/login") return true;
+      if (path.endsWith("/login")) return true;
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function isSameOriginUrl(url) {
+    if (!url) return false;
+    try {
+      const parsed = new URL(String(url), window.location.origin);
+      return parsed.origin === window.location.origin;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function loadAndReplaceFromUrl(url, targetSelector, options) {
     if (!url || !targetSelector) return false;
     const resp = await fetch(url, {
@@ -1172,6 +1196,28 @@
           if (liveTarget) setTargetCache(url, normalizedTarget, String(liveTarget.innerHTML || ""));
         }
         return ok;
+      }
+
+      if (resp.redirected && resp.ok) {
+        if (isAuthRedirectUrl(resp.url)) {
+          showToast("Tu sesión de seguridad expiró. Recarga la página e intenta de nuevo.", "warning");
+          if (resp.url) window.location.assign(resp.url);
+          return false;
+        }
+        if (isSameOriginUrl(resp.url)) {
+          if (updateTarget) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(parsed.data, "text/html");
+            const node = doc.querySelector(updateTarget);
+            if (node) {
+              replaceTargetHtml(updateTarget, node.innerHTML, { preserveScroll });
+              closeEnclosingModal(sourceEl);
+              return true;
+            }
+          }
+          window.location.assign(resp.url);
+          return true;
+        }
       }
 
       if (resp.ok && updateTarget) {

@@ -105,3 +105,13 @@ def test_admin_async_refetch_supports_json_replace_html_payloads():
     assert "if (contentType.includes(\"application/json\")) {" in admin_async
     assert "const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, targetSelector);" in admin_async
     assert "const jsonHtml = resolveTargetHtmlFromAsyncPayload(payload, selector);" in admin_async
+
+
+def test_admin_async_redirect_handling_distinguishes_auth_from_valid_redirects():
+    admin_async = _read("static/js/core/admin_async.js")
+
+    assert "function isAuthRedirectUrl(url)" in admin_async
+    assert "if (resp.redirected && resp.ok) {" in admin_async
+    assert "if (isAuthRedirectUrl(resp.url)) {" in admin_async
+    assert "if (isSameOriginUrl(resp.url)) {" in admin_async
+    assert "window.location.assign(resp.url);" in admin_async
