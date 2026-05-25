@@ -279,14 +279,93 @@ def test_t1b_negativo_conflicto_row_version_en_cierre_reemplazo():
     assert payload.get("success") is False
     assert payload.get("error_code") == "conflict"
 
+
+def test_t1b_cerrar_reemplazo_con_ciclo_pagado_conserva_pagada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+
+    _login_admin(client)
+
+    with flask_app.app_context():
+        _cliente_id, solicitud_id, cand_old_id, cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        solicitud.tipo_plan = "vip"
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "vip"
+        solicitud.payment_cycle_precio_total = "8000.00"
+        solicitud.payment_cycle_abono_requerido = "4000.00"
+        solicitud.payment_cycle_estado = "pagado"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=int(solicitud_id),
+                cliente_id=int(solicitud.cliente_id),
+                monto="8000.00",
+                tipo_pago="pago",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"reemplazo-vip-paid:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+        v1 = int(solicitud.row_version or 0)
+
+    resp_open = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "motivo_fallo": "No se presentó al trabajo",
+            "candidata_old_id": str(cand_old_id),
+            "candidata_old_name": "old",
+            "row_version": str(v1),
+            "idempotency_key": f"t1b-open-paid-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp_open.status_code in (302, 303)
+
+    with flask_app.app_context():
+        solicitud_mid = Solicitud.query.get(solicitud_id)
+        repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
+        assert solicitud_mid is not None
+        assert repl is not None
+        repl_id = int(repl.id)
+        v2 = int(solicitud_mid.row_version or 0)
+        repl.candidata_new_id = int(cand_new_id)
+        db.session.commit()
+
+    client.post(f"/admin/reemplazos/{repl_id}/fase", data={"fase": "busqueda"}, follow_redirects=False)
+    client.post(
+        f"/admin/reemplazos/{repl_id}/fase",
+        data={"fase": "entrada_programada", "fecha_entrada_programada": "2026-05-22T10:30:00"},
+        follow_redirects=False,
+    )
+    client.post(f"/admin/reemplazos/{repl_id}/fase", data={"fase": "entregada"}, follow_redirects=False)
+
+    resp_close = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cerrar_asignando",
+        data={
+            "candidata_new_id": str(cand_new_id),
+            "row_version": str(v2),
+            "idempotency_key": f"t1b-close-paid-{secrets.token_hex(4)}",
+            "_async_target": f"#solicitudReemplazoActionsAsyncRegion-{solicitud_id}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_close.status_code == 200
+    assert (resp_close.get_json() or {}).get("success") is True
+
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
-        repl_end = Reemplazo.query.get(repl_id)
         assert solicitud_end is not None
-        assert repl_end is not None
-        assert solicitud_end.estado == "reemplazo"
-        assert repl_end.fecha_fin_reemplazo is None
-
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.payment_cycle_estado == "pagado"
 
 def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
     flask_app.config["TESTING"] = True

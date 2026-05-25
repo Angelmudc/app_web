@@ -11337,21 +11337,27 @@ def _resolver_estado_post_reemplazo(solicitud) -> str:
         if prev_paid_hint == "pagada":
             return "pagada"
 
-    monto_pagado = calcular_total_pagado(int(getattr(solicitud, "id", 0) or 0))
-    if monto_pagado <= Decimal("0.00"):
-        monto_pagado = _to_decimal_safe(getattr(solicitud, "monto_pagado", None))
-    monto_requerido = get_plan_price(getattr(solicitud, "tipo_plan", None))
-    saldo_pendiente = (monto_requerido - monto_pagado).quantize(Decimal("0.01"))
+    summary = get_payment_summary(solicitud)
+    monto_pagado = Decimal(summary["total_pagado"])
+    monto_requerido = Decimal(summary["precio_plan"])
+    saldo_pendiente = Decimal(summary["saldo_pendiente"])
 
-    # Reemplazo cerrado exitoso no debe degradar a espera_pago si ya había pago suficiente.
-    if monto_pagado >= monto_requerido and monto_pagado > Decimal("0.00"):
-        return "pagada"
-    if monto_requerido > Decimal("0.00") and saldo_pendiente <= Decimal("0.00"):
+    # Reemplazo cerrado exitoso no debe degradar a espera_pago si el ciclo activo ya está pagado.
+    if saldo_pendiente <= Decimal("0.00") and monto_requerido > Decimal("0.00"):
+        solicitud.payment_cycle_estado = "pagado"
+        if getattr(solicitud, "payment_cycle_closed_at", None) is None:
+            solicitud.payment_cycle_closed_at = utc_now_naive()
         return "pagada"
     if monto_requerido > Decimal("0.00") and saldo_pendiente > Decimal("0.00"):
+        solicitud.payment_cycle_estado = "parcial" if monto_pagado > Decimal("0.00") else "pendiente"
+        solicitud.payment_cycle_closed_at = None
         return "espera_pago"
     if monto_pagado > Decimal("0.00"):
+        solicitud.payment_cycle_estado = "parcial"
+        solicitud.payment_cycle_closed_at = None
         return "espera_pago"
+    solicitud.payment_cycle_estado = "pendiente"
+    solicitud.payment_cycle_closed_at = None
     return "activa"
 
 

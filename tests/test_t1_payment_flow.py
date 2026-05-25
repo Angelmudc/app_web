@@ -133,6 +133,123 @@ def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
         assert len(movimientos) == 1
 
 
+def test_t1_vip_ciclo_sin_pagos_registrar_completo_queda_pagada_y_cierra_ciclo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+
+    _login_admin(client)
+
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        v1 = int(solicitud.row_version or 0)
+        ciclo_actual = int(solicitud.payment_cycle_current or 1)
+
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_completo",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-vip-full-{secrets.token_hex(4)}",
+            "_async_target": "#registrarPagoAsyncRegion",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    assert (resp.get_json() or {}).get("success") is True
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.payment_cycle_closed_at is not None
+        assert int(solicitud_end.payment_cycle_current or 0) == ciclo_actual
+        movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).order_by(PagoSolicitud.id.asc()).all()
+        assert len(movs) == 1
+        assert int(movs[0].ciclo_numero or 0) == ciclo_actual
+        assert str(movs[0].monto) == "8000.00"
+
+
+def test_t1_vip_abono_y_saldo_queda_pagada_sin_abrir_ciclo_nuevo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+
+    _login_admin(client)
+
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        ciclo_actual = int(solicitud.payment_cycle_current or 1)
+        v1 = int(solicitud.row_version or 0)
+
+    resp_abono = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "manual",
+            "monto_pagado": "4000",
+            "manual_reason": "abono inicial",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-vip-part1-{secrets.token_hex(4)}",
+            "_async_target": "#registrarPagoAsyncRegion",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_abono.status_code == 200
+    assert (resp_abono.get_json() or {}).get("success") is True
+
+    with flask_app.app_context():
+        solicitud_mid = Solicitud.query.get(solicitud_id)
+        assert solicitud_mid is not None
+        assert solicitud_mid.payment_cycle_estado == "parcial"
+        assert solicitud_mid.estado == "espera_pago"
+        v2 = int(solicitud_mid.row_version or 0)
+
+    resp_saldo = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(v2),
+            "idempotency_key": f"t1a-vip-part2-{secrets.token_hex(4)}",
+            "_async_target": "#registrarPagoAsyncRegion",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_saldo.status_code == 200
+    assert (resp_saldo.get_json() or {}).get("success") is True
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert solicitud_end.estado == "pagada"
+        assert int(solicitud_end.payment_cycle_current or 0) == ciclo_actual
+        movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).order_by(PagoSolicitud.id.asc()).all()
+        assert len(movs) == 2
+        assert int(movs[0].ciclo_numero or 0) == ciclo_actual
+        assert int(movs[1].ciclo_numero or 0) == ciclo_actual
+        assert str(movs[0].monto) == "4000.00"
+        assert str(movs[1].monto) == "4000.00"
+
+
 def test_t1_abono_cuenta_como_pago_parcial_en_ledger():
     with flask_app.app_context():
         _ensure_core_tables()
