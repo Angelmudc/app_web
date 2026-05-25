@@ -84,6 +84,25 @@ def calcular_total_abonado(solicitud_id: int) -> Decimal:
     return total.quantize(Decimal("0.01"))
 
 
+def calcular_total_pagado_cliente(cliente_id: int) -> Decimal:
+    total = Decimal("0.00")
+    movimientos = (
+        PagoSolicitud.query
+        .filter(PagoSolicitud.cliente_id == int(cliente_id), PagoSolicitud.anulado_at.is_(None))
+        .all()
+    )
+    for mov in movimientos:
+        monto = _to_decimal(mov.monto)
+        if monto <= Decimal("0.00"):
+            continue
+        tipo = (mov.tipo_pago or "").strip().lower()
+        if tipo in POSITIVE_TYPES:
+            total += monto
+        elif tipo in NEGATIVE_TYPES:
+            total -= monto
+    return total.quantize(Decimal("0.01"))
+
+
 def calcular_saldo_pendiente(solicitud) -> Decimal:
     precio_plan = get_plan_price(getattr(solicitud, "tipo_plan", None))
     plan_norm = normalize_plan(getattr(solicitud, "tipo_plan", None))

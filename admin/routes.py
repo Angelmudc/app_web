@@ -203,6 +203,7 @@ from services.payment_rules import get_required_deposit, get_plan_price, format_
 from services.payment_ledger import (
     calcular_saldo_pendiente,
     calcular_total_abonado,
+    calcular_total_pagado_cliente,
     calcular_total_pagado,
     crear_pago_solicitud,
     get_payment_summary,
@@ -21907,19 +21908,16 @@ def _build_cliente_summary_kpi(*, cliente, solicitudes: list) -> dict:
             estado = "otro"
         estados_count[estado] += 1
 
-        raw_monto = (getattr(s, "monto_pagado", "") or "").strip()
-        if raw_monto:
-            try:
-                monto_total_pagado += Decimal(raw_monto)
-            except Exception:
-                pass
-
         fs = getattr(s, "fecha_solicitud", None)
         if fs:
             if primera_solicitud is None or fs < primera_solicitud:
                 primera_solicitud = fs
             if ultima_solicitud is None or fs > ultima_solicitud:
                 ultima_solicitud = fs
+
+    cliente_id = int(getattr(cliente, "id", 0) or 0)
+    if cliente_id > 0:
+        monto_total_pagado = calcular_total_pagado_cliente(cliente_id)
 
     ultima_actividad = getattr(cliente, "fecha_ultima_actividad", None) or ultima_solicitud
     monto_total_pagado_str = f"RD$ {monto_total_pagado:,.2f}"
