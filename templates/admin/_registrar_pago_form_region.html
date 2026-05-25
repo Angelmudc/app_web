@@ -115,6 +115,7 @@
         <div class="col-12 col-md-5">
           <div class="border rounded p-3 bg-light">
             <div class="fw-semibold mb-2">Pago sugerido automático</div>
+            <div class="small mb-2">Ciclo activo: <strong>#{{ payment_summary["numero_ciclo"] }}</strong></div>
             <div class="small mb-2">Precio plan: <strong>RD$ {{ "{:,.2f}".format(payment_summary["precio_plan"]|float) }}</strong></div>
             <div class="small mb-2">Total pagado: <strong>RD$ {{ "{:,.2f}".format(payment_summary["total_pagado"]|float) }}</strong></div>
             <div class="small mb-3">Saldo pendiente: <strong>RD$ {{ "{:,.2f}".format(payment_summary["saldo_pendiente"]|float) }}</strong></div>

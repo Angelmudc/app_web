@@ -1063,6 +1063,38 @@ class Solicitud(db.Model):
     # Plan y pago
     tipo_plan              = db.Column(db.String(50), nullable=True)
     abono                  = db.Column(db.String(100), nullable=True)
+    payment_cycle_current  = db.Column(
+                                db.Integer,
+                                nullable=False,
+                                default=1,
+                                server_default=text("1"),
+                                comment="Numero del ciclo de pago activo"
+                             )
+    payment_cycle_plan     = db.Column(
+                                db.String(50),
+                                nullable=True,
+                                comment="Plan congelado del ciclo de pago activo"
+                             )
+    payment_cycle_precio_total = db.Column(
+                                db.Numeric(12, 2),
+                                nullable=True,
+                                comment="Precio total requerido del ciclo de pago activo"
+                             )
+    payment_cycle_abono_requerido = db.Column(
+                                db.Numeric(12, 2),
+                                nullable=True,
+                                comment="Abono requerido del ciclo de pago activo"
+                             )
+    payment_cycle_estado   = db.Column(
+                                db.String(20),
+                                nullable=False,
+                                default='pendiente',
+                                server_default=text("'pendiente'"),
+                                comment="Estado del ciclo activo: pendiente/parcial/pagado/cancelado"
+                             )
+    payment_cycle_opened_at = db.Column(db.DateTime, nullable=True)
+    payment_cycle_closed_at = db.Column(db.DateTime, nullable=True)
+    payment_cycle_motivo_apertura = db.Column(db.String(200), nullable=True)
     estado                 = db.Column(
                                 SAEnum(
                                     'proceso','activa','pagada','cancelada','reemplazo','espera_pago',
@@ -1488,6 +1520,7 @@ class PagoSolicitud(db.Model):
     motivo_anulacion = db.Column(db.Text, nullable=True)
     origen = db.Column(db.String(50), nullable=True)
     origen_id = db.Column(db.String(120), nullable=True)
+    ciclo_numero = db.Column(db.Integer, nullable=False, default=1, server_default=text("1"), index=True)
 
     solicitud = db.relationship("Solicitud", back_populates="pagos")
     cliente = db.relationship("Cliente")

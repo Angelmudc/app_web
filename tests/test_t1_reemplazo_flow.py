@@ -362,5 +362,6 @@ def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
         assert solicitud_end is not None
         assert repl_end is not None
         assert solicitud_end.estado == "pagada"
+        assert int(getattr(solicitud_end, "payment_cycle_current", 1) or 1) == 1
         assert int(solicitud_end.candidata_id or 0) == cand_new_id
         assert repl_end.fecha_fin_reemplazo is not None

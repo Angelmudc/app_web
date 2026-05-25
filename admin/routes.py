@@ -206,8 +206,12 @@ from services.payment_ledger import (
     calcular_total_pagado_cliente,
     calcular_total_pagado,
     crear_pago_solicitud,
+    ensure_current_payment_cycle,
+    ensure_reactivation_cycle,
     get_payment_summary,
+    get_current_payment_cycle,
     recalcular_estado_pago_solicitud,
+    sync_cycle_plan_if_no_payments,
     sync_solicitud_payment_cache,
 )
 from utils.timezone import (
@@ -12041,6 +12045,8 @@ def gestionar_plan(cliente_id, id):
             required_deposit = get_required_deposit(s.tipo_plan)
             plan_price = get_plan_price(s.tipo_plan)
             s.abono = format_money_payment(required_deposit)
+            ensure_current_payment_cycle(s, motivo="plan_init")
+            cycle_had_payments = Decimal(get_payment_summary(s)["total_pagado"]) > Decimal("0.00")
 
             if manual_override:
                 manual_reason = (request.form.get("manual_reason") or "").strip()
@@ -12102,6 +12108,21 @@ def gestionar_plan(cliente_id, id):
                         "edited_by": getattr(current_user, "username", None),
                     },
                 )
+            elif not sync_cycle_plan_if_no_payments(s, motivo="plan_update_no_payments"):
+                if _admin_async_wants_json():
+                    return _async_plan_response(
+                        ok=False,
+                        message='El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.',
+                        category='warning',
+                        http_status=409,
+                        error_code='conflict',
+                        async_feedback={"message": "El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.", "category": "warning"},
+                    )
+                flash('El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.', 'warning')
+                return _render_plan_page()
+
+            if manual_override and cycle_had_payments:
+                ensure_reactivation_cycle(s, motivo="plan_manual_override")
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
@@ -12286,7 +12307,9 @@ def registrar_pago(cliente_id, id):
                 flash(msg, 'warning')
                 return _render_pago_page()
 
-        if s.estado in ('cancelada', 'pagada'):
+        payment_cycle = get_current_payment_cycle(s)
+        payment_summary_now = get_payment_summary(s)
+        if s.estado == 'cancelada':
             if _admin_async_wants_json():
                 return _async_pago_response(
                     ok=False,
@@ -12296,6 +12319,17 @@ def registrar_pago(cliente_id, id):
                     error_code='conflict',
                 )
             flash('Esta solicitud no admite pagos.', 'warning')
+            return _render_pago_page()
+        if s.estado == 'pagada' and Decimal(payment_summary_now["saldo_pendiente"]) <= Decimal("0.00"):
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='El ciclo actual ya está pagado. Reactiva la solicitud para abrir un nuevo ciclo.',
+                    category='info',
+                    http_status=409,
+                    error_code='conflict',
+                )
+            flash('El ciclo actual ya está pagado. Reactiva la solicitud para abrir un nuevo ciclo.', 'info')
             return _render_pago_page()
 
         cand = db.session.get(Candidata, form.candidata_id.data)
@@ -12435,6 +12469,7 @@ def registrar_pago(cliente_id, id):
             cliente_id=int(s.cliente_id),
             monto=monto_pago,
             tipo_pago=tipo_pago,
+            ciclo_numero=int(payment_cycle["numero_ciclo"]),
             metodo_pago="admin_registrar_pago",
             referencia=f"solicitud:{s.id}",
             registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
@@ -12489,7 +12524,7 @@ def registrar_pago(cliente_id, id):
                 "cliente_id": int(cliente_id),
                 "estado": estado_pago,
                 "candidata_id": int(getattr(cand, "fila", 0) or 0),
-                "total_pagado": format_money_payment(calcular_total_pagado(int(s.id))),
+                "total_pagado": format_money_payment(Decimal(get_payment_summary(s)["total_pagado"])),
             },
         )
         _set_idempotency_response(idem_row, status=200, code="ok")
@@ -14173,11 +14208,14 @@ def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
 
 def _build_payment_summary_ctx(solicitud) -> dict:
     solicitud_id = int(getattr(solicitud, "id", 0) or 0)
-    total_pagado = calcular_total_pagado(solicitud_id)
-    total_abonado = calcular_total_abonado(solicitud_id)
-    precio_plan = get_plan_price(getattr(solicitud, "tipo_plan", None))
-    abono_requerido = get_required_deposit(getattr(solicitud, "tipo_plan", None))
+    cycle = get_current_payment_cycle(solicitud)
+    cycle_num = int(cycle["numero_ciclo"])
+    total_pagado = calcular_total_pagado(solicitud_id, ciclo_numero=cycle_num)
+    total_abonado = calcular_total_abonado(solicitud_id, ciclo_numero=cycle_num)
+    precio_plan = Decimal(cycle["precio_total_requerido"])
+    abono_requerido = Decimal(cycle["abono_requerido"])
     saldo_pendiente = calcular_saldo_pendiente(solicitud)
+    total_historico = calcular_total_pagado(solicitud_id)
     estado_pago = "Sin pago"
     if total_pagado >= precio_plan and precio_plan > Decimal("0.00"):
         estado_pago = "Pagado"
@@ -14200,6 +14238,8 @@ def _build_payment_summary_ctx(solicitud) -> dict:
         "total_pagado": total_pagado,
         "total_abonado": total_abonado,
         "saldo_pendiente": saldo_pendiente,
+        "cycle_numero": cycle_num,
+        "total_pagado_historico": total_historico,
         "payment_status_label": estado_pago,
         "payment_movimientos": movimientos,
         "payment_staff_map": staff_map,
@@ -22554,11 +22594,19 @@ def marcar_pagada_desde_copiar(id):
         )
 
     estado_actual = (s.estado or '').strip().lower()
-    if estado_actual in ('cancelada', 'pagada'):
+    if estado_actual == 'cancelada':
         return _paid_response(
             ok=False,
             message='Esta solicitud no admite marcarse como pagada en su estado actual.',
             category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+    if estado_actual == 'pagada' and Decimal(get_payment_summary(s)["saldo_pendiente"]) <= Decimal("0.00"):
+        return _paid_response(
+            ok=False,
+            message='El ciclo actual ya está pagado. Reactiva para abrir un nuevo ciclo antes de cobrar de nuevo.',
+            category='info',
             http_status=409,
             error_code='conflict',
         )
@@ -22706,6 +22754,7 @@ def marcar_pagada_desde_copiar(id):
             cliente_id=int(s.cliente_id),
             monto=monto_pago,
             tipo_pago=tipo_pago,
+            ciclo_numero=int(get_current_payment_cycle(s)["numero_ciclo"]),
             metodo_pago="marcar_pagada_desde_copiar",
             referencia=f"solicitud:{s.id}",
             registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
@@ -23060,6 +23109,7 @@ def activar_solicitud_directa(id):
                 error_code='conflict',
             )
 
+        ensure_reactivation_cycle(s, motivo="activar_desde_proceso")
         _set_solicitud_estado_with_outbox(s, 'activa')
         db.session.commit()
         _audit_log(
@@ -23635,6 +23685,8 @@ def quitar_espera_pago_solicitud(id):
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
         if restore in ('', 'espera_pago', 'cancelada'):
             restore = 'activa'
+        if restore == 'activa':
+            ensure_reactivation_cycle(s, motivo="quitar_espera_pago")
         _set_solicitud_estado_with_outbox(s, restore)
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()
@@ -23745,6 +23797,8 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
         if restore in ('', 'espera_pago', 'cancelada'):
             restore = 'activa'
+        if restore == 'activa':
+            ensure_reactivation_cycle(s, motivo="quitar_espera_pago_cliente")
         _set_solicitud_estado_with_outbox(s, restore)
         if hasattr(s, 'fecha_cambio_espera_pago'):
             s.fecha_cambio_espera_pago = utc_now_naive()

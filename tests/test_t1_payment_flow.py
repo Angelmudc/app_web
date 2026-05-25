@@ -18,7 +18,13 @@ from models import (
     StaffAuditLog,
     StaffUser,
 )
-from services.payment_ledger import calcular_saldo_pendiente, calcular_total_pagado, get_payment_summary
+from services.payment_ledger import (
+    calcular_saldo_pendiente,
+    calcular_total_pagado,
+    ensure_reactivation_cycle,
+    get_current_payment_cycle,
+    get_payment_summary,
+)
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -420,9 +426,54 @@ def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         summary = get_payment_summary(solicitud)
-        assert str(summary["total_pagado"]) == "2500.00"
-        assert str(summary["saldo_pendiente"]) == "2500.00"
-        assert summary["legacy_abono_fallback"] is True
+        assert str(summary["total_pagado"]) == "0.00"
+        assert str(summary["saldo_pendiente"]) == "5000.00"
+        assert summary["legacy_abono_fallback"] is False
+
+
+def test_t1_reactivar_abre_ciclo_nuevo_y_permite_nuevo_abono():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="5000.00",
+                tipo_pago="pago",
+                ciclo_numero=1,
+                origen="test",
+                origen_id=f"cycle1-paid:{solicitud_id}",
+            )
+        )
+        solicitud.estado = "pagada"
+        db.session.commit()
+
+        opened = ensure_reactivation_cycle(solicitud, motivo="test_reactivacion")
+        db.session.commit()
+        assert opened is True
+        cycle = get_current_payment_cycle(solicitud)
+        summary = get_payment_summary(solicitud)
+        assert int(cycle["numero_ciclo"]) == 2
+        assert str(summary["total_pagado"]) == "0.00"
+        assert str(summary["saldo_pendiente"]) == "5000.00"
+
+
+def test_t1_historico_solicitud_suma_todos_los_ciclos():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        db.session.add_all(
+            [
+                PagoSolicitud(solicitud_id=solicitud_id, cliente_id=cliente_id, monto="1750.00", tipo_pago="abono", ciclo_numero=1, origen_id=f"h1:{solicitud_id}"),
+                PagoSolicitud(solicitud_id=solicitud_id, cliente_id=cliente_id, monto="1750.00", tipo_pago="pago", ciclo_numero=1, origen_id=f"h2:{solicitud_id}"),
+                PagoSolicitud(solicitud_id=solicitud_id, cliente_id=cliente_id, monto="1000.00", tipo_pago="abono", ciclo_numero=2, origen_id=f"h3:{solicitud_id}"),
+            ]
+        )
+        db.session.commit()
+        assert str(calcular_total_pagado(solicitud_id)) == "4500.00"
 
 
 def test_t1_ui_pago_manual_muestra_bloque_manual_y_al_volver_auto_lo_oculta():
