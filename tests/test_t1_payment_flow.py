@@ -303,5 +303,35 @@ def test_t1_ui_registrar_pago_no_muestra_monto_manual_como_principal():
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
     html = resp.get_data(as_text=True)
     assert "Pago sugerido automático" in html
-    assert "Registrar saldo" in html
+    assert "Registrar abono" in html
+    assert "Registrar pago completo RD$ 3,500.00" in html
     assert "placeholder=\"Ej. 10000\"" not in html
+
+
+def test_t1_ui_registrar_pago_despues_de_abono_muestra_solo_saldo_como_principal():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="1750.00",
+                tipo_pago="abono",
+                origen="admin_manual",
+                origen_id=f"seed-abono:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Total pagado: <strong>RD$ 1,750.00</strong>" in html
+    assert "Saldo pendiente: <strong>RD$ 1,750.00</strong>" in html
+    assert "Registrar saldo RD$ 1,750.00" in html
+    assert "Registrar pago completo RD$ 3,500.00" not in html
+    assert "Pago manual" in html

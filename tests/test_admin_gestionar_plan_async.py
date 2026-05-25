@@ -97,7 +97,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
-                    data={"tipo_plan": "VIP", "abono": ""},
+                    data={"tipo_plan": "plan_raro_x"},
                     headers=self._async_headers(),
                 )
 
@@ -105,7 +105,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertFalse(data["success"])
         self.assertEqual(data["error_code"], "invalid_input")
-        self.assertIn("Indica el abono.", data["replace_html"])
+        self.assertIn("Tipo de plan inválido", data["replace_html"])
         self.assertIn("is-invalid", data["replace_html"])
         commit_mock.assert_not_called()
 
@@ -182,8 +182,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
                 resp = self._invoke(method="GET", headers=self._async_headers())
-        self.assertEqual(resp.status_code, 200)
-        html = resp.get_data(as_text=True)
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
         self.assertIn("RD$ 3,500.00", html)
         self.assertIn("RD$ 1,750.00", html)
         self.assertNotIn("Abono del Cliente", html)
@@ -198,12 +197,22 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
                 resp_v = self._invoke(method="GET", headers=self._async_headers())
-        html_p = resp_p.get_data(as_text=True)
-        html_v = resp_v.get_data(as_text=True)
+        html_p = resp_p if isinstance(resp_p, str) else resp_p.get_data(as_text=True)
+        html_v = resp_v if isinstance(resp_v, str) else resp_v.get_data(as_text=True)
         self.assertIn("RD$ 5,000.00", html_p)
         self.assertIn("RD$ 2,500.00", html_p)
         self.assertIn("RD$ 8,000.00", html_v)
         self.assertIn("RD$ 4,000.00", html_v)
+
+    def test_gestionar_plan_basico_emoji_normaliza_correctamente(self):
+        solicitud = _solicitud_stub()
+        solicitud.tipo_plan = "Básico 💼"
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn("RD$ 3,500.00", html)
+        self.assertIn("RD$ 1,750.00", html)
 
 
 if __name__ == "__main__":

@@ -199,7 +199,7 @@ from services.solicitud_estado import (
 )
 from services.solicitud_recommendation_service import SolicitudRecommendationService
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
-from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan
+from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan, is_valid_plan
 from services.payment_ledger import (
     calcular_saldo_pendiente,
     calcular_total_abonado,
@@ -12020,6 +12020,19 @@ def gestionar_plan(cliente_id, id):
                     return _render_plan_page()
 
             s.tipo_plan = normalize_plan(form.tipo_plan.data)
+            if not is_valid_plan(s.tipo_plan):
+                form.tipo_plan.errors.append('Tipo de plan inválido.')
+                if _admin_async_wants_json():
+                    return _async_plan_response(
+                        ok=False,
+                        message='Tipo de plan inválido. Usa Básico, Premium o VIP.',
+                        category='danger',
+                        http_status=200,
+                        error_code='invalid_input',
+                        async_feedback={"message": "Tipo de plan inválido. Usa Básico, Premium o VIP.", "category": "danger"},
+                    )
+                flash('Tipo de plan inválido. Usa Básico, Premium o VIP.', 'danger')
+                return _render_plan_page()
 
             manual_override = str(request.form.get("manual_override") or "0").strip() == "1"
             old_abono = str(getattr(s, "abono", "") or "")

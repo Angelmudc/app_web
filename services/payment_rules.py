@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import re
+import unicodedata
 
 PLAN_PRICES = {
     "basico": Decimal("3500.00"),
@@ -8,15 +10,25 @@ PLAN_PRICES = {
     "vip": Decimal("8000.00"),
 }
 
-DEFAULT_PLAN_PRICE = Decimal("8000.00")
+DEFAULT_PLAN_PRICE = Decimal("3500.00")
 
 
 def normalize_plan(plan: str | None) -> str:
     txt = str(plan or "").strip().lower()
-    replacements = {
-        "básico": "basico",
-    }
-    return replacements.get(txt, txt)
+    txt = unicodedata.normalize("NFKD", txt)
+    txt = "".join(ch for ch in txt if not unicodedata.combining(ch))
+    txt = re.sub(r"[^a-z]", "", txt)
+    if txt.startswith("basico"):
+        return "basico"
+    if txt.startswith("premium"):
+        return "premium"
+    if txt.startswith("vip"):
+        return "vip"
+    return txt
+
+
+def is_valid_plan(plan: str | None) -> bool:
+    return normalize_plan(plan) in PLAN_PRICES
 
 
 def get_plan_price(plan: str | None) -> Decimal:

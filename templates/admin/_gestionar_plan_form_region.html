@@ -41,9 +41,9 @@
         name="tipo_plan"
         class="form-select{% if form.tipo_plan.errors %} is-invalid{% endif %}"
         required>
-        <option value="Básico" {% if plan_value == 'Básico' %}selected{% endif %}>Básico 💼</option>
-        <option value="Premium" {% if plan_value == 'Premium' %}selected{% endif %}>Premium 🌟</option>
-        <option value="VIP" {% if plan_value == 'VIP' %}selected{% endif %}>VIP 👑</option>
+        <option value="basico" {% if plan_value in ['basico', 'Básico', 'Basico', 'básico'] %}selected{% endif %}>Básico</option>
+        <option value="premium" {% if plan_value in ['premium', 'Premium'] %}selected{% endif %}>Premium</option>
+        <option value="vip" {% if plan_value in ['vip', 'VIP'] %}selected{% endif %}>VIP</option>
       </select>
       {% if form.tipo_plan.errors %}
         <div class="invalid-feedback d-block">{{ form.tipo_plan.errors[0] }}</div>
