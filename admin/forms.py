@@ -807,7 +807,7 @@ class AdminGestionPlanForm(FlaskForm):
     )
     abono = StringField(
         'Abono',
-        validators=[DataRequired("Indica el abono."), Length(max=20)],
+        validators=[Optional(), Length(max=20)],
         render_kw={"placeholder": "Ej. 10,000"}
     )
     submit = SubmitField('Guardar plan')
@@ -824,7 +824,7 @@ class AdminPagoForm(FlaskForm):
     )
     monto_pagado = StringField(
         'Monto pagado',
-        validators=[DataRequired("Indica el monto pagado."), Length(max=100)],
+        validators=[Optional(), Length(max=100)],
         render_kw={"placeholder": "Ej. 10,000"}
     )
     submit = SubmitField('Registrar pago')

@@ -6,7 +6,7 @@ from flask import current_app
 
 from config_app import db
 from models import PagoSolicitud
-from services.payment_rules import format_money, get_plan_price, normalize_plan
+from services.payment_rules import format_money, get_plan_price, get_required_deposit, normalize_plan
 
 
 POSITIVE_TYPES = {"abono", "pago", "ajuste", "correccion"}
@@ -93,6 +93,29 @@ def calcular_saldo_pendiente(solicitud) -> Decimal:
     total_pagado = calcular_total_pagado(int(getattr(solicitud, "id", 0) or 0))
     saldo = (precio_plan - total_pagado).quantize(Decimal("0.01"))
     return saldo if saldo > Decimal("0.00") else Decimal("0.00")
+
+
+def get_remaining_balance(solicitud) -> Decimal:
+    return calcular_saldo_pendiente(solicitud)
+
+
+def get_payment_summary(solicitud) -> dict[str, Decimal | str]:
+    solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+    precio_plan = get_plan_price(getattr(solicitud, "tipo_plan", None))
+    abono_requerido = get_required_deposit(getattr(solicitud, "tipo_plan", None))
+    total_pagado = calcular_total_pagado(solicitud_id)
+    total_abonado = calcular_total_abonado(solicitud_id)
+    saldo_pendiente = (precio_plan - total_pagado).quantize(Decimal("0.01"))
+    if saldo_pendiente < Decimal("0.00"):
+        saldo_pendiente = Decimal("0.00")
+    return {
+        "precio_plan": precio_plan,
+        "abono_requerido": abono_requerido,
+        "total_pagado": total_pagado,
+        "total_abonado": total_abonado,
+        "saldo_pendiente": saldo_pendiente,
+        "plan_norm": normalize_plan(getattr(solicitud, "tipo_plan", None)),
+    }
 
 
 def sync_solicitud_payment_cache(solicitud) -> Decimal:

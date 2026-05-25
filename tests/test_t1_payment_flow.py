@@ -210,7 +210,7 @@ def test_t1_marcar_pagada_desde_copiar_crea_movimiento():
     with flask_app.app_context():
         movimientos = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).all()
         assert len(movimientos) == 1
-        assert (movimientos[0].origen or "") == "marcar_pagada_desde_copiar"
+        assert (movimientos[0].origen or "") == "marcar_pagada_desde_copiar_auto"
 
 
 def test_t1_ui_detalle_muestra_resumen_pago():
@@ -230,3 +230,78 @@ def test_t1_ui_detalle_muestra_resumen_pago():
     assert "Precio del plan" in html
     assert "Total pagado" in html
     assert "Saldo pendiente" in html
+
+
+def test_t1_registrar_abono_automatico_crea_movimiento_abono():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        v1 = int(solicitud.row_version or 0)
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_abono",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-abono-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    with flask_app.app_context():
+        mov = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).order_by(PagoSolicitud.id.asc()).all()
+        assert len(mov) == 1
+        assert (mov[0].tipo_pago or "").lower() == "abono"
+
+
+def test_t1_pago_manual_exige_motivo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        v1 = int(solicitud.row_version or 0)
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "manual",
+            "monto_pagado": "1000",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-manual-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert payload.get("success") is False
+    assert "motivo" in (payload.get("message") or "").lower()
+
+
+def test_t1_ui_registrar_pago_no_muestra_monto_manual_como_principal():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Pago sugerido automático" in html
+    assert "Registrar saldo" in html
+    assert "placeholder=\"Ej. 10000\"" not in html

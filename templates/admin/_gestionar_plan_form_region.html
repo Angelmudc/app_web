@@ -52,25 +52,40 @@
       {% endif %}
     </div>
 
+    <div class="mb-4 p-3 border rounded bg-light">
+      <div class="fw-semibold mb-1">Resumen automático del plan</div>
+      <div>Precio total: <strong>RD$ {{ "{:,.2f}".format(plan_price|float) }}</strong></div>
+      <div>Abono requerido (50%): <strong>RD$ {{ "{:,.2f}".format(required_deposit|float) }}</strong></div>
+      <div>Saldo restante (50%): <strong>RD$ {{ "{:,.2f}".format(remaining_balance|float) }}</strong></div>
+      <input type="hidden" name="abono" value="{{ "{:.2f}".format(required_deposit|float) }}">
+    </div>
+
+    <input type="hidden" name="manual_override" id="manual_override" value="0">
     <div class="mb-4">
-      <label for="abono" class="form-label">
-        <i class="bi bi-cash-stack text-success me-1"></i> Abono del Cliente
-      </label>
-      <input
-        id="abono"
-        name="abono"
-        type="text"
-        inputmode="decimal"
-        pattern="^[\d\s.,]+$"
-        class="form-control{% if form.abono.errors %} is-invalid{% endif %}"
-        value="{{ abono_value }}"
-        placeholder="💰 Ej: 1500, 1,500, 1.500,50"
-        required>
-      {% if form.abono.errors %}
-        <div class="invalid-feedback d-block">{{ form.abono.errors[0] }}</div>
-      {% else %}
-        <div class="form-text">Obligatorio. Acepta 1500 · 1,500 · 1.500 · 1.500,50 · 1500.50</div>
-      {% endif %}
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="(function(){const b=document.getElementById('manual-plan-block');const i=document.getElementById('manual_override');const open=b.classList.toggle('d-none')===false;i.value=open?'1':'0';})();">
+        Editar monto manualmente
+      </button>
+    </div>
+
+    <div id="manual-plan-block" class="mb-4 p-3 border rounded d-none">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Precio manual</label>
+          <input type="text" name="manual_total" class="form-control" placeholder="Ej. 5000">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Abono manual</label>
+          <input type="text" name="manual_abono" class="form-control" value="{{ abono_value }}" placeholder="Ej. 2500">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Saldo manual</label>
+          <input type="text" name="manual_saldo" class="form-control" placeholder="Ej. 2500">
+        </div>
+      </div>
+      <div class="mt-3">
+        <label class="form-label">Motivo (obligatorio)</label>
+        <textarea class="form-control" name="manual_reason" rows="2" placeholder="Explica por qué se edita manualmente"></textarea>
+      </div>
     </div>
 
     <div class="d-flex justify-content-end gap-2 mt-4">

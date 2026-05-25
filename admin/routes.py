@@ -205,6 +205,7 @@ from services.payment_ledger import (
     calcular_total_abonado,
     calcular_total_pagado,
     crear_pago_solicitud,
+    get_payment_summary,
     recalcular_estado_pago_solicitud,
     sync_solicitud_payment_cache,
 )
@@ -11933,6 +11934,9 @@ def gestionar_plan(cliente_id, id):
         return out
 
     def _render_plan_region(async_feedback=None) -> str:
+        plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
+        plan_price = get_plan_price(plan_code)
+        required_deposit = get_required_deposit(plan_code)
         return render_template(
             'admin/_gestionar_plan_form_region.html',
             form=form,
@@ -11940,9 +11944,15 @@ def gestionar_plan(cliente_id, id):
             solicitud=s,
             next_url=safe_next,
             async_feedback=async_feedback,
+            plan_price=plan_price,
+            required_deposit=required_deposit,
+            remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
         )
 
     def _render_plan_page(async_feedback=None):
+        plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
+        plan_price = get_plan_price(plan_code)
+        required_deposit = get_required_deposit(plan_code)
         return render_template(
             'admin/gestionar_plan.html',
             form=form,
@@ -11950,6 +11960,9 @@ def gestionar_plan(cliente_id, id):
             solicitud=s,
             next_url=safe_next,
             async_feedback=async_feedback,
+            plan_price=plan_price,
+            required_deposit=required_deposit,
+            remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
         )
 
     def _async_plan_response(
@@ -12008,56 +12021,73 @@ def gestionar_plan(cliente_id, id):
 
             s.tipo_plan = normalize_plan(form.tipo_plan.data)
 
-            # --- Abono OBLIGATORIO + parseo robusto ---
-            if not hasattr(form, 'abono'):
-                if _admin_async_wants_json():
-                    return _async_plan_response(
-                        ok=False,
-                        message='No se pudo procesar el formulario de plan.',
-                        category='danger',
-                        http_status=200,
-                        error_code='invalid_input',
-                        include_region=True,
-                        async_feedback={"message": "No se pudo procesar el formulario de plan.", "category": "danger"},
-                    )
-                flash('Falta el campo abono en el formulario.', 'danger')
-                return _render_plan_page()
-
-            raw_abono = (form.abono.data or '').strip()
-            if not raw_abono:
-                form.abono.errors.append('El abono es obligatorio.')
-                if _admin_async_wants_json():
-                    return _async_plan_response(
-                        ok=False,
-                        message='El abono es obligatorio.',
-                        category='danger',
-                        http_status=200,
-                        error_code='invalid_input',
-                        async_feedback={"message": "Completa el campo de abono.", "category": "danger"},
-                    )
-                flash('El abono es obligatorio.', 'danger')
-                return _render_plan_page()
-
-            try:
-                s_abono = _parse_money_to_decimal_str(raw_abono)  # '1500.00'
-            except ValueError as e:
-                form.abono.errors.append(f'Abono inválido: {e}.')
-                if _admin_async_wants_json():
-                    return _async_plan_response(
-                        ok=False,
-                        message='El abono no tiene un formato válido.',
-                        category='danger',
-                        http_status=200,
-                        error_code='invalid_input',
-                        async_feedback={"message": "El abono no tiene un formato válido.", "category": "danger"},
-                    )
-                flash(f'Abono inválido: {e}. Formatos válidos: 1500, 1,500, 1.500,50', 'danger')
-                return _render_plan_page()
-
-            # Fase 1: abono requerido automático = 50% del plan.
-            # El campo legacy `abono` se conserva como cache visual.
+            manual_override = str(request.form.get("manual_override") or "0").strip() == "1"
+            old_abono = str(getattr(s, "abono", "") or "")
+            old_plan = str(getattr(s, "tipo_plan", "") or "")
             required_deposit = get_required_deposit(s.tipo_plan)
+            plan_price = get_plan_price(s.tipo_plan)
             s.abono = format_money_payment(required_deposit)
+
+            if manual_override:
+                manual_reason = (request.form.get("manual_reason") or "").strip()
+                raw_manual_total = (request.form.get("manual_total") or "").strip()
+                raw_manual_abono = (request.form.get("manual_abono") or "").strip()
+                if not manual_reason:
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message='Debes indicar motivo para la edición manual.',
+                            category='danger',
+                            http_status=200,
+                            error_code='invalid_input',
+                            async_feedback={"message": "Debes indicar motivo para la edición manual.", "category": "danger"},
+                        )
+                    flash('Debes indicar motivo para la edición manual.', 'danger')
+                    return _render_plan_page()
+                try:
+                    manual_total = Decimal(_parse_money_to_decimal_str(raw_manual_total or str(plan_price)))
+                    manual_abono = Decimal(_parse_money_to_decimal_str(raw_manual_abono or str(required_deposit)))
+                except ValueError as e:
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message='Monto manual inválido.',
+                            category='danger',
+                            http_status=200,
+                            error_code='invalid_input',
+                            async_feedback={"message": "Monto manual inválido.", "category": "danger"},
+                        )
+                    flash(f'Monto manual inválido: {e}', 'danger')
+                    return _render_plan_page()
+                if manual_abono <= Decimal("0.00") or manual_total <= Decimal("0.00"):
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message='Monto manual debe ser mayor a cero.',
+                            category='danger',
+                            http_status=200,
+                            error_code='invalid_input',
+                            async_feedback={"message": "Monto manual debe ser mayor a cero.", "category": "danger"},
+                        )
+                    flash('Monto manual debe ser mayor a cero.', 'danger')
+                    return _render_plan_page()
+                s.abono = format_money_payment(manual_abono)
+                _audit_log(
+                    action_type="SOLICITUD_PLAN_MANUAL_OVERRIDE",
+                    entity_type="Solicitud",
+                    entity_id=s.id,
+                    summary=f"Edición manual de plan/pago en solicitud {s.codigo_solicitud or s.id}",
+                    metadata={
+                        "motivo": manual_reason,
+                        "plan": s.tipo_plan,
+                        "plan_price": format_money_payment(manual_total),
+                        "abono_manual": s.abono,
+                        "abono_auto": format_money_payment(required_deposit),
+                        "plan_prev": old_plan,
+                        "abono_prev": old_abono,
+                        "edited_by": getattr(current_user, "username", None),
+                    },
+                )
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
@@ -12139,6 +12169,7 @@ def registrar_pago(cliente_id, id):
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
 
     def _render_pago_region(async_feedback=None) -> str:
+        payment_summary = get_payment_summary(s)
         return render_template(
             'admin/_registrar_pago_form_region.html',
             form=form,
@@ -12148,9 +12179,11 @@ def registrar_pago(cliente_id, id):
             next_url=safe_next,
             form_idempotency_key=form_idempotency_key,
             async_feedback=async_feedback,
+            payment_summary=payment_summary,
         )
 
     def _render_pago_page(async_feedback=None):
+        payment_summary = get_payment_summary(s)
         return render_template(
             'admin/registrar_pago.html',
             form=form,
@@ -12160,6 +12193,7 @@ def registrar_pago(cliente_id, id):
             next_url=safe_next,
             form_idempotency_key=form_idempotency_key,
             async_feedback=async_feedback,
+            payment_summary=payment_summary,
         )
 
     def _async_pago_response(
@@ -12332,17 +12366,67 @@ def registrar_pago(cliente_id, id):
             flash(msg, 'warning')
             return _render_pago_page()
 
-        monto_pago = Decimal(_parse_money_to_decimal_str(form.monto_pagado.data))
+        payment_mode = (request.form.get("payment_mode") or "auto_saldo").strip().lower()
+        manual_reason = (request.form.get("manual_reason") or "").strip()
+        summary = get_payment_summary(s)
+        monto_pago = Decimal("0.00")
+        tipo_pago = "pago"
+        if payment_mode == "auto_abono":
+            monto_pago = Decimal(summary["abono_requerido"])
+            tipo_pago = "abono"
+        elif payment_mode == "auto_saldo":
+            monto_pago = Decimal(summary["saldo_pendiente"])
+            tipo_pago = "pago"
+        elif payment_mode == "auto_completo":
+            monto_pago = Decimal(summary["precio_plan"])
+            tipo_pago = "pago"
+        elif payment_mode == "manual":
+            if not manual_reason:
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message='Pago manual requiere motivo.',
+                        category='danger',
+                        http_status=200,
+                        error_code='invalid_input',
+                    )
+                flash('Pago manual requiere motivo.', 'danger')
+                return _render_pago_page()
+            monto_pago = Decimal(_parse_money_to_decimal_str(form.monto_pagado.data))
+            tipo_pago = "pago"
+        else:
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='Modo de pago inválido.',
+                    category='danger',
+                    http_status=200,
+                    error_code='invalid_input',
+                )
+            flash('Modo de pago inválido.', 'danger')
+            return _render_pago_page()
+        if monto_pago <= Decimal("0.00"):
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message='No hay monto pendiente para registrar con la opción seleccionada.',
+                    category='warning',
+                    http_status=200,
+                    error_code='invalid_input',
+                )
+            flash('No hay monto pendiente para registrar con la opción seleccionada.', 'warning')
+            return _render_pago_page()
         crear_pago_solicitud(
             solicitud_id=int(s.id),
             cliente_id=int(s.cliente_id),
             monto=monto_pago,
-            tipo_pago="pago",
+            tipo_pago=tipo_pago,
             metodo_pago="admin_registrar_pago",
             referencia=f"solicitud:{s.id}",
             registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
-            origen="admin_manual",
-            origen_id=f"registrar_pago:{s.id}:{_new_form_idempotency_key()}",
+            origen="admin_manual" if payment_mode == "manual" else "admin_auto",
+            origen_id=f"registrar_pago:{payment_mode}:{s.id}:{_new_form_idempotency_key()}",
+            nota=(f"manual_reason:{manual_reason}" if payment_mode == "manual" else f"modo:{payment_mode}"),
         )
 
         # Siempre calculamos el 25% si hay sueldo en la solicitud.
@@ -22512,11 +22596,13 @@ def marcar_pagada_desde_copiar(id):
         )
 
     candidata_raw = (request.form.get('candidata_id') or '').strip()
+    payment_mode = (request.form.get("payment_mode") or "auto_completo").strip().lower()
+    manual_reason = (request.form.get("manual_reason") or "").strip()
     monto_raw = (request.form.get('monto_pagado') or '').strip()
-    if not candidata_raw or not monto_raw:
+    if not candidata_raw:
         return _paid_response(
             ok=False,
-            message='Para marcar pagado debes indicar candidata y monto pagado.',
+            message='Para marcar pagado debes indicar candidata.',
             category='danger',
             http_status=400,
         )
@@ -22563,17 +22649,58 @@ def marcar_pagada_desde_copiar(id):
         s.candidata_id = cand.fila
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
         _mark_candidata_estado(cand, "trabajando")
-        monto_pago = Decimal(_parse_money_to_decimal_str(monto_raw))
+        summary = get_payment_summary(s)
+        if payment_mode == "auto_abono":
+            monto_pago = Decimal(summary["abono_requerido"])
+            tipo_pago = "abono"
+        elif payment_mode == "auto_saldo":
+            monto_pago = Decimal(summary["saldo_pendiente"])
+            tipo_pago = "pago"
+        elif payment_mode == "auto_completo":
+            monto_pago = Decimal(summary["precio_plan"])
+            tipo_pago = "pago"
+        elif payment_mode == "manual":
+            if not manual_reason:
+                return _paid_response(
+                    ok=False,
+                    message='Pago manual requiere motivo.',
+                    category='danger',
+                    http_status=400,
+                )
+            if not monto_raw:
+                return _paid_response(
+                    ok=False,
+                    message='Pago manual requiere monto.',
+                    category='danger',
+                    http_status=400,
+                )
+            monto_pago = Decimal(_parse_money_to_decimal_str(monto_raw))
+            tipo_pago = "pago"
+        else:
+            return _paid_response(
+                ok=False,
+                message='Modo de pago inválido.',
+                category='danger',
+                http_status=400,
+            )
+        if monto_pago <= Decimal("0.00"):
+            return _paid_response(
+                ok=False,
+                message='No hay monto pendiente para registrar con la opción seleccionada.',
+                category='warning',
+                http_status=400,
+            )
         crear_pago_solicitud(
             solicitud_id=int(s.id),
             cliente_id=int(s.cliente_id),
             monto=monto_pago,
-            tipo_pago="pago",
+            tipo_pago=tipo_pago,
             metodo_pago="marcar_pagada_desde_copiar",
             referencia=f"solicitud:{s.id}",
             registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
-            origen="marcar_pagada_desde_copiar",
-            origen_id=f"marcar_pagada_desde_copiar:{s.id}:{int(getattr(cand, 'fila', 0) or 0)}",
+            origen="marcar_pagada_desde_copiar_manual" if payment_mode == "manual" else "marcar_pagada_desde_copiar_auto",
+            origen_id=f"marcar_pagada_desde_copiar:{payment_mode}:{s.id}:{int(getattr(cand, 'fila', 0) or 0)}",
+            nota=(f"manual_reason:{manual_reason}" if payment_mode == "manual" else f"modo:{payment_mode}"),
         )
         estado_pago = recalcular_estado_pago_solicitud(s)
         _set_solicitud_estado(s, estado_pago)

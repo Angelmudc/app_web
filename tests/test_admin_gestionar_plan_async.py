@@ -176,6 +176,35 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertFalse(data["success"])
         self.assertEqual(data["error_code"], "conflict")
 
+    def test_gestionar_plan_muestra_resumen_automatico_basico(self):
+        solicitud = _solicitud_stub()
+        solicitud.tipo_plan = "Básico"
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("RD$ 3,500.00", html)
+        self.assertIn("RD$ 1,750.00", html)
+        self.assertNotIn("Abono del Cliente", html)
+
+    def test_gestionar_plan_muestra_resumen_automatico_premium_vip(self):
+        solicitud = _solicitud_stub()
+        solicitud.tipo_plan = "Premium"
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp_p = self._invoke(method="GET", headers=self._async_headers())
+        solicitud.tipo_plan = "VIP"
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp_v = self._invoke(method="GET", headers=self._async_headers())
+        html_p = resp_p.get_data(as_text=True)
+        html_v = resp_v.get_data(as_text=True)
+        self.assertIn("RD$ 5,000.00", html_p)
+        self.assertIn("RD$ 2,500.00", html_p)
+        self.assertIn("RD$ 8,000.00", html_v)
+        self.assertIn("RD$ 4,000.00", html_v)
+
 
 if __name__ == "__main__":
     unittest.main()
