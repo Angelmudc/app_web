@@ -171,6 +171,49 @@
       </div>
     </div>
 
+    <div class="alert alert-light border mb-3">
+      <div class="row g-2">
+        <div class="col-12 col-md-4"><strong>Precio del plan:</strong> RD$ {{ '{:,.2f}'.format(plan_price or 0) }}</div>
+        <div class="col-12 col-md-4"><strong>Abono requerido:</strong> RD$ {{ '{:,.2f}'.format(required_deposit or 0) }}</div>
+        <div class="col-12 col-md-4"><strong>Total pagado:</strong> RD$ {{ '{:,.2f}'.format(total_pagado or 0) }}</div>
+        <div class="col-12 col-md-6"><strong>Saldo pendiente:</strong> RD$ {{ '{:,.2f}'.format(saldo_pendiente or 0) }}</div>
+        <div class="col-12 col-md-6"><strong>Estado de pago:</strong> {{ payment_status_label or 'Sin pago' }}</div>
+      </div>
+    </div>
+
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Tipo</th>
+            <th>Monto</th>
+            <th>Método</th>
+            <th>Referencia</th>
+            <th>Registrado por</th>
+            <th>Estado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for mov in payment_movimientos or [] %}
+          <tr>
+            <td>{{ mov.created_at.strftime('%Y-%m-%d %H:%M') if mov.created_at else '—' }}</td>
+            <td>{{ mov.tipo_pago or '—' }}</td>
+            <td>RD$ {{ '{:,.2f}'.format(mov.monto or 0) }}</td>
+            <td>{{ mov.metodo_pago or '—' }}</td>
+            <td>{{ mov.referencia or '—' }}</td>
+            <td>{{ payment_staff_map.get(mov.registrado_por_id, 'Sistema') if mov.registrado_por_id else 'Sistema' }}</td>
+            <td>{{ 'Anulado' if mov.anulado_at else 'Activo' }}</td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-muted">Sin movimientos registrados.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
     {% if _cta_label %}
     <div class="alert alert-primary solicitud-callout solicitud-callout-info d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3" data-testid="cta-recomendada-panel">
       <div>

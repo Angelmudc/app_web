@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from datetime import datetime
 
 from app import app as flask_app
 from config_app import db
@@ -11,6 +12,7 @@ from models import (
     Cliente,
     DomainOutbox,
     Reemplazo,
+    PagoSolicitud,
     RequestIdempotencyKey,
     Solicitud,
     SolicitudCandidata,
@@ -28,6 +30,7 @@ def _ensure_core_tables() -> None:
             Cliente,
             Candidata,
             Solicitud,
+            PagoSolicitud,
             Reemplazo,
             SolicitudCandidata,
             RequestIdempotencyKey,
@@ -84,6 +87,7 @@ def _seed_reemplazo_fixture() -> tuple[int, int, int, int]:
         cliente_id=int(cliente.id),
         codigo_solicitud=f"SOL-T1R-{token}",
         estado="activa",
+        tipo_plan="basico",
         sueldo="14000",
         monto_pagado="0.00",
         candidata_id=int(cand_old.fila),
@@ -138,6 +142,8 @@ def test_t1b_happy_path_reemplazo_abre_y_cierra_asignando():
         assert (repl.fase or "") == "reportado"
         v2 = int(solicitud_mid.row_version or 0)
         repl_id = int(repl.id)
+        repl.candidata_new_id = int(cand_new_id)
+        db.session.commit()
 
     fase_busqueda = client.post(f"/admin/reemplazos/{repl_id}/fase", data={"fase": "busqueda"}, follow_redirects=False)
     assert fase_busqueda.status_code in (302, 303)
@@ -148,6 +154,12 @@ def test_t1b_happy_path_reemplazo_abre_y_cierra_asignando():
         follow_redirects=False,
     )
     assert fase_entrada.status_code in (302, 303)
+    fase_entregada = client.post(
+        f"/admin/reemplazos/{repl_id}/fase",
+        data={"fase": "entregada"},
+        follow_redirects=False,
+    )
+    assert fase_entregada.status_code in (302, 303)
 
     resp_close = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cerrar_asignando",
@@ -247,10 +259,11 @@ def test_t1b_negativo_conflicto_row_version_en_cierre_reemplazo():
         repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
         assert solicitud_mid is not None
         assert repl is not None
+        repl_id = int(repl.id)
         current_version = int(solicitud_mid.row_version or 0)
 
     close_resp = client.post(
-        f"/admin/solicitudes/{solicitud_id}/reemplazos/{int(repl.id)}/cerrar_asignando",
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cerrar_asignando",
         data={
             "candidata_new_id": str(cand_new_id),
             "row_version": str(max(0, current_version - 1)),
@@ -268,7 +281,7 @@ def test_t1b_negativo_conflicto_row_version_en_cierre_reemplazo():
 
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
-        repl_end = Reemplazo.query.get(int(repl.id))
+        repl_end = Reemplazo.query.get(repl_id)
         assert solicitud_end is not None
         assert repl_end is not None
         assert solicitud_end.estado == "reemplazo"
@@ -290,8 +303,18 @@ def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
         _cliente_id, solicitud_id, cand_old_id, cand_new_id = _seed_reemplazo_fixture()
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
-        solicitud.abono = "1000.00"
-        solicitud.monto_pagado = "1000.00"
+        solicitud.abono = "1750.00"
+        solicitud.monto_pagado = "3500.00"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=int(solicitud.cliente_id),
+                monto="3500.00",
+                tipo_pago="pago",
+                origen="admin_manual",
+                origen_id=f"test-reemplazo-paid:{solicitud_id}",
+            )
+        )
         db.session.commit()
         v1 = int(solicitud.row_version or 0)
 
@@ -312,10 +335,15 @@ def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
         repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
         assert solicitud_mid is not None
         assert repl is not None
+        repl_id = int(repl.id)
         v2 = int(solicitud_mid.row_version or 0)
+        repl.candidata_new_id = int(cand_new_id)
+        repl.fase = "entregada"
+        repl.fecha_entrada_programada = datetime(2026, 5, 22, 10, 30, 0)
+        db.session.commit()
 
     close_resp = client.post(
-        f"/admin/solicitudes/{solicitud_id}/reemplazos/{int(repl.id)}/cerrar_asignando",
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cerrar_asignando",
         data={
             "candidata_new_id": str(cand_new_id),
             "row_version": str(v2),
@@ -330,7 +358,7 @@ def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
 
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
-        repl_end = Reemplazo.query.get(int(repl.id))
+        repl_end = Reemplazo.query.get(repl_id)
         assert solicitud_end is not None
         assert repl_end is not None
         assert solicitud_end.estado == "pagada"

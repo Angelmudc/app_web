@@ -59,6 +59,7 @@ from models import (
     CatalogoPrivadoItem,
     TiendaInteres,
     TiendaInteresItem,
+    PagoSolicitud,
 )
 try:
     from models import ChatConversation, ChatMessage
@@ -198,6 +199,15 @@ from services.solicitud_estado import (
 )
 from services.solicitud_recommendation_service import SolicitudRecommendationService
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
+from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan
+from services.payment_ledger import (
+    calcular_saldo_pendiente,
+    calcular_total_abonado,
+    calcular_total_pagado,
+    crear_pago_solicitud,
+    recalcular_estado_pago_solicitud,
+    sync_solicitud_payment_cache,
+)
 from utils.timezone import (
     format_rd_datetime,
     iso_utc_z,
@@ -11316,25 +11326,32 @@ def _resolver_estado_post_reemplazo(solicitud) -> str:
     estado_actual = (getattr(solicitud, "estado", "") or "").strip().lower()
     if estado_actual == "pagada":
         return "pagada"
+    if estado_actual in {"proceso", "activa", "espera_pago"}:
+        prev_paid_hint = (getattr(solicitud, "estado_previo_solicitud", "") or "").strip().lower()
+        if prev_paid_hint == "pagada":
+            return "pagada"
 
-    monto_pagado = _to_decimal_safe(getattr(solicitud, "monto_pagado", None))
-    abono = _to_decimal_safe(getattr(solicitud, "abono", None))
-    sueldo = _to_decimal_safe(getattr(solicitud, "sueldo", None))
-    monto_requerido = abono if abono > Decimal("0.00") else (sueldo * Decimal("0.25")).quantize(Decimal("0.01"))
+    monto_pagado = calcular_total_pagado(int(getattr(solicitud, "id", 0) or 0))
+    if monto_pagado <= Decimal("0.00"):
+        monto_pagado = _to_decimal_safe(getattr(solicitud, "monto_pagado", None))
+    monto_requerido = get_plan_price(getattr(solicitud, "tipo_plan", None))
     saldo_pendiente = (monto_requerido - monto_pagado).quantize(Decimal("0.01"))
 
+    # Reemplazo cerrado exitoso no debe degradar a espera_pago si ya había pago suficiente.
+    if monto_pagado >= monto_requerido and monto_pagado > Decimal("0.00"):
+        return "pagada"
     if monto_requerido > Decimal("0.00") and saldo_pendiente <= Decimal("0.00"):
         return "pagada"
     if monto_requerido > Decimal("0.00") and saldo_pendiente > Decimal("0.00"):
         return "espera_pago"
     if monto_pagado > Decimal("0.00"):
-        return "pagada"
+        return "espera_pago"
     return "activa"
 
 
 def _fallback_estado_operativo_post_reemplazo(reemplazo) -> str:
     estado_restore = (getattr(reemplazo, "estado_previo_solicitud", None) or "").strip().lower()
-    if estado_restore in {"proceso", "activa"}:
+    if estado_restore in {"pagada", "proceso", "activa", "espera_pago"}:
         return estado_restore
     return "activa"
 
@@ -11989,7 +12006,7 @@ def gestionar_plan(cliente_id, id):
                     flash('Tipo de plan inválido.', 'danger')
                     return _render_plan_page()
 
-            s.tipo_plan = form.tipo_plan.data
+            s.tipo_plan = normalize_plan(form.tipo_plan.data)
 
             # --- Abono OBLIGATORIO + parseo robusto ---
             if not hasattr(form, 'abono'):
@@ -12037,8 +12054,10 @@ def gestionar_plan(cliente_id, id):
                 flash(f'Abono inválido: {e}. Formatos válidos: 1500, 1,500, 1.500,50', 'danger')
                 return _render_plan_page()
 
-            # Guardar abono
-            s.abono = s_abono
+            # Fase 1: abono requerido automático = 50% del plan.
+            # El campo legacy `abono` se conserva como cache visual.
+            required_deposit = get_required_deposit(s.tipo_plan)
+            s.abono = format_money_payment(required_deposit)
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
@@ -12313,8 +12332,18 @@ def registrar_pago(cliente_id, id):
             flash(msg, 'warning')
             return _render_pago_page()
 
-        # Monto pagado
-        s.monto_pagado = _parse_money_to_decimal_str(form.monto_pagado.data)
+        monto_pago = Decimal(_parse_money_to_decimal_str(form.monto_pagado.data))
+        crear_pago_solicitud(
+            solicitud_id=int(s.id),
+            cliente_id=int(s.cliente_id),
+            monto=monto_pago,
+            tipo_pago="pago",
+            metodo_pago="admin_registrar_pago",
+            referencia=f"solicitud:{s.id}",
+            registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
+            origen="admin_manual",
+            origen_id=f"registrar_pago:{s.id}:{_new_form_idempotency_key()}",
+        )
 
         # Siempre calculamos el 25% si hay sueldo en la solicitud.
         # Si una candidata no acepta porcentaje, por requisito queda descalificada antes,
@@ -12350,7 +12379,8 @@ def registrar_pago(cliente_id, id):
                 # Si el sueldo viene raro, no rompemos el pago
                 pass
 
-        _set_solicitud_estado(s, 'pagada')
+        estado_pago = recalcular_estado_pago_solicitud(s)
+        _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_PAGO_REGISTRADO",
             aggregate_type="Solicitud",
@@ -12359,8 +12389,9 @@ def registrar_pago(cliente_id, id):
             payload={
                 "solicitud_id": int(s.id),
                 "cliente_id": int(cliente_id),
-                "estado": "pagada",
+                "estado": estado_pago,
                 "candidata_id": int(getattr(cand, "fila", 0) or 0),
+                "total_pagado": format_money_payment(calcular_total_pagado(int(s.id))),
             },
         )
         _set_idempotency_response(idem_row, status=200, code="ok")
@@ -13697,6 +13728,14 @@ def cerrar_reemplazo_asignando(s_id, reemplazo_id):
             http_status=409,
             error_code="conflict",
         )
+    if not _reemplazo_can_close_success(r):
+        return _action_response(
+            ok=False,
+            message="Solo puedes cerrar exitoso cuando la entrega esté confirmada (fase entregada).",
+            category="warning",
+            http_status=409,
+            error_code="invalid_phase",
+        )
 
     try:
         nueva_id = int((request.form.get("candidata_new_id") or "").strip())
@@ -14034,6 +14073,41 @@ def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
     return out
 
 
+def _build_payment_summary_ctx(solicitud) -> dict:
+    solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+    total_pagado = calcular_total_pagado(solicitud_id)
+    total_abonado = calcular_total_abonado(solicitud_id)
+    precio_plan = get_plan_price(getattr(solicitud, "tipo_plan", None))
+    abono_requerido = get_required_deposit(getattr(solicitud, "tipo_plan", None))
+    saldo_pendiente = calcular_saldo_pendiente(solicitud)
+    estado_pago = "Sin pago"
+    if total_pagado >= precio_plan and precio_plan > Decimal("0.00"):
+        estado_pago = "Pagado"
+    elif total_pagado > Decimal("0.00"):
+        estado_pago = "Parcial"
+
+    movimientos = (
+        PagoSolicitud.query
+        .filter(PagoSolicitud.solicitud_id == solicitud_id)
+        .order_by(PagoSolicitud.created_at.desc(), PagoSolicitud.id.desc())
+        .limit(20)
+        .all()
+    )
+    user_ids = [int(m.registrado_por_id) for m in movimientos if getattr(m, "registrado_por_id", None)]
+    staff_map = _staff_username_map(user_ids)
+
+    return {
+        "plan_price": precio_plan,
+        "required_deposit": abono_requerido,
+        "total_pagado": total_pagado,
+        "total_abonado": total_abonado,
+        "saldo_pendiente": saldo_pendiente,
+        "payment_status_label": estado_pago,
+        "payment_movimientos": movimientos,
+        "payment_staff_map": staff_map,
+    }
+
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
 @staff_required
@@ -14061,6 +14135,7 @@ def detalle_solicitud(cliente_id, id):
         )
         is_admin_role = role in ("owner", "admin")
         solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
+        payment_ctx = _build_payment_summary_ctx(s)
 
         html = render_template(
             'admin/solicitud_detail.html',
@@ -14072,6 +14147,7 @@ def detalle_solicitud(cliente_id, id):
             is_admin_role=is_admin_role,
             solicitud_detail_url=solicitud_detail_url,
             chat_feature_enabled=_chat_enabled(),
+            **payment_ctx,
         )
         return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
 
@@ -14104,6 +14180,20 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
             list(solicitud.reemplazos or []),
             key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min,
         )
+        reemplazos_count = len(reemplazos)
+        reemplazos_activos = sum(
+            1
+            for row in reemplazos
+            if not getattr(row, "fecha_fin_reemplazo", None)
+            and (str(getattr(row, "resultado_final", "") or "").strip().lower() not in {"cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "cancelado"})
+        )
+        ultimo_reemplazo_at = None
+        if reemplazos_count > 0:
+            last_row = sorted(
+                reemplazos,
+                key=lambda r: r.fecha_inicio_reemplazo or r.created_at or datetime.min,
+            )[-1]
+            ultimo_reemplazo_at = last_row.fecha_inicio_reemplazo or last_row.created_at
         for idx, row in enumerate(reemplazos, start=1):
             if row.candidata_new:
                 envios.append({
@@ -14122,6 +14212,9 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
             solicitud=solicitud,
             envios=envios,
             reemplazos=reemplazos,
+            reemplazos_count=reemplazos_count,
+            reemplazos_activos=reemplazos_activos,
+            ultimo_reemplazo_at=ultimo_reemplazo_at,
             pasaje_copy_mode=pasaje_mode,
             pasaje_copy_other_text=pasaje_other_text,
         )
@@ -14171,6 +14264,7 @@ def solicitud_detail_operativa_core_fragment(cliente_id, id):
             today_rd=rd_today(),
         )
         solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=solicitud.cliente_id, id=solicitud.id)
+        payment_ctx = _build_payment_summary_ctx(solicitud)
         html = render_template(
             'admin/_solicitud_operativa_core_region.html',
             solicitud=solicitud,
@@ -14183,6 +14277,7 @@ def solicitud_detail_operativa_core_fragment(cliente_id, id):
             ),
             manual_followup=manual_followup,
             solicitud_detail_url=solicitud_detail_url,
+            **payment_ctx,
         )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -17123,6 +17218,11 @@ _REEMPLAZO_FASES = (
     "reportado",
     "validando",
     "busqueda",
+    "preseleccionada",
+    "pendiente_cliente",
+    "aprobada_cliente",
+    "coordinando_entrada",
+    # Legacy compatibility
     "seleccionada",
     "coordinacion",
     "entrada_programada",
@@ -17135,7 +17235,12 @@ _REEMPLAZO_FASE_LABELS = {
     "reportado": "Reportado",
     "validando": "Validando",
     "busqueda": "Buscando candidata",
-    "seleccionada": "Candidata seleccionada",
+    "preseleccionada": "Preseleccionada",
+    "pendiente_cliente": "Pendiente cliente",
+    "aprobada_cliente": "Aprobada por cliente",
+    "coordinando_entrada": "Coordinando entrada",
+    # Legacy labels normalized to the new semantics
+    "seleccionada": "Preseleccionada",
     "coordinacion": "Coordinando entrada",
     "entrada_programada": "Entrada programada",
     "entregada": "Entregada",
@@ -17154,19 +17259,36 @@ _REEMPLAZOS_REQUIRED_COLUMNS = {
 
 def _reemplazo_fase_normalizada(reemplazo: Reemplazo | None) -> str:
     fase = str(getattr(reemplazo, "fase", "") or "").strip().lower()
+    if fase == "seleccionada":
+        return "preseleccionada"
+    if fase == "coordinacion":
+        return "coordinando_entrada"
     if fase in _REEMPLAZO_FASES:
         return fase
     if getattr(reemplazo, "fecha_fin_reemplazo", None):
         return "cerrado"
     if getattr(reemplazo, "candidata_new_id", None):
-        return "seleccionada"
+        return "preseleccionada"
     return "busqueda" if getattr(reemplazo, "fecha_inicio_reemplazo", None) else "reportado"
 
 
 def _reemplazo_set_fase(reemplazo: Reemplazo, fase: str) -> None:
     fase_norm = str(fase or "").strip().lower()
+    if fase_norm == "seleccionada":
+        fase_norm = "preseleccionada"
+    elif fase_norm == "coordinacion":
+        fase_norm = "coordinando_entrada"
     if fase_norm in _REEMPLAZO_FASES:
         reemplazo.fase = fase_norm
+
+
+def _reemplazo_can_close_success(reemplazo: Reemplazo | None) -> bool:
+    fase = _reemplazo_fase_normalizada(reemplazo)
+    if fase != "entregada":
+        return False
+    if not getattr(reemplazo, "fecha_entrada_programada", None):
+        return False
+    return bool(getattr(reemplazo, "candidata_new_id", None))
 
 
 def _reemplazos_schema_check() -> tuple[bool, list[str]]:
@@ -17222,6 +17344,74 @@ def _reemplazo_alertas_activas(*, reemplazo: Reemplazo, now_dt: datetime | None 
         if not getattr(reemplazo, "seguimiento_7d_at", None) and entrega_anchor + timedelta(days=7) < now_dt:
             alerts.append("Seguimiento atrasado")
     return alerts
+
+
+def _reemplazo_timeline_operativo(reemplazo: Reemplazo) -> list[dict[str, str]]:
+    fase = _reemplazo_fase_normalizada(reemplazo)
+    resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
+    is_closed = bool(getattr(reemplazo, "fecha_fin_reemplazo", None)) or resultado in {
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+    }
+    sequence = [
+        ("reportado", "Reemplazo abierto", "Falta iniciar búsqueda activa de candidata."),
+        ("preseleccionada", "Candidata preseleccionada", "Falta enviar o confirmar candidata con cliente."),
+        ("pendiente_cliente", "Pendiente cliente", "Falta respuesta de aprobación del cliente."),
+        ("aprobada_cliente", "Aprobada por cliente", "Falta coordinar la entrada."),
+        ("coordinando_entrada", "Coordinación de entrada", "Falta programar fecha de entrada."),
+        ("entrada_programada", "Entrada programada", "Falta confirmar que la candidata entró."),
+        ("entregada", "Entrega confirmada", "Entrega confirmada. Falta cerrar reemplazo."),
+        ("cerrado", "Reemplazo cerrado", "Reemplazo finalizado."),
+    ]
+    step_index = {key: idx for idx, (key, _, _) in enumerate(sequence)}
+    current_idx = step_index.get(fase, 0)
+    if fase == "busqueda":
+        current_idx = 0
+    if is_closed:
+        current_idx = step_index["cerrado"]
+
+    responsable = getattr(getattr(reemplazo, "responsable", None), "username", None)
+    fecha_inicio = getattr(reemplazo, "fecha_inicio_reemplazo", None)
+    fecha_entrada = getattr(reemplazo, "fecha_entrada_programada", None)
+    fecha_fin = getattr(reemplazo, "fecha_fin_reemplazo", None)
+    first_future_marked = False
+    items: list[dict[str, str]] = []
+    for idx, (key, label, note) in enumerate(sequence):
+        if is_closed and key == "cerrado":
+            status = "actual"
+        elif idx < current_idx:
+            status = "completado"
+        elif idx == current_idx:
+            status = "actual"
+        elif not first_future_marked:
+            status = "pendiente"
+            first_future_marked = True
+        else:
+            status = "bloqueado"
+
+        fecha = ""
+        if key == "reportado":
+            anchor = fecha_inicio or getattr(reemplazo, "created_at", None) or getattr(reemplazo, "fecha_fallo", None)
+            fecha = to_rd(anchor).strftime("%d/%m/%Y %H:%M") if anchor else ""
+        elif key == "entrada_programada" and fecha_entrada:
+            fecha = to_rd(fecha_entrada).strftime("%d/%m/%Y %H:%M")
+        elif key == "cerrado" and fecha_fin:
+            fecha = to_rd(fecha_fin).strftime("%d/%m/%Y %H:%M")
+
+        items.append(
+            {
+                "key": key,
+                "label": label,
+                "status": status,
+                "fecha": fecha,
+                "responsable": responsable or "",
+                "nota": note,
+            }
+        )
+    return items
 
 
 def _cliente_riesgo_desde_reemplazos(cliente_id: int) -> dict[str, int | str]:
@@ -17679,7 +17869,7 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
 
     try:
         reemplazo.candidata_new_id = int(candidata.fila)
-        _reemplazo_set_fase(reemplazo, "seleccionada")
+        _reemplazo_set_fase(reemplazo, "preseleccionada")
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CANDIDATA_SELECCIONADA",
             aggregate_type="Solicitud",
@@ -17744,9 +17934,30 @@ def reemplazo_avanzar_fase_panel(reemplazo_id):
     now_dt = utc_now_naive()
     if fase == "busqueda":
         _reemplazo_set_fase(r, "busqueda")
-    elif fase == "coordinacion":
-        _reemplazo_set_fase(r, "coordinacion")
+    elif fase == "preseleccionada":
+        if not getattr(r, "candidata_new_id", None):
+            flash("Debes seleccionar una candidata nueva antes de marcar preseleccionada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        _reemplazo_set_fase(r, "preseleccionada")
+    elif fase == "pendiente_cliente":
+        if not getattr(r, "candidata_new_id", None):
+            flash("Debes seleccionar una candidata nueva antes de marcar pendiente cliente.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        _reemplazo_set_fase(r, "pendiente_cliente")
+    elif fase == "aprobada_cliente":
+        if not getattr(r, "candidata_new_id", None):
+            flash("Debes seleccionar una candidata nueva antes de marcar aprobada por cliente.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        _reemplazo_set_fase(r, "aprobada_cliente")
+    elif fase in {"coordinacion", "coordinando_entrada"}:
+        if not getattr(r, "candidata_new_id", None):
+            flash("Debes seleccionar una candidata nueva antes de coordinar entrada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        _reemplazo_set_fase(r, "coordinando_entrada")
     elif fase == "entrada_programada":
+        if not getattr(r, "candidata_new_id", None):
+            flash("Debes seleccionar una candidata nueva antes de programar entrada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         fecha_raw = (request.form.get("fecha_entrada_programada") or "").strip()
         if not fecha_raw:
             flash("Debes indicar la fecha de entrada programada.", "warning")
@@ -17758,11 +17969,23 @@ def reemplazo_avanzar_fase_panel(reemplazo_id):
             return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         _reemplazo_set_fase(r, "entrada_programada")
     elif fase == "entregada":
+        if not getattr(r, "candidata_new_id", None):
+            flash("No puedes marcar entregada sin candidata nueva asignada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
+        if not getattr(r, "fecha_entrada_programada", None):
+            flash("No puedes marcar entregada sin fecha de entrada programada.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         _reemplazo_set_fase(r, "entregada")
     elif fase == "seguimiento_24h":
+        if _reemplazo_fase_normalizada(r) not in {"entregada", "seguimiento_24h", "seguimiento_7d", "cerrado"}:
+            flash("Debes confirmar entrega antes de registrar seguimiento 24h.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         r.seguimiento_24h_at = now_dt
         _reemplazo_set_fase(r, "seguimiento_24h")
     elif fase == "seguimiento_7d":
+        if _reemplazo_fase_normalizada(r) not in {"entregada", "seguimiento_24h", "seguimiento_7d", "cerrado"}:
+            flash("Debes confirmar entrega antes de registrar seguimiento 7 días.", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         r.seguimiento_7d_at = now_dt
         _reemplazo_set_fase(r, "seguimiento_7d")
     db.session.commit()
@@ -17796,6 +18019,9 @@ def reemplazo_cerrar_panel(reemplazo_id):
         return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
     resultado_final = (request.form.get("resultado_final") or "").strip().lower()
     if resultado_final in {"exitoso", "cerrado_exitoso"}:
+        if not _reemplazo_can_close_success(r):
+            flash("Solo puedes cerrar exitoso cuando la entrega esté confirmada (fase entregada).", "warning")
+            return redirect(url_for("admin.reemplazo_detail", reemplazo_id=r.id))
         return cerrar_reemplazo_asignando(int(s.id), int(r.id))
     if resultado_final not in {"fallido", "cerrado_fallido"}:
         flash("Resultado final inválido.", "warning")
@@ -17987,7 +18213,11 @@ def reemplazos_dashboard():
         if len(motivo_full) > 47:
             motivo_compacto = f"{motivo_compacto}..."
         indicador_sin_candidata = bool(getattr(row, "candidata_new_id", None) is None and getattr(row, "fecha_fin_reemplazo", None) is None)
-        indicador_esperando_cliente = bool(fase_operativa == "Coordinando entrada")
+        fase_norm = _reemplazo_fase_normalizada(row)
+        indicador_esperando_cliente = bool(fase_norm in {"pendiente_cliente", "aprobada_cliente", "coordinando_entrada"})
+        fase_tooltip = ""
+        if fase_norm == "preseleccionada":
+            fase_tooltip = "Candidata elegida internamente; falta aprobación/coordinación."
         indicador_critica = bool(prioridad == "critica")
         indicador_seguimiento_vencido = "Seguimiento atrasado" in set(alertas_activas)
         publicacion_missing_fields = _reemplazo_publicacion_missing_fields(sol)
@@ -17999,6 +18229,7 @@ def reemplazos_dashboard():
                 "seguimiento": seg,
                 "estado_operativo": estado_operativo,
                 "fase_operativa": fase_operativa,
+                "fase_operativa_tooltip": fase_tooltip,
                 "prioridad": prioridad,
                 "alertas_activas": sorted(set(alertas_activas)),
                 "cliente_riesgo": cliente_riesgo,
@@ -18041,7 +18272,7 @@ def reemplazos_dashboard():
     metric_criticos = sum(1 for c in cards if c["prioridad"] == "critica")
     metric_vencidos = sum(1 for c in cards if "Seguimiento atrasado" in set(c.get("alertas_activas") or []))
     metric_sin_candidata_nueva = sum(1 for c in activos_rows if getattr(c["reemplazo"], "candidata_new_id", None) is None)
-    metric_esperando_cliente = sum(1 for c in activos_rows if c["estado_operativo"] == "Coordinando entrada")
+    metric_esperando_cliente = sum(1 for c in activos_rows if c.get("indicador_esperando_cliente"))
     metric_sin_responsable = sum(
         1 for c in activos_rows
         if not (
@@ -18136,6 +18367,7 @@ def reemplazo_detail(reemplazo_id):
     publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
     resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
     has_new = bool(getattr(reemplazo, "candidata_new_id", None))
+    fase_norm = _reemplazo_fase_normalizada(reemplazo)
     is_closed = bool(getattr(reemplazo, "fecha_fin_reemplazo", None)) or resultado in {
         "cerrado",
         "cerrado_exitoso",
@@ -18175,12 +18407,69 @@ def reemplazo_detail(reemplazo_id):
         cta_href = url_for("admin.reemplazos_dashboard")
         cta_style = "btn-outline-secondary"
     elif has_new and not is_closed:
-        resumen_humano = "✅ Cliente ya seleccionó nueva candidata. Pendiente coordinar entrada."
-        proximo_paso = "Próximo paso recomendado: • Confirmar entrada de la nueva candidata."
-        cta_label = "Finalizar reemplazo con esta candidata"
-        cta_href = "#"
-        cta_style = "btn-warning"
-        cta_action = "finalize_direct"
+        if fase_norm == "preseleccionada":
+            resumen_humano = "ℹ️ Hay una candidata preseleccionada internamente. Aún falta aprobación del cliente o coordinación de entrada."
+            proximo_paso = "Próximo paso recomendado: • Marcar pendiente cliente."
+            cta_label = "Marcar pendiente cliente"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "pendiente_cliente"
+            cta_requires_datetime = False
+        elif fase_norm == "pendiente_cliente":
+            resumen_humano = "⏳ Candidata enviada. Estamos pendientes de aprobación del cliente."
+            proximo_paso = "Próximo paso recomendado: • Marcar aprobada por cliente cuando confirmen."
+            cta_label = "Marcar aprobada por cliente"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "aprobada_cliente"
+            cta_requires_datetime = False
+        elif fase_norm == "aprobada_cliente":
+            resumen_humano = "✅ Cliente aprobó candidata. Falta coordinar la entrada."
+            proximo_paso = "Próximo paso recomendado: • Coordinar entrada."
+            cta_label = "Coordinar entrada"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "coordinando_entrada"
+            cta_requires_datetime = False
+        elif fase_norm == "coordinando_entrada":
+            resumen_humano = "📅 Se está coordinando la fecha de entrada."
+            proximo_paso = "Próximo paso recomendado: • Programar entrada."
+            cta_label = "Programar entrada"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "entrada_programada"
+            cta_requires_datetime = True
+        elif fase_norm == "entrada_programada":
+            resumen_humano = "📌 Entrada programada. Falta confirmar entrega efectiva."
+            proximo_paso = "Próximo paso recomendado: • Confirmar entrega."
+            cta_label = "Confirmar entrega"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "entregada"
+            cta_requires_datetime = False
+        elif fase_norm == "entregada":
+            resumen_humano = "✅ Entrega confirmada. El reemplazo ya puede cerrarse exitosamente."
+            proximo_paso = "Próximo paso recomendado: • Cerrar reemplazo."
+            cta_label = "Cerrar reemplazo"
+            cta_href = "#"
+            cta_style = "btn-success"
+            cta_action = "finalize_direct"
+            cta_fase_value = ""
+            cta_requires_datetime = False
+        else:
+            resumen_humano = "ℹ️ Hay una candidata asignada y el reemplazo sigue activo."
+            proximo_paso = "Próximo paso recomendado: • Avanzar la fase operativa."
+            cta_label = "Marcar pendiente cliente"
+            cta_href = "#"
+            cta_style = "btn-warning"
+            cta_action = "advance_fase"
+            cta_fase_value = "pendiente_cliente"
+            cta_requires_datetime = False
     else:
         resumen_humano = "⚠️ La candidata anterior no se presentó. Actualmente estamos buscando una nueva candidata para este cliente."
         proximo_paso = "Próximo paso recomendado: • Enviar nuevas candidatas al cliente."
@@ -18191,8 +18480,12 @@ def reemplazo_detail(reemplazo_id):
 
     if resultado in {"cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "cancelado"}:
         cta_action = "navigate"
+        cta_fase_value = ""
+        cta_requires_datetime = False
     elif not has_new and not is_closed:
         cta_action = "open_search_panel"
+        cta_fase_value = ""
+        cta_requires_datetime = False
 
     funciones_humanas = []
     if solicitud is not None:
@@ -18275,7 +18568,11 @@ def reemplazo_detail(reemplazo_id):
         cta_href=cta_href,
         cta_style=cta_style,
         cta_action=cta_action,
+        cta_fase_value=cta_fase_value,
+        cta_requires_datetime=cta_requires_datetime,
+        fase_norm=fase_norm,
         funciones_humanas=funciones_humanas,
+        timeline_operativo=_reemplazo_timeline_operativo(reemplazo),
         timeline_humano=timeline_humano,
         logs=logs,
         outbox_events=outbox,
@@ -20758,9 +21055,10 @@ def _admin_build_order_text_for_copiar(
     if modalidad_line:
         info_lines.append(modalidad_line)
     if edad_req:
-        info_lines.append("")
+        if modalidad_line:
+            info_lines.append("")
         info_lines.append(f"Edad: {edad_req}")
-    info_lines.extend(["", "Dominicana", "Que sepa leer y escribir"])
+    info_lines.extend(["Dominicana", "Que sepa leer y escribir"])
     if experiencia_it:
         info_lines.append(f"Experiencia en: {experiencia_it}")
     if horario:
@@ -20825,8 +21123,7 @@ def _format_horario_block_for_copy(horario_raw: str) -> list[str]:
         sab_out = _s(m.group(3))[:60]
         if h_in and h_out and sab_out:
             return [
-                "Horario:",
-                f"Lunes a viernes: {h_in} - {h_out}",
+                f"Horario: Lunes a viernes: {h_in} - {h_out}",
                 f"Sábado: {h_in} - {sab_out}",
             ]
 
@@ -20842,8 +21139,7 @@ def _format_horario_block_for_copy(horario_raw: str) -> list[str]:
         h_out = _s(m_legacy.group(3))[:60]
         if h_in and h_out and sab_out:
             return [
-                "Horario:",
-                f"Lunes a viernes: {h_in} - {h_out}",
+                f"Horario: Lunes a viernes: {h_in} - {h_out}",
                 f"Sábado: {h_in} - {sab_out}",
             ]
 
@@ -21652,6 +21948,7 @@ def _maybe_solicitud_operativa_core_async_response(
         today_rd=rd_today(),
     )
     solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=solicitud.cliente_id, id=solicitud.id)
+    payment_ctx = _build_payment_summary_ctx(solicitud)
     html = render_template(
         'admin/_solicitud_operativa_core_region.html',
         solicitud=solicitud,
@@ -21664,6 +21961,7 @@ def _maybe_solicitud_operativa_core_async_response(
         ),
         manual_followup=manual_followup,
         solicitud_detail_url=solicitud_detail_url,
+        **payment_ctx,
     )
     payload = _admin_async_payload(
         success=bool(ok),
@@ -22265,8 +22563,20 @@ def marcar_pagada_desde_copiar(id):
         s.candidata_id = cand.fila
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
         _mark_candidata_estado(cand, "trabajando")
-        s.monto_pagado = _parse_money_to_decimal_str(monto_raw)
-        _set_solicitud_estado(s, 'pagada')
+        monto_pago = Decimal(_parse_money_to_decimal_str(monto_raw))
+        crear_pago_solicitud(
+            solicitud_id=int(s.id),
+            cliente_id=int(s.cliente_id),
+            monto=monto_pago,
+            tipo_pago="pago",
+            metodo_pago="marcar_pagada_desde_copiar",
+            referencia=f"solicitud:{s.id}",
+            registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
+            origen="marcar_pagada_desde_copiar",
+            origen_id=f"marcar_pagada_desde_copiar:{s.id}:{int(getattr(cand, 'fila', 0) or 0)}",
+        )
+        estado_pago = recalcular_estado_pago_solicitud(s)
+        _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_CANDIDATA_ASIGNADA",
             aggregate_type="Solicitud",
@@ -22276,7 +22586,7 @@ def marcar_pagada_desde_copiar(id):
                 "solicitud_id": int(s.id),
                 "candidata_id": int(cand.fila),
                 "from": estado_actual,
-                "to": "pagada",
+                "to": estado_pago,
                 "monto_pagado": s.monto_pagado,
             },
         )
@@ -22301,7 +22611,7 @@ def marcar_pagada_desde_copiar(id):
             entity_type="Solicitud",
             entity_id=s.id,
             summary=f"Solicitud marcada pagada desde copiar/publicar: {s.codigo_solicitud or s.id}",
-            changes={"estado": {"from": estado_actual, "to": "pagada"}},
+            changes={"estado": {"from": estado_actual, "to": estado_pago}},
             metadata={"candidata_id": cand.fila, "monto_pagado": s.monto_pagado},
         )
         return _paid_response(

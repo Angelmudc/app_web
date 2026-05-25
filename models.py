@@ -1245,6 +1245,12 @@ class Solicitud(db.Model):
                                 cascade="all, delete-orphan",
                                 lazy="dynamic",
                              )
+    pagos = db.relationship(
+                                "PagoSolicitud",
+                                back_populates="solicitud",
+                                cascade="all, delete-orphan",
+                                lazy="dynamic",
+                             )
 
     # Fechas de publicación y modificación
     last_copiado_at        = db.Column(db.DateTime, nullable=True)
@@ -1463,6 +1469,28 @@ class Solicitud(db.Model):
         comment="Ruta/filename del PDF generado con el informe de compatibilidad."
     )
 
+class PagoSolicitud(db.Model):
+    __tablename__ = "pagos_solicitud"
+
+    id = db.Column(db.Integer, primary_key=True)
+    solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=False, index=True)
+    cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False, index=True)
+    monto = db.Column(db.Numeric(12, 2), nullable=False)
+    tipo_pago = db.Column(db.String(30), nullable=False, default="pago")
+    metodo_pago = db.Column(db.String(50), nullable=True)
+    referencia = db.Column(db.String(120), nullable=True)
+    nota = db.Column(db.Text, nullable=True)
+    registrado_por_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, onupdate=utc_now_naive)
+    anulado_at = db.Column(db.DateTime, nullable=True, index=True)
+    anulado_por_id = db.Column(db.Integer, db.ForeignKey("staff_users.id"), nullable=True)
+    motivo_anulacion = db.Column(db.Text, nullable=True)
+    origen = db.Column(db.String(50), nullable=True)
+    origen_id = db.Column(db.String(120), nullable=True)
+
+    solicitud = db.relationship("Solicitud", back_populates="pagos")
+    cliente = db.relationship("Cliente")
 
 
 class Reemplazo(db.Model):

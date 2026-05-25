@@ -10,11 +10,14 @@ from models import (
     Candidata,
     Cliente,
     DomainOutbox,
+    PagoSolicitud,
     RequestIdempotencyKey,
+    SolicitudCandidata,
     Solicitud,
     StaffAuditLog,
     StaffUser,
 )
+from services.payment_ledger import calcular_saldo_pendiente, calcular_total_pagado
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -26,6 +29,8 @@ def _ensure_core_tables() -> None:
             Cliente,
             Candidata,
             Solicitud,
+            SolicitudCandidata,
+            PagoSolicitud,
             RequestIdempotencyKey,
             DomainOutbox,
         ],
@@ -71,14 +76,15 @@ def _seed_payment_fixture() -> tuple[int, int, int]:
         cliente_id=int(cliente.id),
         codigo_solicitud=f"SOL-T1P-{token}",
         estado="activa",
-        sueldo="12000",
+        tipo_plan="basico",
+        abono="1750.00",
     )
     db.session.add(solicitud)
     db.session.commit()
     return int(cliente.id), int(candidata.fila), int(solicitud.id)
 
 
-def test_t1a_happy_path_activa_espera_pago_y_pago():
+def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -95,31 +101,12 @@ def test_t1a_happy_path_activa_espera_pago_y_pago():
         assert solicitud is not None
         v1 = int(solicitud.row_version or 0)
 
-    resp_espera = client.post(
-        f"/admin/solicitudes/{solicitud_id}/poner_espera_pago",
-        data={
-            "row_version": str(v1),
-            "idempotency_key": f"t1a-espera-{secrets.token_hex(4)}",
-            "_async_target": "#solicitudOperativaCoreAsyncRegion",
-        },
-        headers=_async_headers(),
-        follow_redirects=False,
-    )
-    assert resp_espera.status_code == 200
-    assert (resp_espera.get_json() or {}).get("success") is True
-
-    with flask_app.app_context():
-        solicitud_mid = Solicitud.query.get(solicitud_id)
-        assert solicitud_mid is not None
-        assert solicitud_mid.estado == "espera_pago"
-        v2 = int(solicitud_mid.row_version or 0)
-
     resp_pago = client.post(
         f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
         data={
             "candidata_id": str(candidata_id),
-            "monto_pagado": "3000",
-            "row_version": str(v2),
+            "monto_pagado": "3500",
+            "row_version": str(v1),
             "idempotency_key": f"t1a-pago-{secrets.token_hex(4)}",
             "_async_target": "#registrarPagoAsyncRegion",
         },
@@ -131,40 +118,70 @@ def test_t1a_happy_path_activa_espera_pago_y_pago():
 
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
-        candidata_end = Candidata.query.get(candidata_id)
         assert solicitud_end is not None
-        assert candidata_end is not None
-
         assert solicitud_end.estado == "pagada"
-        assert int(solicitud_end.candidata_id or 0) == candidata_id
-        assert (candidata_end.estado or "").strip().lower() == "trabajando"
+        assert str(solicitud_end.monto_pagado) == "3500.00"
+        movimientos = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).all()
+        assert len(movimientos) == 1
 
-        pago_outbox = (
-            DomainOutbox.query
-            .filter_by(aggregate_type="Solicitud", aggregate_id=str(solicitud_id), event_type="SOLICITUD_PAGO_REGISTRADO")
-            .order_by(DomainOutbox.id.desc())
-            .first()
+
+def test_t1_abono_cuenta_como_pago_parcial_en_ledger():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="1750.00",
+                tipo_pago="abono",
+                origen="admin_manual",
+                origen_id=f"test-abono:{solicitud_id}",
+            )
         )
-        espera_outbox = (
-            DomainOutbox.query
-            .filter_by(aggregate_type="Solicitud", aggregate_id=str(solicitud_id), event_type="SOLICITUD_ESTADO_CAMBIADO")
-            .order_by(DomainOutbox.id.desc())
-            .first()
+        db.session.commit()
+
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        total_pagado = calcular_total_pagado(solicitud_id)
+        saldo = calcular_saldo_pendiente(solicitud)
+        assert str(total_pagado) == "1750.00"
+        assert str(saldo) == "1750.00"
+
+
+def test_t1_multiples_pagos_no_sobrescribe():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        db.session.add_all(
+            [
+                PagoSolicitud(
+                    solicitud_id=solicitud_id,
+                    cliente_id=cliente_id,
+                    monto="1000.00",
+                    tipo_pago="abono",
+                    origen="admin_manual",
+                    origen_id=f"test-abono-1:{solicitud_id}",
+                ),
+                PagoSolicitud(
+                    solicitud_id=solicitud_id,
+                    cliente_id=cliente_id,
+                    monto="2500.00",
+                    tipo_pago="pago",
+                    origen="admin_manual",
+                    origen_id=f"test-pago-2:{solicitud_id}",
+                ),
+            ]
         )
-        assert pago_outbox is not None
-        assert espera_outbox is not None
+        db.session.commit()
 
-        idem_pago = (
-            RequestIdempotencyKey.query
-            .filter_by(scope="solicitud_pago", entity_type="Solicitud", entity_id=str(solicitud_id))
-            .order_by(RequestIdempotencyKey.id.desc())
-            .first()
-        )
-        assert idem_pago is not None
-        assert int(idem_pago.response_status or 0) == 200
+        total = calcular_total_pagado(solicitud_id)
+        movimientos = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).all()
+        assert str(total) == "3500.00"
+        assert len(movimientos) == 2
 
 
-def test_t1a_negativo_conflicto_row_version_en_espera_pago():
+def test_t1_marcar_pagada_desde_copiar_crea_movimiento():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -176,31 +193,40 @@ def test_t1a_negativo_conflicto_row_version_en_espera_pago():
     _login_admin(client)
 
     with flask_app.app_context():
-        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
-        solicitud = Solicitud.query.get(solicitud_id)
-        assert solicitud is not None
-        current_version = int(solicitud.row_version or 0)
-        before_outbox = DomainOutbox.query.filter_by(aggregate_id=str(solicitud_id)).count()
+        _cliente_id, candidata_id, solicitud_id = _seed_payment_fixture()
 
     resp = client.post(
-        f"/admin/solicitudes/{solicitud_id}/poner_espera_pago",
+        f"/admin/solicitudes/{solicitud_id}/marcar_pagada_desde_copiar",
         data={
-            "row_version": str(max(0, current_version - 1)),
-            "idempotency_key": f"t1a-conflict-{secrets.token_hex(4)}",
-            "_async_target": "#solicitudOperativaCoreAsyncRegion",
+            "candidata_id": str(candidata_id),
+            "monto_pagado": "3500",
+            "idempotency_key": f"t1a-mark-{secrets.token_hex(4)}",
         },
         headers=_async_headers(),
         follow_redirects=False,
     )
-
-    assert resp.status_code == 409
-    payload = resp.get_json() or {}
-    assert payload.get("success") is False
-    assert payload.get("error_code") == "conflict"
+    assert resp.status_code == 200
 
     with flask_app.app_context():
-        solicitud_end = Solicitud.query.get(solicitud_id)
-        assert solicitud_end is not None
-        assert solicitud_end.estado == "activa"
-        after_outbox = DomainOutbox.query.filter_by(aggregate_id=str(solicitud_id)).count()
-        assert after_outbox == before_outbox
+        movimientos = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).all()
+        assert len(movimientos) == 1
+        assert (movimientos[0].origen or "") == "marcar_pagada_desde_copiar"
+
+
+def test_t1_ui_detalle_muestra_resumen_pago():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Precio del plan" in html
+    assert "Total pagado" in html
+    assert "Saldo pendiente" in html
