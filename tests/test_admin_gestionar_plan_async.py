@@ -222,6 +222,20 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertIn("RD$ 3,500.00", html)
         self.assertIn("RD$ 1,750.00", html)
 
+    def test_mensaje_bloqueo_ciclo_actual_con_pagos(self):
+        solicitud = _solicitud_stub()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=False):
+                resp = self._invoke(
+                    data={"tipo_plan": "Premium", "manual_override": "0"},
+                    headers=self._async_headers(),
+                )
+        self.assertEqual(resp.status_code, 409)
+        data = resp.get_json()
+        self.assertFalse(data["success"])
+        self.assertIn("Este ciclo ya tiene pagos registrados", data["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

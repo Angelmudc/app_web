@@ -11922,6 +11922,10 @@ def eliminar_solicitud_admin(cliente_id, id):
 def gestionar_plan(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminGestionPlanForm(obj=s)
+    ensure_current_payment_cycle(s, motivo="plan_init")
+    estado_norm = (getattr(s, "estado", "") or "").strip().lower()
+    if estado_norm in {"activa", "proceso", "espera_pago"}:
+        ensure_reactivation_cycle(s, motivo="gestionar_plan_reactivacion")
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
@@ -12046,7 +12050,8 @@ def gestionar_plan(cliente_id, id):
             plan_price = get_plan_price(s.tipo_plan)
             s.abono = format_money_payment(required_deposit)
             ensure_current_payment_cycle(s, motivo="plan_init")
-            cycle_had_payments = Decimal(get_payment_summary(s)["total_pagado"]) > Decimal("0.00")
+            if estado_norm in {"activa", "proceso", "espera_pago"}:
+                ensure_reactivation_cycle(s, motivo="gestionar_plan_reactivacion_post")
 
             if manual_override:
                 manual_reason = (request.form.get("manual_reason") or "").strip()
@@ -12112,17 +12117,14 @@ def gestionar_plan(cliente_id, id):
                 if _admin_async_wants_json():
                     return _async_plan_response(
                         ok=False,
-                        message='El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.',
+                        message='Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.',
                         category='warning',
                         http_status=409,
                         error_code='conflict',
-                        async_feedback={"message": "El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.", "category": "warning"},
+                        async_feedback={"message": "Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.", "category": "warning"},
                     )
-                flash('El ciclo actual ya tiene pagos. Usa override administrativo para cambiar el plan.', 'warning')
+                flash('Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.', 'warning')
                 return _render_plan_page()
-
-            if manual_override and cycle_had_payments:
-                ensure_reactivation_cycle(s, motivo="plan_manual_override")
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
