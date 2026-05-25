@@ -1,6 +1,7 @@
 {# Fallback seguro: si no llega cliente_id desde la ruta, usar el de la solicitud #}
 {% set _cliente_id = (cliente_id | default(None)) or (solicitud.cliente_id if solicitud is defined and solicitud is not none else none) %}
 {% set _registrar_pago_url = url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) %}
+{% set _selected_payment_mode = (request.form.get('payment_mode') if request and request.method == 'POST' else '') or '' %}
 
 <div class="card shadow-sm">
   <div class="card-body p-4 p-md-5">
@@ -122,26 +123,26 @@
             {% endif %}
             {% if payment_summary["total_pagado"] <= 0 %}
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="payment_mode" id="mode_abono" value="auto_abono" checked>
+                <input class="form-check-input" type="radio" name="payment_mode" id="mode_abono" value="auto_abono" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_abono' %}checked{% endif %}{% else %}checked{% endif %}>
                 <label class="form-check-label" for="mode_abono">Registrar abono RD$ {{ "{:,.2f}".format(payment_summary["abono_requerido"]|float) }}</label>
               </div>
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="payment_mode" id="mode_full" value="auto_completo">
+                <input class="form-check-input" type="radio" name="payment_mode" id="mode_full" value="auto_completo" {% if _selected_payment_mode == 'auto_completo' %}checked{% endif %}>
                 <label class="form-check-label" for="mode_full">Registrar pago completo RD$ {{ "{:,.2f}".format(payment_summary["precio_plan"]|float) }}</label>
               </div>
             {% elif payment_summary["total_pagado"] < payment_summary["precio_plan"] %}
               <div class="form-check">
-                <input class="form-check-input" type="radio" name="payment_mode" id="mode_saldo" value="auto_saldo" checked>
+                <input class="form-check-input" type="radio" name="payment_mode" id="mode_saldo" value="auto_saldo" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_saldo' %}checked{% endif %}{% else %}checked{% endif %}>
                 <label class="form-check-label" for="mode_saldo">Registrar saldo RD$ {{ "{:,.2f}".format(payment_summary["saldo_pendiente"]|float) }}</label>
               </div>
             {% else %}
               <div class="small text-success mb-2">Esta solicitud ya está pagada.</div>
             {% endif %}
             <div class="form-check mt-2">
-              <input class="form-check-input" type="radio" name="payment_mode" id="mode_manual" value="manual">
+              <input class="form-check-input" type="radio" name="payment_mode" id="mode_manual" value="manual" {% if _selected_payment_mode == 'manual' %}checked{% endif %}>
               <label class="form-check-label" for="mode_manual">Pago manual</label>
             </div>
-            <div class="mt-2">
+            <div id="manual-payment-fields" class="collapse{% if _selected_payment_mode == 'manual' %} show{% endif %} mt-2">
               <div class="input-group mb-2">
                 <span class="input-group-text">RD$</span>
                 {{ form.monto_pagado(class="form-control", placeholder="Monto manual (solo excepción)") }}

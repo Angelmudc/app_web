@@ -1459,12 +1459,38 @@
     document.addEventListener("admin:content-updated", (ev) => {
       const container = ev && ev.detail ? ev.detail.container : null;
       syncCollapseToggleLabels(container || document);
+      syncRegistrarPagoManualFields(container || document);
     });
+    document.addEventListener("change", onRegistrarPagoModeChange, true);
+  }
+
+  function resolveRegistrarPagoRoot(input) {
+    if (!input || !input.closest) return null;
+    return input.closest("#registrarPagoAsyncRegion") || input.closest("#registrarPagoAsyncScope") || document;
+  }
+
+  function syncRegistrarPagoManualFields(root) {
+    const host = root && root.querySelectorAll ? root : document;
+    const groups = host.querySelectorAll ? host.querySelectorAll("#manual-payment-fields") : [];
+    groups.forEach((panel) => {
+      const scope = panel.closest("form") || panel.parentElement || document;
+      const selected = scope.querySelector("input[name='payment_mode']:checked");
+      const isManual = Boolean(selected && String(selected.value || "").toLowerCase() === "manual");
+      panel.classList.toggle("show", isManual);
+    });
+  }
+
+  function onRegistrarPagoModeChange(ev) {
+    const input = ev && ev.target ? ev.target : null;
+    if (!input || String(input.name || "") !== "payment_mode") return;
+    const root = resolveRegistrarPagoRoot(input);
+    syncRegistrarPagoManualFields(root || document);
   }
 
   function init() {
     bindSecondaryListeners();
     syncCollapseToggleLabels(document);
+    syncRegistrarPagoManualFields(document);
     bindReemplazoModalGuards();
   }
 

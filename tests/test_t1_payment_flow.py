@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 
 from app import app as flask_app
 from config_app import db
@@ -306,6 +307,8 @@ def test_t1_ui_registrar_pago_no_muestra_monto_manual_como_principal():
     assert "Pago sugerido automático" in html
     assert "Registrar abono" in html
     assert "Registrar pago completo RD$ 3,500.00" in html
+    assert 'id="manual-payment-fields"' in html
+    assert 'id="manual-payment-fields" class="collapse mt-2"' in html
     assert "placeholder=\"Ej. 10000\"" not in html
 
 
@@ -420,3 +423,47 @@ def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
         assert str(summary["total_pagado"]) == "2500.00"
         assert str(summary["saldo_pendiente"]) == "2500.00"
         assert summary["legacy_abono_fallback"] is True
+
+
+def test_t1_ui_pago_manual_muestra_bloque_manual_y_al_volver_auto_lo_oculta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        v1 = int(solicitud.row_version or 0)
+    _login_admin(client)
+
+    resp_manual = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "manual",
+            "monto_pagado": "1000",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-manual-ux-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    payload_manual = resp_manual.get_json() or {}
+    assert payload_manual.get("success") is False
+    html_manual = payload_manual.get("replace_html") or ""
+    assert 'id="mode_manual" value="manual" checked' in html_manual
+    assert 'id="manual-payment-fields" class="collapse show mt-2"' in html_manual
+
+    resp_auto = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html_auto = resp_auto.get_data(as_text=True)
+    assert 'id="manual-payment-fields" class="collapse mt-2"' in html_auto
+
+
+def test_t1_js_admin_async_controla_toggle_de_campos_manual_pago():
+    js_txt = Path("static/js/core/admin_async.js").read_text(encoding="utf-8")
+    assert "function syncRegistrarPagoManualFields(root)" in js_txt
+    assert "panel.classList.toggle(\"show\", isManual);" in js_txt
+    assert "document.addEventListener(\"change\", onRegistrarPagoModeChange, true);" in js_txt
+    assert "syncRegistrarPagoManualFields(container || document);" in js_txt
