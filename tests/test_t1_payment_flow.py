@@ -17,7 +17,7 @@ from models import (
     StaffAuditLog,
     StaffUser,
 )
-from services.payment_ledger import calcular_saldo_pendiente, calcular_total_pagado
+from services.payment_ledger import calcular_saldo_pendiente, calcular_total_pagado, get_payment_summary
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -51,7 +51,7 @@ def _login_admin(client):
     assert resp.status_code in (302, 303)
 
 
-def _seed_payment_fixture() -> tuple[int, int, int]:
+def _seed_payment_fixture(*, tipo_plan: str = "basico", abono: str = "1750.00") -> tuple[int, int, int]:
     token = secrets.token_hex(6)
 
     cliente = Cliente(
@@ -76,8 +76,8 @@ def _seed_payment_fixture() -> tuple[int, int, int]:
         cliente_id=int(cliente.id),
         codigo_solicitud=f"SOL-T1P-{token}",
         estado="activa",
-        tipo_plan="basico",
-        abono="1750.00",
+        tipo_plan=tipo_plan,
+        abono=abono,
     )
     db.session.add(solicitud)
     db.session.commit()
@@ -96,7 +96,7 @@ def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
     _login_admin(client)
 
     with flask_app.app_context():
-        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         v1 = int(solicitud.row_version or 0)
@@ -105,6 +105,7 @@ def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
         f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
         data={
             "candidata_id": str(candidata_id),
+            "payment_mode": "auto_completo",
             "monto_pagado": "3500",
             "row_version": str(v1),
             "idempotency_key": f"t1a-pago-{secrets.token_hex(4)}",
@@ -128,7 +129,7 @@ def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
 def test_t1_abono_cuenta_como_pago_parcial_en_ledger():
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
         db.session.add(
             PagoSolicitud(
                 solicitud_id=solicitud_id,
@@ -152,7 +153,7 @@ def test_t1_abono_cuenta_como_pago_parcial_en_ledger():
 def test_t1_multiples_pagos_no_sobrescribe():
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
         db.session.add_all(
             [
                 PagoSolicitud(
@@ -221,7 +222,7 @@ def test_t1_ui_detalle_muestra_resumen_pago():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
 
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}", follow_redirects=False)
@@ -298,7 +299,7 @@ def test_t1_ui_registrar_pago_no_muestra_monto_manual_como_principal():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(abono="0.00")
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
     html = resp.get_data(as_text=True)
@@ -335,3 +336,87 @@ def test_t1_ui_registrar_pago_despues_de_abono_muestra_solo_saldo_como_principal
     assert "Registrar saldo RD$ 1,750.00" in html
     assert "Registrar pago completo RD$ 3,500.00" not in html
     assert "Pago manual" in html
+
+
+def test_t1_ui_premium_con_abono_en_ledger_muestra_solo_saldo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="2500.00",
+                tipo_pago="abono",
+                origen="admin_manual",
+                origen_id=f"seed-premium-abono:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Total pagado: <strong>RD$ 2,500.00</strong>" in html
+    assert "Saldo pendiente: <strong>RD$ 2,500.00</strong>" in html
+    assert "Registrar saldo RD$ 2,500.00" in html
+    assert "Registrar abono RD$ 2,500.00" not in html
+    assert "Registrar pago completo RD$ 5,000.00" not in html
+
+
+def test_t1_ui_premium_sin_movimientos_muestra_abono_y_pago_completo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Registrar abono RD$ 2,500.00" in html
+    assert "Registrar pago completo RD$ 5,000.00" in html
+
+
+def test_t1_ui_premium_pagada_completa_no_muestra_botones_principales():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="5000.00",
+                tipo_pago="pago",
+                origen="admin_manual",
+                origen_id=f"seed-premium-paid:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Esta solicitud ya está pagada." in html
+    assert "Registrar abono RD$ 2,500.00" not in html
+    assert "Registrar pago completo RD$ 5,000.00" not in html
+    assert "Registrar saldo RD$ 2,500.00" not in html
+
+
+def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        summary = get_payment_summary(solicitud)
+        assert str(summary["total_pagado"]) == "2500.00"
+        assert str(summary["saldo_pendiente"]) == "2500.00"
+        assert summary["legacy_abono_fallback"] is True

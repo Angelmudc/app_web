@@ -17,6 +17,10 @@ def _to_decimal(value) -> Decimal:
     return Decimal(format_money(value))
 
 
+def _get_legacy_abono(solicitud) -> Decimal:
+    return _to_decimal(getattr(solicitud, "abono", None))
+
+
 def crear_pago_solicitud(
     *,
     solicitud_id: int,
@@ -103,8 +107,12 @@ def get_payment_summary(solicitud) -> dict[str, Decimal | str]:
     solicitud_id = int(getattr(solicitud, "id", 0) or 0)
     precio_plan = get_plan_price(getattr(solicitud, "tipo_plan", None))
     abono_requerido = get_required_deposit(getattr(solicitud, "tipo_plan", None))
-    total_pagado = calcular_total_pagado(solicitud_id)
-    total_abonado = calcular_total_abonado(solicitud_id)
+    total_pagado_ledger = calcular_total_pagado(solicitud_id)
+    total_abonado_ledger = calcular_total_abonado(solicitud_id)
+    legacy_abono = _get_legacy_abono(solicitud)
+    usa_legacy_abono = total_pagado_ledger <= Decimal("0.00") and legacy_abono > Decimal("0.00")
+    total_pagado = legacy_abono if usa_legacy_abono else total_pagado_ledger
+    total_abonado = legacy_abono if usa_legacy_abono else total_abonado_ledger
     saldo_pendiente = (precio_plan - total_pagado).quantize(Decimal("0.01"))
     if saldo_pendiente < Decimal("0.00"):
         saldo_pendiente = Decimal("0.00")
@@ -115,11 +123,17 @@ def get_payment_summary(solicitud) -> dict[str, Decimal | str]:
         "total_abonado": total_abonado,
         "saldo_pendiente": saldo_pendiente,
         "plan_norm": normalize_plan(getattr(solicitud, "tipo_plan", None)),
+        "legacy_abono_fallback": usa_legacy_abono,
+        "legacy_abono": legacy_abono,
     }
 
 
 def sync_solicitud_payment_cache(solicitud) -> Decimal:
     total_pagado = calcular_total_pagado(int(getattr(solicitud, "id", 0) or 0))
+    if total_pagado <= Decimal("0.00"):
+        legacy_abono = _get_legacy_abono(solicitud)
+        if legacy_abono > Decimal("0.00"):
+            total_pagado = legacy_abono
     solicitud.monto_pagado = format_money(total_pagado)
     return total_pagado
 
