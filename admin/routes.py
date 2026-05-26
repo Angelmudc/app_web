@@ -7177,7 +7177,7 @@ def matching_inteligente():
     solicitudes = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente))
-        .filter(Solicitud.estado.in_(("activa", "reemplazo", "proceso")))
+        .filter(Solicitud.estado.in_(("activa", "reemplazo", "proceso", "pendiente_servicio")))
         .order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
         .limit(80)
         .all()
@@ -8698,7 +8698,7 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
             )
             solicitud_ids = [int(r[0]) for r in rows]
             summary["solicitudes"] = len(solicitud_ids)
-            protected_states = ("pagada", "activa", "reemplazo", "espera_pago")
+            protected_states = ("pagada", "activa", "reemplazo", "espera_pago", "pendiente_servicio")
             summary["solicitudes_criticas"] = _safe_count(
                 db.session.query(func.count(Solicitud.id))
                 .filter(
@@ -8805,7 +8805,7 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
     blocked_issues: list[str] = []
     if int(summary.get("solicitudes_criticas") or 0) > 0:
         blocked_issues.append(
-            "El cliente tiene solicitudes activas/pagadas/reemplazo/espera de pago y no puede eliminarse."
+            "El cliente tiene solicitudes activas/pagadas/reemplazo/espera de pago/servicio pendiente y no puede eliminarse."
         )
     if solicitud_ids and _table_exists("clientes_notificaciones"):
         mismatch = _safe_count(
@@ -11385,7 +11385,7 @@ def _resolver_estado_post_reemplazo(solicitud) -> str:
 
 def _fallback_estado_operativo_post_reemplazo(reemplazo) -> str:
     estado_restore = (getattr(reemplazo, "estado_previo_solicitud", None) or "").strip().lower()
-    if estado_restore in {"pagada", "proceso", "activa", "espera_pago"}:
+    if estado_restore in {"pagada", "proceso", "activa", "espera_pago", "pendiente_servicio"}:
         return estado_restore
     return "activa"
 
@@ -11820,7 +11820,7 @@ def eliminar_solicitud_admin(cliente_id, id):
             )
 
     estado = (getattr(s, "estado", "") or "").strip().lower()
-    if estado in {"pagada", "activa", "reemplazo", "espera_pago"}:
+    if estado in {"pagada", "activa", "reemplazo", "espera_pago", "pendiente_servicio"}:
         msg = (
             "No puedes eliminar una solicitud activa/pagada/reemplazo/espera de pago. "
             "Usa el flujo operativo de cancelación."
@@ -11971,7 +11971,7 @@ def gestionar_plan(cliente_id, id):
     form = AdminGestionPlanForm(obj=s)
     ensure_current_payment_cycle(s, motivo="plan_init")
     estado_norm = (getattr(s, "estado", "") or "").strip().lower()
-    estado_operativo = estado_norm in {"activa", "proceso", "espera_pago", "reemplazo"}
+    estado_operativo = estado_norm in {"activa", "proceso", "espera_pago", "reemplazo", "pendiente_servicio"}
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
@@ -13910,7 +13910,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             precio_plan = Decimal("0.00")
             saldo_pendiente = Decimal("0.00")
         if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
-            return "pagada", "pagada_por_ciclo"
+            return "pendiente_servicio", "pagado_reemplazo_cancelado"
         if saldo_pendiente > Decimal("0.00") and precio_plan > Decimal("0.00"):
             return "espera_pago", "saldo_pendiente"
         return "espera_pago", "sin_ciclo_pagado"
@@ -13926,14 +13926,14 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             r.fecha_resolucion = utc_now_naive()
         if hasattr(r, "nota_adicional"):
             nota_prev = (getattr(r, "nota_adicional", "") or "").strip()
-            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Solicitud: pagada/espera_pago según ciclo · reemplazo cancelado · no resuelta"
+            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Solicitud: pendiente_servicio/espera_pago según ciclo · reemplazo cancelado · no resuelta"
             r.nota_adicional = f"{nota_prev}\n\n{cancel_note}".strip() if nota_prev else cancel_note
 
         estado_final, estado_rule = _resolve_estado_solicitud_cancelacion()
         _set_solicitud_estado(s, estado_final)
         if hasattr(s, "nota_cliente"):
             note_prev = (getattr(s, "nota_cliente", "") or "").strip()
-            marker = "[Operativo] Reemplazo cancelado / solicitud no resuelta."
+            marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
             if marker not in note_prev:
                 s.nota_cliente = f"{note_prev}\n{marker}".strip() if note_prev else marker
 
@@ -14731,6 +14731,8 @@ def _solicitudes_prioridad_next_step(*, estado_raw: str, is_stagnant: bool):
         if is_stagnant:
             return 'Destrabar reemplazo', 'El reemplazo ya cruza umbral urgente/crítico.', True
         return 'Gestionar reemplazo', 'Hay un reemplazo abierto en curso.', True
+    if estado == 'pendiente_servicio':
+        return 'Reactivar reemplazo', 'Cliente pagó y se debe servicio por reemplazo cancelado.', True
     if estado == 'pagada':
         return 'Cerrada', 'Proceso finalizado sin acción operativa pendiente.', False
     if estado == 'cancelada':
@@ -14771,6 +14773,15 @@ def _solicitud_list_primary_cta(
             ),
             "btn_class": "btn-warning text-dark",
             "help": "Pago pendiente para destrabar avance.",
+        }
+    if estado == "pendiente_servicio":
+        return {
+            "label": "Gestionar reemplazo",
+            "kind": "link",
+            "form_action": "",
+            "href": detail_url,
+            "btn_class": "btn-warning text-dark",
+            "help": "Servicio pendiente por reemplazo cancelado; reabrir sin cobrar de nuevo.",
         }
     if estado == "reemplazo":
         return {
@@ -14816,6 +14827,8 @@ def _solicitud_list_operativa_badge(*, estado_raw: str, priority_label: str, man
         return "Pago pendiente", "text-bg-warning"
     if estado == "reemplazo":
         return "Reemplazo en curso", "text-bg-warning"
+    if estado == "pendiente_servicio":
+        return "Servicio pendiente", "text-bg-warning"
     if estado == "proceso":
         return "Pendiente de activación", "text-bg-info"
     if estado == "pagada":
@@ -14897,7 +14910,7 @@ def _solicitud_operativa_signal(
             "hint": f"Lleva {days} días en espera de pago; conviene escalar registro/cobro hoy.",
             "rank": 85,
         }
-    if estado in {"activa", "proceso", "reemplazo"} and (stale_by_days or stale_by_activity):
+    if estado in {"activa", "proceso", "reemplazo", "pendiente_servicio"} and (stale_by_days or stale_by_activity):
         return {
             "code": "sin_movimiento",
             "label": "Sin movimiento",
@@ -14912,6 +14925,14 @@ def _solicitud_operativa_signal(
             "badge_class": "text-bg-warning",
             "hint": "Pendiente de registro de pago para continuar.",
             "rank": 70,
+        }
+    if estado == "pendiente_servicio":
+        return {
+            "code": "servicio_pendiente",
+            "label": "Servicio pendiente",
+            "badge_class": "text-bg-warning",
+            "hint": "Reemplazo cancelado; se debe resolver el servicio sin nuevo cobro.",
+            "rank": 65,
         }
     if estado == "reemplazo" and bool(has_active_reemplazo):
         return {
@@ -15586,7 +15607,7 @@ def _solicitudes_prioridad_context(*, include_rows: bool = True, include_filter_
     ahora = utc_now_naive()
     today_value = rd_today()
 
-    allowed_states = ['activa', 'reemplazo', 'proceso', 'espera_pago', 'pagada']
+    allowed_states = ['activa', 'reemplazo', 'proceso', 'espera_pago', 'pendiente_servicio', 'pagada']
     default_states = ['activa', 'reemplazo']
     allowed_priority = ['critica', 'urgente', 'atencion', 'normal']
     if estado not in allowed_states:
@@ -16143,7 +16164,7 @@ def listar_solicitudes():
             per_page = 25
         per_page = max(10, min(per_page, 200))
 
-        allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pagada', 'cancelada']
+        allowed_states = ['proceso', 'activa', 'reemplazo', 'espera_pago', 'pendiente_servicio', 'pagada', 'cancelada']
         row_order = (Solicitud.fecha_solicitud.desc(), Solicitud.id.desc())
         detail_attrs = []
         for attr in (
@@ -16960,11 +16981,12 @@ _NOTIF_TIPO_CANDIDATAS_ENVIADAS = "candidatas_enviadas"
 _NOTIF_TIPO_SOLICITUD_ESTADO = "solicitud_estado"
 _NOTIF_TIPO_CANDIDATA_SELECCIONADA = "candidata_seleccionada"
 _NOTIF_TIPO_REEMPLAZO_ACTIVADO = "reemplazo_activado"
-_NOTIF_ESTADOS_RELEVANTES = {"espera_pago", "reemplazo", "pagada", "cancelada"}
+_NOTIF_ESTADOS_RELEVANTES = {"espera_pago", "reemplazo", "pendiente_servicio", "pagada", "cancelada"}
 _NOTIF_ESTADO_LABELS = {
     "proceso": "en proceso",
     "activa": "activa",
     "reemplazo": "en reemplazo",
+    "pendiente_servicio": "servicio pendiente",
     "espera_pago": "en espera de pago",
     "pagada": "pagada",
     "cancelada": "cancelada",
@@ -17480,6 +17502,12 @@ def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalifi
         if bool(current_app.config.get("TESTING")):
             try:
                 cand.estado = str(nuevo_estado or "").strip().lower()
+                if (
+                    str(nuevo_estado or "").strip().lower() == "descalificada"
+                    and nota_descalificacion is not None
+                    and hasattr(cand, "nota_descalificacion")
+                ):
+                    cand.nota_descalificacion = nota_descalificacion
             except Exception:
                 pass
             return
@@ -17981,7 +18009,7 @@ def reemplazo_nuevo_panel():
     solicitudes_q = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente), joinedload(Solicitud.candidata))
-        .filter(Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")))
+        .filter(Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago", "pendiente_servicio")))
     )
     if cliente_id > 0:
         solicitudes_q = solicitudes_q.filter(Solicitud.cliente_id == cliente_id)
@@ -18058,7 +18086,7 @@ def reemplazos_clientes_search():
             db.session.query(Solicitud.cliente_id, func.count(Solicitud.id))
             .filter(
                 Solicitud.cliente_id.in_(cliente_ids),
-                Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")),
+                Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago", "pendiente_servicio")),
             )
             .group_by(Solicitud.cliente_id)
             .all()
@@ -18089,7 +18117,7 @@ def reemplazos_solicitudes_por_cliente(cliente_id: int):
         .options(joinedload(Solicitud.candidata))
         .filter(
             Solicitud.cliente_id == cid,
-            Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago")),
+            Solicitud.estado.in_(("activa", "proceso", "reemplazo", "espera_pago", "pendiente_servicio")),
         )
         .order_by(Solicitud.id.desc())
         .limit(120)

@@ -17,7 +17,7 @@
     </div>
   {% endif %}
 
-  {% set _estado_operativo = (solicitud.estado or '')|lower in ['activa', 'proceso', 'espera_pago', 'reemplazo'] %}
+  {% set _estado_operativo = (solicitud.estado or '')|lower in ['activa', 'proceso', 'espera_pago', 'reemplazo', 'pendiente_servicio'] %}
   {% set _cycle_has_payments = cycle_has_payments if cycle_has_payments is defined else has_payments_current_cycle %}
   {% set _cycle_has_payments = _cycle_has_payments if _cycle_has_payments is not none else ((payment_summary.total_pagado if payment_summary is defined else 0)|float > 0) %}
   {% set _cycle_is_paid = cycle_is_paid if cycle_is_paid is defined else false %}

@@ -1097,7 +1097,7 @@ class Solicitud(db.Model):
     payment_cycle_motivo_apertura = db.Column(db.String(200), nullable=True)
     estado                 = db.Column(
                                 SAEnum(
-                                    'proceso','activa','pagada','cancelada','reemplazo','espera_pago',
+                                    'proceso','activa','pagada','cancelada','reemplazo','espera_pago','pendiente_servicio',
                                     name='estado_solicitud_enum'
                                 ),
                                 nullable=False,

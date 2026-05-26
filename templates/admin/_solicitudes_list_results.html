@@ -79,7 +79,7 @@
           <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
             {% if s.reemplazo_cancelado_no_resuelta %}
-              <span class="badge text-bg-danger">Reemplazo cancelado / no resuelta</span>
+              <span class="badge text-bg-warning">Reemplazo cancelado · Se debe servicio</span>
             {% endif %}
             <span class="small sol-muted">{{ s.days_in_state }} días en estado</span>
           </div>

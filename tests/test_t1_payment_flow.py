@@ -1418,6 +1418,36 @@ def test_t1_cliente_detail_reemplazo_con_ciclo_pagado_deshabilita_boton_pago():
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' in html
 
 
+def test_t1_cliente_detail_pendiente_servicio_con_ciclo_pagado_deshabilita_boton_pago():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="8000.00",
+                tipo_pago="pago",
+                ciclo_numero=int(solicitud.payment_cycle_current or 1),
+                origen="seed",
+                origen_id=f"pend-serv-paid-cycle:{solicitud_id}",
+            )
+        )
+        solicitud.estado = "pendiente_servicio"
+        db.session.commit()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Servicio pendiente" in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' in html
+
+
 def test_t1_cliente_detail_reactivada_con_ciclo_nuevo_pendiente_habilita_boton_pago():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

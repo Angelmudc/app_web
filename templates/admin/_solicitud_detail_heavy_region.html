@@ -380,7 +380,7 @@
           <span class="badge bg-info text-dark">Esta solicitud tuvo reemplazo</span>
         {% endif %}
         {% if reemplazo_cancelado_no_resuelta %}
-          <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Reemplazo cancelado · Solicitud no resuelta</span>
+          <span class="badge bg-warning text-dark">Reemplazo cancelado · Se debe servicio</span>
         {% endif %}
         <span class="small text-body-secondary">Cantidad de reemplazos: <strong>{{ reemplazos_count or (_repls|length) }}</strong></span>
         <span class="small text-body-secondary">Último reemplazo: <strong>{{ ultimo_reemplazo_at and ultimo_reemplazo_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</strong></span>

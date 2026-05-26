@@ -253,7 +253,7 @@ def apply_payment_state_from_summary(solicitud, summary: dict[str, Decimal | str
 
     solicitud.payment_cycle_estado = "pendiente"
     solicitud.payment_cycle_closed_at = None
-    if estado_actual in {"proceso", "activa", "reemplazo", "cancelada", "espera_pago", "pagada"}:
+    if estado_actual in {"proceso", "activa", "reemplazo", "cancelada", "espera_pago", "pagada", "pendiente_servicio"}:
         solicitud.estado = estado_actual
         return estado_actual
     solicitud.estado = "proceso"

@@ -483,7 +483,7 @@ def test_t1b_cancelar_reemplazo_abierto_cierra_con_resultado_cancelado():
         assert repl_end.fecha_resolucion is not None
 
 
-def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pagada():
+def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pendiente_servicio():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -528,12 +528,12 @@ def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pagada():
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
-        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.estado == "pendiente_servicio"
         assert solicitud_end.estado != "cancelada"
     heavy_resp = client.get(f"/admin/clientes/{_cliente_id}/solicitudes/{solicitud_id}/_heavy", follow_redirects=False)
     assert heavy_resp.status_code == 200
     heavy_html = heavy_resp.get_data(as_text=True)
-    assert "Reemplazo cancelado · Solicitud no resuelta" in heavy_html
+    assert "Reemplazo cancelado · Se debe servicio" in heavy_html
 
 
 def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
@@ -583,6 +583,56 @@ def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
         assert solicitud_end is not None
         assert solicitud_end.estado == "espera_pago"
         assert solicitud_end.estado != "cancelada"
+
+
+def test_t1b_abrir_reemplazo_desde_pendiente_servicio_no_crea_cobro_ni_ciclo_nuevo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "pendiente_servicio"
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "basico"
+        solicitud.payment_cycle_precio_total = "3500.00"
+        solicitud.payment_cycle_abono_requerido = "1750.00"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=int(solicitud.cliente_id),
+                monto="3500.00",
+                tipo_pago="pago",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"pendiente-servicio-paid:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+        row_version = int(solicitud.row_version or 0)
+        payment_rows_before = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).count()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "motivo_fallo": "Retomar servicio",
+            "candidata_old_id": str(cand_old_id),
+            "row_version": str(row_version),
+            "idempotency_key": f"t1b-open-pendiente-servicio-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "reemplazo"
+        assert int(solicitud_end.payment_cycle_current or 0) == 1
+        payment_rows_after = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).count()
+        assert payment_rows_after == payment_rows_before
 
 
 def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_espera_pago():

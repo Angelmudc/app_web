@@ -82,12 +82,13 @@
                   'bg-secondary' if est == 'proceso' else
                   'bg-primary'   if est == 'activa'  else
                   'bg-warning text-dark' if est == 'espera_pago' else
+                  'bg-warning text-dark' if est == 'pendiente_servicio' else
                   'bg-success'   if est == 'pagada'  else
                   'bg-warning'   if est == 'cancelada' else
                   'bg-info'      if est == 'reemplazo' else
                   'bg-light'
                 %}
-                <span class="badge {{ badge_class }}">{{ s.estado | default('—') }}</span>
+                <span class="badge {{ badge_class }}">{{ 'Servicio pendiente' if est == 'pendiente_servicio' else (s.estado | default('—')) }}</span>
                 {% if repl_activo and est_norm == 'reemplazo' %}
                   <span class="badge bg-warning text-dark ms-1">Reemplazo activo</span>
                 {% endif %}

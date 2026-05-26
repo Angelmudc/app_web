@@ -167,7 +167,7 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
             wait_until="domcontentloaded",
         )
         heavy_html = page.content()
-        assert "Reemplazo cancelado · Solicitud no resuelta" in heavy_html
+        assert "Reemplazo cancelado · Se debe servicio" in heavy_html
 
         browser.close()
 

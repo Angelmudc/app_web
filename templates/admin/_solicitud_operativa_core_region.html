@@ -6,9 +6,10 @@
   'badge-cancelada' if estado == 'cancelada' else
   'badge-pagada' if estado == 'pagada' else
   'bg-warning text-dark' if estado == 'espera_pago' else
+  'bg-warning text-dark' if estado == 'pendiente_servicio' else
   'badge-reemplazo' if estado == 'reemplazo' else 'bg-secondary'
 %}
-{% set _puede_registrar_pago = estado not in ['cancelada', 'pagada'] %}
+{% set _puede_registrar_pago = estado not in ['cancelada', 'pagada', 'pendiente_servicio'] %}
 {% set _puede_activar = estado == 'proceso' %}
 {% set _last_activity_at = solicitud.fecha_ultima_actividad or solicitud.fecha_ultima_modificacion or solicitud.updated_at or solicitud.fecha_solicitud %}
 {% set _now_utc = now_utc if now_utc is defined else None %}
@@ -53,6 +54,10 @@
   {% set _cta_label = 'Registrar pago' %}
   {% set _cta_href = url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) %}
   {% set _cta_help = 'Siguiente paso recomendado: registrar el pago para acercar el cierre de la solicitud.' %}
+{% elif estado == 'pendiente_servicio' %}
+  {% set _cta_label = 'Crear nuevo reemplazo' %}
+  {% set _cta_href = url_for('admin.nuevo_reemplazo', s_id=solicitud.id) %}
+  {% set _cta_help = 'Siguiente paso recomendado: resolver servicio pendiente sin volver a cobrar.' %}
 {% elif estado == 'reemplazo' %}
   {% set _cta_label = 'Gestionar reemplazo' %}
   {% set _cta_href = url_for('admin.nuevo_reemplazo', s_id=solicitud.id) %}
@@ -165,11 +170,16 @@
             Pagada: {{ 'Sí' if estado == 'pagada' else 'No' }}
           </span>
           <span class="badge {{ 'bg-primary' if estado in ['activa', 'espera_pago', 'reemplazo'] else 'bg-secondary' }}">
-            Activa operativa: {{ 'Sí' if estado in ['activa', 'espera_pago', 'reemplazo'] else 'No' }}
+            Activa operativa: {{ 'Sí' if estado in ['activa', 'espera_pago', 'reemplazo', 'pendiente_servicio'] else 'No' }}
           </span>
         </div>
       </div>
     </div>
+    {% if estado == 'pendiente_servicio' %}
+    <div class="alert alert-warning mb-3">
+      Esta solicitud tiene servicio pendiente por reemplazo cancelado. No cobrar nuevamente al cliente.
+    </div>
+    {% endif %}
 
     <div class="alert alert-light border mb-3">
       <div class="row g-2">

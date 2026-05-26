@@ -12,9 +12,10 @@
           'badge-cancelada' if solicitud.estado == 'cancelada' else
           'badge-pagada' if solicitud.estado == 'pagada' else
           'bg-warning text-dark' if solicitud.estado == 'espera_pago' else
+          'bg-warning text-dark' if solicitud.estado == 'pendiente_servicio' else
           'badge-reemplazo' if solicitud.estado == 'reemplazo' else 'bg-secondary'
         %}
-        <span class="badge {{ estado_class }}">{{ solicitud.estado }}</span>
+        <span class="badge {{ estado_class }}">{{ 'Servicio pendiente' if solicitud.estado == 'pendiente_servicio' else solicitud.estado }}</span>
       </div>
     </div>
     <div class="d-flex gap-2">
