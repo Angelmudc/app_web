@@ -201,6 +201,7 @@ from services.solicitud_recommendation_service import SolicitudRecommendationSer
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
 from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan, is_valid_plan
 from services.payment_ledger import (
+    open_new_payment_cycle,
     calcular_saldo_pendiente,
     calcular_total_abonado,
     calcular_total_pagado_cliente,
@@ -11950,8 +11951,7 @@ def gestionar_plan(cliente_id, id):
     form = AdminGestionPlanForm(obj=s)
     ensure_current_payment_cycle(s, motivo="plan_init")
     estado_norm = (getattr(s, "estado", "") or "").strip().lower()
-    if estado_norm in {"activa", "proceso", "espera_pago"}:
-        ensure_reactivation_cycle(s, motivo="gestionar_plan_reactivacion")
+    estado_operativo = estado_norm in {"activa", "proceso", "espera_pago", "reemplazo"}
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
@@ -11969,6 +11969,10 @@ def gestionar_plan(cliente_id, id):
         return out
 
     def _render_plan_region(async_feedback=None) -> str:
+        summary = get_payment_summary(s)
+        has_payments_current_cycle = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
+        can_create_new_cycle = bool(estado_operativo and has_payments_current_cycle)
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -11982,9 +11986,16 @@ def gestionar_plan(cliente_id, id):
             plan_price=plan_price,
             required_deposit=required_deposit,
             remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
+            has_payments_current_cycle=has_payments_current_cycle,
+            cycle_is_paid=cycle_is_paid,
+            can_create_new_cycle=can_create_new_cycle,
         )
 
     def _render_plan_page(async_feedback=None):
+        summary = get_payment_summary(s)
+        has_payments_current_cycle = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
+        can_create_new_cycle = bool(estado_operativo and has_payments_current_cycle)
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -11998,6 +12009,9 @@ def gestionar_plan(cliente_id, id):
             plan_price=plan_price,
             required_deposit=required_deposit,
             remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
+            has_payments_current_cycle=has_payments_current_cycle,
+            cycle_is_paid=cycle_is_paid,
+            can_create_new_cycle=can_create_new_cycle,
         )
 
     def _async_plan_response(
@@ -12037,6 +12051,7 @@ def gestionar_plan(cliente_id, id):
 
     if form.validate_on_submit():
         try:
+            action = (request.form.get("plan_action") or "update").strip().lower()
             # --- Validar tipo_plan contra choices si existen ---
             if hasattr(form, 'tipo_plan') and getattr(form.tipo_plan, "choices", None):
                 allowed = _choice_codes(form.tipo_plan.choices)
@@ -12076,8 +12091,44 @@ def gestionar_plan(cliente_id, id):
             plan_price = get_plan_price(s.tipo_plan)
             s.abono = format_money_payment(required_deposit)
             ensure_current_payment_cycle(s, motivo="plan_init")
-            if estado_norm in {"activa", "proceso", "espera_pago"}:
-                ensure_reactivation_cycle(s, motivo="gestionar_plan_reactivacion_post")
+            summary_now = get_payment_summary(s)
+            has_payments_current_cycle = Decimal(summary_now["total_pagado"]) > Decimal("0.00")
+
+            if action == "create_new_cycle":
+                if not estado_operativo or not has_payments_current_cycle:
+                    msg = 'No corresponde crear un nuevo ciclo en el estado actual.'
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message=msg,
+                            category='warning',
+                            http_status=409,
+                            error_code='conflict',
+                            async_feedback={"message": msg, "category": "warning"},
+                        )
+                    flash(msg, 'warning')
+                    return _render_plan_page()
+                open_new_payment_cycle(s, motivo="reactivacion_manual", force=True)
+                s.tipo_plan = normalize_plan(form.tipo_plan.data)
+                s.abono = format_money_payment(get_required_deposit(s.tipo_plan))
+                sync_cycle_plan_if_no_payments(s, motivo="reactivacion_manual")
+                _set_solicitud_estado_with_outbox(s, 'activa')
+                s.fecha_cancelacion = None
+                s.motivo_cancelacion = None
+                db.session.commit()
+                success_message = 'Nuevo ciclo de pago creado correctamente.'
+                if _admin_async_wants_json():
+                    form = AdminGestionPlanForm(formdata=None, obj=s)
+                    return _async_plan_response(
+                        ok=True,
+                        message=success_message,
+                        category='success',
+                        redirect_url=safe_next,
+                        http_status=200,
+                        include_region=False,
+                    )
+                flash(success_message, 'success')
+                return redirect(safe_next)
 
             if manual_override:
                 manual_reason = (request.form.get("manual_reason") or "").strip()

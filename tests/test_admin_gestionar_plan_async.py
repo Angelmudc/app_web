@@ -52,6 +52,18 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self._sync_cycle_plan_result = True
+        self._payment_summary = {
+            "numero_ciclo": 1,
+            "precio_plan": 3500.00,
+            "abono_requerido": 1750.00,
+            "total_pagado": 0.00,
+            "total_abonado": 0.00,
+            "saldo_pendiente": 3500.00,
+            "plan_norm": "basico",
+            "legacy_abono_fallback": False,
+            "legacy_abono": 0.00,
+            "ciclo_estado": "pendiente",
+        }
 
     def _raw_view(self):
         view = admin_routes.gestionar_plan
@@ -68,7 +80,8 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         ):
             with patch("admin.routes.ensure_current_payment_cycle", return_value=None), \
                  patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
-                 patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result):
+                 patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result), \
+                 patch("admin.routes.get_payment_summary", return_value=self._payment_summary):
                 rv = self._raw_view()(7, 101)
             if isinstance(rv, tuple):
                 resp = rv[0]
@@ -242,6 +255,8 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
     def test_mensaje_bloqueo_ciclo_actual_con_pagos(self):
         solicitud = _solicitud_stub()
         self._sync_cycle_plan_result = False
+        self._payment_summary["total_pagado"] = 1000.00
+        self._payment_summary["saldo_pendiente"] = 2500.00
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
                 resp = self._invoke(
@@ -252,6 +267,16 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertFalse(data["success"])
         self.assertIn("Este ciclo ya tiene pagos registrados", data["message"])
+
+    def test_get_con_ciclo_pagado_muestra_boton_crear_nuevo_ciclo(self):
+        solicitud = _solicitud_stub(estado="activa")
+        self._payment_summary["total_pagado"] = 3500.00
+        self._payment_summary["saldo_pendiente"] = 0.00
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn("Crear nuevo ciclo de pago", html)
 
 
 if __name__ == "__main__":
