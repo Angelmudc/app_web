@@ -299,6 +299,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.open_new_payment_cycle") as open_cycle_mock, \
+                 patch("admin.routes.ensure_cycle_initial_deposit_payment", return_value=True) as auto_abono_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
                     data={"tipo_plan": "premium", "plan_action": "create_new_cycle"},
@@ -309,6 +310,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertTrue(data["success"])
         self.assertIn("Nuevo ciclo de pago creado correctamente", data["message"])
         open_cycle_mock.assert_called_once()
+        auto_abono_mock.assert_called_once()
         commit_mock.assert_called_once()
 
     def test_post_create_new_cycle_estado_pagada_con_ciclo_pagado_permitido(self):
@@ -318,6 +320,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.open_new_payment_cycle") as open_cycle_mock, \
+                 patch("admin.routes.ensure_cycle_initial_deposit_payment", return_value=True) as auto_abono_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
                     data={"tipo_plan": "premium", "plan_action": "create_new_cycle"},
@@ -329,6 +332,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertNotIn("No corresponde crear un nuevo ciclo en el estado actual", data["message"])
         self.assertIn("Nuevo ciclo de pago creado correctamente", data["message"])
         open_cycle_mock.assert_called_once()
+        auto_abono_mock.assert_called_once()
         commit_mock.assert_called_once()
 
 

@@ -203,6 +203,7 @@ from services.payment_rules import get_required_deposit, get_plan_price, format_
 from services.payment_ledger import (
     apply_payment_state_from_summary,
     open_new_payment_cycle,
+    ensure_cycle_initial_deposit_payment,
     calcular_saldo_pendiente,
     calcular_total_abonado,
     calcular_total_pagado_cliente,
@@ -12119,6 +12120,11 @@ def gestionar_plan(cliente_id, id):
                 s.tipo_plan = normalize_plan(form.tipo_plan.data)
                 s.abono = format_money_payment(get_required_deposit(s.tipo_plan))
                 sync_cycle_plan_if_no_payments(s, motivo="reactivacion_manual")
+                ensure_cycle_initial_deposit_payment(
+                    s,
+                    motivo="auto_abono_ciclo",
+                    nota="Abono inicial aplicado al crear nuevo ciclo",
+                )
                 _set_solicitud_estado_with_outbox(s, 'activa')
                 s.fecha_cancelacion = None
                 s.motivo_cancelacion = None
