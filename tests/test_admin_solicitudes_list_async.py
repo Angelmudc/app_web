@@ -1017,6 +1017,47 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIsNone(data.get("replace_html"))
         self.assertGreaterEqual(commit_mock.call_count, 1)
 
+    def test_cancelar_reemplazo_async_si_falla_auditoria_no_revierte_cancelacion(self):
+        self.client = flask_app.test_client()
+        login = self.client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
+        self.assertIn(login.status_code, (302, 303))
+        solicitud = _solicitud_stub(10, "SOL-010", "reemplazo")
+
+        class _ReplOk:
+            id = 99
+            solicitud_id = 10
+            fecha_fin_reemplazo = None
+            candidata_old_id = 1
+            estado_previo_solicitud = "activa"
+
+            def cerrar_reemplazo(self):
+                self.fecha_fin_reemplazo = datetime(2026, 3, 27, 10, 0, 0)
+
+        repl = _ReplOk()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQueryStub(repl)), \
+                 patch("admin.routes.db.session.commit") as commit_mock, \
+                 patch("admin.routes._audit_log", side_effect=RuntimeError("audit down")):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cancelar",
+                    data={
+                        "next": "/admin/clientes/7#sol-10",
+                        "_async_target": "#clienteSolicitudReemplazoActionsAsyncRegion-10",
+                        "cancel_reason": "Cliente detuvo proceso",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
+                    },
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json() or {}
+        self.assertTrue(data.get("success"))
+        self.assertEqual(solicitud.estado, "pendiente_servicio")
+        self.assertIsNotNone(getattr(repl, "fecha_fin_reemplazo", None))
+        self.assertGreaterEqual(commit_mock.call_count, 1)
+
     def test_quick_search_cierre_reemplazo_devuelve_items(self):
         rows = [
             SimpleNamespace(fila=2, nombre_completo="Ana Perez", codigo="COD-002", cedula="001-0000002-1"),

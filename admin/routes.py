@@ -13959,25 +13959,6 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             reason,
         )
         db.session.commit()
-        _audit_log(
-            action_type="REEMPLAZO_CANCELAR",
-            entity_type="Solicitud",
-            entity_id=s.id,
-            summary=f"Reemplazo cancelado para solicitud {s.codigo_solicitud or s.id}",
-            metadata={
-                "reemplazo_id": r.id,
-                "motivo_cancelacion": cancel_reason,
-                "accion_solicitud": "solo_reemplazo",
-                "estado_final_solicitud": estado_final,
-                "regla_estado": estado_rule,
-                "resultado_operativo": "reemplazo_cancelado_no_resuelto",
-            },
-        )
-        return _action_response(
-            ok=True,
-            message="Reemplazo cancelado correctamente.",
-            category="success",
-        )
     except StaleDataError:
         db.session.rollback()
         response_status = 409
@@ -14002,6 +13983,12 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         db.session.rollback()
         response_status = 500
         reason = "exception"
+        current_app.logger.exception(
+            "[reemplazo_cancel_exception] rid=%s sid=%s estado_actual=%s",
+            r.id,
+            s.id,
+            (getattr(s, "estado", "") or "").strip().lower(),
+        )
         current_app.logger.warning(
             "[reemplazo_cancel_debug] rid=%s sid=%s before_estado=%s after_estado=%s status=%s reason=%s",
             r.id,
@@ -14027,6 +14014,33 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             http_status=500,
             error_code="server_error",
         )
+
+    try:
+        _audit_log(
+            action_type="REEMPLAZO_CANCELAR",
+            entity_type="Solicitud",
+            entity_id=s.id,
+            summary=f"Reemplazo cancelado para solicitud {s.codigo_solicitud or s.id}",
+            metadata={
+                "reemplazo_id": r.id,
+                "motivo_cancelacion": cancel_reason,
+                "accion_solicitud": "solo_reemplazo",
+                "estado_final_solicitud": estado_final,
+                "regla_estado": estado_rule,
+                "resultado_operativo": "reemplazo_cancelado_no_resuelto",
+            },
+        )
+    except Exception:
+        current_app.logger.exception(
+            "[reemplazo_cancel_post_commit_audit_exception] rid=%s sid=%s",
+            r.id,
+            s.id,
+        )
+    return _action_response(
+        ok=True,
+        message="Reemplazo cancelado correctamente.",
+        category="success",
+    )
 
 
 @admin_bp.route('/solicitudes/<int:s_id>/reemplazos/<int:reemplazo_id>/cerrar_asignando', methods=['POST'])
