@@ -81,7 +81,9 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch("admin.routes.ensure_current_payment_cycle", return_value=None), \
                  patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
                  patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result), \
-                 patch("admin.routes.get_payment_summary", return_value=self._payment_summary):
+                 patch("admin.routes.get_payment_summary", return_value=self._payment_summary), \
+                 patch("admin.routes.crear_pago_solicitud"), \
+                 patch("admin.routes.apply_payment_state_from_summary", return_value="espera_pago"):
                 rv = self._raw_view()(7, 101)
             if isinstance(rv, tuple):
                 resp = rv[0]

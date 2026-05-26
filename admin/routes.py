@@ -12042,6 +12042,22 @@ def gestionar_plan(cliente_id, id):
         )
         return jsonify(payload), http_status
 
+    def _find_initial_abono(cycle_num: int):
+        try:
+            return (
+                PagoSolicitud.query
+                .filter(
+                    PagoSolicitud.solicitud_id == int(s.id),
+                    PagoSolicitud.ciclo_numero == int(cycle_num),
+                    PagoSolicitud.tipo_pago == "abono",
+                    PagoSolicitud.anulado_at.is_(None),
+                )
+                .order_by(PagoSolicitud.created_at.asc(), PagoSolicitud.id.asc())
+                .first()
+            )
+        except Exception:
+            return None
+
     if request.method == 'POST' and not form.validate_on_submit():
         if _admin_async_wants_json():
             return _async_plan_response(
@@ -12074,7 +12090,9 @@ def gestionar_plan(cliente_id, id):
                     flash('Tipo de plan inválido.', 'danger')
                     return _render_plan_page()
 
-            s.tipo_plan = normalize_plan(form.tipo_plan.data)
+            plan_selected = normalize_plan(form.tipo_plan.data)
+            old_plan = normalize_plan(getattr(s, "payment_cycle_plan", None) or getattr(s, "tipo_plan", None))
+            s.tipo_plan = plan_selected
             if not is_valid_plan(s.tipo_plan):
                 form.tipo_plan.errors.append('Tipo de plan inválido.')
                 if _admin_async_wants_json():
@@ -12091,7 +12109,6 @@ def gestionar_plan(cliente_id, id):
 
             manual_override = str(request.form.get("manual_override") or "0").strip() == "1"
             old_abono = str(getattr(s, "abono", "") or "")
-            old_plan = str(getattr(s, "tipo_plan", "") or "")
             required_deposit = get_required_deposit(s.tipo_plan)
             plan_price = get_plan_price(s.tipo_plan)
             s.abono = format_money_payment(required_deposit)
@@ -12119,11 +12136,29 @@ def gestionar_plan(cliente_id, id):
                 s.tipo_plan = normalize_plan(form.tipo_plan.data)
                 s.abono = format_money_payment(get_required_deposit(s.tipo_plan))
                 sync_cycle_plan_if_no_payments(s, motivo="reactivacion_manual")
+                cycle_now = get_current_payment_cycle(s)
+                cycle_num = int(cycle_now["numero_ciclo"])
+                abono_required = Decimal(cycle_now["abono_requerido"])
+                if _find_initial_abono(cycle_num) is None and abono_required > Decimal("0.00"):
+                    crear_pago_solicitud(
+                        solicitud_id=int(s.id),
+                        cliente_id=int(s.cliente_id),
+                        monto=abono_required,
+                        tipo_pago="abono",
+                        ciclo_numero=cycle_num,
+                        metodo_pago="gestion_plan",
+                        referencia=f"solicitud:{s.id}",
+                        registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
+                        origen="gestion_plan_abono_inicial",
+                        origen_id=f"gestion_plan_abono_inicial:{s.id}:c{cycle_num}",
+                        nota="Abono inicial registrado al gestionar plan",
+                    )
+                apply_payment_state_from_summary(s)
                 _set_solicitud_estado_with_outbox(s, 'activa')
                 s.fecha_cancelacion = None
                 s.motivo_cancelacion = None
                 db.session.commit()
-                success_message = 'Nuevo ciclo de pago creado correctamente.'
+                success_message = 'Nuevo ciclo de pago creado correctamente. Abono inicial registrado.'
                 if _admin_async_wants_json():
                     form = AdminGestionPlanForm(formdata=None, obj=s)
                     return _async_plan_response(
@@ -12197,18 +12232,55 @@ def gestionar_plan(cliente_id, id):
                         "edited_by": getattr(current_user, "username", None),
                     },
                 )
-            elif not sync_cycle_plan_if_no_payments(s, motivo="plan_update_no_payments"):
-                if _admin_async_wants_json():
-                    return _async_plan_response(
-                        ok=False,
-                        message='Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.',
-                        category='warning',
-                        http_status=409,
-                        error_code='conflict',
-                        async_feedback={"message": "Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.", "category": "warning"},
+            else:
+                cycle_now = get_current_payment_cycle(s)
+                cycle_num = int(cycle_now["numero_ciclo"])
+                existing_abono = _find_initial_abono(cycle_num)
+                if existing_abono is not None:
+                    if old_plan != plan_selected:
+                        msg = 'Este ciclo ya tiene abono registrado. Para cambiar el plan, realiza ajuste manual administrativo.'
+                        if _admin_async_wants_json():
+                            return _async_plan_response(
+                                ok=False,
+                                message=msg,
+                                category='warning',
+                                http_status=409,
+                                error_code='conflict',
+                                async_feedback={"message": msg, "category": "warning"},
+                            )
+                        flash(msg, 'warning')
+                        return _render_plan_page()
+                elif not sync_cycle_plan_if_no_payments(s, motivo="plan_update_no_payments"):
+                    if _admin_async_wants_json():
+                        return _async_plan_response(
+                            ok=False,
+                            message='Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.',
+                            category='warning',
+                            http_status=409,
+                            error_code='conflict',
+                            async_feedback={"message": "Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.", "category": "warning"},
+                        )
+                    flash('Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.', 'warning')
+                    return _render_plan_page()
+                cycle_now = get_current_payment_cycle(s)
+                cycle_num = int(cycle_now["numero_ciclo"])
+                abono_required = Decimal(cycle_now["abono_requerido"])
+
+                if existing_abono is None and abono_required > Decimal("0.00"):
+                    crear_pago_solicitud(
+                        solicitud_id=int(s.id),
+                        cliente_id=int(s.cliente_id),
+                        monto=abono_required,
+                        tipo_pago="abono",
+                        ciclo_numero=cycle_num,
+                        metodo_pago="gestion_plan",
+                        referencia=f"solicitud:{s.id}",
+                        registrado_por_id=int(getattr(current_user, "id", 0) or 0) or None,
+                        origen="gestion_plan_abono_inicial",
+                        origen_id=f"gestion_plan_abono_inicial:{s.id}:c{cycle_num}",
+                        nota="Abono inicial registrado al gestionar plan",
                     )
-                flash('Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.', 'warning')
-                return _render_plan_page()
+                apply_payment_state_from_summary(s)
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
@@ -12217,7 +12289,7 @@ def gestionar_plan(cliente_id, id):
             s.motivo_cancelacion = None
 
             db.session.commit()
-            success_message = 'Plan y abono actualizados correctamente.'
+            success_message = 'Plan guardado y abono inicial registrado correctamente.'
             if _admin_async_wants_json():
                 form = AdminGestionPlanForm(formdata=None, obj=s)
                 return _async_plan_response(
@@ -12228,7 +12300,7 @@ def gestionar_plan(cliente_id, id):
                     http_status=200,
                     include_region=False,
                 )
-            flash('Plan y abono actualizados correctamente.', 'success')
+            flash('Plan guardado y abono inicial registrado correctamente.', 'success')
             return redirect(safe_next)
 
         except IntegrityError:
@@ -12428,6 +12500,7 @@ def registrar_pago(cliente_id, id):
 
         payment_cycle = get_current_payment_cycle(s)
         payment_summary_now = get_payment_summary(s)
+        has_required_deposit = Decimal(payment_summary_now["abono_pagado"]) >= Decimal(payment_summary_now["abono_requerido"])
         if s.estado == 'cancelada':
             if _admin_async_wants_json():
                 return _async_pago_response(
@@ -12449,6 +12522,18 @@ def registrar_pago(cliente_id, id):
                     error_code='conflict',
                 )
             flash('El ciclo actual ya está pagado. Reactiva la solicitud para abrir un nuevo ciclo.', 'info')
+            return _render_pago_page()
+        if is_completion_context and not has_required_deposit:
+            msg = 'Falta registrar abono inicial en Gestionar Plan.'
+            if _admin_async_wants_json():
+                return _async_pago_response(
+                    ok=False,
+                    message=msg,
+                    category='warning',
+                    http_status=409,
+                    error_code='conflict',
+                )
+            flash(msg, 'warning')
             return _render_pago_page()
 
         cand = db.session.get(Candidata, form.candidata_id.data)

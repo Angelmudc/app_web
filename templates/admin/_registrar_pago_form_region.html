@@ -130,7 +130,12 @@
             {% endif %}
             {% set _abono_cubierto = payment_summary["abono_pagado"] >= payment_summary["abono_requerido"] and payment_summary["saldo_pendiente"] > 0 %}
             {% if _is_completion_context %}
-              {% if payment_summary["total_pagado"] < payment_summary["precio_plan"] %}
+              {% set _abono_ok = payment_summary["abono_pagado"] >= payment_summary["abono_requerido"] %}
+              {% if not _abono_ok %}
+                <div class="alert alert-warning py-2 px-2 small mb-2" role="alert">
+                  Falta registrar abono inicial en Gestionar Plan.
+                </div>
+              {% elif payment_summary["total_pagado"] < payment_summary["precio_plan"] %}
                 <div class="form-check">
                   <input class="form-check-input" type="radio" name="payment_mode" id="mode_saldo" value="auto_saldo" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_saldo' %}checked{% endif %}{% else %}checked{% endif %}>
                   <label class="form-check-label" for="mode_saldo">Registrar pago restante RD$ {{ "{:,.2f}".format((completion_due_amount or 0)|float) }}</label>

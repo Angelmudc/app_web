@@ -969,11 +969,11 @@ def test_t1_gestionar_plan_estado_pagada_ciclo_pagado_permite_crear_nuevo_ciclo(
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
         assert int(solicitud_end.payment_cycle_current or 0) == 2
-        assert (solicitud_end.payment_cycle_estado or "") == "pendiente"
+        assert (solicitud_end.payment_cycle_estado or "") == "parcial"
         assert solicitud_end.payment_cycle_closed_at is None
 
 
-def test_t1_crear_nuevo_ciclo_reactivacion_no_crea_movimientos_de_pago():
+def test_t1_crear_nuevo_ciclo_reactivacion_registra_abono_inicial_en_ciclo_nuevo():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -1014,15 +1014,17 @@ def test_t1_crear_nuevo_ciclo_reactivacion_no_crea_movimientos_de_pago():
         assert solicitud_mid is not None
         assert int(solicitud_mid.payment_cycle_current or 0) == 2
         summary_mid = get_payment_summary(solicitud_mid)
-        assert str(summary_mid["abono_pagado"]) == "0.00"
-        assert str(summary_mid["total_pagado"]) == "0.00"
-        assert str(summary_mid["saldo_restante"]) == "5000.00"
+        assert str(summary_mid["abono_pagado"]) == "2500.00"
+        assert str(summary_mid["total_pagado"]) == "2500.00"
+        assert str(summary_mid["saldo_restante"]) == "2500.00"
         cycle_movs = (
             PagoSolicitud.query
             .filter_by(solicitud_id=solicitud_id, ciclo_numero=2)
             .all()
         )
-        assert len(cycle_movs) == 0
+        assert len(cycle_movs) == 1
+        assert (cycle_movs[0].tipo_pago or "").lower() == "abono"
+        assert str(cycle_movs[0].monto) == "2500.00"
 
 
 def test_t1_create_new_cycle_no_crea_origen_auto_abono_ciclo():
@@ -1077,7 +1079,7 @@ def test_t1_ui_completar_solicitud_basico_muestra_solo_pago_restante():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="1750.00")
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
     assert resp.status_code == 200
@@ -1094,7 +1096,7 @@ def test_t1_ui_completar_solicitud_premium_muestra_solo_pago_restante():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
     assert resp.status_code == 200
@@ -1111,7 +1113,7 @@ def test_t1_ui_completar_solicitud_vip_muestra_solo_pago_restante():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="4000.00")
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
     assert resp.status_code == 200
@@ -1128,7 +1130,7 @@ def test_t1_completar_solicitud_auto_saldo_deja_pagada_y_ciclo_pagado():
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="1750.00")
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         v1 = int(solicitud.row_version or 0)
@@ -1200,7 +1202,7 @@ def test_t1_gestionar_plan_ciclo_actual_parcial_si_bloquea_sin_override():
     assert resp.status_code == 409
     payload = resp.get_json() or {}
     assert payload.get("success") is False
-    assert "Este ciclo ya tiene pagos registrados" in (payload.get("message") or "")
+    assert "Este ciclo ya tiene abono registrado" in (payload.get("message") or "")
 
 
 def test_t1_gestionar_plan_con_historico_pero_ciclo_actual_en_cero_permite_cambiar_libre():
