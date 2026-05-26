@@ -54,7 +54,7 @@ def test_porciento_render_basico_busqueda_y_seleccion():
         assert captured["ctx"]["candidata"] is candidata
 
 
-def test_porciento_submit_sin_asignacion_activa_devuelve_redirect_conflict():
+def test_porciento_submit_sin_asignacion_activa_guarda_sin_forzar_trabajando():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -80,6 +80,7 @@ def test_porciento_submit_sin_asignacion_activa_devuelve_redirect_conflict():
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
          patch("core.handlers.procesos_transacciones_handlers.parse_date", side_effect=[date(2026, 2, 10), date(2026, 2, 15)]), \
          patch("core.handlers.procesos_transacciones_handlers.parse_decimal", return_value=Decimal("1000.00")), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_mark_working=False, reason_message="No existe una asignación activa coherente para esta candidata.")), \
          patch("core.handlers.procesos_transacciones_handlers.utc_now_naive", return_value=datetime(2026, 3, 27, 10, 0, 0)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock, \
          patch("core.handlers.procesos_transacciones_handlers.render_template", side_effect=_fake_render):
@@ -94,8 +95,8 @@ def test_porciento_submit_sin_asignacion_activa_devuelve_redirect_conflict():
             follow_redirects=False,
         )
 
-    assert resp.status_code in (302, 303)
-    commit_mock.assert_not_called()
+    assert resp.status_code == 200
+    commit_mock.assert_called_once()
     assert candidata.estado is None
 
 

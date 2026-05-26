@@ -7,6 +7,7 @@ from sqlalchemy.orm import Query
 
 from config_app import db
 from models import Candidata, Solicitud, SolicitudCandidata
+from services.candidata_assignment_guard import validate_candidata_assignment_context
 from utils.timezone import iso_utc_z, utc_now_naive
 
 
@@ -60,21 +61,24 @@ def _lock_solicitud_candidata(sc_id: int) -> SolicitudCandidata | None:
 
 
 def candidate_has_active_assignment(*, candidata_id: int, exclude_solicitud_id: int | None = None) -> bool:
-    try:
-        query = (
-            db.session.query(SolicitudCandidata.id)
-            .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
-            .filter(
-                SolicitudCandidata.candidata_id == int(candidata_id),
-                SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
-                Solicitud.estado.in_(_ACTIVE_SOLICITUD_STATUS),
+    if exclude_solicitud_id is not None:
+        try:
+            query = (
+                db.session.query(SolicitudCandidata.id)
+                .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
+                .filter(
+                    SolicitudCandidata.candidata_id == int(candidata_id),
+                    SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+                    Solicitud.estado.in_(_ACTIVE_SOLICITUD_STATUS),
+                    SolicitudCandidata.solicitud_id != int(exclude_solicitud_id),
+                )
             )
-        )
-        if exclude_solicitud_id is not None:
-            query = query.filter(SolicitudCandidata.solicitud_id != int(exclude_solicitud_id))
-        return query.first() is not None
-    except Exception:
-        return False
+            return query.first() is not None
+        except Exception:
+            return False
+
+    result = validate_candidata_assignment_context(candidata_id=int(candidata_id))
+    return bool(result.has_active_assignment)
 
 
 def candidate_blocked_by_other_client(*, candidata_id: int, solicitud: Solicitud) -> bool:
@@ -213,9 +217,10 @@ def change_candidate_state(
             "La candidata tiene una asignación activa. Libera/cierra la asignación antes de cambiar este estado.",
         )
     if target == "trabajando" and enforce_working_requires_assignment and not has_active_assignment:
+        guard = validate_candidata_assignment_context(candidata_id=int(cand.fila))
         raise InvariantConflictError(
             "conflict",
-            "No se puede marcar trabajando sin una asignación activa coherente.",
+            guard.reason_message or "No se puede marcar trabajando sin una asignación activa coherente.",
         )
 
     cand.estado = target

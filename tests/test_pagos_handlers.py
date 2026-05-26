@@ -78,6 +78,7 @@ def test_pagos_submit_valido_descuenta_porciento_y_actualiza_campos():
         return "ok"
 
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
          patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock, \
          patch("core.handlers.procesos_transacciones_handlers.render_template", side_effect=_fake_render):
@@ -115,6 +116,7 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
     for monto_raw, esperado in casos:
         candidata = SimpleNamespace(fila=1, porciento=Decimal("20000.00"), calificacion=None, fecha_de_pago=None)
         with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
+             patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
              patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
              patch("core.handlers.procesos_transacciones_handlers.db.session.commit"), \
              patch("core.handlers.procesos_transacciones_handlers.render_template", return_value="ok"):
@@ -128,6 +130,7 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
 
     candidata_clamp = SimpleNamespace(fila=1, porciento=Decimal("100.00"), calificacion=None, fecha_de_pago=None)
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata_clamp), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
          patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit"), \
          patch("core.handlers.procesos_transacciones_handlers.render_template", return_value="ok"):
@@ -162,3 +165,24 @@ def test_pagos_redirects_fallbacks_contrato_actual():
         )
     assert resp_not_found.status_code in (302, 303)
     assert resp_not_found.headers["Location"].endswith("/pagos")
+
+
+def test_pagos_bloquea_cobro_sin_asignacion_valida():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_admin(client).status_code in (302, 303)
+
+    candidata = SimpleNamespace(fila=99, porciento=Decimal("300.00"), calificacion=None, fecha_de_pago=None)
+    with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=False, reason_message="No existe una asignación activa coherente para esta candidata.")), \
+         patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock:
+        resp = client.post(
+            "/pagos",
+            data={"fila": "99", "monto_pagado": "100", "calificacion": "Pago completo"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    assert resp.headers["Location"].endswith("/pagos?candidata=99")
+    commit_mock.assert_not_called()

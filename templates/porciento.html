@@ -152,6 +152,11 @@
         </div>
 
         <hr class="my-4">
+        {% if assignment_guard and not assignment_guard.can_mark_working %}
+          <div class="alert alert-warning">
+            Se guardará el porciento, pero no se marcará trabajando automáticamente: {{ assignment_guard.reason_message }}
+          </div>
+        {% endif %}
 
         <form method="POST" action="{{ url_for('porciento') }}" id="formPorciento" autocomplete="off" class="mt-2">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

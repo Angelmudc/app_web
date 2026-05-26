@@ -189,6 +189,7 @@ from services.candidata_invariants import (
     release_solicitud_candidatas_on_cancel as invariant_release_solicitud_candidatas_on_cancel,
     sync_solicitud_candidatas_after_assignment as invariant_sync_solicitud_candidatas_after_assignment,
 )
+from services.candidata_assignment_guard import validate_candidata_assignment_context
 from services.solicitud_estado import (
     days_in_state,
     priority_band_for_days,
@@ -9458,10 +9459,15 @@ def eliminar_cliente(cliente_id):
 # 🔍 Detalle de cliente
 # ─────────────────────────────────────────────────────────────
 def solicitud_puede_registrar_pago(solicitud) -> bool:
+    candidata_id = int(getattr(solicitud, "candidata_id", 0) or 0)
+    if candidata_id > 0:
+        guard = validate_candidata_assignment_context(
+            candidata_id=candidata_id,
+            solicitud_id=int(getattr(solicitud, "id", 0) or 0),
+        )
+        if not guard.can_charge:
+            return False
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
-    # Regla operativa: si se debe servicio, no se debe cobrar.
-    if estado in {"cancelada", "pendiente_servicio", "reemplazo"}:
-        return False
     summary = get_payment_summary(solicitud)
     saldo_pendiente = Decimal(summary["saldo_pendiente"])
     estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
@@ -14594,6 +14600,14 @@ def _build_payment_summary_ctx(solicitud) -> dict:
     user_ids = [int(m.registrado_por_id) for m in movimientos if getattr(m, "registrado_por_id", None)]
     staff_map = _staff_username_map(user_ids)
 
+    candidata_id = int(getattr(solicitud, "candidata_id", 0) or 0)
+    assignment_guard = None
+    if candidata_id > 0:
+        assignment_guard = validate_candidata_assignment_context(
+            candidata_id=candidata_id,
+            solicitud_id=solicitud_id,
+        )
+
     return {
         "plan_price": precio_plan,
         "required_deposit": abono_requerido,
@@ -14605,6 +14619,8 @@ def _build_payment_summary_ctx(solicitud) -> dict:
         "payment_status_label": estado_pago,
         "payment_movimientos": movimientos,
         "payment_staff_map": staff_map,
+        "assignment_guard": assignment_guard,
+        "solicitud_can_register_payment": solicitud_puede_registrar_pago(solicitud),
     }
 
 

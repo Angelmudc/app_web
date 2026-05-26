@@ -9,7 +9,7 @@
   'bg-warning text-dark' if estado == 'pendiente_servicio' else
   'badge-reemplazo' if estado == 'reemplazo' else 'bg-secondary'
 %}
-{% set _puede_registrar_pago = estado not in ['cancelada', 'pagada', 'pendiente_servicio', 'reemplazo'] %}
+{% set _puede_registrar_pago = solicitud_can_register_payment if solicitud_can_register_payment is defined else (estado not in ['cancelada', 'pagada', 'pendiente_servicio', 'reemplazo']) %}
 {% set _puede_activar = estado == 'proceso' %}
 {% set _last_activity_at = solicitud.fecha_ultima_actividad or solicitud.fecha_ultima_modificacion or solicitud.updated_at or solicitud.fecha_solicitud %}
 {% set _now_utc = now_utc if now_utc is defined else None %}

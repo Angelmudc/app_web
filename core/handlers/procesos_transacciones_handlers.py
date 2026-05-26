@@ -14,6 +14,7 @@ from core.services.search import search_candidatas_limited
 from utils.candidata_readiness import maybe_update_estado_por_completitud
 from utils.timezone import utc_now_naive
 from services.candidata_invariants import InvariantConflictError, change_candidate_state as invariant_change_candidate_state
+from services.candidata_assignment_guard import validate_candidata_assignment_context
 
 from core import legacy_handlers as legacy_h
 
@@ -118,6 +119,7 @@ def inscripcion():
 @roles_required("owner", "admin")
 def porciento():
     resultados, candidata = [], None
+    assignment_guard = None
 
     if request.method == "POST":
         fila_id = (request.form.get("fila_id") or "").strip()
@@ -148,24 +150,34 @@ def porciento():
         obj.inicio = fecha_inicio
         obj.monto_total = monto_total
         obj.porciento = porcentaje
+        assignment_guard = validate_candidata_assignment_context(candidata_id=int(obj.fila))
+        marked_working = False
         try:
-            invariant_change_candidate_state(
-                candidata_id=int(obj.fila),
-                new_state="trabajando",
-                actor=str(session.get("usuario", "desconocido") or "desconocido"),
-                reason="legacy_porciento",
-                candidata_obj=obj,
-            )
+            if assignment_guard.can_mark_working:
+                invariant_change_candidate_state(
+                    candidata_id=int(obj.fila),
+                    new_state="trabajando",
+                    actor=str(session.get("usuario", "desconocido") or "desconocido"),
+                    reason="legacy_porciento",
+                    candidata_obj=obj,
+                )
+                marked_working = True
         except InvariantConflictError as inv_exc:
-            flash(f"⚠️ {str(inv_exc)}", "warning")
-            return redirect(url_for("porciento", candidata=fila_id))
+            flash(f"⚠️ No se pudo marcar trabajando: {str(inv_exc)}", "warning")
 
         try:
             db.session.commit()
-            flash(
-                f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.",
-                "success",
-            )
+            if marked_working:
+                flash(
+                    f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.",
+                    "success",
+                )
+            else:
+                detail = assignment_guard.reason_message if assignment_guard else "No hay contexto operativo válido."
+                flash(
+                    f"✅ Se guardó el 25 % ({porcentaje}) sin forzar estado trabajando. Motivo: {detail}",
+                    "warning",
+                )
             candidata = obj
         except Exception:
             db.session.rollback()
@@ -190,7 +202,9 @@ def porciento():
             if not candidata:
                 flash("⚠️ Candidata no encontrada.", "warning")
 
-    return render_template("porciento.html", resultados=resultados, candidata=candidata)
+    if candidata:
+        assignment_guard = assignment_guard or validate_candidata_assignment_context(candidata_id=int(candidata.fila))
+    return render_template("porciento.html", resultados=resultados, candidata=candidata, assignment_guard=assignment_guard)
 
 
 @roles_required("owner", "admin")
@@ -267,6 +281,10 @@ def pagos():
         if not obj:
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for("pagos"))
+        assignment_guard = validate_candidata_assignment_context(candidata_id=int(obj.fila))
+        if not assignment_guard.can_charge:
+            flash(f"❌ Cobro bloqueado: {assignment_guard.reason_message}", "danger")
+            return redirect(url_for("pagos", candidata=int(obj.fila)))
 
         actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
         try:
@@ -295,7 +313,7 @@ def pagos():
             legacy_h.app.logger.exception("❌ Error al guardar pago")
             flash("❌ Error al guardar.", "danger")
 
-        return render_template("pagos.html", resultados=[], candidata=candidata)
+        return render_template("pagos.html", resultados=[], candidata=candidata, assignment_guard=assignment_guard)
 
     q = (request.args.get("busqueda") or "").strip()[:128]
     sel = (request.args.get("candidata") or "").strip()
@@ -326,5 +344,7 @@ def pagos():
             candidata = obj
         else:
             flash("⚠️ Candidata no encontrada.", "warning")
-
-    return render_template("pagos.html", resultados=resultados, candidata=candidata)
+    assignment_guard = None
+    if candidata:
+        assignment_guard = validate_candidata_assignment_context(candidata_id=int(candidata.fila))
+    return render_template("pagos.html", resultados=resultados, candidata=candidata, assignment_guard=assignment_guard)
