@@ -249,11 +249,27 @@
                   </a>
 
                   <!-- Registrar pago -->
-                  {% if s.estado in ['activa','proceso'] %}
-                  <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
-                     class="btn btn-sm btn-success" data-bs-toggle="tooltip" title="Registrar pago" aria-label="Registrar pago">
-                    💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago</span>
-                  </a>
+                  {% set _can_pay = (solicitud_pago_habilitado.get(s.id) if solicitud_pago_habilitado is defined else False) %}
+                  {% if _can_pay %}
+                    <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                       class="btn btn-sm btn-success"
+                       data-testid="cliente-solicitud-registrar-pago-{{ s.id }}"
+                       data-bs-toggle="tooltip"
+                       title="Registrar pago"
+                       aria-label="Registrar pago">
+                      💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago</span>
+                    </a>
+                  {% else %}
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      data-testid="cliente-solicitud-registrar-pago-disabled-{{ s.id }}"
+                      data-bs-toggle="tooltip"
+                      title="Sin saldo pendiente en el ciclo activo o solicitud no operativa para cobro."
+                      aria-label="Registrar pago deshabilitado"
+                      disabled>
+                      💵 <i class="bi bi-cash-stack ms-1"></i><span class="sr-only">Registrar pago deshabilitado</span>
+                    </button>
                   {% endif %}
 
                   {% if s.estado != 'espera_pago' %}

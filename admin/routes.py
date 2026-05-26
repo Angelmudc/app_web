@@ -9455,6 +9455,18 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 # 🔍 Detalle de cliente
 # ─────────────────────────────────────────────────────────────
+def solicitud_puede_registrar_pago(solicitud) -> bool:
+    estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+    if estado == "cancelada":
+        return False
+    summary = get_payment_summary(solicitud)
+    saldo_pendiente = Decimal(summary["saldo_pendiente"])
+    estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
+    if saldo_pendiente <= Decimal("0.00") or estado_pago == "pagado":
+        return False
+    return estado in {"espera_pago", "activa", "proceso", "reemplazo", "pagada"}
+
+
 def _cliente_detail_regions_context(
     cliente_id: int,
     *,
@@ -9523,6 +9535,12 @@ def _cliente_detail_regions_context(
         .order_by(Solicitud.fecha_solicitud.desc())
         .all()
     )
+    solicitud_pago_habilitado: dict[int, bool] = {}
+    for s in (solicitudes or []):
+        sid = int(getattr(s, "id", 0) or 0)
+        if sid <= 0:
+            continue
+        solicitud_pago_habilitado[sid] = solicitud_puede_registrar_pago(s)
     kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes) if include_kpi else None
     reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
     role = (
@@ -9584,6 +9602,7 @@ def _cliente_detail_regions_context(
     return {
         "cliente": cliente,
         "solicitudes": solicitudes,
+        "solicitud_pago_habilitado": solicitud_pago_habilitado,
         "kpi_cliente": kpi_cliente,
         "reemplazos_activos": reemplazos_activos,
         "is_admin_role": is_admin_role,
@@ -9760,6 +9779,7 @@ def cliente_detail_solicitudes_fragment(cliente_id):
             'admin/_cliente_detail_solicitudes_region.html',
             cliente=region_ctx["cliente"],
             solicitudes=region_ctx["solicitudes"],
+            solicitud_pago_habilitado=region_ctx["solicitud_pago_habilitado"],
             reemplazos_activos=region_ctx["reemplazos_activos"],
             is_admin_role=region_ctx["is_admin_role"],
             contracts_schema_ready=region_ctx["contracts_schema_ready"],
