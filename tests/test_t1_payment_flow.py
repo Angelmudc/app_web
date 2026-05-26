@@ -732,6 +732,26 @@ def test_t1_crear_nuevo_ciclo_inicia_en_cero_y_permite_registrar_abono():
         summary_mid = get_payment_summary(solicitud_mid)
         assert str(summary_mid["total_pagado"]) == "0.00"
 
+    resp_form = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_form.status_code == 200
+    html_form = resp_form.get_data(as_text=True)
+    assert "Este ciclo ya tiene pagos registrados" not in html_form
+    assert "Este ciclo ya está pagado" not in html_form
+
+    resp_update = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        data={"tipo_plan": "vip", "plan_action": "update"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_update.status_code == 200
+    payload_update = resp_update.get_json() or {}
+    assert payload_update.get("success") is True
+
     resp_pago = client.post(
         f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
         data={
@@ -746,8 +766,9 @@ def test_t1_crear_nuevo_ciclo_inicia_en_cero_y_permite_registrar_abono():
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
+        assert (solicitud_end.payment_cycle_plan or "") == "vip"
         summary_end = get_payment_summary(solicitud_end)
-        assert str(summary_end["total_abonado"]) == "2500.00"
+        assert str(summary_end["total_abonado"]) == "4000.00"
 
 
 def test_t1_gestionar_plan_ciclo_actual_parcial_si_bloquea_sin_override():

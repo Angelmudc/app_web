@@ -11970,9 +11970,9 @@ def gestionar_plan(cliente_id, id):
 
     def _render_plan_region(async_feedback=None) -> str:
         summary = get_payment_summary(s)
-        has_payments_current_cycle = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(estado_operativo and has_payments_current_cycle)
+        can_create_new_cycle = bool(estado_operativo and cycle_has_payments)
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -11986,16 +11986,18 @@ def gestionar_plan(cliente_id, id):
             plan_price=plan_price,
             required_deposit=required_deposit,
             remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
-            has_payments_current_cycle=has_payments_current_cycle,
+            payment_summary=summary,
+            cycle_has_payments=cycle_has_payments,
+            has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
         )
 
     def _render_plan_page(async_feedback=None):
         summary = get_payment_summary(s)
-        has_payments_current_cycle = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(estado_operativo and has_payments_current_cycle)
+        can_create_new_cycle = bool(estado_operativo and cycle_has_payments)
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -12009,7 +12011,9 @@ def gestionar_plan(cliente_id, id):
             plan_price=plan_price,
             required_deposit=required_deposit,
             remaining_balance=(plan_price - required_deposit).quantize(Decimal("0.01")),
-            has_payments_current_cycle=has_payments_current_cycle,
+            payment_summary=summary,
+            cycle_has_payments=cycle_has_payments,
+            has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
         )

@@ -277,6 +277,27 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                 resp = self._invoke(method="GET", headers=self._async_headers())
         html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
         self.assertIn("Crear nuevo ciclo de pago", html)
+        self.assertIn('name="plan_action"', html)
+        self.assertIn('value="create_new_cycle"', html)
+
+    def test_post_create_new_cycle_ejecuta_accion_y_confirma(self):
+        solicitud = _solicitud_stub(estado="activa")
+        self._payment_summary["total_pagado"] = 3500.00
+        self._payment_summary["saldo_pendiente"] = 0.00
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.open_new_payment_cycle") as open_cycle_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self._invoke(
+                    data={"tipo_plan": "premium", "plan_action": "create_new_cycle"},
+                    headers=self._async_headers(),
+                )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("Nuevo ciclo de pago creado correctamente", data["message"])
+        open_cycle_mock.assert_called_once()
+        commit_mock.assert_called_once()
 
 
 if __name__ == "__main__":

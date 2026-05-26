@@ -17,7 +17,12 @@
     </div>
   {% endif %}
 
-  {% if has_payments_current_cycle %}
+  {% set _estado_operativo = (solicitud.estado or '')|lower in ['activa', 'proceso', 'espera_pago', 'reemplazo'] %}
+  {% set _cycle_has_payments = cycle_has_payments if cycle_has_payments is defined else has_payments_current_cycle %}
+  {% set _cycle_has_payments = _cycle_has_payments if _cycle_has_payments is not none else ((payment_summary.total_pagado if payment_summary is defined else 0)|float > 0) %}
+  {% set _can_create_new_cycle = can_create_new_cycle if can_create_new_cycle is defined else (_estado_operativo and _cycle_has_payments) %}
+
+  {% if _cycle_has_payments %}
     <div class="alert alert-info border-0 mb-3" role="alert" aria-live="polite">
       {% if cycle_is_paid %}
         Este ciclo ya está pagado. Para volver a cobrar esta solicitud, crea un nuevo ciclo de pago.
@@ -99,9 +104,9 @@
     </div>
 
     <div class="d-flex justify-content-end gap-2 mt-4">
-      {% if can_create_new_cycle %}
+      {% if _can_create_new_cycle %}
         <button type="submit" class="btn btn-outline-primary" name="plan_action" value="create_new_cycle" id="btn-create-cycle">
-          <i class="bi bi-arrow-repeat me-1"></i> Crear nuevo ciclo de pago
+          + Crear nuevo ciclo de pago
         </button>
       {% endif %}
       <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
