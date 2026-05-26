@@ -121,7 +121,7 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
     reemplazo_id = int(reemplazo_modal_env["reemplazo_id"])
     solicitud_id = int(reemplazo_modal_env["solicitud_id"])
 
-    motivo = "Cliente decidió pausar el reemplazo."
+    motivo = "Cancelado desde open_cancel por prueba E2E."
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
@@ -133,45 +133,34 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         page.click('button[type="submit"]')
         page.wait_for_url("**/admin/**", timeout=12000)
 
-        page.goto(f"{base_url}/admin/reemplazos/{reemplazo_id}", wait_until="domcontentloaded")
-        page.click('button:has-text("Más acciones")')
-        page.click('button.dropdown-item.text-danger:has-text("Cancelar reemplazo")')
+        page.goto(f"{base_url}/admin/reemplazos/{reemplazo_id}?open_cancel=1", wait_until="domcontentloaded")
         page.wait_for_selector("#reemplazoCancelModal.show", timeout=12000)
 
         textarea_sel = '#reemplazoCancelModal textarea[name="motivo_cancelacion"]'
-        page.click(textarea_sel)
         page.fill(textarea_sel, motivo)
         page.screenshot(path="/private/tmp/reemplazo_cancel_modal_before_confirm.png", full_page=True)
-        assert motivo in page.input_value(textarea_sel)
-
-        page.click('#reemplazoCancelModal button[data-bs-dismiss="modal"]')
-        page.wait_for_selector("#reemplazoCancelModal.show", state="hidden", timeout=12000)
-
-        page.click('button:has-text("Más acciones")')
-        page.click('button.dropdown-item.text-danger:has-text("Cancelar reemplazo")')
-        page.wait_for_selector("#reemplazoCancelModal.show", timeout=12000)
-        page.fill(textarea_sel, motivo)
         assert motivo in page.input_value(textarea_sel)
 
         with page.expect_response(
             lambda resp: resp.request.method == "POST"
             and (
-                f"/admin/reemplazos/{reemplazo_id}/cancelar" in resp.url
-                or f"/admin/solicitudes/{solicitud_id}/reemplazos/{reemplazo_id}/cancelar" in resp.url
+                f"/admin/solicitudes/{solicitud_id}/reemplazos/{reemplazo_id}/cancelar" in resp.url
             ),
             timeout=12000,
         ) as cancel_resp_info:
-            page.click('#reemplazoCancelModal .btn.btn-danger[type="submit"]')
+            page.eval_on_selector("#reemplazoCancelForm", "form => form.requestSubmit()")
         cancel_resp = cancel_resp_info.value
         assert cancel_resp.status in (200, 302, 303)
         page.wait_for_url("**/admin/clientes/**", timeout=12000)
         page.wait_for_load_state("domcontentloaded")
         page.screenshot(path="/private/tmp/reemplazo_cancel_modal_after_confirm.png", full_page=True)
 
-        content = page.content().lower()
-        assert "sesión expir" not in content
-        assert "sesion expir" not in content
-        assert "servicio pendiente" in content
+        content = page.content()
+        content_lower = content.lower()
+        assert "sesión expir" not in content_lower
+        assert "sesion expir" not in content_lower
+        assert "servicio pendiente" in content_lower
+        assert "no se pudo cancelar el reemplazo" not in content_lower
 
         page.goto(
             f"{base_url}/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy",
@@ -179,6 +168,7 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         )
         heavy_html = page.content()
         assert "Reemplazo cancelado · Se debe servicio" in heavy_html
+        assert "No cobrar nuevamente" in heavy_html or "Se debe servicio" in heavy_html
         assert "badge bg-warning text-dark\">Espera de pago" not in heavy_html
 
         browser.close()

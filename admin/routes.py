@@ -19030,6 +19030,7 @@ def reemplazo_detail(reemplazo_id):
         logs=logs,
         outbox_events=outbox,
         seg_eventos=seg_eventos,
+        form_idempotency_key=_new_form_idempotency_key(),
     )
 
 

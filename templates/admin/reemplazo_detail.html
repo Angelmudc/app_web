@@ -312,11 +312,15 @@
         <h5 class="modal-title">Cancelar reemplazo</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <form id="reemplazoCancelForm" method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}">
+      <form id="reemplazoCancelForm"
+            method="post"
+            action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=reemplazo.id) }}">
         <div class="modal-body text-start">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           {% if solicitud %}
           <input type="hidden" name="next" value="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}#sol-{{ solicitud.id }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
           {% endif %}
           <div class="mb-2">
             <label class="form-label">Motivo de cancelación *</label>
@@ -530,7 +534,7 @@
     (function () {
       var params = new URLSearchParams(window.location.search || '');
       var modalEl = document.getElementById('reemplazoCancelModal');
-      if (!modalEl || !window.bootstrap || !window.bootstrap.Modal) return;
+      if (!modalEl) return;
       modalEl.addEventListener('shown.bs.modal', function () {
         var textarea = modalEl.querySelector('textarea[name="motivo_cancelacion"], textarea[name="cancel_reason"]');
         if (!textarea) return;
@@ -539,7 +543,31 @@
         }, 30);
       });
       if (params.get('open_cancel') !== '1') return;
-      window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+      var opened = false;
+      function tryOpenModal() {
+        if (opened) return true;
+        if (!window.bootstrap || !window.bootstrap.Modal) return false;
+        if (modalEl.classList.contains('show')) {
+          opened = true;
+          return true;
+        }
+        opened = true;
+        window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        return true;
+      }
+      if (tryOpenModal()) return;
+      var tries = 0;
+      var timer = window.setInterval(function () {
+        tries += 1;
+        if (tryOpenModal() || tries >= 50) {
+          window.clearInterval(timer);
+        }
+      }, 40);
+      window.addEventListener('load', function () {
+        if (tryOpenModal()) {
+          window.clearInterval(timer);
+        }
+      }, { once: true });
     })();
   </script>
 {% endblock %}
