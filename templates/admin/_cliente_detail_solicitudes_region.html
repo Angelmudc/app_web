@@ -243,15 +243,18 @@
                     ✏️ <i class="bi bi-pencil-fill ms-1"></i><span class="sr-only">Editar</span>
                   </a>
 
-                  <!-- Plan / Abono -->
-                  <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
-                     class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
-                    💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
-                  </a>
+                  {% if est_norm != 'pendiente_servicio' %}
+                    <!-- Plan / Abono -->
+                    <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                       class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
+                      💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
+                    </a>
+                  {% endif %}
 
                   <!-- Registrar pago -->
                   {% set _can_pay = (solicitud_pago_habilitado.get(s.id) if solicitud_pago_habilitado is defined else False) %}
-                  {% if _can_pay %}
+                  {% if est_norm == 'pendiente_servicio' %}
+                  {% elif _can_pay %}
                     <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
                        class="btn btn-sm btn-success"
                        data-testid="cliente-solicitud-registrar-pago-{{ s.id }}"
@@ -273,7 +276,7 @@
                     </button>
                   {% endif %}
 
-                  {% if s.estado != 'espera_pago' %}
+                  {% if est_norm != 'pendiente_servicio' and s.estado != 'espera_pago' %}
                   <form method="post"
                         action="{{ url_for('admin.poner_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
                         class="d-inline">
@@ -285,7 +288,7 @@
                       ⏸️
                     </button>
                   </form>
-                  {% else %}
+                  {% elif est_norm != 'pendiente_servicio' %}
                   <form method="post"
                         action="{{ url_for('admin.quitar_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
                         class="d-inline">

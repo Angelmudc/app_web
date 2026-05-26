@@ -245,6 +245,15 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         self.assertIn('data-testid="cta-recomendada-action"', html)
         self.assertIn("/admin/solicitudes/10/reemplazos/nuevo", html)
 
+    def test_cta_contextual_pendiente_servicio_oculta_cobro_y_prioriza_reemplazo(self):
+        html = self._render_operativa_region("pendiente_servicio")
+        self.assertIn("Crear reemplazo", html)
+        self.assertIn("No cobrar nuevamente. Se debe servicio por reemplazo cancelado.", html)
+        self.assertIn("/admin/solicitudes/10/reemplazos/nuevo", html)
+        self.assertNotIn("Registrar pago", html)
+        self.assertNotIn("Plan / Abono", html)
+        self.assertNotIn("Marcar espera de pago", html)
+
     def test_cta_contextual_sin_principal_en_estados_cerrados(self):
         html_pagada = self._render_operativa_region("pagada")
         self.assertIn('data-testid="cta-recomendada-info"', html_pagada)

@@ -9459,7 +9459,8 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 def solicitud_puede_registrar_pago(solicitud) -> bool:
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
-    if estado == "cancelada":
+    # Regla operativa: si se debe servicio, no se debe cobrar.
+    if estado in {"cancelada", "pendiente_servicio"}:
         return False
     summary = get_payment_summary(solicitud)
     saldo_pendiente = Decimal(summary["saldo_pendiente"])
@@ -14819,12 +14820,12 @@ def _solicitud_list_primary_cta(
         }
     if estado == "pendiente_servicio":
         return {
-            "label": "Gestionar reemplazo",
+            "label": "Crear reemplazo",
             "kind": "link",
             "form_action": "",
-            "href": detail_url,
+            "href": url_for("admin.nuevo_reemplazo", s_id=solicitud.id),
             "btn_class": "btn-warning text-dark",
-            "help": "Servicio pendiente por reemplazo cancelado; reabrir sin cobrar de nuevo.",
+            "help": "No cobrar nuevamente. Se debe servicio por reemplazo cancelado.",
         }
     if estado == "reemplazo":
         return {

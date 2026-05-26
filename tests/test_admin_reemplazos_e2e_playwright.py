@@ -161,6 +161,7 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         assert "sesion expir" not in content_lower
         assert "servicio pendiente" in content_lower
         assert "no se pudo cancelar el reemplazo" not in content_lower
+        assert "crear reemplazo" in content_lower
 
         page.goto(
             f"{base_url}/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy",
@@ -170,6 +171,8 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         assert "Reemplazo cancelado · Se debe servicio" in heavy_html
         assert "No cobrar nuevamente" in heavy_html or "Se debe servicio" in heavy_html
         assert "badge bg-warning text-dark\">Espera de pago" not in heavy_html
+        assert "Registrar pago" not in heavy_html
+        assert "Plan / Abono" not in heavy_html
 
         browser.close()
 
@@ -239,6 +242,7 @@ def test_reemplazo_cancel_modal_dirty_payment_state_stays_pendiente_servicio(ree
         content = page.content().lower()
         assert "no se pudo cancelar el reemplazo" not in content
         assert "servicio pendiente" in content
+        assert "crear reemplazo" in content
 
         page.goto(
             f"{base_url}/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy",
@@ -248,6 +252,8 @@ def test_reemplazo_cancel_modal_dirty_payment_state_stays_pendiente_servicio(ree
         assert "Reemplazo cancelado · Se debe servicio" in heavy_html
         assert "No cobrar nuevamente" in heavy_html or "Se debe servicio" in heavy_html
         assert "badge bg-warning text-dark\">Espera de pago" not in heavy_html
+        assert "Registrar pago" not in heavy_html
+        assert "Plan / Abono" not in heavy_html
 
         browser.close()
 

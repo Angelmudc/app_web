@@ -6,14 +6,19 @@
 
 <div class="d-inline-flex flex-wrap gap-2 align-items-center">
   {% if not repl_activo %}
+    {% set _estado_norm = (solicitud.estado or '')|lower %}
     <button
       type="button"
       class="btn btn-sm {{ 'btn-secondary' if _style == 'cliente' else 'btn-outline-dark' }}"
       data-bs-toggle="modal"
       data-bs-target="#{{ _open_modal_id }}"
       {% if not solicitud.candidata_id %}disabled{% endif %}
-      title="Abrir reemplazo">
-      {% if _style == 'cliente' %}🔁{% else %}Abrir reemplazo{% endif %}
+      title="{{ 'No cobrar nuevamente. Se debe servicio por reemplazo cancelado.' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}">
+      {% if _style == 'cliente' %}
+        {{ 'Crear reemplazo' if _estado_norm == 'pendiente_servicio' else '🔁' }}
+      {% else %}
+        {{ 'Crear reemplazo' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}
+      {% endif %}
     </button>
   {% elif repl_operable %}
     {% if is_admin_role %}
