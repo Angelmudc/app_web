@@ -305,7 +305,7 @@
   </div>
 </div>
 {% if (current_user.role|default('')|lower) in ['admin','owner'] and not _reemplazo_ya_cerrado %}
-<div class="modal fade" id="reemplazoCancelModal" tabindex="-1" aria-hidden="true">
+<div class="modal fade" id="reemplazoCancelModal" tabindex="-1" aria-hidden="true" data-reemplazo-modal="1">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
@@ -317,7 +317,7 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="mb-2">
             <label class="form-label">Motivo de cancelación *</label>
-            <textarea class="form-control" name="cancel_reason" rows="3" required></textarea>
+            <textarea class="form-control" name="motivo_cancelacion" rows="3" required></textarea>
           </div>
           <div class="small text-muted mb-2">Esta acción cancela solo el reemplazo. La solicitud no se cancela.</div>
         </div>
@@ -526,9 +526,16 @@
   <script>
     (function () {
       var params = new URLSearchParams(window.location.search || '');
-      if (params.get('open_cancel') !== '1') return;
       var modalEl = document.getElementById('reemplazoCancelModal');
       if (!modalEl || !window.bootstrap || !window.bootstrap.Modal) return;
+      modalEl.addEventListener('shown.bs.modal', function () {
+        var textarea = modalEl.querySelector('textarea[name="motivo_cancelacion"], textarea[name="cancel_reason"]');
+        if (!textarea) return;
+        window.setTimeout(function () {
+          try { textarea.focus({ preventScroll: true }); } catch (_) { textarea.focus(); }
+        }, 30);
+      });
+      if (params.get('open_cancel') !== '1') return;
       window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
     })();
   </script>

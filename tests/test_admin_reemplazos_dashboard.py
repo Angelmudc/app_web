@@ -325,7 +325,7 @@ def test_reemplazo_cancelacion_ui_muestra_modal_con_motivo_y_accion_en_admin():
     assert resp_detail.status_code == 200
     html = resp_detail.get_data(as_text=True)
     assert "Cancelar reemplazo" in html
-    assert 'name="cancel_reason"' in html
+    assert 'name="motivo_cancelacion"' in html
     assert 'name="cancel_action"' not in html
     assert "cancela solo el reemplazo" in html
 

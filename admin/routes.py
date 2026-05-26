@@ -13891,7 +13891,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             error_code="conflict",
         )
 
-    cancel_reason = (request.form.get("cancel_reason") or "").strip()
+    cancel_reason = (request.form.get("motivo_cancelacion") or request.form.get("cancel_reason") or "").strip()
     if not cancel_reason:
         return _action_response(
             ok=False,
