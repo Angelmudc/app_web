@@ -26524,17 +26524,22 @@ def _seg_serialize_case(caso: SeguimientoCandidataCaso) -> dict:
 
 @admin_bp.app_template_global("seguimiento_candidatas_badge_count")
 def seguimiento_candidatas_badge_count() -> int:
-    if not _seg_tables_ready():
-        return 0
-    if not has_request_context():
-        return 0
-    if not bool(getattr(current_user, "is_authenticated", False)):
-        return 0
-    role = str(role_for_user(current_user) or "").strip().lower()
-    if role not in {"owner", "admin", "secretaria"}:
-        return 0
-    now = _seg_now()
     try:
+        if not _seg_tables_ready():
+            return 0
+        if not has_request_context():
+            return 0
+        if not bool(getattr(current_user, "is_authenticated", False)):
+            return 0
+        role = str(role_for_user(current_user) or "").strip().lower()
+        if role not in {"owner", "admin", "secretaria"}:
+            return 0
+        now = _seg_now()
+        # Limpia transacción fallida previa del mismo request para evitar cascadas en /home.
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return int(
             db.session.query(func.count(SeguimientoCandidataCaso.id))
             .filter(

@@ -64,6 +64,12 @@ def home():
             reemplazos_badge = dict(admin_routes.reemplazos_badge_counts() or {})
         except Exception:
             reemplazos_badge = {"activos": 0, "criticos": 0}
+    # Blindaje transaccional para render de /home:
+    # si algún helper previo dejó la sesión abortada, limpiamos antes de evaluar badges en template.
+    try:
+        legacy.db.session.rollback()
+    except Exception:
+        pass
     return legacy.render_template(
         'home.html',
         usuario=legacy.session['usuario'],
