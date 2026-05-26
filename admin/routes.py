@@ -201,6 +201,7 @@ from services.solicitud_recommendation_service import SolicitudRecommendationSer
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
 from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan, is_valid_plan
 from services.payment_ledger import (
+    apply_payment_state_from_summary,
     open_new_payment_cycle,
     calcular_saldo_pendiente,
     calcular_total_abonado,
@@ -12597,7 +12598,9 @@ def registrar_pago(cliente_id, id):
                 # Si el sueldo viene raro, no rompemos el pago
                 pass
 
-        estado_pago = recalcular_estado_pago_solicitud(s)
+        db.session.flush()
+        summary_after_payment = get_payment_summary(s)
+        estado_pago = apply_payment_state_from_summary(s, summary_after_payment)
         _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_PAGO_REGISTRADO",

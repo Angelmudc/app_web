@@ -254,6 +254,115 @@ def test_t1_vip_abono_y_saldo_queda_pagada_sin_abrir_ciclo_nuevo():
         assert str(movs[1].monto) == "4000.00"
 
 
+def test_t1_basico_abono_y_saldo_queda_pagada_y_cierra_ciclo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        ciclo_actual = int(solicitud.payment_cycle_current or 1)
+        v1 = int(solicitud.row_version or 0)
+
+    resp_abono = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_abono",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-basico-part1-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_abono.status_code == 200
+    with flask_app.app_context():
+        solicitud_mid = Solicitud.query.get(solicitud_id)
+        assert solicitud_mid is not None
+        assert solicitud_mid.estado == "espera_pago"
+        v2 = int(solicitud_mid.row_version or 0)
+
+    resp_saldo = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(v2),
+            "idempotency_key": f"t1a-basico-part2-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_saldo.status_code == 200
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert solicitud_end.payment_cycle_closed_at is not None
+        movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).order_by(PagoSolicitud.id.asc()).all()
+        assert len(movs) == 2
+        assert int(movs[0].ciclo_numero or 0) == ciclo_actual
+        assert int(movs[1].ciclo_numero or 0) == ciclo_actual
+
+
+def test_t1_premium_abono_y_saldo_queda_pagada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+    with flask_app.app_context():
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        v1 = int(solicitud.row_version or 0)
+
+    resp_abono = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_abono",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-premium-part1-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_abono.status_code == 200
+    with flask_app.app_context():
+        solicitud_mid = Solicitud.query.get(solicitud_id)
+        assert solicitud_mid is not None
+        assert solicitud_mid.estado == "espera_pago"
+        v2 = int(solicitud_mid.row_version or 0)
+
+    resp_saldo = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(v2),
+            "idempotency_key": f"t1a-premium-part2-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_saldo.status_code == 200
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert solicitud_end.payment_cycle_closed_at is not None
+
+
 def test_t1_abono_cuenta_como_pago_parcial_en_ledger():
     with flask_app.app_context():
         _ensure_core_tables()
@@ -538,6 +647,57 @@ def test_t1_ui_premium_pagada_completa_no_muestra_botones_principales():
     assert "Registrar abono RD$ 2,500.00" not in html
     assert "Registrar pago completo RD$ 5,000.00" not in html
     assert "Registrar saldo RD$ 2,500.00" not in html
+
+
+def test_t1_ui_despues_de_abono_muestra_solo_saldo_y_despues_de_saldo_ya_no_muestra_principal():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        v1 = int(solicitud.row_version or 0)
+    _login_admin(client)
+
+    resp_abono = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_abono",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-ui-basico-part1-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_abono.status_code == 200
+    html_abono = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False).get_data(as_text=True)
+    assert "Registrar saldo RD$ 1,750.00" in html_abono
+    assert "Registrar pago completo RD$ 3,500.00" not in html_abono
+
+    with flask_app.app_context():
+        solicitud_mid = Solicitud.query.get(solicitud_id)
+        assert solicitud_mid is not None
+        v2 = int(solicitud_mid.row_version or 0)
+    resp_saldo = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(v2),
+            "idempotency_key": f"t1a-ui-basico-part2-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_saldo.status_code == 200
+    html_saldo = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False).get_data(as_text=True)
+    assert "Esta solicitud ya está pagada." in html_saldo
+    assert "Registrar pago completo RD$ 3,500.00" not in html_saldo
+    assert "Registrar saldo RD$ 1,750.00" not in html_saldo
 
 
 def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():

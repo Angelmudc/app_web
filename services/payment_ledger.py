@@ -207,25 +207,26 @@ def sync_solicitud_payment_cache(solicitud) -> Decimal:
     return total_pagado
 
 
-def recalcular_estado_pago_solicitud(solicitud) -> str:
-    summary = get_payment_summary(solicitud)
-    total_pagado = Decimal(summary["total_pagado"])
-    precio_plan = Decimal(summary["precio_plan"])
+def apply_payment_state_from_summary(solicitud, summary: dict[str, Decimal | str | int | bool] | None = None) -> str:
+    summary_data = summary or get_payment_summary(solicitud)
+    total_pagado = Decimal(summary_data["total_pagado"])
+    precio_plan = Decimal(summary_data["precio_plan"])
+    saldo_pendiente = Decimal(summary_data["saldo_pendiente"])
     estado_actual = (getattr(solicitud, "estado", "") or "").strip().lower()
-    saldo_pendiente = Decimal(summary["saldo_pendiente"])
-    solicitud.monto_pagado = format_money(total_pagado)
 
+    solicitud.monto_pagado = format_money(total_pagado)
     if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
         solicitud.payment_cycle_estado = "pagado"
         if getattr(solicitud, "payment_cycle_closed_at", None) is None:
             solicitud.payment_cycle_closed_at = utc_now_naive()
         solicitud.estado = "pagada"
         return "pagada"
-    if total_pagado > Decimal("0.00"):
-        solicitud.payment_cycle_estado = "parcial"
+
+    if saldo_pendiente > Decimal("0.00"):
+        solicitud.payment_cycle_estado = "parcial" if total_pagado > Decimal("0.00") else "pendiente"
         solicitud.payment_cycle_closed_at = None
-        solicitud.estado = "espera_pago"
-        return "espera_pago"
+        solicitud.estado = "espera_pago" if total_pagado > Decimal("0.00") else "proceso"
+        return solicitud.estado
 
     solicitud.payment_cycle_estado = "pendiente"
     solicitud.payment_cycle_closed_at = None
@@ -234,6 +235,10 @@ def recalcular_estado_pago_solicitud(solicitud) -> str:
         return estado_actual
     solicitud.estado = "proceso"
     return "proceso"
+
+
+def recalcular_estado_pago_solicitud(solicitud) -> str:
+    return apply_payment_state_from_summary(solicitud)
 
 
 def sync_cycle_plan_if_no_payments(solicitud, *, motivo: str = "plan_update") -> bool:
