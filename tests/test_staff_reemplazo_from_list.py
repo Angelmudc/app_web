@@ -247,7 +247,7 @@ class ReemplazoFromListTest(unittest.TestCase):
                 )
 
         self.assertIn(resp_ok.status_code, (302, 303))
-        self.assertEqual(sol.estado, "espera_pago")
+        self.assertEqual(sol.estado, "pendiente_servicio")
 
     def test_culminar_reemplazo_bloquea_si_candidata_descalificada(self):
         self._login("Karla", "9989")

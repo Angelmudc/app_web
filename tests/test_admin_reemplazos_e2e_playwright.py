@@ -177,4 +177,5 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         assert solicitud is not None
         assert reemplazo is not None
         assert (reemplazo.resultado_final or "").lower() == "cancelado"
+        assert (solicitud.estado or "").lower() == "pendiente_servicio"
         assert (solicitud.estado or "").lower() != "cancelada"

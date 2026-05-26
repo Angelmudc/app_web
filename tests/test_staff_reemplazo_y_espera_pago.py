@@ -359,7 +359,7 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
         self.assertIn(resp.status_code, (302, 303))
         self.assertIsNotNone(r.fecha_fin_reemplazo)
         self.assertFalse(r.oportunidad_nueva)
-        self.assertEqual(sol.estado, "espera_pago")
+        self.assertEqual(sol.estado, "pendiente_servicio")
         self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_cerrar_reemplazo_asignando_nueva_candidata(self):

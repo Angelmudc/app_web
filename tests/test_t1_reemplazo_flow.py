@@ -536,7 +536,7 @@ def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pendiente_servic
     assert "Reemplazo cancelado · Se debe servicio" in heavy_html
 
 
-def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
+def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_pendiente_servicio():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -581,7 +581,7 @@ def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
-        assert solicitud_end.estado == "espera_pago"
+        assert solicitud_end.estado == "pendiente_servicio"
         assert solicitud_end.estado != "cancelada"
 
 
@@ -635,7 +635,7 @@ def test_t1b_abrir_reemplazo_desde_pendiente_servicio_no_crea_cobro_ni_ciclo_nue
         assert payment_rows_after == payment_rows_before
 
 
-def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_espera_pago():
+def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_pendiente_servicio():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -669,5 +669,5 @@ def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_espera_pago():
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
-        assert solicitud_end.estado == "espera_pago"
+        assert solicitud_end.estado == "pendiente_servicio"
         assert solicitud_end.estado != "cancelada"

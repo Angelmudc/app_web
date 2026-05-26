@@ -13902,18 +13902,9 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         )
 
     def _resolve_estado_solicitud_cancelacion() -> tuple[str, str]:
-        try:
-            summary = get_payment_summary(s)
-            precio_plan = Decimal(summary["precio_plan"])
-            saldo_pendiente = Decimal(summary["saldo_pendiente"])
-        except Exception:
-            precio_plan = Decimal("0.00")
-            saldo_pendiente = Decimal("0.00")
-        if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
-            return "pendiente_servicio", "pagado_reemplazo_cancelado"
-        if saldo_pendiente > Decimal("0.00") and precio_plan > Decimal("0.00"):
-            return "espera_pago", "saldo_pendiente"
-        return "espera_pago", "sin_ciclo_pagado"
+        # Regla operativa: cancelar reemplazo significa servicio no resuelto.
+        # El estado principal debe quedar pendiente de servicio, no espera de pago.
+        return "pendiente_servicio", "reemplazo_cancelado_servicio_pendiente"
 
     try:
         r.cerrar_reemplazo()
@@ -13926,7 +13917,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             r.fecha_resolucion = utc_now_naive()
         if hasattr(r, "nota_adicional"):
             nota_prev = (getattr(r, "nota_adicional", "") or "").strip()
-            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Solicitud: pendiente_servicio/espera_pago según ciclo · reemplazo cancelado · no resuelta"
+            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Solicitud: pendiente_servicio · reemplazo cancelado · no resuelta"
             r.nota_adicional = f"{nota_prev}\n\n{cancel_note}".strip() if nota_prev else cancel_note
 
         estado_final, estado_rule = _resolve_estado_solicitud_cancelacion()
