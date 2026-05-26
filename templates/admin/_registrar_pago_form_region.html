@@ -117,12 +117,15 @@
             <div class="fw-semibold mb-2">Pago sugerido automático</div>
             <div class="small mb-2">Ciclo activo: <strong>#{{ payment_summary["numero_ciclo"] }}</strong></div>
             <div class="small mb-2">Precio plan: <strong>RD$ {{ "{:,.2f}".format(payment_summary["precio_plan"]|float) }}</strong></div>
+            <div class="small mb-2">Abono inicial: <strong>RD$ {{ "{:,.2f}".format(payment_summary["abono_requerido"]|float) }}</strong></div>
+            <div class="small mb-2">Abono pagado: <strong>RD$ {{ "{:,.2f}".format(payment_summary["abono_pagado"]|float) }}</strong></div>
             <div class="small mb-2">Total pagado: <strong>RD$ {{ "{:,.2f}".format(payment_summary["total_pagado"]|float) }}</strong></div>
-            <div class="small mb-3">Saldo pendiente: <strong>RD$ {{ "{:,.2f}".format(payment_summary["saldo_pendiente"]|float) }}</strong></div>
+            <div class="small mb-3">Pago restante: <strong>RD$ {{ "{:,.2f}".format(payment_summary["saldo_restante"]|float) }}</strong></div>
             {% if payment_summary.get("legacy_abono_fallback") %}
               <div class="small text-warning mb-2">Usando abono legacy mientras se sincroniza el ledger.</div>
             {% endif %}
-            {% if payment_summary["total_pagado"] <= 0 %}
+            {% set _abono_cubierto = payment_summary["abono_pagado"] >= payment_summary["abono_requerido"] and payment_summary["saldo_pendiente"] > 0 %}
+            {% if payment_summary["total_pagado"] <= 0 and not _abono_cubierto %}
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="payment_mode" id="mode_abono" value="auto_abono" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_abono' %}checked{% endif %}{% else %}checked{% endif %}>
                 <label class="form-check-label" for="mode_abono">Registrar abono RD$ {{ "{:,.2f}".format(payment_summary["abono_requerido"]|float) }}</label>
@@ -134,7 +137,7 @@
             {% elif payment_summary["total_pagado"] < payment_summary["precio_plan"] %}
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="payment_mode" id="mode_saldo" value="auto_saldo" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_saldo' %}checked{% endif %}{% else %}checked{% endif %}>
-                <label class="form-check-label" for="mode_saldo">Registrar saldo RD$ {{ "{:,.2f}".format(payment_summary["saldo_pendiente"]|float) }}</label>
+                <label class="form-check-label" for="mode_saldo">Registrar pago restante RD$ {{ "{:,.2f}".format(payment_summary["saldo_pendiente"]|float) }}</label>
               </div>
             {% else %}
               <div class="small text-success mb-2">Esta solicitud ya está pagada.</div>

@@ -467,7 +467,7 @@ def test_t1_ui_detalle_muestra_resumen_pago():
     html = resp.get_data(as_text=True)
     assert "Precio del plan" in html
     assert "Total pagado" in html
-    assert "Saldo pendiente" in html
+    assert "Saldo pendiente" in html or "Pago restante" in html
 
 
 def test_t1_registrar_abono_automatico_crea_movimiento_abono():
@@ -571,8 +571,8 @@ def test_t1_ui_registrar_pago_despues_de_abono_muestra_solo_saldo_como_principal
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
     html = resp.get_data(as_text=True)
     assert "Total pagado: <strong>RD$ 1,750.00</strong>" in html
-    assert "Saldo pendiente: <strong>RD$ 1,750.00</strong>" in html
-    assert "Registrar saldo RD$ 1,750.00" in html
+    assert "Pago restante: <strong>RD$ 1,750.00</strong>" in html
+    assert "Registrar pago restante RD$ 1,750.00" in html
     assert "Registrar pago completo RD$ 3,500.00" not in html
     assert "Pago manual" in html
 
@@ -600,8 +600,8 @@ def test_t1_ui_premium_con_abono_en_ledger_muestra_solo_saldo():
     resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
     html = resp.get_data(as_text=True)
     assert "Total pagado: <strong>RD$ 2,500.00</strong>" in html
-    assert "Saldo pendiente: <strong>RD$ 2,500.00</strong>" in html
-    assert "Registrar saldo RD$ 2,500.00" in html
+    assert "Pago restante: <strong>RD$ 2,500.00</strong>" in html
+    assert "Registrar pago restante RD$ 2,500.00" in html
     assert "Registrar abono RD$ 2,500.00" not in html
     assert "Registrar pago completo RD$ 5,000.00" not in html
 
@@ -646,7 +646,7 @@ def test_t1_ui_premium_pagada_completa_no_muestra_botones_principales():
     assert "Esta solicitud ya está pagada." in html
     assert "Registrar abono RD$ 2,500.00" not in html
     assert "Registrar pago completo RD$ 5,000.00" not in html
-    assert "Registrar saldo RD$ 2,500.00" not in html
+    assert "Registrar pago restante RD$ 2,500.00" not in html
 
 
 def test_t1_ui_despues_de_abono_muestra_solo_saldo_y_despues_de_saldo_ya_no_muestra_principal():
@@ -675,7 +675,7 @@ def test_t1_ui_despues_de_abono_muestra_solo_saldo_y_despues_de_saldo_ya_no_mues
     )
     assert resp_abono.status_code == 200
     html_abono = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False).get_data(as_text=True)
-    assert "Registrar saldo RD$ 1,750.00" in html_abono
+    assert "Registrar pago restante RD$ 1,750.00" in html_abono
     assert "Registrar pago completo RD$ 3,500.00" not in html_abono
 
     with flask_app.app_context():
@@ -697,7 +697,7 @@ def test_t1_ui_despues_de_abono_muestra_solo_saldo_y_despues_de_saldo_ya_no_mues
     html_saldo = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False).get_data(as_text=True)
     assert "Esta solicitud ya está pagada." in html_saldo
     assert "Registrar pago completo RD$ 3,500.00" not in html_saldo
-    assert "Registrar saldo RD$ 1,750.00" not in html_saldo
+    assert "Registrar pago restante RD$ 1,750.00" not in html_saldo
 
 
 def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
@@ -707,9 +707,72 @@ def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         summary = get_payment_summary(solicitud)
-        assert str(summary["total_pagado"]) == "0.00"
-        assert str(summary["saldo_pendiente"]) == "5000.00"
-        assert summary["legacy_abono_fallback"] is False
+        assert str(summary["total_pagado"]) == "2500.00"
+        assert str(summary["abono_pagado"]) == "2500.00"
+        assert str(summary["saldo_pendiente"]) == "2500.00"
+        assert summary["legacy_abono_fallback"] is True
+
+
+def test_t1_ui_basico_con_abono_legacy_muestra_solo_pago_restante():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="1750.00")
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Registrar pago restante RD$ 1,750.00" in html
+    assert "Registrar abono RD$ 1,750.00" not in html
+    assert "Registrar pago completo RD$ 3,500.00" not in html
+
+
+def test_t1_ui_premium_con_abono_legacy_muestra_solo_pago_restante():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert "Registrar pago restante RD$ 2,500.00" in html
+    assert "Registrar abono RD$ 2,500.00" not in html
+    assert "Registrar pago completo RD$ 5,000.00" not in html
+
+
+def test_t1_marcar_pagada_desde_copiar_con_abono_legacy_auto_saldo_cobra_restante():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="1750.00")
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/marcar_pagada_desde_copiar",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "idempotency_key": f"t1a-mark-saldo-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert solicitud_end.estado == "pagada"
+        movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).order_by(PagoSolicitud.id.asc()).all()
+        assert len(movs) == 1
+        assert str(movs[0].monto) == "1750.00"
 
 
 def test_t1_reactivar_abre_ciclo_nuevo_y_permite_nuevo_abono():

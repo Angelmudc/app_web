@@ -18,6 +18,13 @@ def _to_decimal(value) -> Decimal:
     return Decimal(format_money(value))
 
 
+def _legacy_abono_value(solicitud) -> Decimal:
+    raw = getattr(solicitud, "abono", None)
+    if raw is None:
+        return Decimal("0.00")
+    return _to_decimal(raw)
+
+
 def _cycle_plan(solicitud) -> str:
     return normalize_plan(getattr(solicitud, "payment_cycle_plan", None) or getattr(solicitud, "tipo_plan", None))
 
@@ -182,20 +189,36 @@ def get_payment_summary(solicitud) -> dict[str, Decimal | str | int | bool]:
     abono_requerido = Decimal(cycle["abono_requerido"])
     total_pagado = calcular_total_pagado(solicitud_id, ciclo_numero=cycle_num)
     total_abonado = calcular_total_abonado(solicitud_id, ciclo_numero=cycle_num)
+    legacy_abono = Decimal("0.00")
+    legacy_abono_fallback = False
+    if cycle_num == 1:
+        legacy_abono = _legacy_abono_value(solicitud)
+        if legacy_abono > Decimal("0.00"):
+            legacy_abono_usable = min(legacy_abono, abono_requerido).quantize(Decimal("0.01"))
+            if total_abonado < legacy_abono_usable:
+                legacy_diff = (legacy_abono_usable - total_abonado).quantize(Decimal("0.01"))
+                total_abonado = (total_abonado + legacy_diff).quantize(Decimal("0.01"))
+                total_pagado = (total_pagado + legacy_diff).quantize(Decimal("0.01"))
+                if total_pagado > precio_plan:
+                    total_pagado = precio_plan
+                legacy_abono_fallback = True
     saldo_pendiente = (precio_plan - total_pagado).quantize(Decimal("0.01"))
     if saldo_pendiente < Decimal("0.00"):
         saldo_pendiente = Decimal("0.00")
+    abono_pagado = min(total_abonado, abono_requerido).quantize(Decimal("0.01"))
 
     return {
         "numero_ciclo": cycle_num,
         "precio_plan": precio_plan,
         "abono_requerido": abono_requerido,
+        "abono_pagado": abono_pagado,
         "total_pagado": total_pagado,
         "total_abonado": total_abonado,
         "saldo_pendiente": saldo_pendiente,
+        "saldo_restante": saldo_pendiente,
         "plan_norm": str(cycle["plan"]),
-        "legacy_abono_fallback": False,
-        "legacy_abono": Decimal("0.00"),
+        "legacy_abono_fallback": legacy_abono_fallback,
+        "legacy_abono": legacy_abono,
         "ciclo_estado": str(cycle["estado_pago"]),
     }
 

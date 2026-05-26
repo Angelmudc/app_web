@@ -22850,7 +22850,9 @@ def marcar_pagada_desde_copiar(id):
             origen_id=f"marcar_pagada_desde_copiar:{payment_mode}:{s.id}:{int(getattr(cand, 'fila', 0) or 0)}",
             nota=(f"manual_reason:{manual_reason}" if payment_mode == "manual" else f"modo:{payment_mode}"),
         )
-        estado_pago = recalcular_estado_pago_solicitud(s)
+        db.session.flush()
+        summary_after_payment = get_payment_summary(s)
+        estado_pago = apply_payment_state_from_summary(s, summary_after_payment)
         _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_CANDIDATA_ASIGNADA",
