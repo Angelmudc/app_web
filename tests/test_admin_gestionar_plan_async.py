@@ -51,6 +51,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
+        self._sync_cycle_plan_result = True
 
     def _raw_view(self):
         view = admin_routes.gestionar_plan
@@ -65,7 +66,10 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             data=(data or {}),
             headers=(headers or {}),
         ):
-            rv = self._raw_view()(7, 101)
+            with patch("admin.routes.ensure_current_payment_cycle", return_value=None), \
+                 patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
+                 patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result):
+                rv = self._raw_view()(7, 101)
             if isinstance(rv, tuple):
                 resp = rv[0]
                 resp.status_code = int(rv[1])
@@ -86,7 +90,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "abono": "1,500"},
+                    data={"tipo_plan": "premium", "abono": "1,500"},
                     headers=self._async_headers(),
                 )
 
@@ -124,7 +128,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "abono": "1500"},
+                    data={"tipo_plan": "premium", "abono": "1500"},
                     headers={},
                 )
 
@@ -139,7 +143,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "abono": "1500"},
+                    data={"tipo_plan": "premium", "abono": "1500"},
                     headers={},
                     path="/admin/clientes/7/solicitudes/101/plan?next=/admin/solicitudes/copiar?page=2",
                 )
@@ -155,7 +159,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
                  patch("admin.routes.db.session.commit", side_effect=SQLAlchemyError("db_down")):
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "abono": "1500"},
+                    data={"tipo_plan": "premium", "abono": "1500"},
                     headers=self._async_headers(),
                 )
 
@@ -175,7 +179,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                      side_effect=IntegrityError("stmt", "params", Exception("dup")),
                  ):
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "abono": "1500"},
+                    data={"tipo_plan": "premium", "abono": "1500"},
                     headers=self._async_headers(),
                 )
 
@@ -212,6 +216,19 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertIn("RD$ 8,000.00", html_v)
         self.assertIn("RD$ 4,000.00", html_v)
 
+    def test_gestionar_plan_template_incluye_data_prices_y_targets_resumen(self):
+        solicitud = _solicitud_stub()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn('data-price="3500"', html)
+        self.assertIn('data-price="5000"', html)
+        self.assertIn('data-price="8000"', html)
+        self.assertIn('id="plan-summary-total"', html)
+        self.assertIn('id="plan-summary-deposit"', html)
+        self.assertIn('id="plan-summary-balance"', html)
+
     def test_gestionar_plan_basico_emoji_normaliza_correctamente(self):
         solicitud = _solicitud_stub()
         solicitud.tipo_plan = "Básico 💼"
@@ -224,11 +241,11 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
 
     def test_mensaje_bloqueo_ciclo_actual_con_pagos(self):
         solicitud = _solicitud_stub()
+        self._sync_cycle_plan_result = False
         with flask_app.app_context():
-            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
-                 patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=False):
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
                 resp = self._invoke(
-                    data={"tipo_plan": "Premium", "manual_override": "0"},
+                    data={"tipo_plan": "premium", "manual_override": "0"},
                     headers=self._async_headers(),
                 )
         self.assertEqual(resp.status_code, 409)

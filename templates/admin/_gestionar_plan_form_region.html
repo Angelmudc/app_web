@@ -41,9 +41,9 @@
         name="tipo_plan"
         class="form-select{% if form.tipo_plan.errors %} is-invalid{% endif %}"
         required>
-        <option value="basico" {% if plan_value in ['basico', 'Básico', 'Basico', 'básico'] %}selected{% endif %}>Básico</option>
-        <option value="premium" {% if plan_value in ['premium', 'Premium'] %}selected{% endif %}>Premium</option>
-        <option value="vip" {% if plan_value in ['vip', 'VIP'] %}selected{% endif %}>VIP</option>
+        <option value="basico" data-price="3500" {% if plan_value in ['basico', 'Básico', 'Basico', 'básico'] %}selected{% endif %}>Básico</option>
+        <option value="premium" data-price="5000" {% if plan_value in ['premium', 'Premium'] %}selected{% endif %}>Premium</option>
+        <option value="vip" data-price="8000" {% if plan_value in ['vip', 'VIP'] %}selected{% endif %}>VIP</option>
       </select>
       {% if form.tipo_plan.errors %}
         <div class="invalid-feedback d-block">{{ form.tipo_plan.errors[0] }}</div>
@@ -52,12 +52,12 @@
       {% endif %}
     </div>
 
-    <div class="mb-4 p-3 border rounded bg-light">
+    <div class="mb-4 p-3 border rounded bg-light" id="plan-auto-summary">
       <div class="fw-semibold mb-1">Resumen automático del plan</div>
-      <div>Precio total: <strong>RD$ {{ "{:,.2f}".format(plan_price|float) }}</strong></div>
-      <div>Abono requerido (50%): <strong>RD$ {{ "{:,.2f}".format(required_deposit|float) }}</strong></div>
-      <div>Saldo restante (50%): <strong>RD$ {{ "{:,.2f}".format(remaining_balance|float) }}</strong></div>
-      <input type="hidden" name="abono" value="{{ "{:.2f}".format(required_deposit|float) }}">
+      <div>Precio total: <strong id="plan-summary-total">RD$ {{ "{:,.2f}".format(plan_price|float) }}</strong></div>
+      <div>Abono requerido (50%): <strong id="plan-summary-deposit">RD$ {{ "{:,.2f}".format(required_deposit|float) }}</strong></div>
+      <div>Saldo restante (50%): <strong id="plan-summary-balance">RD$ {{ "{:,.2f}".format(remaining_balance|float) }}</strong></div>
+      <input type="hidden" id="abono_auto" name="abono" value="{{ "{:.2f}".format(required_deposit|float) }}">
     </div>
 
     <input type="hidden" name="manual_override" id="manual_override" value="0">
@@ -98,3 +98,56 @@
     </div>
   </form>
 </div>
+<script>
+  (function () {
+    if (window.__adminPlanSummaryInitBound) return;
+    window.__adminPlanSummaryInitBound = true;
+
+    function formatDop(value) {
+      return "RD$ " + Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function initPlanSummary(scope) {
+      if (!scope || scope.nodeType !== 1) return;
+      var form = scope.querySelector("#planForm");
+      if (!form || form.dataset.planSummaryReady === "1") return;
+
+      var planSelect = form.querySelector("#tipo_plan");
+      var totalEl = form.querySelector("#plan-summary-total");
+      var depositEl = form.querySelector("#plan-summary-deposit");
+      var balanceEl = form.querySelector("#plan-summary-balance");
+      var abonoInput = form.querySelector("#abono_auto");
+      if (!planSelect || !totalEl || !depositEl || !balanceEl || !abonoInput) return;
+
+      function syncSummaryFromPlan() {
+        var selected = planSelect.options[planSelect.selectedIndex];
+        var total = Number((selected && selected.dataset && selected.dataset.price) || 0);
+        var deposit = total * 0.5;
+        var balance = total - deposit;
+        totalEl.textContent = formatDop(total);
+        depositEl.textContent = formatDop(deposit);
+        balanceEl.textContent = formatDop(balance);
+        abonoInput.value = deposit.toFixed(2);
+      }
+
+      planSelect.addEventListener("change", syncSummaryFromPlan);
+      syncSummaryFromPlan();
+      form.dataset.planSummaryReady = "1";
+    }
+
+    function initInDocument() {
+      initPlanSummary(document.getElementById("gestionarPlanAsyncRegion") || document);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", initInDocument);
+    } else {
+      initInDocument();
+    }
+
+    document.addEventListener("admin:content-updated", function (ev) {
+      var root = (ev && ev.detail && ev.detail.target) || document.getElementById("gestionarPlanAsyncRegion") || document;
+      initPlanSummary(root);
+    });
+  })();
+</script>
