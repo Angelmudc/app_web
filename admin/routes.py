@@ -13906,6 +13906,9 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         # El estado principal debe quedar pendiente de servicio, no espera de pago.
         return "pendiente_servicio", "reemplazo_cancelado_servicio_pendiente"
 
+    response_status = 200
+    reason = "ok"
+    before_estado = (getattr(s, "estado", "") or "").strip().lower()
     try:
         r.cerrar_reemplazo()
         _reemplazo_set_fase(r, "cerrado")
@@ -13922,6 +13925,8 @@ def cancelar_reemplazo(s_id, reemplazo_id):
 
         estado_final, estado_rule = _resolve_estado_solicitud_cancelacion()
         _set_solicitud_estado(s, estado_final)
+        # Hard guard: la cancelación de reemplazo siempre deja servicio pendiente.
+        s.estado = "pendiente_servicio"
         if hasattr(s, "nota_cliente"):
             note_prev = (getattr(s, "nota_cliente", "") or "").strip()
             marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
@@ -13941,7 +13946,18 @@ def cancelar_reemplazo(s_id, reemplazo_id):
                 "resultado_operativo": "reemplazo_cancelado_no_resuelto",
             },
         )
+        # Hard guard final: evitar que cualquier helper/event hook pise el estado.
+        s.estado = "pendiente_servicio"
         _set_idempotency_response(idem_row, status=200, code="ok")
+        current_app.logger.debug(
+            "[reemplazo_cancel_debug] rid=%s sid=%s before_estado=%s after_estado=%s status=%s reason=%s",
+            r.id,
+            s.id,
+            before_estado,
+            (getattr(s, "estado", "") or "").strip().lower(),
+            response_status,
+            reason,
+        )
         db.session.commit()
         _audit_log(
             action_type="REEMPLAZO_CANCELAR",
@@ -13964,6 +13980,17 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         )
     except StaleDataError:
         db.session.rollback()
+        response_status = 409
+        reason = "stale_data"
+        current_app.logger.warning(
+            "[reemplazo_cancel_debug] rid=%s sid=%s before_estado=%s after_estado=%s status=%s reason=%s",
+            r.id,
+            s.id,
+            before_estado,
+            (getattr(s, "estado", "") or "").strip().lower(),
+            response_status,
+            reason,
+        )
         return _action_response(
             ok=False,
             message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
@@ -13973,6 +14000,17 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         )
     except Exception:
         db.session.rollback()
+        response_status = 500
+        reason = "exception"
+        current_app.logger.warning(
+            "[reemplazo_cancel_debug] rid=%s sid=%s before_estado=%s after_estado=%s status=%s reason=%s",
+            r.id,
+            s.id,
+            before_estado,
+            (getattr(s, "estado", "") or "").strip().lower(),
+            response_status,
+            reason,
+        )
         _audit_log(
             action_type="REEMPLAZO_CANCELAR",
             entity_type="Solicitud",

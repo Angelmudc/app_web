@@ -181,3 +181,78 @@ def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_en
         assert (reemplazo.resultado_final or "").lower() == "cancelado"
         assert (solicitud.estado or "").lower() == "pendiente_servicio"
         assert (solicitud.estado or "").lower() != "cancelada"
+
+
+@pytest.mark.e2e
+def test_reemplazo_cancel_modal_dirty_payment_state_stays_pendiente_servicio(reemplazo_modal_env):
+    base_url = reemplazo_modal_env["base_url"]
+    owner_user = reemplazo_modal_env["owner_user"]
+    owner_pass = reemplazo_modal_env["owner_pass"]
+    cliente_id = int(reemplazo_modal_env["cliente_id"])
+    reemplazo_id = int(reemplazo_modal_env["reemplazo_id"])
+    solicitud_id = int(reemplazo_modal_env["solicitud_id"])
+
+    with flask_app.app_context():
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        # Estado/ciclo sucio previo, típico de casos reales que vienen de pago parcial.
+        if hasattr(solicitud, "estado_previo_espera_pago"):
+            solicitud.estado_previo_espera_pago = "activa"
+        if hasattr(solicitud, "payment_cycle_estado"):
+            solicitud.payment_cycle_estado = "parcial"
+        if hasattr(solicitud, "payment_cycle_paid_total"):
+            solicitud.payment_cycle_paid_total = 1000
+        if hasattr(solicitud, "payment_cycle_plan_total"):
+            solicitud.payment_cycle_plan_total = 25000
+        solicitud.estado = "reemplazo"
+        db.session.commit()
+
+    motivo = "Cancelación con ciclo sucio desde open_cancel."
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        page = browser.new_page()
+
+        page.goto(f"{base_url}/admin/login", wait_until="domcontentloaded")
+        page.fill('input[name="usuario"]', owner_user)
+        page.fill('input[name="clave"]', owner_pass)
+        page.click('button[type="submit"]')
+        page.wait_for_url("**/admin/**", timeout=12000)
+
+        page.goto(f"{base_url}/admin/reemplazos/{reemplazo_id}?open_cancel=1", wait_until="domcontentloaded")
+        page.wait_for_selector("#reemplazoCancelModal.show", timeout=12000)
+        page.fill('#reemplazoCancelModal textarea[name="motivo_cancelacion"]', motivo)
+
+        with page.expect_response(
+            lambda resp: resp.request.method == "POST"
+            and f"/admin/solicitudes/{solicitud_id}/reemplazos/{reemplazo_id}/cancelar" in resp.url,
+            timeout=12000,
+        ) as cancel_resp_info:
+            page.eval_on_selector("#reemplazoCancelForm", "form => form.requestSubmit()")
+        cancel_resp = cancel_resp_info.value
+        assert cancel_resp.status == 302
+        assert cancel_resp.request.post_data is not None
+        assert "motivo_cancelacion=" in (cancel_resp.request.post_data or "")
+        assert "row_version=" in (cancel_resp.request.post_data or "")
+        assert "idempotency_key=" in (cancel_resp.request.post_data or "")
+
+        page.wait_for_url("**/admin/clientes/**", timeout=12000)
+        content = page.content().lower()
+        assert "no se pudo cancelar el reemplazo" not in content
+        assert "servicio pendiente" in content
+
+        page.goto(
+            f"{base_url}/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy",
+            wait_until="domcontentloaded",
+        )
+        heavy_html = page.content()
+        assert "Reemplazo cancelado · Se debe servicio" in heavy_html
+        assert "No cobrar nuevamente" in heavy_html or "Se debe servicio" in heavy_html
+        assert "badge bg-warning text-dark\">Espera de pago" not in heavy_html
+
+        browser.close()
+
+    with flask_app.app_context():
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        assert (solicitud.estado or "").lower() == "pendiente_servicio"
+        assert (solicitud.estado or "").lower() != "espera_pago"
