@@ -689,6 +689,67 @@ def test_t1_gestionar_plan_reactivada_crear_nuevo_ciclo_y_permite_bajar_de_vip_a
         assert (solicitud_end.payment_cycle_motivo_apertura or "") == "reactivacion_manual"
 
 
+def test_t1_gestionar_plan_estado_pagada_ciclo_pagado_permite_crear_nuevo_ciclo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="5000.00",
+                tipo_pago="pago",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"premium-paid-pagada:{solicitud_id}",
+            )
+        )
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "premium"
+        solicitud.payment_cycle_precio_total = "5000.00"
+        solicitud.payment_cycle_abono_requerido = "2500.00"
+        solicitud.payment_cycle_estado = "pagado"
+        solicitud.payment_cycle_closed_at = None
+        solicitud.estado = "pagada"
+        db.session.commit()
+    _login_admin(client)
+
+    resp_get = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_get.status_code == 200
+    html_get = resp_get.get_data(as_text=True)
+    assert "Crear nuevo ciclo de pago" in html_get
+    assert "DEBUG: can_create_new_cycle" not in html_get
+
+    resp_post = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        data={"tipo_plan": "vip", "plan_action": "create_new_cycle"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_post.status_code == 200
+    payload = resp_post.get_json() or {}
+    assert payload.get("success") is True
+    assert "No corresponde crear un nuevo ciclo en el estado actual." not in (payload.get("message") or "")
+    assert "Nuevo ciclo de pago creado correctamente." in (payload.get("message") or "")
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert int(solicitud_end.payment_cycle_current or 0) == 2
+        assert (solicitud_end.payment_cycle_estado or "") == "pendiente"
+        assert solicitud_end.payment_cycle_closed_at is None
+
+
 def test_t1_crear_nuevo_ciclo_inicia_en_cero_y_permite_registrar_abono():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

@@ -109,7 +109,7 @@ def _seed_paid_cycle_case() -> dict[str, int]:
     solicitud.payment_cycle_precio_total = "5000.00"
     solicitud.payment_cycle_abono_requerido = "2500.00"
     solicitud.payment_cycle_estado = "pagado"
-    solicitud.estado = "activa"
+    solicitud.estado = "pagada"
     db.session.commit()
 
     return {
@@ -183,13 +183,17 @@ def test_admin_gestionar_plan_muestra_boton_y_crea_nuevo_ciclo_live(gestionar_pl
         expect(paid_msg).to_be_visible()
         expect(create_btn).to_be_visible()
         expect(create_btn).to_be_enabled()
+        expect(page.get_by_text("DEBUG: can_create_new_cycle", exact=False)).to_have_count(0)
 
         page.screenshot(path=str(before_png), full_page=True)
 
         create_btn.click()
 
         detail_url = f"{base_url}/admin/clientes/{cliente_id}"
-        page.wait_for_url(f"{detail_url}**", timeout=12000)
+        page.wait_for_function(
+            f"() => window.location.pathname === '/admin/clientes/{cliente_id}'",
+            timeout=12000,
+        )
 
         with flask_app.app_context():
             solicitud = Solicitud.query.get(solicitud_id)

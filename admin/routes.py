@@ -11972,7 +11972,7 @@ def gestionar_plan(cliente_id, id):
         summary = get_payment_summary(s)
         cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(estado_operativo and cycle_has_payments)
+        can_create_new_cycle = bool(cycle_is_paid or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -11997,7 +11997,7 @@ def gestionar_plan(cliente_id, id):
         summary = get_payment_summary(s)
         cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(estado_operativo and cycle_has_payments)
+        can_create_new_cycle = bool(cycle_is_paid or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -12097,9 +12097,11 @@ def gestionar_plan(cliente_id, id):
             ensure_current_payment_cycle(s, motivo="plan_init")
             summary_now = get_payment_summary(s)
             has_payments_current_cycle = Decimal(summary_now["total_pagado"]) > Decimal("0.00")
+            cycle_is_paid_now = Decimal(summary_now["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary_now["precio_plan"]) > Decimal("0.00")
 
             if action == "create_new_cycle":
-                if not estado_operativo or not has_payments_current_cycle:
+                can_create_new_cycle_now = bool(cycle_is_paid_now or (estado_operativo and has_payments_current_cycle))
+                if not can_create_new_cycle_now:
                     msg = 'No corresponde crear un nuevo ciclo en el estado actual.'
                     if _admin_async_wants_json():
                         return _async_plan_response(
