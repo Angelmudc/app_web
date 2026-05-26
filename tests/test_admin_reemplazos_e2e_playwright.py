@@ -113,6 +113,35 @@ def reemplazo_modal_env():
 
 
 @pytest.mark.e2e
+def test_reemplazo_activo_cliente_detail_oculta_acciones_financieras(reemplazo_modal_env):
+    base_url = reemplazo_modal_env["base_url"]
+    owner_user = reemplazo_modal_env["owner_user"]
+    owner_pass = reemplazo_modal_env["owner_pass"]
+    cliente_id = int(reemplazo_modal_env["cliente_id"])
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+        page = browser.new_page()
+
+        page.goto(f"{base_url}/admin/login", wait_until="domcontentloaded")
+        page.fill('input[name="usuario"]', owner_user)
+        page.fill('input[name="clave"]', owner_pass)
+        page.click('button[type="submit"]')
+        page.wait_for_url("**/admin/**", timeout=12000)
+
+        page.goto(f"{base_url}/admin/clientes/{cliente_id}", wait_until="domcontentloaded")
+        content = page.content().lower()
+        assert "reemplazo activo" in content
+        assert page.locator('[data-testid^="cliente-solicitud-registrar-pago-"]').count() == 0
+        assert page.locator('[data-testid^="cliente-solicitud-registrar-pago-disabled-"]').count() == 0
+        assert page.locator('a[aria-label="Plan / Abono"]').count() == 0
+        assert page.locator('button[title="Poner en espera de pago"]').count() == 0
+        assert page.locator('button[title="Quitar espera de pago"]').count() == 0
+
+        browser.close()
+
+
+@pytest.mark.e2e
 def test_reemplazo_cancel_modal_allows_typing_and_cancel_flow(reemplazo_modal_env):
     base_url = reemplazo_modal_env["base_url"]
     owner_user = reemplazo_modal_env["owner_user"]

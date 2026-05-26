@@ -9460,14 +9460,14 @@ def eliminar_cliente(cliente_id):
 def solicitud_puede_registrar_pago(solicitud) -> bool:
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
     # Regla operativa: si se debe servicio, no se debe cobrar.
-    if estado in {"cancelada", "pendiente_servicio"}:
+    if estado in {"cancelada", "pendiente_servicio", "reemplazo"}:
         return False
     summary = get_payment_summary(solicitud)
     saldo_pendiente = Decimal(summary["saldo_pendiente"])
     estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
     if saldo_pendiente <= Decimal("0.00") or estado_pago == "pagado":
         return False
-    return estado in {"espera_pago", "activa", "proceso", "reemplazo", "pagada"}
+    return estado in {"espera_pago", "activa", "proceso", "pagada"}
 
 
 def _cliente_detail_regions_context(

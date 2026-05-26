@@ -243,7 +243,7 @@
                     ✏️ <i class="bi bi-pencil-fill ms-1"></i><span class="sr-only">Editar</span>
                   </a>
 
-                  {% if est_norm != 'pendiente_servicio' %}
+                  {% if est_norm not in ['pendiente_servicio', 'reemplazo'] %}
                     <!-- Plan / Abono -->
                     <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
                        class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
@@ -253,7 +253,7 @@
 
                   <!-- Registrar pago -->
                   {% set _can_pay = (solicitud_pago_habilitado.get(s.id) if solicitud_pago_habilitado is defined else False) %}
-                  {% if est_norm == 'pendiente_servicio' %}
+                  {% if est_norm in ['pendiente_servicio', 'reemplazo'] %}
                   {% elif _can_pay %}
                     <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
                        class="btn btn-sm btn-success"
@@ -276,7 +276,7 @@
                     </button>
                   {% endif %}
 
-                  {% if est_norm != 'pendiente_servicio' and s.estado != 'espera_pago' %}
+                  {% if est_norm not in ['pendiente_servicio', 'reemplazo'] and s.estado != 'espera_pago' %}
                   <form method="post"
                         action="{{ url_for('admin.poner_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
                         class="d-inline">
@@ -288,7 +288,7 @@
                       ⏸️
                     </button>
                   </form>
-                  {% elif est_norm != 'pendiente_servicio' %}
+                  {% elif est_norm not in ['pendiente_servicio', 'reemplazo'] %}
                   <form method="post"
                         action="{{ url_for('admin.quitar_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
                         class="d-inline">

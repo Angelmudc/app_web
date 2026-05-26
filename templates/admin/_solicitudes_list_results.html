@@ -165,7 +165,7 @@
             </div>
           </div>
           <div class="d-flex align-items-center gap-2 mt-2 flex-wrap">
-            {% if s.estado != 'cancelada' %}
+            {% if s.estado != 'cancelada' and (s.estado|lower) not in ['pendiente_servicio', 'reemplazo'] %}
               {% if s.estado != 'espera_pago' %}
               <form method="post"
                     action="{{ url_for('admin.poner_espera_pago_solicitud', id=s.id) }}"

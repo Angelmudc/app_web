@@ -1372,7 +1372,7 @@ def test_t1_cliente_detail_pagada_con_ciclo_pagado_deshabilita_boton_pago():
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' in html
 
 
-def test_t1_cliente_detail_reemplazo_con_saldo_pendiente_habilita_boton_pago():
+def test_t1_cliente_detail_reemplazo_con_saldo_pendiente_oculta_acciones_financieras():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -1387,7 +1387,11 @@ def test_t1_cliente_detail_reemplazo_con_saldo_pendiente_habilita_boton_pago():
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
     html = resp.get_data(as_text=True)
-    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' not in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
+    assert "Plan / Abono" not in html
+    assert "Poner en espera de pago" not in html
+    assert "Quitar espera de pago" not in html
 
 
 def test_t1_cliente_detail_reemplazo_con_ciclo_pagado_deshabilita_boton_pago():
@@ -1416,7 +1420,11 @@ def test_t1_cliente_detail_reemplazo_con_ciclo_pagado_deshabilita_boton_pago():
     _login_admin(client)
     resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
     html = resp.get_data(as_text=True)
-    assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' not in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
+    assert "Plan / Abono" not in html
+    assert "Poner en espera de pago" not in html
+    assert "Quitar espera de pago" not in html
 
 
 def test_t1_cliente_detail_pendiente_servicio_con_ciclo_pagado_deshabilita_boton_pago():
@@ -1463,6 +1471,18 @@ def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_pendiente_servicio(
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         solicitud.estado = "pendiente_servicio"
+        db.session.commit()
+        assert admin_routes.solicitud_puede_registrar_pago(solicitud) is False
+
+
+def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_reemplazo():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
         db.session.commit()
         assert admin_routes.solicitud_puede_registrar_pago(solicitud) is False
 
