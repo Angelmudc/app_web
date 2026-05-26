@@ -203,7 +203,6 @@ from services.payment_rules import get_required_deposit, get_plan_price, format_
 from services.payment_ledger import (
     apply_payment_state_from_summary,
     open_new_payment_cycle,
-    ensure_cycle_initial_deposit_payment,
     calcular_saldo_pendiente,
     calcular_total_abonado,
     calcular_total_pagado_cliente,
@@ -12120,11 +12119,6 @@ def gestionar_plan(cliente_id, id):
                 s.tipo_plan = normalize_plan(form.tipo_plan.data)
                 s.abono = format_money_payment(get_required_deposit(s.tipo_plan))
                 sync_cycle_plan_if_no_payments(s, motivo="reactivacion_manual")
-                ensure_cycle_initial_deposit_payment(
-                    s,
-                    motivo="auto_abono_ciclo",
-                    nota="Abono inicial aplicado al crear nuevo ciclo",
-                )
                 _set_solicitud_estado_with_outbox(s, 'activa')
                 s.fecha_cancelacion = None
                 s.motivo_cancelacion = None
@@ -12281,6 +12275,31 @@ def gestionar_plan(cliente_id, id):
 # ─────────────────────────────────────────────────────────────
 # ADMIN: Registrar pago (robusto y consistente)
 # ─────────────────────────────────────────────────────────────
+def _completion_payment_due(summary) -> Decimal:
+    precio_plan = Decimal(summary["precio_plan"])
+    total_pagado = Decimal(summary["total_pagado"])
+    abono_requerido = Decimal(summary["abono_requerido"])
+    if total_pagado <= Decimal("0.00"):
+        restante_esperado = (precio_plan - abono_requerido).quantize(Decimal("0.01"))
+        return max(restante_esperado, Decimal("0.00"))
+    restante_real = (precio_plan - total_pagado).quantize(Decimal("0.01"))
+    return max(restante_real, Decimal("0.00"))
+
+
+def _completion_settlement_summary(summary_before, summary_after):
+    synthetic = dict(summary_after)
+    if Decimal(summary_before["total_pagado"]) > Decimal("0.00"):
+        return synthetic
+    precio_plan = Decimal(summary_after["precio_plan"])
+    abono_requerido = Decimal(summary_after["abono_requerido"])
+    total_after = Decimal(summary_after["total_pagado"])
+    settled_total = min((total_after + abono_requerido).quantize(Decimal("0.01")), precio_plan)
+    synthetic["total_pagado"] = settled_total
+    synthetic["saldo_pendiente"] = max((precio_plan - settled_total).quantize(Decimal("0.01")), Decimal("0.00"))
+    synthetic["saldo_restante"] = synthetic["saldo_pendiente"]
+    return synthetic
+
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>/pago', methods=['GET', 'POST'])
 @login_required
 @admin_required
@@ -12291,12 +12310,15 @@ def registrar_pago(cliente_id, id):
     form_idempotency_key = _new_form_idempotency_key()
 
     q = (request.args.get('q') or request.form.get('q') or '').strip()
+    payment_context = (request.args.get('contexto') or request.form.get('contexto') or '').strip().lower()
+    is_completion_context = payment_context == "completar_solicitud"
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
 
     def _render_pago_region(async_feedback=None) -> str:
         payment_summary = get_payment_summary(s)
+        completion_due_amount = _completion_payment_due(payment_summary)
         return render_template(
             'admin/_registrar_pago_form_region.html',
             form=form,
@@ -12307,10 +12329,13 @@ def registrar_pago(cliente_id, id):
             form_idempotency_key=form_idempotency_key,
             async_feedback=async_feedback,
             payment_summary=payment_summary,
+            payment_context=payment_context,
+            completion_due_amount=completion_due_amount,
         )
 
     def _render_pago_page(async_feedback=None):
         payment_summary = get_payment_summary(s)
+        completion_due_amount = _completion_payment_due(payment_summary)
         return render_template(
             'admin/registrar_pago.html',
             form=form,
@@ -12321,6 +12346,8 @@ def registrar_pago(cliente_id, id):
             form_idempotency_key=form_idempotency_key,
             async_feedback=async_feedback,
             payment_summary=payment_summary,
+            payment_context=payment_context,
+            completion_due_amount=completion_due_amount,
         )
 
     def _async_pago_response(
@@ -12512,12 +12539,34 @@ def registrar_pago(cliente_id, id):
         monto_pago = Decimal("0.00")
         tipo_pago = "pago"
         if payment_mode == "auto_abono":
+            if is_completion_context:
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message='En este flujo solo se permite registrar pago restante o manual.',
+                        category='warning',
+                        http_status=400,
+                        error_code='invalid_input',
+                    )
+                flash('En este flujo solo se permite registrar pago restante o manual.', 'warning')
+                return _render_pago_page()
             monto_pago = Decimal(summary["abono_requerido"])
             tipo_pago = "abono"
         elif payment_mode == "auto_saldo":
-            monto_pago = Decimal(summary["saldo_pendiente"])
+            monto_pago = _completion_payment_due(summary) if is_completion_context else Decimal(summary["saldo_pendiente"])
             tipo_pago = "pago"
         elif payment_mode == "auto_completo":
+            if is_completion_context:
+                if _admin_async_wants_json():
+                    return _async_pago_response(
+                        ok=False,
+                        message='En este flujo solo se permite registrar pago restante o manual.',
+                        category='warning',
+                        http_status=400,
+                        error_code='invalid_input',
+                    )
+                flash('En este flujo solo se permite registrar pago restante o manual.', 'warning')
+                return _render_pago_page()
             monto_pago = Decimal(summary["precio_plan"])
             tipo_pago = "pago"
         elif payment_mode == "manual":
@@ -12606,7 +12655,12 @@ def registrar_pago(cliente_id, id):
 
         db.session.flush()
         summary_after_payment = get_payment_summary(s)
-        estado_pago = apply_payment_state_from_summary(s, summary_after_payment)
+        summary_for_state = (
+            _completion_settlement_summary(summary, summary_after_payment)
+            if is_completion_context and payment_mode == "auto_saldo"
+            else summary_after_payment
+        )
+        estado_pago = apply_payment_state_from_summary(s, summary_for_state)
         _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_PAGO_REGISTRADO",
@@ -22749,7 +22803,7 @@ def marcar_pagada_desde_copiar(id):
         )
 
     candidata_raw = (request.form.get('candidata_id') or '').strip()
-    payment_mode = (request.form.get("payment_mode") or "auto_completo").strip().lower()
+    payment_mode = (request.form.get("payment_mode") or "auto_saldo").strip().lower()
     manual_reason = (request.form.get("manual_reason") or "").strip()
     monto_raw = (request.form.get('monto_pagado') or '').strip()
     if not candidata_raw:
@@ -22803,14 +22857,8 @@ def marcar_pagada_desde_copiar(id):
         _sync_solicitud_candidatas_after_assignment(s, cand.fila)
         _mark_candidata_estado(cand, "trabajando")
         summary = get_payment_summary(s)
-        if payment_mode == "auto_abono":
-            monto_pago = Decimal(summary["abono_requerido"])
-            tipo_pago = "abono"
-        elif payment_mode == "auto_saldo":
-            monto_pago = Decimal(summary["saldo_pendiente"])
-            tipo_pago = "pago"
-        elif payment_mode == "auto_completo":
-            monto_pago = Decimal(summary["precio_plan"])
+        if payment_mode == "auto_saldo":
+            monto_pago = _completion_payment_due(summary)
             tipo_pago = "pago"
         elif payment_mode == "manual":
             if not manual_reason:
@@ -22832,7 +22880,7 @@ def marcar_pagada_desde_copiar(id):
         else:
             return _paid_response(
                 ok=False,
-                message='Modo de pago inválido.',
+                message='Modo de pago inválido. En este flujo solo se permite pago restante o manual.',
                 category='danger',
                 http_status=400,
             )
@@ -22858,7 +22906,8 @@ def marcar_pagada_desde_copiar(id):
         )
         db.session.flush()
         summary_after_payment = get_payment_summary(s)
-        estado_pago = apply_payment_state_from_summary(s, summary_after_payment)
+        summary_for_state = _completion_settlement_summary(summary, summary_after_payment) if payment_mode == "auto_saldo" else summary_after_payment
+        estado_pago = apply_payment_state_from_summary(s, summary_for_state)
         _set_solicitud_estado(s, estado_pago)
         _emit_domain_outbox_event(
             event_type="SOLICITUD_CANDIDATA_ASIGNADA",

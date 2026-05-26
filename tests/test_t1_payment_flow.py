@@ -23,7 +23,6 @@ from models import (
 from services.payment_ledger import (
     calcular_saldo_pendiente,
     calcular_total_pagado,
-    ensure_cycle_initial_deposit_payment,
     ensure_reactivation_cycle,
     get_current_payment_cycle,
     get_payment_summary,
@@ -974,14 +973,14 @@ def test_t1_gestionar_plan_estado_pagada_ciclo_pagado_permite_crear_nuevo_ciclo(
         assert solicitud_end.payment_cycle_closed_at is None
 
 
-def test_t1_crear_nuevo_ciclo_reactivacion_registra_abono_automatico_y_muestra_solo_restante():
+def test_t1_crear_nuevo_ciclo_reactivacion_no_crea_movimientos_de_pago():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         db.session.add(
@@ -1015,66 +1014,25 @@ def test_t1_crear_nuevo_ciclo_reactivacion_registra_abono_automatico_y_muestra_s
         assert solicitud_mid is not None
         assert int(solicitud_mid.payment_cycle_current or 0) == 2
         summary_mid = get_payment_summary(solicitud_mid)
-        assert str(summary_mid["abono_pagado"]) == "2500.00"
-        assert str(summary_mid["total_pagado"]) == "2500.00"
-        assert str(summary_mid["saldo_restante"]) == "2500.00"
-        auto_abono_movs = (
+        assert str(summary_mid["abono_pagado"]) == "0.00"
+        assert str(summary_mid["total_pagado"]) == "0.00"
+        assert str(summary_mid["saldo_restante"]) == "5000.00"
+        cycle_movs = (
             PagoSolicitud.query
-            .filter_by(solicitud_id=solicitud_id, ciclo_numero=2, tipo_pago="abono")
+            .filter_by(solicitud_id=solicitud_id, ciclo_numero=2)
             .all()
         )
-        assert len(auto_abono_movs) == 1
-        assert (auto_abono_movs[0].origen or "") == "auto_abono_ciclo"
-
-    resp_form = client.get(
-        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
-        headers=_async_headers(),
-        follow_redirects=False,
-    )
-    assert resp_form.status_code == 200
-    html_form = resp_form.get_data(as_text=True)
-    assert "Registrar pago restante RD$ 2,500.00" in html_form
-    assert "Registrar abono RD$ 2,500.00" not in html_form
-    assert "Registrar pago completo RD$ 5,000.00" not in html_form
-
-    resp_update = client.post(
-        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
-        data={"tipo_plan": "vip", "plan_action": "update"},
-        headers=_async_headers(),
-        follow_redirects=False,
-    )
-    assert resp_update.status_code == 409
-
-    resp_pago = client.post(
-        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
-        data={
-            "candidata_id": str(candidata_id),
-            "payment_mode": "auto_saldo",
-            "monto_pagado": "2500",
-        },
-        headers=_async_headers(),
-        follow_redirects=False,
-    )
-    assert resp_pago.status_code == 200
-    with flask_app.app_context():
-        solicitud_end = Solicitud.query.get(solicitud_id)
-        assert solicitud_end is not None
-        assert (solicitud_end.payment_cycle_plan or "") == "premium"
-        summary_end = get_payment_summary(solicitud_end)
-        assert str(summary_end["total_pagado"]) == "5000.00"
-        assert str(summary_end["saldo_restante"]) == "0.00"
-        assert solicitud_end.estado == "pagada"
-        assert solicitud_end.payment_cycle_estado == "pagado"
+        assert len(cycle_movs) == 0
 
 
-def test_t1_create_new_cycle_no_duplica_abono_automatico_si_ya_existe_en_ciclo():
+def test_t1_create_new_cycle_no_crea_origen_auto_abono_ciclo():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="2500.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
         db.session.add(
@@ -1104,72 +1062,94 @@ def test_t1_create_new_cycle_no_duplica_abono_automatico_si_ya_existe_en_ciclo()
     )
     assert resp_cycle.status_code == 200
     with flask_app.app_context():
-        solicitud_mid = Solicitud.query.get(solicitud_id)
-        assert solicitud_mid is not None
-        created_again = ensure_cycle_initial_deposit_payment(solicitud_mid, motivo="auto_abono_ciclo")
-        assert created_again is False
         auto_abono_movs = (
             PagoSolicitud.query
-            .filter_by(solicitud_id=solicitud_id, ciclo_numero=2, tipo_pago="abono")
+            .filter_by(solicitud_id=solicitud_id, origen="auto_abono_ciclo")
             .all()
         )
-        assert len(auto_abono_movs) == 1
+        assert len(auto_abono_movs) == 0
 
 
-def test_t1_create_new_cycle_basico_auto_abono_y_restante_correctos():
+def test_t1_ui_completar_solicitud_basico_muestra_solo_pago_restante():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="1750.00")
-        solicitud = Solicitud.query.get(solicitud_id)
-        assert solicitud is not None
-        db.session.add(PagoSolicitud(solicitud_id=solicitud_id, cliente_id=cliente_id, monto="3500.00", tipo_pago="pago", ciclo_numero=1, origen="seed", origen_id=f"b-paid:{solicitud_id}"))
-        solicitud.payment_cycle_current = 1
-        solicitud.payment_cycle_plan = "basico"
-        solicitud.payment_cycle_precio_total = "3500.00"
-        solicitud.payment_cycle_abono_requerido = "1750.00"
-        solicitud.payment_cycle_estado = "pagado"
-        db.session.commit()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
     _login_admin(client)
-    resp = client.post(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan", data={"tipo_plan": "basico", "plan_action": "create_new_cycle"}, headers=_async_headers(), follow_redirects=False)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
     assert resp.status_code == 200
-    with flask_app.app_context():
-        solicitud_end = Solicitud.query.get(solicitud_id)
-        summary = get_payment_summary(solicitud_end)
-        assert str(summary["abono_pagado"]) == "1750.00"
-        assert str(summary["total_pagado"]) == "1750.00"
-        assert str(summary["saldo_restante"]) == "1750.00"
+    html = resp.get_data(as_text=True)
+    assert "Registrar pago restante RD$ 1,750.00" in html
+    assert "Registrar abono RD$ 1,750.00" not in html
+    assert "Registrar pago completo RD$ 3,500.00" not in html
 
 
-def test_t1_create_new_cycle_vip_auto_abono_y_restante_correctos():
+def test_t1_ui_completar_solicitud_premium_muestra_solo_pago_restante():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
     client = flask_app.test_client()
     with flask_app.app_context():
         _ensure_core_tables()
-        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="4000.00")
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Registrar pago restante RD$ 2,500.00" in html
+    assert "Registrar abono RD$ 2,500.00" not in html
+    assert "Registrar pago completo RD$ 5,000.00" not in html
+
+
+def test_t1_ui_completar_solicitud_vip_muestra_solo_pago_restante():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Registrar pago restante RD$ 4,000.00" in html
+    assert "Registrar abono RD$ 4,000.00" not in html
+    assert "Registrar pago completo RD$ 8,000.00" not in html
+
+
+def test_t1_completar_solicitud_auto_saldo_deja_pagada_y_ciclo_pagado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
-        db.session.add(PagoSolicitud(solicitud_id=solicitud_id, cliente_id=cliente_id, monto="8000.00", tipo_pago="pago", ciclo_numero=1, origen="seed", origen_id=f"v-paid:{solicitud_id}"))
-        solicitud.payment_cycle_current = 1
-        solicitud.payment_cycle_plan = "vip"
-        solicitud.payment_cycle_precio_total = "8000.00"
-        solicitud.payment_cycle_abono_requerido = "4000.00"
-        solicitud.payment_cycle_estado = "pagado"
-        db.session.commit()
+        v1 = int(solicitud.row_version or 0)
     _login_admin(client)
-    resp = client.post(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan", data={"tipo_plan": "vip", "plan_action": "create_new_cycle"}, headers=_async_headers(), follow_redirects=False)
-    assert resp.status_code == 200
+    resp_pago = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?contexto=completar_solicitud",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(v1),
+            "idempotency_key": f"t1a-complete-saldo-{secrets.token_hex(4)}",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_pago.status_code == 200
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
-        summary = get_payment_summary(solicitud_end)
-        assert str(summary["abono_pagado"]) == "4000.00"
-        assert str(summary["total_pagado"]) == "4000.00"
-        assert str(summary["saldo_restante"]) == "4000.00"
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.payment_cycle_estado == "pagado"
 
 
 def test_t1_gestionar_plan_ciclo_actual_parcial_si_bloquea_sin_override():

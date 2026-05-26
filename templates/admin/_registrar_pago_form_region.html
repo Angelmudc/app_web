@@ -2,6 +2,8 @@
 {% set _cliente_id = (cliente_id | default(None)) or (solicitud.cliente_id if solicitud is defined and solicitud is not none else none) %}
 {% set _registrar_pago_url = url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) %}
 {% set _selected_payment_mode = (request.form.get('payment_mode') if request and request.method == 'POST' else '') or '' %}
+{% set _payment_context = (payment_context or '')|lower %}
+{% set _is_completion_context = _payment_context == 'completar_solicitud' %}
 
 <div class="card shadow-sm">
   <div class="card-body p-4 p-md-5">
@@ -34,6 +36,7 @@
           data-async-preserve-scroll="true"
           data-async-fallback="native">
       <input type="hidden" name="next" value="{{ next_url or '' }}">
+      <input type="hidden" name="contexto" value="{{ _payment_context }}">
       <div class="d-flex gap-2 flex-wrap">
         <input type="text"
                name="q"
@@ -44,7 +47,7 @@
         <button type="submit" class="btn btn-primary" data-loading-text="Buscando...">
           <i class="bi bi-search me-1"></i> Buscar
         </button>
-        <a href="{{ _registrar_pago_url }}{% if next_url %}?next={{ next_url|urlencode }}{% endif %}"
+        <a href="{{ _registrar_pago_url }}?{% if next_url %}next={{ next_url|urlencode }}&{% endif %}{% if _payment_context %}contexto={{ _payment_context|urlencode }}{% endif %}"
            class="btn btn-outline-secondary"
            data-admin-async-link
            data-async-target="#registrarPagoAsyncRegion"
@@ -67,6 +70,7 @@
       {{ form.hidden_tag() }}
       <input type="hidden" name="q" value="{{ q or '' }}">
       <input type="hidden" name="next" value="{{ next_url or '' }}">
+      <input type="hidden" name="contexto" value="{{ _payment_context }}">
       <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
       <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
 
@@ -125,7 +129,16 @@
               <div class="small text-warning mb-2">Usando abono legacy mientras se sincroniza el ledger.</div>
             {% endif %}
             {% set _abono_cubierto = payment_summary["abono_pagado"] >= payment_summary["abono_requerido"] and payment_summary["saldo_pendiente"] > 0 %}
-            {% if payment_summary["total_pagado"] <= 0 and not _abono_cubierto %}
+            {% if _is_completion_context %}
+              {% if payment_summary["total_pagado"] < payment_summary["precio_plan"] %}
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="payment_mode" id="mode_saldo" value="auto_saldo" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_saldo' %}checked{% endif %}{% else %}checked{% endif %}>
+                  <label class="form-check-label" for="mode_saldo">Registrar pago restante RD$ {{ "{:,.2f}".format((completion_due_amount or 0)|float) }}</label>
+                </div>
+              {% else %}
+                <div class="small text-success mb-2">Esta solicitud ya está pagada.</div>
+              {% endif %}
+            {% elif payment_summary["total_pagado"] <= 0 and not _abono_cubierto %}
               <div class="form-check">
                 <input class="form-check-input" type="radio" name="payment_mode" id="mode_abono" value="auto_abono" {% if _selected_payment_mode %}{% if _selected_payment_mode == 'auto_abono' %}checked{% endif %}{% else %}checked{% endif %}>
                 <label class="form-check-label" for="mode_abono">Registrar abono RD$ {{ "{:,.2f}".format(payment_summary["abono_requerido"]|float) }}</label>

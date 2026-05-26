@@ -87,60 +87,6 @@ def open_new_payment_cycle(solicitud, motivo: str, *, force: bool = False) -> di
     return get_current_payment_cycle(solicitud)
 
 
-def _solicitud_started_with_deposit(solicitud, *, current_cycle: int) -> bool:
-    if _legacy_abono_value(solicitud) > Decimal("0.00"):
-        return True
-    if current_cycle <= 1:
-        return False
-    movimientos_previos = (
-        PagoSolicitud.query
-        .filter(
-            PagoSolicitud.solicitud_id == int(getattr(solicitud, "id", 0) or 0),
-            PagoSolicitud.anulado_at.is_(None),
-            PagoSolicitud.tipo_pago == "abono",
-            PagoSolicitud.ciclo_numero < int(current_cycle),
-        )
-        .count()
-    )
-    return int(movimientos_previos or 0) > 0
-
-
-def ensure_cycle_initial_deposit_payment(
-    solicitud,
-    *,
-    motivo: str = "auto_abono_ciclo",
-    nota: str = "Abono inicial aplicado al crear nuevo ciclo",
-) -> bool:
-    cycle = get_current_payment_cycle(solicitud)
-    cycle_num = int(cycle["numero_ciclo"])
-    summary = get_payment_summary(solicitud)
-    abono_requerido = Decimal(summary["abono_requerido"])
-    if abono_requerido <= Decimal("0.00"):
-        return False
-    if not _solicitud_started_with_deposit(solicitud, current_cycle=cycle_num):
-        return False
-    if Decimal(summary["abono_pagado"]) >= abono_requerido:
-        return False
-
-    missing_deposit = (abono_requerido - Decimal(summary["abono_pagado"])).quantize(Decimal("0.01"))
-    if missing_deposit <= Decimal("0.00"):
-        return False
-
-    crear_pago_solicitud(
-        solicitud_id=int(getattr(solicitud, "id", 0) or 0),
-        cliente_id=int(getattr(solicitud, "cliente_id", 0) or 0),
-        monto=missing_deposit,
-        tipo_pago="abono",
-        ciclo_numero=cycle_num,
-        metodo_pago="auto_abono_ciclo",
-        referencia=f"solicitud:{int(getattr(solicitud, 'id', 0) or 0)}:ciclo:{cycle_num}",
-        origen=motivo,
-        origen_id=f"{motivo}:{int(getattr(solicitud, 'id', 0) or 0)}:{cycle_num}",
-        nota=nota,
-    )
-    return True
-
-
 def _iter_active_movimientos(solicitud_id: int, *, ciclo_numero: int | None = None):
     q = (
         PagoSolicitud.query
