@@ -312,9 +312,12 @@
         <h5 class="modal-title">Cancelar reemplazo</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}">
+      <form id="reemplazoCancelForm" method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}">
         <div class="modal-body text-start">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if solicitud %}
+          <input type="hidden" name="next" value="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}#sol-{{ solicitud.id }}">
+          {% endif %}
           <div class="mb-2">
             <label class="form-label">Motivo de cancelación *</label>
             <textarea class="form-control" name="motivo_cancelacion" rows="3" required></textarea>
@@ -323,7 +326,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+          <button type="submit" form="reemplazoCancelForm" class="btn btn-danger">Confirmar cancelación</button>
         </div>
       </form>
     </div>

@@ -106,7 +106,8 @@
         <h5 class="modal-title">Cancelar reemplazo</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <form method="post"
+      <form id="cancelar-reemplazo-form-{{ _modal_prefix }}"
+            method="post"
             action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
             data-admin-async-form
             data-async-target="{{ async_target }}"
@@ -121,13 +122,13 @@
           <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
           <div class="mb-2">
             <label class="form-label">Motivo de cancelación *</label>
-            <textarea class="form-control" name="cancel_reason" rows="3" required></textarea>
+            <textarea class="form-control" name="motivo_cancelacion" rows="3" required></textarea>
           </div>
           <div class="small text-muted mb-2">Esta acción cancela solo el reemplazo. La solicitud no se cancela.</div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+          <button type="submit" form="cancelar-reemplazo-form-{{ _modal_prefix }}" class="btn btn-danger">Confirmar cancelación</button>
         </div>
       </form>
     </div>
