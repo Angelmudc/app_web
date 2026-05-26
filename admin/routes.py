@@ -18002,7 +18002,21 @@ def reemplazos_badge_counts() -> dict[str, int]:
             .scalar()
             or 0
         )
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            current_app.logger.exception("BADGE_REEMPLAZOS_ACTIVOS_DB_ERROR")
+        except Exception:
+            pass
+        activos = 0
     except Exception:
+        try:
+            current_app.logger.exception("BADGE_REEMPLAZOS_ACTIVOS_UNEXPECTED_ERROR")
+        except Exception:
+            pass
         activos = 0
     try:
         criticos = int(
@@ -18015,7 +18029,21 @@ def reemplazos_badge_counts() -> dict[str, int]:
             .scalar()
             or 0
         )
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            current_app.logger.exception("BADGE_REEMPLAZOS_CRITICOS_DB_ERROR")
+        except Exception:
+            pass
+        criticos = 0
     except Exception:
+        try:
+            current_app.logger.exception("BADGE_REEMPLAZOS_CRITICOS_UNEXPECTED_ERROR")
+        except Exception:
+            pass
         criticos = 0
     return {"activos": max(0, activos), "criticos": max(0, criticos)}
 
@@ -20322,7 +20350,21 @@ def _candidatas_por_finalizar_badge_count() -> int:
         return max(0, int(cached))
     try:
         value = int(_build_candidatas_por_finalizar_rows(q="", count_only=True))
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            current_app.logger.exception("BADGE_CANDIDATAS_POR_FINALIZAR_DB_ERROR")
+        except Exception:
+            pass
+        value = 0
     except Exception:
+        try:
+            current_app.logger.exception("BADGE_CANDIDATAS_POR_FINALIZAR_UNEXPECTED_ERROR")
+        except Exception:
+            pass
         value = 0
     _candidatas_finalizar_badge_cache_set(value)
     return max(0, int(value))
@@ -26492,17 +26534,34 @@ def seguimiento_candidatas_badge_count() -> int:
     if role not in {"owner", "admin", "secretaria"}:
         return 0
     now = _seg_now()
-    return int(
-        db.session.query(func.count(SeguimientoCandidataCaso.id))
-        .filter(
-            SeguimientoCandidataCaso.closed_at.is_(None),
-            SeguimientoCandidataCaso.is_merged.is_(False),
-            SeguimientoCandidataCaso.due_at.isnot(None),
-            SeguimientoCandidataCaso.due_at < now,
+    try:
+        return int(
+            db.session.query(func.count(SeguimientoCandidataCaso.id))
+            .filter(
+                SeguimientoCandidataCaso.closed_at.is_(None),
+                SeguimientoCandidataCaso.is_merged.is_(False),
+                SeguimientoCandidataCaso.due_at.isnot(None),
+                SeguimientoCandidataCaso.due_at < now,
+            )
+            .scalar()
+            or 0
         )
-        .scalar()
-        or 0
-    )
+    except SQLAlchemyError:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        try:
+            current_app.logger.exception("BADGE_SEGUIMIENTO_CANDIDATAS_DB_ERROR")
+        except Exception:
+            pass
+        return 0
+    except Exception:
+        try:
+            current_app.logger.exception("BADGE_SEGUIMIENTO_CANDIDATAS_UNEXPECTED_ERROR")
+        except Exception:
+            pass
+        return 0
 
 
 @admin_bp.route("/seguimiento-candidatas/cola", methods=["GET"])
