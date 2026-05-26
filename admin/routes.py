@@ -15498,6 +15498,7 @@ class _SolicitudPrioridadVM:
 class _SolicitudOperativaListVM:
     __slots__ = (
         "_s",
+        "reemplazo_cancelado_no_resuelta",
         "priority_label",
         "is_stagnant",
         "days_in_state",
@@ -15529,6 +15530,9 @@ class _SolicitudOperativaListVM:
 
     def __init__(self, s, *, now_dt: datetime, today_rd, last_actor_label: str, has_active_reemplazo: bool):
         self._s = s
+        self.reemplazo_cancelado_no_resuelta = bool(
+            _solicitud_reemplazo_cancelado_no_resuelta(s)
+        )
         score, label, stagnant, _hours = _solicitud_priority_snapshot(s, now_dt=now_dt)
         self.priority_label = label
         self.is_stagnant = bool(stagnant)

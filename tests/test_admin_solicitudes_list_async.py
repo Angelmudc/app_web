@@ -245,6 +245,26 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertNotIn("SOL-AC", html)
         self.assertIn("Bloque en foco: <strong>Espera de pago</strong>", html)
 
+    def test_listado_renderiza_flag_reemplazo_cancelado_no_resuelta_desde_vm(self):
+        row = _solicitud_stub(21, "SOL-CAN-21", "activa")
+        row.reemplazos = [
+            SimpleNamespace(
+                id=7001,
+                resultado_final="cancelado",
+                fecha_fin_reemplazo=datetime(2026, 3, 5, 12, 0, 0),
+                fecha_inicio_reemplazo=datetime(2026, 3, 3, 12, 0, 0),
+                created_at=datetime(2026, 3, 3, 11, 0, 0),
+            )
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([row])):
+                resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("SOL-CAN-21", html)
+        self.assertIn("Reemplazo cancelado", html)
+
     def test_triage_sql_parts_castea_estado_enum_antes_de_lower(self):
         with flask_app.app_context():
             parts = admin_routes._solicitudes_triage_sql_parts(
