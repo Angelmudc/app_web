@@ -20,11 +20,16 @@
   {% set _estado_operativo = (solicitud.estado or '')|lower in ['activa', 'proceso', 'espera_pago', 'reemplazo'] %}
   {% set _cycle_has_payments = cycle_has_payments if cycle_has_payments is defined else has_payments_current_cycle %}
   {% set _cycle_has_payments = _cycle_has_payments if _cycle_has_payments is not none else ((payment_summary.total_pagado if payment_summary is defined else 0)|float > 0) %}
-  {% set _can_create_new_cycle = can_create_new_cycle if can_create_new_cycle is defined else (_estado_operativo and _cycle_has_payments) %}
+  {% set _cycle_is_paid = cycle_is_paid if cycle_is_paid is defined else false %}
+  {% set _remaining_balance = (payment_summary.saldo_pendiente if payment_summary is defined else None) %}
+  {% if _remaining_balance is none %}
+    {% set _remaining_balance = remaining_balance if remaining_balance is defined else 0 %}
+  {% endif %}
+  {% set _show_create_new_cycle_btn = _estado_operativo and (_cycle_is_paid or (_remaining_balance|float <= 0) or _cycle_has_payments) %}
 
   {% if _cycle_has_payments %}
     <div class="alert alert-info border-0 mb-3" role="alert" aria-live="polite">
-      {% if cycle_is_paid %}
+      {% if _cycle_is_paid %}
         Este ciclo ya está pagado. Para volver a cobrar esta solicitud, crea un nuevo ciclo de pago.
       {% else %}
         Este ciclo ya tiene pagos registrados. Para cambiar el plan de este mismo ciclo, usa ajuste administrativo.
@@ -104,8 +109,11 @@
     </div>
 
     <div class="d-flex justify-content-end gap-2 mt-4">
-      {% if _can_create_new_cycle %}
-        <button type="submit" class="btn btn-outline-primary" name="plan_action" value="create_new_cycle" id="btn-create-cycle">
+      <div class="w-100 small text-muted mb-2">
+        DEBUG: can_create_new_cycle={{ can_create_new_cycle }} cycle_is_paid={{ _cycle_is_paid }} estado={{ solicitud.estado }}
+      </div>
+      {% if _show_create_new_cycle_btn %}
+        <button type="submit" class="btn btn-success" name="plan_action" value="create_new_cycle" id="btn-create-cycle" data-testid="create-new-payment-cycle">
           + Crear nuevo ciclo de pago
         </button>
       {% endif %}

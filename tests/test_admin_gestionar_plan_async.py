@@ -277,6 +277,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                 resp = self._invoke(method="GET", headers=self._async_headers())
         html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
         self.assertIn("Crear nuevo ciclo de pago", html)
+        self.assertIn('data-testid="create-new-payment-cycle"', html)
         self.assertIn('name="plan_action"', html)
         self.assertIn('value="create_new_cycle"', html)
 
