@@ -43,6 +43,7 @@ def test_pagos_render_basico_busqueda_y_seleccion():
 
     with patch("core.handlers.procesos_transacciones_handlers.search_candidatas_limited", return_value=search_rows), \
          patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True)), \
          patch("core.handlers.procesos_transacciones_handlers.render_template", side_effect=_fake_render):
         resp_a = client.get("/pagos?busqueda=ana", follow_redirects=False)
         assert resp_a.status_code == 200
@@ -175,7 +176,14 @@ def test_pagos_bloquea_cobro_sin_asignacion_valida():
 
     candidata = SimpleNamespace(fila=99, porciento=Decimal("300.00"), calificacion=None, fecha_de_pago=None)
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
-         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=False, reason_message="No existe una asignación activa coherente para esta candidata.")), \
+         patch(
+             "core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context",
+             return_value=SimpleNamespace(
+                 can_charge=False,
+                 reason_code="no_active_assignment",
+                 reason_message="No existe una asignación activa coherente para esta candidata.",
+             ),
+         ), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock:
         resp = client.post(
             "/pagos",
@@ -186,3 +194,37 @@ def test_pagos_bloquea_cobro_sin_asignacion_valida():
     assert resp.status_code in (302, 303)
     assert resp.headers["Location"].endswith("/pagos?candidata=99")
     commit_mock.assert_not_called()
+
+
+def test_pagos_get_contexto_bloqueo_claro_y_diagnostico():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    assert _login_admin(client).status_code in (302, 303)
+
+    captured = {}
+    candidata = SimpleNamespace(fila=40, nombre_completo="Lina")
+    guard = SimpleNamespace(
+        can_charge=False,
+        reason_code="no_active_assignment",
+        reason_message="No existe una asignación activa coherente para esta candidata.",
+        matched_by=None,
+        solicitud_id=None,
+        cliente_id=None,
+    )
+
+    def _fake_render(template_name, **ctx):
+        captured["template"] = template_name
+        captured["ctx"] = ctx
+        return "ok"
+
+    with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
+         patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=guard), \
+         patch("core.handlers.procesos_transacciones_handlers.render_template", side_effect=_fake_render):
+        resp = client.get("/pagos?candidata=40", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert captured["template"] == "pagos.html"
+    ui = captured["ctx"]["payment_block_ui"]
+    assert ui["title"] == "Pago bloqueado"
+    assert ui["diagnostic"]["reason_code"] == "no_active_assignment"

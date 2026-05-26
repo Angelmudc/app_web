@@ -210,6 +210,39 @@ def porciento():
 @roles_required("owner", "admin")
 def pagos():
     resultados, candidata = [], None
+    payment_block_ui = None
+
+    def _build_payment_block_ui(guard_result):
+        if not guard_result or guard_result.can_charge:
+            return None
+
+        reason_code = str(getattr(guard_result, "reason_code", "") or "").strip()
+        reason_message = str(getattr(guard_result, "reason_message", "") or "").strip()
+        cause_by_code = {
+            "no_active_assignment": "No existe una relación activa entre esta candidata y una solicitud cobrable.",
+            "solicitud_state_blocked": "La solicitud relacionada está en un estado no cobrable para registrar pago.",
+            "fallback_state_not_operable": "Existe vínculo legacy, pero no está en un estado operable para cobro.",
+            "invalid_candidate_id": "La candidata seleccionada no tiene un identificador válido para validar cobro.",
+            "validation_error": "Ocurrió un error al validar la asignación operativa antes del cobro.",
+        }
+        return {
+            "title": "Pago bloqueado",
+            "main_message": "No se puede registrar este pago porque la candidata no tiene una asignación activa válida.",
+            "cause_message": cause_by_code.get(reason_code) or reason_message or "La validación operativa bloqueó el cobro.",
+            "review_steps": [
+                "Verifica que la candidata esté asignada a una solicitud.",
+                "Verifica que exista relación activa en solicitudes_candidatas.",
+                "Verifica que la solicitud esté en estado cobrable.",
+                "Si la candidata aparece asignada pero sigue bloqueada, sincroniza la relación operativa.",
+            ],
+            "diagnostic": {
+                "reason_code": reason_code or "unknown",
+                "reason_message": reason_message or "Sin detalle",
+                "matched_by": getattr(guard_result, "matched_by", None),
+                "solicitud_id": getattr(guard_result, "solicitud_id", None),
+                "cliente_id": getattr(guard_result, "cliente_id", None),
+            },
+        }
 
     def _parse_money_to_decimal(raw: str) -> Decimal:
         """
@@ -282,8 +315,9 @@ def pagos():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for("pagos"))
         assignment_guard = validate_candidata_assignment_context(candidata_id=int(obj.fila))
+        payment_block_ui = _build_payment_block_ui(assignment_guard)
         if not assignment_guard.can_charge:
-            flash(f"❌ Cobro bloqueado: {assignment_guard.reason_message}", "danger")
+            flash(f"❌ Cobro bloqueado ({assignment_guard.reason_code}): {assignment_guard.reason_message}", "danger")
             return redirect(url_for("pagos", candidata=int(obj.fila)))
 
         actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
@@ -313,7 +347,13 @@ def pagos():
             legacy_h.app.logger.exception("❌ Error al guardar pago")
             flash("❌ Error al guardar.", "danger")
 
-        return render_template("pagos.html", resultados=[], candidata=candidata, assignment_guard=assignment_guard)
+        return render_template(
+            "pagos.html",
+            resultados=[],
+            candidata=candidata,
+            assignment_guard=assignment_guard,
+            payment_block_ui=payment_block_ui,
+        )
 
     q = (request.args.get("busqueda") or "").strip()[:128]
     sel = (request.args.get("candidata") or "").strip()
@@ -347,4 +387,11 @@ def pagos():
     assignment_guard = None
     if candidata:
         assignment_guard = validate_candidata_assignment_context(candidata_id=int(candidata.fila))
-    return render_template("pagos.html", resultados=resultados, candidata=candidata, assignment_guard=assignment_guard)
+        payment_block_ui = _build_payment_block_ui(assignment_guard)
+    return render_template(
+        "pagos.html",
+        resultados=resultados,
+        candidata=candidata,
+        assignment_guard=assignment_guard,
+        payment_block_ui=payment_block_ui,
+    )

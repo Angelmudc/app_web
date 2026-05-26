@@ -132,9 +132,27 @@
           </div>
 
           <hr class="my-4">
-          {% if assignment_guard and not assignment_guard.can_charge %}
+          {% if payment_block_ui %}
             <div class="alert alert-danger">
-              Cobro bloqueado por validación operativa: {{ assignment_guard.reason_message }}
+              <h5 class="alert-heading mb-2">{{ payment_block_ui.title }}</h5>
+              <p class="mb-2">{{ payment_block_ui.main_message }}</p>
+              <p class="mb-2"><strong>Causa detectada:</strong> {{ payment_block_ui.cause_message }}</p>
+              <p class="mb-1"><strong>Qué revisar:</strong></p>
+              <ul class="mb-2">
+                {% for step in payment_block_ui.review_steps %}
+                  <li>{{ step }}</li>
+                {% endfor %}
+              </ul>
+              <details class="small">
+                <summary>Diagnóstico técnico</summary>
+                <div class="mt-2">
+                  <div><strong>reason_code:</strong> {{ payment_block_ui.diagnostic.reason_code }}</div>
+                  <div><strong>reason_message:</strong> {{ payment_block_ui.diagnostic.reason_message }}</div>
+                  <div><strong>matched_by:</strong> {{ payment_block_ui.diagnostic.matched_by or '—' }}</div>
+                  <div><strong>solicitud_id:</strong> {{ payment_block_ui.diagnostic.solicitud_id or '—' }}</div>
+                  <div><strong>cliente_id:</strong> {{ payment_block_ui.diagnostic.cliente_id or '—' }}</div>
+                </div>
+              </details>
             </div>
           {% endif %}
 
