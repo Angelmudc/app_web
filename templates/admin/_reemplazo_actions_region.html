@@ -3,21 +3,22 @@
 {% set _open_modal_id = 'modal-abrir-' ~ _modal_prefix %}
 {% set _close_modal_id = 'modal-culminar-' ~ _modal_prefix %}
 {% set _cancel_modal_id = 'modal-cancelar-' ~ _modal_prefix %}
+{% set _estado_norm = (solicitud.estado or '')|lower %}
+{% set _is_reactivacion_pendiente = _estado_norm == 'pendiente_servicio' %}
 
 <div class="d-inline-flex flex-wrap gap-2 align-items-center">
   {% if not repl_activo %}
-    {% set _estado_norm = (solicitud.estado or '')|lower %}
     <button
       type="button"
       class="btn btn-sm {{ 'btn-secondary' if _style == 'cliente' else 'btn-outline-dark' }}"
       data-bs-toggle="modal"
       data-bs-target="#{{ _open_modal_id }}"
       {% if not solicitud.candidata_id %}disabled{% endif %}
-      title="{{ 'No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}">
+      title="{{ 'No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.' if _is_reactivacion_pendiente else 'Abrir reemplazo' }}">
       {% if _style == 'cliente' %}
-        {{ 'Reactivar reemplazo' if _estado_norm == 'pendiente_servicio' else '🔁' }}
+        {{ 'Reactivar reemplazo' if _is_reactivacion_pendiente else '🔁' }}
       {% else %}
-        {{ 'Reactivar reemplazo' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}
+        {{ 'Reactivar reemplazo' if _is_reactivacion_pendiente else 'Abrir reemplazo' }}
       {% endif %}
     </button>
   {% elif repl_operable %}
@@ -61,7 +62,7 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Abrir reemplazo</h5>
+        <h5 class="modal-title">{{ 'Reactivar reemplazo' if _is_reactivacion_pendiente else 'Abrir reemplazo' }}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <form method="post"
@@ -77,25 +78,33 @@
           <input type="hidden" name="next" value="{{ next_url }}">
           <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
           <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
-          <div class="mb-2">
-            <label class="form-label">Motivo del fallo</label>
-            <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
-          </div>
-          <div class="form-check mb-2">
-            <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-{{ _modal_prefix }}">
-            <label class="form-check-label" for="dcf-{{ _modal_prefix }}">
-              Descalificar candidata que falló
-            </label>
-          </div>
-          <div class="mb-2">
-            <label class="form-label">Motivo descalificación (si aplica)</label>
-            <textarea class="form-control" name="motivo_descalificacion" rows="2"></textarea>
-          </div>
-          <small class="text-muted">Si no se descalifica, se intenta volver a lista para trabajar según readiness.</small>
+          {% if _is_reactivacion_pendiente %}
+            <div class="mb-2">
+              <label class="form-label">Nota de reactivación</label>
+              <textarea class="form-control" name="nota_reactivacion" rows="3" required placeholder="Ej.: Cliente volvió a solicitar el servicio pendiente."></textarea>
+            </div>
+            <small class="text-muted">No se cobrará nuevamente. Se reactivará el reemplazo pendiente de esta solicitud.</small>
+          {% else %}
+            <div class="mb-2">
+              <label class="form-label">Motivo del fallo</label>
+              <textarea class="form-control" name="motivo_fallo" rows="3" required></textarea>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="descalificar_candidata_fallida" value="1" id="dcf-{{ _modal_prefix }}">
+              <label class="form-check-label" for="dcf-{{ _modal_prefix }}">
+                Descalificar candidata que falló
+              </label>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">Motivo descalificación (si aplica)</label>
+              <textarea class="form-control" name="motivo_descalificacion" rows="2"></textarea>
+            </div>
+            <small class="text-muted">Si no se descalifica, se intenta volver a lista para trabajar según readiness.</small>
+          {% endif %}
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
-          <button type="submit" class="btn btn-primary">Abrir reemplazo</button>
+          <button type="submit" class="btn btn-primary">{{ 'Reactivar reemplazo' if _is_reactivacion_pendiente else 'Abrir reemplazo' }}</button>
         </div>
       </form>
     </div>

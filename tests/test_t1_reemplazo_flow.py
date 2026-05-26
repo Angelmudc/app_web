@@ -630,7 +630,7 @@ def test_t1b_abrir_reemplazo_desde_pendiente_servicio_no_crea_cobro_ni_ciclo_nue
     resp = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
         data={
-            "motivo_fallo": "Retomar servicio",
+            "nota_reactivacion": "Cliente volvió a solicitar el servicio pendiente.",
             "candidata_old_id": str(cand_old_id),
             "row_version": str(row_version),
             "idempotency_key": f"t1b-open-pendiente-servicio-{secrets.token_hex(4)}",
@@ -645,6 +645,14 @@ def test_t1b_abrir_reemplazo_desde_pendiente_servicio_no_crea_cobro_ni_ciclo_nue
         assert int(solicitud_end.payment_cycle_current or 0) == 1
         payment_rows_after = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).count()
         assert payment_rows_after == payment_rows_before
+        repl = (
+            Reemplazo.query
+            .filter_by(solicitud_id=solicitud_id)
+            .order_by(Reemplazo.id.desc())
+            .first()
+        )
+        assert repl is not None
+        assert (repl.motivo_fallo or "").startswith("[Reactivación] ")
 
 
 def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_pendiente_servicio():

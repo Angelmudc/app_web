@@ -12,7 +12,7 @@ from werkzeug.serving import make_server
 
 from app import app as flask_app
 from config_app import db
-from models import Reemplazo, Solicitud, StaffUser
+from models import PagoSolicitud, Reemplazo, Solicitud, StaffUser
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from tests.test_t1_reemplazo_flow import _seed_reemplazo_fixture
 
@@ -210,6 +210,8 @@ def test_reemplazo_cancel_modal_dirty_payment_state_stays_pendiente_servicio(ree
             solicitud.payment_cycle_plan_total = 25000
         solicitud.estado = "reemplazo"
         db.session.commit()
+        cycle_before = int(getattr(solicitud, "payment_cycle_current", 0) or 0)
+        pagos_before = int(db.session.query(db.func.count()).select_from(PagoSolicitud).filter_by(solicitud_id=solicitud_id).scalar() or 0)
 
     motivo = "Cancelación con ciclo sucio desde open_cancel."
     with sync_playwright() as p:
@@ -245,22 +247,41 @@ def test_reemplazo_cancel_modal_dirty_payment_state_stays_pendiente_servicio(ree
         assert "servicio pendiente" in content
         assert "reactivar reemplazo" in content
         assert "crear reemplazo" not in content
+        modal_selector = f"#modal-abrir-cliente-reemplazo-{solicitud_id}"
+        page.get_by_role("button", name="Reactivar reemplazo").click()
+        page.wait_for_selector(f"{modal_selector}.show", timeout=12000)
+        modal = page.locator(modal_selector)
+        assert "reactivar reemplazo" in (modal.inner_text() or "").lower()
+        assert "nota de reactivación" in (modal.inner_text() or "").lower()
+        assert "no se cobrará nuevamente" in (modal.inner_text() or "").lower()
+        assert "motivo del fallo" not in (modal.inner_text() or "").lower()
+        assert "descalificar candidata que falló" not in (modal.inner_text() or "").lower()
+        page.fill(f'{modal_selector} textarea[name="nota_reactivacion"]', "Cliente volvió a solicitar el servicio pendiente.")
+        with page.expect_response(
+            lambda resp: resp.request.method == "POST"
+            and f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo" in resp.url,
+            timeout=12000,
+        ) as reactivate_resp_info:
+            page.locator(f'{modal_selector} button[type="submit"]').click()
+        reactivate_resp = reactivate_resp_info.value
+        assert reactivate_resp.status in (200, 302, 303)
+        page.wait_for_url("**/admin/clientes/**", timeout=12000)
 
         page.goto(
             f"{base_url}/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy",
             wait_until="domcontentloaded",
         )
         heavy_html = page.content()
-        assert "Reemplazo cancelado · Se debe servicio" in heavy_html
-        assert "No cobrar nuevamente" in heavy_html or "Se debe servicio" in heavy_html
         assert "badge bg-warning text-dark\">Espera de pago" not in heavy_html
-        assert "Registrar pago" not in heavy_html
-        assert "Plan / Abono" not in heavy_html
 
         browser.close()
 
     with flask_app.app_context():
         solicitud = Solicitud.query.get(solicitud_id)
         assert solicitud is not None
-        assert (solicitud.estado or "").lower() == "pendiente_servicio"
+        assert (solicitud.estado or "").lower() == "reemplazo"
+        cycle_after = int(getattr(solicitud, "payment_cycle_current", 0) or 0)
+        pagos_after = int(db.session.query(db.func.count()).select_from(PagoSolicitud).filter_by(solicitud_id=solicitud_id).scalar() or 0)
+        assert cycle_after == cycle_before
+        assert pagos_after == pagos_before
         assert (solicitud.estado or "").lower() != "espera_pago"

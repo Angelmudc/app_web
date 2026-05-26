@@ -12865,6 +12865,11 @@ def nuevo_reemplazo(s_id):
     )
 
     form = AdminReemplazoForm()
+    estado_actual = (getattr(sol, "estado", "") or "").strip().lower()
+    is_reactivacion_pendiente = estado_actual == "pendiente_servicio"
+    nota_reactivacion = (request.form.get("nota_reactivacion") or "").strip()
+    if is_reactivacion_pendiente and hasattr(form, "motivo_fallo"):
+        form.motivo_fallo.validators = []
     form_idempotency_key = (request.form.get("idempotency_key") or "").strip() or _new_form_idempotency_key()
     reemplazo_activo = _active_reemplazo_for_solicitud(sol)
     next_url = (request.form.get("next") or request.args.get("next") or "").strip()
@@ -13029,7 +13034,25 @@ def nuevo_reemplazo(s_id):
                 return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
 
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
+            if is_reactivacion_pendiente:
+                descalificar = False
             motivo_descalificacion = (request.form.get('motivo_descalificacion') or '').strip()
+            if is_reactivacion_pendiente and not nota_reactivacion:
+                if _admin_async_wants_json():
+                    return _action_response(
+                        ok=False,
+                        message='Debes indicar la nota de reactivación.',
+                        category='warning',
+                        http_status=400,
+                        error_code='invalid_input',
+                    )
+                flash('Debes indicar la nota de reactivación.', 'warning')
+                return render_template(
+                    'admin/reemplazo_inicio.html',
+                    form=form,
+                    solicitud=sol,
+                    form_idempotency_key=form_idempotency_key,
+                )
             if descalificar and not motivo_descalificacion:
                 if _admin_async_wants_json():
                     return _action_response(
@@ -13047,10 +13070,13 @@ def nuevo_reemplazo(s_id):
                     form_idempotency_key=form_idempotency_key,
                 )
 
+            motivo_reemplazo = (form.motivo_fallo.data or '').strip()
+            if is_reactivacion_pendiente:
+                motivo_reemplazo = f"[Reactivación] {nota_reactivacion}"
             r = Reemplazo(
                 solicitud_id=sol.id,
                 candidata_old_id=cand_old.fila,
-                motivo_fallo=(form.motivo_fallo.data or '').strip(),
+                motivo_fallo=motivo_reemplazo,
                 estado_previo_solicitud=(sol.estado or '').strip().lower() or None,
                 responsable_id=(int(getattr(current_user, "id", 0) or 0) or None),
                 fecha_reporte=utc_now_naive(),
@@ -13129,7 +13155,7 @@ def nuevo_reemplazo(s_id):
 
             return _action_response(
                 ok=True,
-                message='Reemplazo iniciado correctamente.',
+                message='Reemplazo reactivado correctamente.' if is_reactivacion_pendiente else 'Reemplazo iniciado correctamente.',
                 category='success',
             )
 
