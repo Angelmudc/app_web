@@ -87,7 +87,12 @@
             {{ row.estado_operativo }}
           </span>
         </td>
-        <td><span class="badge reemp-badge reemp-badge-estado-coordinando">{{ row.fase_operativa }}</span></td>
+        <td>
+          <span
+            class="badge reemp-badge reemp-badge-estado-coordinando"
+            {% if row.fase_operativa_tooltip %}title="{{ row.fase_operativa_tooltip }}"{% endif %}
+          >{{ row.fase_operativa }}</span>
+        </td>
         <td class="reemp-days-cell"><span class="fw-semibold">{{ row.dias_abierto }}</span></td>
         <td>
           <span class="badge reemp-badge {% if row.prioridad == 'critica' %}reemp-badge-prio-critica{% elif row.prioridad in ['urgente', 'alta'] %}reemp-badge-prio-alta{% elif row.prioridad == 'media' %}reemp-badge-prio-media{% else %}reemp-badge-prio-baja{% endif %}">
@@ -127,9 +132,7 @@
                 {% if (current_user.role|default('')|lower) in ['admin','owner'] and not r.fecha_fin_reemplazo %}
                 <li><hr class="dropdown-divider"></li>
                 <li>
-                  <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=r.id) }}" class="px-3 py-1">
-                    <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar</button>
-                  </form>
+                  <a class="dropdown-item text-danger" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}?open_cancel=1">Cancelar reemplazo</a>
                 </li>
                 {% endif %}
               </ul>

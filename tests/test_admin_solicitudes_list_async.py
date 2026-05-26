@@ -889,6 +889,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     data={
                         "next": "/admin/clientes/7#sol-10",
                         "_async_target": "#clienteSolicitudReemplazoActionsAsyncRegion-10",
+                        "cancel_reason": "Cliente detuvo proceso",
+                        "cancel_action": "restore_previous",
                     },
                     headers=self._async_headers(),
                     follow_redirects=False,
@@ -902,6 +904,27 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(data.get("update_targets") or [], [])
         self.assertIn("replace_html", data)
         self.assertIn("Abrir reemplazo", data.get("replace_html") or "")
+
+    def test_cancelar_reemplazo_async_post_valido_sin_motivo_devuelve_invalid_input_no_csrf(self):
+        self.client = flask_app.test_client()
+        login = self.client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
+        self.assertIn(login.status_code, (302, 303))
+        solicitud = _solicitud_stub(10, "SOL-010", "reemplazo")
+        repl = SimpleNamespace(id=99, solicitud_id=10, fecha_fin_reemplazo=None, candidata_old_id=1)
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch.object(admin_routes.Reemplazo, "query", _ReemplazoQueryStub(repl)):
+                resp = self.client.post(
+                    "/admin/solicitudes/10/reemplazos/99/cancelar",
+                    data={"_async_target": "#clienteSolicitudReemplazoActionsAsyncRegion-10"},
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+        self.assertEqual(resp.status_code, 400)
+        payload = resp.get_json() or {}
+        self.assertFalse(payload.get("success"))
+        self.assertEqual(payload.get("error_code"), "invalid_input")
+        self.assertNotEqual(payload.get("error_code"), "csrf")
 
     def test_cancelar_reemplazo_async_exitoso_refresca_region_padre_lista(self):
         self.client = flask_app.test_client()
@@ -929,6 +952,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     data={
                         "next": "/admin/solicitudes?page=1",
                         "_async_target": "#solicitudReemplazoActionsAsyncRegion-10",
+                        "cancel_reason": "Cliente detuvo proceso",
+                        "cancel_action": "restore_previous",
                         "idempotency_key": f"test-form-{secrets.token_hex(12)}",
                     },
                     headers=self._async_headers(),
@@ -973,6 +998,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
                     data={
                         "next": "/admin/clientes/7#sol-10",
                         "_async_target": "#clienteSolicitudReemplazoActionsAsyncRegion-10",
+                        "cancel_reason": "Cliente detuvo proceso",
+                        "cancel_action": "restore_previous",
                         "idempotency_key": f"test-form-{secrets.token_hex(12)}",
                     },
                     headers=self._async_headers(),

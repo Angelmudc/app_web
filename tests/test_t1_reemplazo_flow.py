@@ -444,3 +444,173 @@ def test_t1b_cierre_reemplazo_exitoso_con_pago_completo_marca_pagada():
         assert int(getattr(solicitud_end, "payment_cycle_current", 1) or 1) == 1
         assert int(solicitud_end.candidata_id or 0) == cand_new_id
         assert repl_end.fecha_fin_reemplazo is not None
+
+
+def test_t1b_cancelar_reemplazo_abierto_cierra_con_resultado_cancelado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        repl = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="No se presentó",
+            estado_previo_solicitud="activa",
+        )
+        repl.iniciar_reemplazo()
+        db.session.add(repl)
+        db.session.commit()
+        repl_id = int(repl.id)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
+        data={"cancel_reason": "Cliente canceló el reemplazo", "cancel_action": "restore_previous"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        repl_end = Reemplazo.query.get(repl_id)
+        assert repl_end is not None
+        assert (repl_end.resultado_final or "").lower() == "cancelado"
+        assert (repl_end.fase or "").lower() == "cerrado"
+        assert repl_end.fecha_fin_reemplazo is not None
+        assert repl_end.fecha_resolucion is not None
+
+
+def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pagada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        solicitud.payment_cycle_plan = "basico"
+        solicitud.payment_cycle_precio_total = "3500.00"
+        solicitud.payment_cycle_abono_requerido = "1750.00"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=int(solicitud.cliente_id),
+                monto="3500.00",
+                tipo_pago="pago",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"cancel-paid:{solicitud_id}",
+            )
+        )
+        repl = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="No se presentó",
+            estado_previo_solicitud="activa",
+        )
+        repl.iniciar_reemplazo()
+        db.session.add(repl)
+        db.session.commit()
+        repl_id = int(repl.id)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
+        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "pagada"
+
+
+def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        solicitud.payment_cycle_plan = "premium"
+        solicitud.payment_cycle_precio_total = "5000.00"
+        solicitud.payment_cycle_abono_requerido = "2500.00"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=int(solicitud.cliente_id),
+                monto="2500.00",
+                tipo_pago="abono",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"cancel-partial:{solicitud_id}",
+            )
+        )
+        repl = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="No se presentó",
+            estado_previo_solicitud="activa",
+        )
+        repl.iniciar_reemplazo()
+        db.session.add(repl)
+        db.session.commit()
+        repl_id = int(repl.id)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
+        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "espera_pago"
+
+
+def test_t1b_cancelar_reemplazo_restaura_estado_previo_cuando_aplica():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        solicitud.payment_cycle_plan = "basico"
+        solicitud.payment_cycle_precio_total = "0.00"
+        solicitud.payment_cycle_abono_requerido = "0.00"
+        repl = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="No se presentó",
+            estado_previo_solicitud="proceso",
+        )
+        repl.iniciar_reemplazo()
+        db.session.add(repl)
+        db.session.commit()
+        repl_id = int(repl.id)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
+        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "proceso"

@@ -351,8 +351,11 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryByObject(sol)), \
                  patch.object(admin_routes.Reemplazo, "query", _ReemplazoQueryByObject(r)), \
                  patch("admin.routes.db.session.commit") as commit_mock:
-                resp = self.client.post(f"/admin/solicitudes/{sol.id}/reemplazos/{r.id}/cancelar", follow_redirects=False)
-
+                resp = self.client.post(
+                    f"/admin/solicitudes/{sol.id}/reemplazos/{r.id}/cancelar",
+                    data={"cancel_reason": "Cliente canceló", "cancel_action": "restore_previous"},
+                    follow_redirects=False,
+                )
         self.assertIn(resp.status_code, (302, 303))
         self.assertIsNotNone(r.fecha_fin_reemplazo)
         self.assertFalse(r.oportunidad_nueva)

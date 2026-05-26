@@ -32,6 +32,11 @@
     .op-timeline li::before { content: ""; position: absolute; left: -.94rem; top: .38rem; width: 8px; height: 8px; border-radius: 50%; background: #7aa2ff; box-shadow: 0 0 0 3px rgba(122,162,255,.18); }
     .op-time { color: #9fb2cf; font-size: .76rem; margin-right: .25rem; }
     .op-secondary { color: #b8c7de; font-size: .84rem; }
+    .op-status-chip { border-radius: 999px; padding: .14rem .45rem; font-size: .7rem; border: 1px solid rgba(255,255,255,.18); text-transform: uppercase; letter-spacing: .02em; }
+    .op-status-completado { background: rgba(25,135,84,.22); color: #cff4e0; border-color: rgba(25,135,84,.45); }
+    .op-status-actual { background: rgba(13,110,253,.22); color: #dbe9ff; border-color: rgba(13,110,253,.45); }
+    .op-status-pendiente { background: rgba(255,193,7,.22); color: #fff2cd; border-color: rgba(255,193,7,.45); }
+    .op-status-bloqueado { background: rgba(108,117,125,.25); color: #dee2e6; border-color: rgba(108,117,125,.55); }
     .reemp-truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .op-header-row { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: .55rem; }
     .op-header-left { min-width: 0; }
@@ -84,6 +89,12 @@
           <input type="hidden" name="candidata_new_id" value="{{ reemplazo.candidata_new_id }}">
         </form>
         {% endif %}
+        {% if cta_action == 'advance_fase' and solicitud and not _reemplazo_ya_cerrado and not cta_requires_datetime %}
+        <form id="avanzarFasePrincipalForm" method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-none" data-single-submit-form="1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="fase" value="{{ cta_fase_value }}">
+        </form>
+        {% endif %}
         <div class="d-flex flex-wrap gap-2 align-items-center">
           {% if cta_action == 'open_search_panel' %}
           <button class="btn {{ cta_style }} op-primary-btn"
@@ -92,6 +103,15 @@
                   data-focus-target="#nuevaCandidataQuery">
             ⚡ {{ cta_label }}
           </button>
+          {% elif cta_action == 'advance_fase' and cta_requires_datetime %}
+          <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-flex flex-wrap gap-2 align-items-center">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="fase" value="{{ cta_fase_value }}">
+            <input type="datetime-local" name="fecha_entrada_programada" class="form-control form-control-sm">
+            <button class="btn {{ cta_style }} op-primary-btn" type="submit">⚡ {{ cta_label }}</button>
+          </form>
+          {% elif cta_action == 'advance_fase' %}
+          <button class="btn {{ cta_style }} op-primary-btn" type="submit" form="avanzarFasePrincipalForm" data-single-submit data-loading-text="Procesando...">⚡ {{ cta_label }}</button>
           {% elif cta_action == 'finalize_direct' and solicitud and reemplazo.candidata_new_id %}
           <button class="btn {{ cta_style }} op-primary-btn" type="submit" form="cerrarReemplazoConCandidataForm" data-single-submit data-loading-text="Finalizando...">⚡ {{ cta_label }}</button>
           {% else %}
@@ -103,13 +123,20 @@
               <li><button class="dropdown-item" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button></li>
               {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
               {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
+              {% if solicitud and not _reemplazo_ya_cerrado %}
+              <li><hr class="dropdown-divider"></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="fase" value="busqueda"><button class="btn btn-outline-light btn-sm w-100" type="submit">Marcar búsqueda iniciada</button></form></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="fase" value="pendiente_cliente"><button class="btn btn-outline-light btn-sm w-100" type="submit">Marcar pendiente cliente</button></form></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="fase" value="aprobada_cliente"><button class="btn btn-outline-light btn-sm w-100" type="submit">Marcar aprobada por cliente</button></form></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="fase" value="coordinando_entrada"><button class="btn btn-outline-light btn-sm w-100" type="submit">Coordinar entrada</button></form></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="fase" value="entregada"><button class="btn btn-outline-light btn-sm w-100" type="submit">Confirmar entrega</button></form></li>
+              <li><form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="resultado_final" value="fallido"><button class="btn btn-outline-warning btn-sm w-100" type="submit">Marcar como no resuelto</button></form></li>
+              {% endif %}
               <li><button class="dropdown-item" type="button" data-bs-toggle="collapse" data-bs-target="#techEvents" aria-expanded="false">Ver eventos técnicos</button></li>
               {% if (current_user.role|default('')|lower) in ['admin','owner'] and not _reemplazo_ya_cerrado %}
               <li><hr class="dropdown-divider"></li>
               <li>
-                <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}" class="px-3 py-1">
-                  <button class="btn btn-outline-danger btn-sm w-100" type="submit">Cancelar reemplazo</button>
-                </form>
+                <button class="dropdown-item text-danger" type="button" data-bs-toggle="modal" data-bs-target="#reemplazoCancelModal">Cancelar reemplazo</button>
               </li>
               {% endif %}
             </ul>
@@ -157,7 +184,6 @@
                       type="button"
                       data-action="open-candidata-search"
                       data-focus-target="#nuevaCandidataQuery">Cambiar candidata</button>
-              <button class="btn btn-success btn-sm" type="submit" form="cerrarReemplazoConCandidataForm" data-single-submit data-loading-text="Finalizando...">Finalizar reemplazo con esta candidata</button>
             </div>
             {% endif %}
           </div>
@@ -226,53 +252,23 @@
       </div>
     </div>
 
-    {% if solicitud and not _reemplazo_ya_cerrado %}
-    <div class="op-card mt-2">
-      <div class="op-label mb-2">Acciones de cierre</div>
-      <div class="d-flex gap-2 flex-wrap">
-        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="fase" value="busqueda">
-          <button class="btn btn-outline-light btn-sm" type="submit">Marcar búsqueda iniciada</button>
-        </form>
-        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline d-flex gap-1 align-items-center">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="fase" value="entrada_programada">
-          <input type="datetime-local" name="fecha_entrada_programada" class="form-control form-control-sm">
-          <button class="btn btn-outline-primary btn-sm" type="submit">Programar entrada</button>
-        </form>
-        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="fase" value="entregada">
-          <button class="btn btn-outline-success btn-sm" type="submit">Confirmar entrega</button>
-        </form>
-        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="fase" value="seguimiento_24h">
-          <button class="btn btn-outline-info btn-sm" type="submit">Registrar seguimiento 24h</button>
-        </form>
-        <form method="post" action="{{ url_for('admin.reemplazo_avanzar_fase_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="fase" value="seguimiento_7d">
-          <button class="btn btn-outline-info btn-sm" type="submit">Registrar seguimiento 7 días</button>
-        </form>
-        {% if reemplazo.candidata_new_id %}
-        <span class="op-secondary">Lista para finalizar</span>
-        {% endif %}
-        <form method="post" action="{{ url_for('admin.reemplazo_cerrar_panel', reemplazo_id=reemplazo.id) }}" class="d-inline">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="resultado_final" value="fallido">
-          <button class="btn btn-outline-warning btn-sm" type="submit">Marcar como no resuelto</button>
-        </form>
-      </div>
-    </div>
-    {% endif %}
-
     <div class="op-card mt-2">
       <div class="op-label mb-2">Checklist de flujo</div>
-      <div class="op-secondary">
-        1) Abrir reemplazo · 2) Búsqueda · 3) Selección · 4) Coordinación · 5) Entrega · 6) Seguimiento 24h · 7) Seguimiento 7 días · 8) Cierre
-      </div>
+      <ul class="op-timeline">
+        {% for step in (timeline_operativo or []) %}
+        <li>
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <strong>{{ loop.index }}. {{ step.label }}</strong>
+            <span class="op-status-chip op-status-{{ step.status }}">{{ step.status }}</span>
+          </div>
+          <div class="op-secondary">
+            {% if step.fecha %}<span class="op-time">{{ step.fecha }}</span>{% endif %}
+            {% if step.responsable %} · Responsable: <strong>{{ step.responsable }}</strong>{% endif %}
+            {% if step.nota %} · {{ step.nota }}{% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
     </div>
 
     <div class="op-card mt-2">
@@ -308,6 +304,44 @@
     </div>
   </div>
 </div>
+{% if (current_user.role|default('')|lower) in ['admin','owner'] and not _reemplazo_ya_cerrado %}
+<div class="modal fade" id="reemplazoCancelModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cancelar reemplazo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post" action="{{ url_for('admin.reemplazo_cancelar_panel', reemplazo_id=reemplazo.id) }}">
+        <div class="modal-body text-start">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="mb-2">
+            <label class="form-label">Motivo de cancelación *</label>
+            <textarea class="form-control" name="cancel_reason" rows="3" required></textarea>
+          </div>
+          <div class="small text-muted mb-2">Acción sobre solicitud</div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="cancel-action-restore" value="restore_previous" checked>
+            <label class="form-check-label" for="cancel-action-restore">Restaurar estado anterior</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="cancel-action-keep" value="keep_reemplazo">
+            <label class="form-check-label" for="cancel-action-keep">Mantener solicitud en reemplazo</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="cancel-action-auto" value="auto_by_payment">
+            <label class="form-check-label" for="cancel-action-auto">Pasar a activa/proceso/espera_pago según pago actual</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -501,4 +535,13 @@
     })();
   </script>
   {% endif %}
+  <script>
+    (function () {
+      var params = new URLSearchParams(window.location.search || '');
+      if (params.get('open_cancel') !== '1') return;
+      var modalEl = document.getElementById('reemplazoCancelModal');
+      if (!modalEl || !window.bootstrap || !window.bootstrap.Modal) return;
+      window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    })();
+  </script>
 {% endblock %}

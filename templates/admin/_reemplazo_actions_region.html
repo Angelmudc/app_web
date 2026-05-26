@@ -2,6 +2,7 @@
 {% set _modal_prefix = ('cliente' if _style == 'cliente' else 'list') ~ '-reemplazo-' ~ solicitud.id %}
 {% set _open_modal_id = 'modal-abrir-' ~ _modal_prefix %}
 {% set _close_modal_id = 'modal-culminar-' ~ _modal_prefix %}
+{% set _cancel_modal_id = 'modal-cancelar-' ~ _modal_prefix %}
 
 <div class="d-inline-flex flex-wrap gap-2 align-items-center">
   {% if not repl_activo %}
@@ -16,24 +17,13 @@
     </button>
   {% elif repl_operable %}
     {% if is_admin_role %}
-    <form method="post"
-          action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
-          class="d-inline"
-          data-admin-async-form
-          data-async-target="{{ async_target }}"
-          data-async-busy-container="{{ async_scope }}"
-          data-async-preserve-scroll="true"
-          data-async-fallback="native"
-          data-async-confirm="¿Cancelar este reemplazo activo?">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <input type="hidden" name="_async_target" value="{{ async_target }}">
-      <input type="hidden" name="next" value="{{ next_url }}">
-      <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
-      <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
-      <button type="submit" class="btn btn-sm btn-outline-danger" title="Cancelar reemplazo">
+      <button type="button"
+              class="btn btn-sm btn-outline-danger"
+              title="Cancelar reemplazo"
+              data-bs-toggle="modal"
+              data-bs-target="#{{ _cancel_modal_id }}">
         {% if _style == 'cliente' %}🛑{% else %}Cancelar reemplazo{% endif %}
       </button>
-    </form>
     {% elif _style == 'cliente' %}
       <button class="btn btn-sm btn-outline-danger" disabled title="Cancelar reemplazo (solo admin)">🛑</button>
     {% endif %}
@@ -101,6 +91,55 @@
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
           <button type="submit" class="btn btn-primary">Abrir reemplazo</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{% if repl_operable and is_admin_role %}
+<div class="modal fade" id="{{ _cancel_modal_id }}" tabindex="-1" aria-hidden="true" data-reemplazo-modal="1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Cancelar reemplazo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post"
+            action="{{ url_for('admin.cancelar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
+            data-admin-async-form
+            data-async-target="{{ async_target }}"
+            data-async-busy-container="{{ async_scope }}"
+            data-async-preserve-scroll="true"
+            data-async-fallback="native">
+        <div class="modal-body text-start">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="_async_target" value="{{ async_target }}">
+          <input type="hidden" name="next" value="{{ next_url }}">
+          <input type="hidden" name="row_version" value="{{ solicitud.row_version if solicitud is defined and solicitud is not none else '' }}">
+          <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
+          <div class="mb-2">
+            <label class="form-label">Motivo de cancelación *</label>
+            <textarea class="form-control" name="cancel_reason" rows="3" required></textarea>
+          </div>
+          <div class="small text-muted mb-2">Acción sobre solicitud</div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="{{ _cancel_modal_id }}-restore" value="restore_previous" checked>
+            <label class="form-check-label" for="{{ _cancel_modal_id }}-restore">Restaurar estado anterior</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="{{ _cancel_modal_id }}-keep" value="keep_reemplazo">
+            <label class="form-check-label" for="{{ _cancel_modal_id }}-keep">Mantener solicitud en reemplazo</label>
+          </div>
+          <div class="form-check">
+            <input class="form-check-input" type="radio" name="cancel_action" id="{{ _cancel_modal_id }}-auto" value="auto_by_payment">
+            <label class="form-check-label" for="{{ _cancel_modal_id }}-auto">Pasar a activa/proceso/espera_pago según pago actual</label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+          <button type="submit" class="btn btn-danger">Confirmar cancelación</button>
         </div>
       </form>
     </div>

@@ -13872,6 +13872,48 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             error_code="conflict",
         )
 
+    cancel_reason = (request.form.get("cancel_reason") or "").strip()
+    cancel_action = (request.form.get("cancel_action") or "").strip().lower()
+    if not cancel_reason:
+        return _action_response(
+            ok=False,
+            message="Debes indicar el motivo de cancelación.",
+            category="warning",
+            http_status=400,
+            error_code="invalid_input",
+        )
+    if cancel_action not in {"restore_previous", "keep_reemplazo", "auto_by_payment"}:
+        return _action_response(
+            ok=False,
+            message="Debes seleccionar la acción sobre la solicitud.",
+            category="warning",
+            http_status=400,
+            error_code="invalid_input",
+        )
+
+    def _resolve_estado_solicitud_cancelacion() -> tuple[str, str]:
+        try:
+            summary = get_payment_summary(s)
+            precio_plan = Decimal(summary["precio_plan"])
+            saldo_pendiente = Decimal(summary["saldo_pendiente"])
+        except Exception:
+            precio_plan = Decimal("0.00")
+            saldo_pendiente = Decimal("0.00")
+        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
+        if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
+            return "pagada", "pagada_por_ciclo"
+        if saldo_pendiente > Decimal("0.00") and precio_plan > Decimal("0.00"):
+            return "espera_pago", "saldo_pendiente"
+        if cancel_action == "keep_reemplazo":
+            return "reemplazo", "mantener_reemplazo"
+        if cancel_action == "restore_previous":
+            if estado_restore in {"proceso", "activa", "espera_pago", "pagada"}:
+                return estado_restore, "estado_previo"
+            return "activa", "estado_previo_default"
+        if estado_restore in {"proceso", "activa"}:
+            return estado_restore, "estado_previo_operativo"
+        return "activa", "default_operativo"
+
     try:
         r.cerrar_reemplazo()
         _reemplazo_set_fase(r, "cerrado")
@@ -13881,11 +13923,18 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             r.resultado_final = "cancelado"
         if hasattr(r, "fecha_resolucion"):
             r.fecha_resolucion = utc_now_naive()
+        if hasattr(r, "nota_adicional"):
+            nota_prev = (getattr(r, "nota_adicional", "") or "").strip()
+            action_label = {
+                "restore_previous": "Restaurar estado anterior",
+                "keep_reemplazo": "Mantener solicitud en reemplazo",
+                "auto_by_payment": "Pasar a estado según pago actual",
+            }.get(cancel_action, cancel_action)
+            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Acción: {action_label}"
+            r.nota_adicional = f"{nota_prev}\n\n{cancel_note}".strip() if nota_prev else cancel_note
 
-        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
-        if estado_restore not in ("proceso", "activa", "espera_pago", "pagada", "cancelada"):
-            estado_restore = "activa"
-        _set_solicitud_estado(s, estado_restore)
+        estado_final, estado_rule = _resolve_estado_solicitud_cancelacion()
+        _set_solicitud_estado(s, estado_final)
 
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CANCELADO",
@@ -13895,7 +13944,9 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             payload={
                 "solicitud_id": int(s.id),
                 "reemplazo_id": int(r.id),
-                "estado_restaurado": estado_restore,
+                "estado_restaurado": estado_final,
+                "estado_regla": estado_rule,
+                "cancel_action": cancel_action,
             },
         )
         _set_idempotency_response(idem_row, status=200, code="ok")
@@ -13905,7 +13956,13 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             entity_type="Solicitud",
             entity_id=s.id,
             summary=f"Reemplazo cancelado para solicitud {s.codigo_solicitud or s.id}",
-            metadata={"reemplazo_id": r.id},
+            metadata={
+                "reemplazo_id": r.id,
+                "motivo_cancelacion": cancel_reason,
+                "accion_solicitud": cancel_action,
+                "estado_final_solicitud": estado_final,
+                "regla_estado": estado_rule,
+            },
         )
         return _action_response(
             ok=True,

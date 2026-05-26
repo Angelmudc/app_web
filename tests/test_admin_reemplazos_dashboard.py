@@ -110,6 +110,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     assert "Panel de reemplazos" in html
+    assert "Candidata seleccionada" not in html
     assert "No se presentó" in html
     assert "/finalizar" not in html
 
@@ -308,6 +309,53 @@ def test_reemplazo_publicacion_texto_no_inventa_y_dashboard_marca_incompleta():
     assert resp_dash.status_code == 200
     html = resp_dash.get_data(as_text=True)
     assert "publicación incompleta" in html
+
+
+def test_reemplazo_cancelacion_ui_muestra_modal_con_motivo_y_accion_en_admin():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+    login = client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
+    assert login.status_code in (302, 303)
+    resp_detail = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+    assert resp_detail.status_code == 200
+    html = resp_detail.get_data(as_text=True)
+    assert "Cancelar reemplazo" in html
+    assert 'name="cancel_reason"' in html
+    assert 'name="cancel_action"' in html
+
+
+def test_reemplazo_publicacion_texto_formato_info_y_horario_sin_espacios_raros():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, solicitud_id = _seed_case(closed=False, motivo="Cliente pidió reemplazo urgente")
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.edad_requerida = "25 en adelante"
+        sol.experiencia = "Domestica"
+        sol.horario = "Lunes a viernes de 8:00 AM a 4:00 PM / sábado hasta 12:00 PM"
+        db.session.commit()
+
+    _login_staff(client)
+    resp_repl_texto = client.get(f"/admin/reemplazos/{repl_id}/publicacion", follow_redirects=False)
+    assert resp_repl_texto.status_code == 200
+    payload_repl = resp_repl_texto.get_json() or {}
+    texto_repl = (payload_repl.get("texto") or "").strip()
+
+    assert re.search(r"(Con dormida|Salida diaria).*\n\nEdad:", texto_repl) is not None
+    assert re.search(r"(Con dormida|Salida diaria).*\nEdad:", texto_repl) is None
+    assert "Edad: 25 en adelante\n\nDominicana" not in texto_repl
+    assert "Edad: 25 en adelante\nDominicana" in texto_repl
+    assert "Horario:\nLunes a viernes:" not in texto_repl
+    assert "Horario: Lunes a viernes: 8:00 AM - 4:00 PM\nSábado: 8:00 AM - 12:00 PM" in texto_repl
 
 def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
     flask_app.config["TESTING"] = True
@@ -527,6 +575,7 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
         repl_after = Reemplazo.query.get(repl_id)
         assert repl_after is not None
         assert int(repl_after.candidata_new_id or 0) == cand_pick_id
+        assert (repl_after.fase or "").strip().lower() == "preseleccionada"
         outbox = (
             DomainOutbox.query
             .filter_by(aggregate_type="Solicitud", aggregate_id=str(repl_after.solicitud_id), event_type="REEMPLAZO_CANDIDATA_SELECCIONADA")
@@ -545,21 +594,18 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
     resp_detail = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
     assert resp_detail.status_code == 200
     detail_html = resp_detail.get_data(as_text=True)
+    assert "Preseleccionada" in detail_html
+    assert "Candidata seleccionada" not in detail_html
     assert "Buscar candidata por nombre, código, teléfono o ciudad" in detail_html
     assert "Cambiar candidata" in detail_html
     assert "Maritza Prueba" in detail_html
-    assert "Finalizar reemplazo con esta candidata" in detail_html
+    assert "Finalizar reemplazo con esta candidata" not in detail_html
+    assert "Marcar pendiente cliente" in detail_html
     assert "/finalizar" not in detail_html
     assert f"/admin/reemplazos/{repl_id}/cerrar" in detail_html
-    assert detail_html.count('id="cerrarReemplazoConCandidataForm"') == 1
-    assert detail_html.count('form="cerrarReemplazoConCandidataForm"') == 2
-    assert re.search(
-        rf'<form[^>]*id="cerrarReemplazoConCandidataForm"[^>]*method="post"[^>]*action="/admin/reemplazos/{repl_id}/cerrar"[^>]*>.*?name="csrf_token"',
-        detail_html,
-        re.DOTALL,
-    )
+    assert detail_html.count('id="cerrarReemplazoConCandidataForm"') == 0
     close_forms = re.findall(r'<form[^>]+action="/admin/reemplazos/%d/cerrar"[^>]*>' % repl_id, detail_html)
-    assert len(close_forms) == 2
+    assert len(close_forms) == 1
     assert all('method="post"' in form_tag for form_tag in close_forms)
 
     with patch("admin.routes.cerrar_reemplazo_asignando", return_value=("", 200)) as close_mock:
@@ -568,8 +614,38 @@ def test_reemplazo_detail_busqueda_y_seleccion_candidata():
             data={"resultado_final": "exitoso", "candidata_new_id": str(cand_pick_id)},
             follow_redirects=False,
         )
-    assert resp_finalize.status_code == 200
-    close_mock.assert_called_once()
+    assert resp_finalize.status_code in (302, 303)
+    close_mock.assert_not_called()
+
+
+def test_reemplazo_fase_legacy_seleccionada_se_muestra_como_preseleccionada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand = Candidata(
+            nombre_completo="Legacy Pick",
+            cedula="10101010101",
+            numero_telefono="8091230000",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.flush()
+        repl.candidata_new_id = int(cand.fila)
+        repl.fase = "seleccionada"
+        db.session.commit()
+
+    _login_staff(client)
+    resp_dash = client.get("/admin/reemplazos?estado=activos", follow_redirects=False)
+    assert resp_dash.status_code == 200
+    dash_html = resp_dash.get_data(as_text=True)
+    assert "Preseleccionada" in dash_html
+    assert "Candidata seleccionada" not in dash_html
 
 
 def test_reemplazo_seleccionar_candidata_bloquea_cerrado():
@@ -657,10 +733,251 @@ def test_reemplazo_cerrar_exitoso_sin_candidata_devuelve_error_claro():
         headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest", "X-Admin-Async": "1"},
         follow_redirects=False,
     )
-    assert resp.status_code == 400
-    payload = resp.get_json() or {}
-    assert payload.get("success") is False
-    assert "Debes indicar la candidata nueva" in (payload.get("message") or "")
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        assert getattr(repl, "fecha_fin_reemplazo", None) is None
+
+
+def test_reemplazo_no_permte_entregada_sin_candidata_ni_fecha():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+    _login_staff(client)
+
+    resp_no_cand = client.post(
+        f"/admin/reemplazos/{repl_id}/fase",
+        data={"fase": "entregada"},
+        follow_redirects=False,
+    )
+    assert resp_no_cand.status_code in (302, 303)
+    with flask_app.app_context():
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        assert (repl.fase or "").strip().lower() != "entregada"
+
+
+def test_reemplazo_detail_cta_contextual_por_fase_y_sin_duplicidad():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand = Candidata(
+            nombre_completo="CTA Contextual",
+            cedula="20202020203",
+            numero_telefono="8094440001",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.flush()
+        repl.candidata_new_id = int(cand.fila)
+        db.session.commit()
+    _login_staff(client)
+
+    checks = [
+        ("preseleccionada", "Marcar pendiente cliente"),
+        ("pendiente_cliente", "Marcar aprobada por cliente"),
+        ("aprobada_cliente", "Coordinar entrada"),
+        ("coordinando_entrada", "Programar entrada"),
+        ("entrada_programada", "Confirmar entrega"),
+        ("entregada", "Cerrar reemplazo"),
+    ]
+    for fase, label in checks:
+        with flask_app.app_context():
+            repl = Reemplazo.query.get(repl_id)
+            assert repl is not None
+            repl.fase = fase
+            if fase in {"entrada_programada", "entregada"}:
+                repl.fecha_entrada_programada = admin_routes.utc_now_naive()
+            db.session.commit()
+        resp = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+        assert resp.status_code == 200
+        html = resp.get_data(as_text=True)
+        assert label in html
+        assert html.count("⚡ ") == 1
+        if fase != "entregada":
+            assert "Cerrar reemplazo" not in html
+
+
+def test_reemplazo_timeline_operativo_muestra_todos_los_pasos():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+    _login_staff(client)
+
+    resp = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    for step in [
+        "Reemplazo abierto",
+        "Candidata preseleccionada",
+        "Pendiente cliente",
+        "Aprobada por cliente",
+        "Coordinación de entrada",
+        "Entrada programada",
+        "Entrega confirmada",
+        "Reemplazo cerrado",
+    ]:
+        assert step in html
+
+
+def test_reemplazo_timeline_preseleccionada_marca_actual_y_bloqueos():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand = Candidata(nombre_completo="Preseleccion", cedula="00011122233", numero_telefono="8097778888", estado="lista_para_trabajar")
+        db.session.add(cand)
+        db.session.flush()
+        repl.candidata_new_id = int(cand.fila)
+        repl.fase = "preseleccionada"
+        db.session.commit()
+    _login_staff(client)
+
+    resp = client.get(f"/admin/reemplazos/{repl_id}", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Candidata preseleccionada" in html
+    assert "op-status-actual\">actual" in html
+    assert "op-status-pendiente\">pendiente" in html
+    assert "op-status-bloqueado\">bloqueado" in html
+
+
+def test_solicitud_detail_muestra_resumen_de_reemplazos_activo_y_cerrado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        sol = Solicitud.query.get(solicitud_id)
+        assert repl is not None and sol is not None
+        cliente_id = int(sol.cliente_id)
+    _login_staff(client)
+
+    heavy_active = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy", follow_redirects=False)
+    assert heavy_active.status_code == 200
+    html_active = heavy_active.get_data(as_text=True)
+    assert "Cantidad de reemplazos:" in html_active
+    assert "Reemplazo activo" in html_active
+
+    with flask_app.app_context():
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        repl.fecha_fin_reemplazo = admin_routes.utc_now_naive()
+        repl.resultado_final = "cerrado_exitoso"
+        db.session.commit()
+
+    heavy_closed = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_heavy", follow_redirects=False)
+    assert heavy_closed.status_code == 200
+    html_closed = heavy_closed.get_data(as_text=True)
+    assert "Esta solicitud tuvo reemplazo" in html_closed
+
+
+def test_reemplazo_cerrar_exitoso_solo_desde_entregada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand = Candidata(
+            nombre_completo="Cierre Fase",
+            cedula="20202020204",
+            numero_telefono="8094440002",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.flush()
+        repl.candidata_new_id = int(cand.fila)
+        repl.fase = "pendiente_cliente"
+        db.session.commit()
+        cand_pick_id = int(cand.fila)
+    _login_staff(client)
+
+    with patch("admin.routes.cerrar_reemplazo_asignando", return_value=("", 200)) as close_mock:
+        resp_blocked = client.post(
+            f"/admin/reemplazos/{repl_id}/cerrar",
+            data={"resultado_final": "exitoso", "candidata_new_id": str(cand_pick_id)},
+            follow_redirects=False,
+        )
+    assert resp_blocked.status_code in (302, 303)
+    close_mock.assert_not_called()
+
+    with flask_app.app_context():
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        repl.fase = "entregada"
+        repl.fecha_entrada_programada = admin_routes.utc_now_naive()
+        db.session.commit()
+    with patch("admin.routes.cerrar_reemplazo_asignando", return_value=("", 200)) as close_mock2:
+        resp_ok = client.post(
+            f"/admin/reemplazos/{repl_id}/cerrar",
+            data={"resultado_final": "exitoso", "candidata_new_id": str(cand_pick_id)},
+            follow_redirects=False,
+        )
+    assert resp_ok.status_code == 200
+    close_mock2.assert_called_once()
+
+
+def test_reemplazo_no_permte_seguimiento_sin_entrega():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _solicitud_id = _seed_case(closed=False)
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        cand = Candidata(
+            nombre_completo="Seg no entrega",
+            cedula="20202020202",
+            numero_telefono="8093330000",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cand)
+        db.session.flush()
+        repl.candidata_new_id = int(cand.fila)
+        repl.fase = "preseleccionada"
+        db.session.commit()
+    _login_staff(client)
+
+    resp = client.post(
+        f"/admin/reemplazos/{repl_id}/fase",
+        data={"fase": "seguimiento_24h"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None
+        assert (repl.fase or "").strip().lower() == "preseleccionada"
+        assert getattr(repl, "seguimiento_24h_at", None) is None
 
 
 def test_reemplazo_cerrar_segunda_vez_no_duplica_operacion():

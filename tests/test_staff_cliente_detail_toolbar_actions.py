@@ -229,7 +229,11 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
                  patch.object(admin_routes.Reemplazo, "query", _ReemplazoQuery(repl)):
                 forbidden = self.client.post(
                     "/admin/solicitudes/10/reemplazos/99/cancelar",
-                    data={"next": "/admin/clientes/7#sol-10"},
+                    data={
+                        "next": "/admin/clientes/7#sol-10",
+                        "cancel_reason": "Cliente pidió detener",
+                        "cancel_action": "restore_previous",
+                    },
                     follow_redirects=False,
                 )
         self.assertEqual(forbidden.status_code, 403)
@@ -242,7 +246,11 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit") as commit_mock:
                 ok = self.client.post(
                     "/admin/solicitudes/10/reemplazos/99/cancelar",
-                    data={"next": "/admin/clientes/7#sol-10"},
+                    data={
+                        "next": "/admin/clientes/7#sol-10",
+                        "cancel_reason": "Cliente pidió detener",
+                        "cancel_action": "restore_previous",
+                    },
                     follow_redirects=False,
                 )
         self.assertIn(ok.status_code, (302, 303))
