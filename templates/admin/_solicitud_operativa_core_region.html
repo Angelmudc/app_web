@@ -55,9 +55,9 @@
   {% set _cta_href = url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) %}
   {% set _cta_help = 'Siguiente paso recomendado: registrar el pago para acercar el cierre de la solicitud.' %}
 {% elif estado == 'pendiente_servicio' %}
-  {% set _cta_label = 'Crear reemplazo' %}
+  {% set _cta_label = 'Reactivar reemplazo' %}
   {% set _cta_href = url_for('admin.nuevo_reemplazo', s_id=solicitud.id) %}
-  {% set _cta_help = 'No cobrar nuevamente. Se debe servicio por reemplazo cancelado.' %}
+  {% set _cta_help = 'No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.' %}
 {% elif estado == 'reemplazo' %}
   {% set _cta_label = 'Gestionar reemplazo' %}
   {% set _cta_href = url_for('admin.nuevo_reemplazo', s_id=solicitud.id) %}

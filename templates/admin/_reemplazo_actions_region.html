@@ -13,11 +13,11 @@
       data-bs-toggle="modal"
       data-bs-target="#{{ _open_modal_id }}"
       {% if not solicitud.candidata_id %}disabled{% endif %}
-      title="{{ 'No cobrar nuevamente. Se debe servicio por reemplazo cancelado.' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}">
+      title="{{ 'No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}">
       {% if _style == 'cliente' %}
-        {{ 'Crear reemplazo' if _estado_norm == 'pendiente_servicio' else '🔁' }}
+        {{ 'Reactivar reemplazo' if _estado_norm == 'pendiente_servicio' else '🔁' }}
       {% else %}
-        {{ 'Crear reemplazo' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}
+        {{ 'Reactivar reemplazo' if _estado_norm == 'pendiente_servicio' else 'Abrir reemplazo' }}
       {% endif %}
     </button>
   {% elif repl_operable %}

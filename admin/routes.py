@@ -14820,12 +14820,12 @@ def _solicitud_list_primary_cta(
         }
     if estado == "pendiente_servicio":
         return {
-            "label": "Crear reemplazo",
+            "label": "Reactivar reemplazo",
             "kind": "link",
             "form_action": "",
             "href": url_for("admin.nuevo_reemplazo", s_id=solicitud.id),
             "btn_class": "btn-warning text-dark",
-            "help": "No cobrar nuevamente. Se debe servicio por reemplazo cancelado.",
+            "help": "No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.",
         }
     if estado == "reemplazo":
         return {

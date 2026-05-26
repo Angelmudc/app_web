@@ -1450,8 +1450,9 @@ def test_t1_cliente_detail_pendiente_servicio_con_ciclo_pagado_deshabilita_boton
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
     assert "Plan / Abono" not in html
     assert "Poner en espera de pago" not in html
-    assert "No cobrar nuevamente. Se debe servicio por reemplazo cancelado." in html
-    assert "Crear reemplazo" in html
+    assert "No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud." in html
+    assert "Reactivar reemplazo" in html
+    assert "Crear reemplazo" not in html
 
 
 def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_pendiente_servicio():

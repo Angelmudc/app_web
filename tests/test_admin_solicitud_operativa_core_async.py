@@ -247,8 +247,9 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
 
     def test_cta_contextual_pendiente_servicio_oculta_cobro_y_prioriza_reemplazo(self):
         html = self._render_operativa_region("pendiente_servicio")
-        self.assertIn("Crear reemplazo", html)
-        self.assertIn("No cobrar nuevamente. Se debe servicio por reemplazo cancelado.", html)
+        self.assertIn("Reactivar reemplazo", html)
+        self.assertIn("No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.", html)
+        self.assertNotIn("Crear reemplazo", html)
         self.assertIn("/admin/solicitudes/10/reemplazos/nuevo", html)
         self.assertNotIn("Registrar pago", html)
         self.assertNotIn("Plan / Abono", html)
