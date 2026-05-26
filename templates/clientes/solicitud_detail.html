@@ -26,6 +26,9 @@
               {% else %} bg-info text-dark {% endif %}">
               {{ estado_legible }}
             </span>
+            {% if reemplazo_cancelado_no_resuelta %}
+              <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Reemplazo cancelado · Solicitud no resuelta</span>
+            {% endif %}
             {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
               <span class="badge bg-danger">Publicado hoy</span>
             {% endif %}
@@ -81,6 +84,9 @@
       <div>
         <div class="text-muted small mb-1">Etapa actual</div>
         <div class="fw-semibold fs-5">{{ estado_legible }}</div>
+        {% if reemplazo_cancelado_no_resuelta %}
+          <div class="small text-danger mt-1">Reemplazo cancelado / no resuelta</div>
+        {% endif %}
         <div class="mt-2">
           <span class="badge text-bg-{{ que_sigue.variant|default('info') }}">
             <i class="bi {{ que_sigue.icon|default('bi-compass') }} me-1"></i> Qué sigue ahora

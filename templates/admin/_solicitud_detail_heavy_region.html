@@ -370,6 +370,31 @@
     <div class="glass-header">
       <i class="bi bi-arrow-repeat"></i> Reemplazos
     </div>
+    {% set _repls = reemplazos or [] %}
+    {% if _repls %}
+    <div class="p-3 pt-2">
+      <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+        {% if (reemplazos_activos or 0) > 0 %}
+          <span class="badge bg-warning text-dark">Reemplazo activo</span>
+        {% else %}
+          <span class="badge bg-info text-dark">Esta solicitud tuvo reemplazo</span>
+        {% endif %}
+        {% if reemplazo_cancelado_no_resuelta %}
+          <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Reemplazo cancelado · Solicitud no resuelta</span>
+        {% endif %}
+        <span class="small text-body-secondary">Cantidad de reemplazos: <strong>{{ reemplazos_count or (_repls|length) }}</strong></span>
+        <span class="small text-body-secondary">Último reemplazo: <strong>{{ ultimo_reemplazo_at and ultimo_reemplazo_at|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</strong></span>
+      </div>
+      {% if (_repls|length) > 1 %}
+      <div class="small text-body-secondary">
+        Historial compacto:
+        {% for _r in _repls|reverse %}
+          #{{ _r.id }} ({{ (_r.fecha_inicio_reemplazo or _r.created_at) and (_r.fecha_inicio_reemplazo or _r.created_at)|rd_datetime('%Y-%m-%d') or '—' }}){% if not loop.last %} · {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
     {% if reemplazos and (reemplazos|length) >= 2 %}
     <div class="alert alert-warning m-3 mb-0">
       Solicitud con reemplazos previos ({{ reemplazos|length }}). Revisar caso conflictivo.

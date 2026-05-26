@@ -78,6 +78,9 @@
           <div class="small sol-muted">Situación operativa</div>
           <div class="d-flex align-items-center gap-2 flex-wrap mt-1">
             <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
+            {% if s.reemplazo_cancelado_no_resuelta %}
+              <span class="badge text-bg-danger">Reemplazo cancelado / no resuelta</span>
+            {% endif %}
             <span class="small sol-muted">{{ s.days_in_state }} días en estado</span>
           </div>
           <div class="small mt-2"><strong>Siguiente paso:</strong> {{ s.primary_cta_help }}</div>

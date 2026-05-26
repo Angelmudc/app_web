@@ -353,13 +353,13 @@ class StaffReemplazoEsperaPagoTest(unittest.TestCase):
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     f"/admin/solicitudes/{sol.id}/reemplazos/{r.id}/cancelar",
-                    data={"cancel_reason": "Cliente canceló", "cancel_action": "restore_previous"},
+                    data={"cancel_reason": "Cliente canceló"},
                     follow_redirects=False,
                 )
         self.assertIn(resp.status_code, (302, 303))
         self.assertIsNotNone(r.fecha_fin_reemplazo)
         self.assertFalse(r.oportunidad_nueva)
-        self.assertEqual(sol.estado, "activa")
+        self.assertEqual(sol.estado, "espera_pago")
         self.assertGreaterEqual(commit_mock.call_count, 1)
 
     def test_cerrar_reemplazo_asignando_nueva_candidata(self):

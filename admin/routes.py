@@ -11390,6 +11390,25 @@ def _fallback_estado_operativo_post_reemplazo(reemplazo) -> str:
     return "activa"
 
 
+def _solicitud_reemplazo_cancelado_no_resuelta(solicitud, *, reemplazos: list | None = None) -> bool:
+    estado_norm = (getattr(solicitud, "estado", "") or "").strip().lower()
+    if estado_norm in {"cancelada", "reemplazo"}:
+        return False
+    rows = list(reemplazos or getattr(solicitud, "reemplazos", None) or [])
+    if not rows:
+        return False
+    last_row = sorted(
+        rows,
+        key=lambda rr: (
+            getattr(rr, "fecha_fin_reemplazo", None)
+            or getattr(rr, "fecha_inicio_reemplazo", None)
+            or getattr(rr, "created_at", None)
+            or datetime.min
+        ),
+    )[-1]
+    return (str(getattr(last_row, "resultado_final", "") or "").strip().lower() == "cancelado")
+
+
 def _choice_codes(choices):
     """Devuelve set de códigos válidos de choices [(code,label), ...]."""
     out = set()
@@ -13873,19 +13892,10 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         )
 
     cancel_reason = (request.form.get("cancel_reason") or "").strip()
-    cancel_action = (request.form.get("cancel_action") or "").strip().lower()
     if not cancel_reason:
         return _action_response(
             ok=False,
             message="Debes indicar el motivo de cancelación.",
-            category="warning",
-            http_status=400,
-            error_code="invalid_input",
-        )
-    if cancel_action not in {"restore_previous", "keep_reemplazo", "auto_by_payment"}:
-        return _action_response(
-            ok=False,
-            message="Debes seleccionar la acción sobre la solicitud.",
             category="warning",
             http_status=400,
             error_code="invalid_input",
@@ -13899,20 +13909,11 @@ def cancelar_reemplazo(s_id, reemplazo_id):
         except Exception:
             precio_plan = Decimal("0.00")
             saldo_pendiente = Decimal("0.00")
-        estado_restore = (getattr(r, "estado_previo_solicitud", None) or "").strip().lower()
         if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
             return "pagada", "pagada_por_ciclo"
         if saldo_pendiente > Decimal("0.00") and precio_plan > Decimal("0.00"):
             return "espera_pago", "saldo_pendiente"
-        if cancel_action == "keep_reemplazo":
-            return "reemplazo", "mantener_reemplazo"
-        if cancel_action == "restore_previous":
-            if estado_restore in {"proceso", "activa", "espera_pago", "pagada"}:
-                return estado_restore, "estado_previo"
-            return "activa", "estado_previo_default"
-        if estado_restore in {"proceso", "activa"}:
-            return estado_restore, "estado_previo_operativo"
-        return "activa", "default_operativo"
+        return "espera_pago", "sin_ciclo_pagado"
 
     try:
         r.cerrar_reemplazo()
@@ -13925,16 +13926,16 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             r.fecha_resolucion = utc_now_naive()
         if hasattr(r, "nota_adicional"):
             nota_prev = (getattr(r, "nota_adicional", "") or "").strip()
-            action_label = {
-                "restore_previous": "Restaurar estado anterior",
-                "keep_reemplazo": "Mantener solicitud en reemplazo",
-                "auto_by_payment": "Pasar a estado según pago actual",
-            }.get(cancel_action, cancel_action)
-            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Acción: {action_label}"
+            cancel_note = f"[Cancelación] Motivo: {cancel_reason} | Solicitud: pagada/espera_pago según ciclo · reemplazo cancelado · no resuelta"
             r.nota_adicional = f"{nota_prev}\n\n{cancel_note}".strip() if nota_prev else cancel_note
 
         estado_final, estado_rule = _resolve_estado_solicitud_cancelacion()
         _set_solicitud_estado(s, estado_final)
+        if hasattr(s, "nota_cliente"):
+            note_prev = (getattr(s, "nota_cliente", "") or "").strip()
+            marker = "[Operativo] Reemplazo cancelado / solicitud no resuelta."
+            if marker not in note_prev:
+                s.nota_cliente = f"{note_prev}\n{marker}".strip() if note_prev else marker
 
         _emit_domain_outbox_event(
             event_type="REEMPLAZO_CANCELADO",
@@ -13946,7 +13947,7 @@ def cancelar_reemplazo(s_id, reemplazo_id):
                 "reemplazo_id": int(r.id),
                 "estado_restaurado": estado_final,
                 "estado_regla": estado_rule,
-                "cancel_action": cancel_action,
+                "resultado_operativo": "reemplazo_cancelado_no_resuelto",
             },
         )
         _set_idempotency_response(idem_row, status=200, code="ok")
@@ -13959,9 +13960,10 @@ def cancelar_reemplazo(s_id, reemplazo_id):
             metadata={
                 "reemplazo_id": r.id,
                 "motivo_cancelacion": cancel_reason,
-                "accion_solicitud": cancel_action,
+                "accion_solicitud": "solo_reemplazo",
                 "estado_final_solicitud": estado_final,
                 "regla_estado": estado_rule,
+                "resultado_operativo": "reemplazo_cancelado_no_resuelto",
             },
         )
         return _action_response(
@@ -14643,6 +14645,7 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
             reemplazos_count=reemplazos_count,
             reemplazos_activos=reemplazos_activos,
             ultimo_reemplazo_at=ultimo_reemplazo_at,
+            reemplazo_cancelado_no_resuelta=_solicitud_reemplazo_cancelado_no_resuelta(solicitud, reemplazos=reemplazos),
             pasaje_copy_mode=pasaje_mode,
             pasaje_copy_other_text=pasaje_other_text,
         )
@@ -16308,6 +16311,7 @@ def listar_solicitudes():
                             last_actor_label=actor_label,
                             has_active_reemplazo=bool(repl),
                         )
+                        setattr(item, "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(s))
                         if _solicitud_matches_triage(item, triage):
                             solicitudes_operativas.append(item)
                 except Exception as exc:
@@ -16426,6 +16430,7 @@ def listar_solicitudes():
                             has_active_reemplazo=bool(repl),
                         )
                     )
+                    setattr(solicitudes_operativas[-1], "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(page_solicitud))
         else:
             try:
                 total = int(
@@ -16495,6 +16500,7 @@ def listar_solicitudes():
                         has_active_reemplazo=bool(repl),
                     )
                 )
+                setattr(solicitudes_operativas[-1], "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(s))
 
             solicitudes_operativas.sort(
                 key=lambda item: (

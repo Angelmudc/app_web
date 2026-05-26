@@ -130,6 +130,9 @@
                     {{ s.codigo_solicitud }}
                   </a>
                   <span class="badge estado-badge estado-{{ estado }}">{{ estado_label }}</span>
+                  {% if s.reemplazo_cancelado_no_resuelta %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Reemplazo cancelado / no resuelta</span>
+                  {% endif %}
                   <span class="badge rounded-pill text-bg-light border">{{ plan_label }}</span>
                   {% if s.last_copiado_at and s.last_copiado_at.date() == hoy %}
                     <span class="badge bg-danger">Publicado hoy</span>

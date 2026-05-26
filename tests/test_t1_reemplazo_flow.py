@@ -470,7 +470,7 @@ def test_t1b_cancelar_reemplazo_abierto_cierra_con_resultado_cancelado():
     _login_admin(client)
     resp = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
-        data={"cancel_reason": "Cliente canceló el reemplazo", "cancel_action": "restore_previous"},
+        data={"cancel_reason": "Cliente canceló el reemplazo"},
         follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
@@ -521,7 +521,7 @@ def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pagada():
     _login_admin(client)
     resp = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
-        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        data={"cancel_reason": "Cerrar caso"},
         follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
@@ -529,6 +529,11 @@ def test_t1b_cancelar_reemplazo_con_ciclo_pagado_deja_solicitud_pagada():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
         assert solicitud_end.estado == "pagada"
+        assert solicitud_end.estado != "cancelada"
+    heavy_resp = client.get(f"/admin/clientes/{_cliente_id}/solicitudes/{solicitud_id}/_heavy", follow_redirects=False)
+    assert heavy_resp.status_code == 200
+    heavy_html = heavy_resp.get_data(as_text=True)
+    assert "Reemplazo cancelado · Solicitud no resuelta" in heavy_html
 
 
 def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
@@ -569,7 +574,7 @@ def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
     _login_admin(client)
     resp = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
-        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        data={"cancel_reason": "Cerrar caso"},
         follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
@@ -577,9 +582,10 @@ def test_t1b_cancelar_reemplazo_con_saldo_pendiente_deja_espera_pago():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
         assert solicitud_end.estado == "espera_pago"
+        assert solicitud_end.estado != "cancelada"
 
 
-def test_t1b_cancelar_reemplazo_restaura_estado_previo_cuando_aplica():
+def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_espera_pago():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -606,11 +612,12 @@ def test_t1b_cancelar_reemplazo_restaura_estado_previo_cuando_aplica():
     _login_admin(client)
     resp = client.post(
         f"/admin/solicitudes/{solicitud_id}/reemplazos/{repl_id}/cancelar",
-        data={"cancel_reason": "Cerrar caso", "cancel_action": "restore_previous"},
+        data={"cancel_reason": "Cerrar caso"},
         follow_redirects=False,
     )
     assert resp.status_code in (302, 303)
     with flask_app.app_context():
         solicitud_end = Solicitud.query.get(solicitud_id)
         assert solicitud_end is not None
-        assert solicitud_end.estado == "proceso"
+        assert solicitud_end.estado == "espera_pago"
+        assert solicitud_end.estado != "cancelada"

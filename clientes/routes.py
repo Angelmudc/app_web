@@ -33,6 +33,7 @@ try:
         Solicitud,
         Candidata,
         CandidataWeb,
+        Reemplazo,
         SolicitudCandidata,
         SolicitudRecommendationSelection,
         ClienteNotificacion,
@@ -50,6 +51,7 @@ except Exception:
     from models import Cliente, Solicitud
     Candidata = None
     CandidataWeb = None
+    Reemplazo = None
     SolicitudCandidata = None
     SolicitudRecommendationSelection = None
     ClienteNotificacion = None
@@ -2830,7 +2832,14 @@ def listar_solicitudes():
                 Solicitud.fecha_solicitud,
                 Solicitud.ciudad_sector,
                 Solicitud.modalidad_trabajo,
-            )
+            ),
+            selectinload(Solicitud.reemplazos).load_only(
+                Reemplazo.id,
+                Reemplazo.resultado_final,
+                Reemplazo.fecha_fin_reemplazo,
+                Reemplazo.fecha_inicio_reemplazo,
+                Reemplazo.created_at,
+            ),
         )
         .filter(Solicitud.cliente_id == current_user.id)
     )
@@ -2875,6 +2884,8 @@ def listar_solicitudes():
         query = query.order_by(Solicitud.id.desc())
 
     paginado = query.paginate(page=page, per_page=per_page, error_out=False)
+    for item in (paginado.items or []):
+        setattr(item, "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(item))
 
     estados_disponibles = [
         e[0] for e in (
@@ -4722,6 +4733,25 @@ def _build_solicitud_trust_signals(
     return signals
 
 
+def _solicitud_reemplazo_cancelado_no_resuelta(solicitud, *, reemplazos=None) -> bool:
+    estado_norm = (getattr(solicitud, "estado", "") or "").strip().lower()
+    if estado_norm in {"cancelada", "reemplazo"}:
+        return False
+    rows = list(reemplazos or getattr(solicitud, "reemplazos", None) or [])
+    if not rows:
+        return False
+    last_row = sorted(
+        rows,
+        key=lambda rr: (
+            getattr(rr, "fecha_fin_reemplazo", None)
+            or getattr(rr, "fecha_inicio_reemplazo", None)
+            or getattr(rr, "created_at", None)
+            or datetime.min
+        ),
+    )[-1]
+    return (str(getattr(last_row, "resultado_final", "") or "").strip().lower() == "cancelado")
+
+
 @clientes_bp.route('/solicitudes/<int:id>')
 @login_required
 @cliente_required
@@ -4837,6 +4867,7 @@ def detalle_solicitud(id):
         ayuda_contextual=ayuda_contextual,
         trust_signals=trust_signals,
         estado_legible=estado_legible,
+        reemplazo_cancelado_no_resuelta=_solicitud_reemplazo_cancelado_no_resuelta(s),
         shortlist_payload=shortlist_payload,
         shortlist_vm=shortlist_vm,
         shortlist_selection=shortlist_selection,

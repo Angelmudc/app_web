@@ -326,7 +326,8 @@ def test_reemplazo_cancelacion_ui_muestra_modal_con_motivo_y_accion_en_admin():
     html = resp_detail.get_data(as_text=True)
     assert "Cancelar reemplazo" in html
     assert 'name="cancel_reason"' in html
-    assert 'name="cancel_action"' in html
+    assert 'name="cancel_action"' not in html
+    assert "cancela solo el reemplazo" in html
 
 
 def test_reemplazo_publicacion_texto_formato_info_y_horario_sin_espacios_raros():
