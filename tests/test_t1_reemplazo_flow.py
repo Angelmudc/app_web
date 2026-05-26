@@ -5,6 +5,8 @@ import os
 import secrets
 from datetime import datetime
 
+from sqlalchemy import text
+
 from app import app as flask_app
 from config_app import db
 from models import (
@@ -46,6 +48,16 @@ def _async_headers() -> dict[str, str]:
         "X-Requested-With": "XMLHttpRequest",
         "X-Admin-Async": "1",
     }
+
+
+def test_estado_solicitud_enum_incluye_pendiente_servicio():
+    with flask_app.app_context():
+        if str(db.engine.dialect.name).strip().lower() != "postgresql":
+            return
+        result = db.session.execute(
+            text("SELECT unnest(enum_range(NULL::estado_solicitud_enum))::text")
+        ).scalars().all()
+        assert "pendiente_servicio" in result
 
 
 def _login_admin(client):
