@@ -18671,6 +18671,15 @@ def reemplazos_dashboard():
     page = max(1, _safe_int(request.args.get("page"), default=1))
     per_page = min(100, max(2, _safe_int(request.args.get("per_page"), default=50)))
 
+    resultado_final_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.resultado_final, db.String), "")))
+    fase_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.fase, db.String), "")))
+    closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
+    closed_logic_filter = or_(
+        Reemplazo.fecha_fin_reemplazo.isnot(None),
+        fase_norm == "cerrado",
+        resultado_final_norm.in_(closed_resultados),
+    )
+
     query = (
         Reemplazo.query
         .join(Solicitud, Solicitud.id == Reemplazo.solicitud_id)
@@ -18683,9 +18692,13 @@ def reemplazos_dashboard():
         )
     )
     if estado == "activos":
-        query = query.filter(Reemplazo.fecha_fin_reemplazo.is_(None), Reemplazo.fecha_inicio_reemplazo.isnot(None))
+        query = query.filter(
+            Reemplazo.fecha_inicio_reemplazo.isnot(None),
+            Reemplazo.fecha_fin_reemplazo.is_(None),
+            ~closed_logic_filter,
+        )
     elif estado == "cerrados":
-        query = query.filter(Reemplazo.fecha_fin_reemplazo.isnot(None))
+        query = query.filter(closed_logic_filter)
     if q_cliente_id > 0:
         query = query.filter(Cliente.id == q_cliente_id)
     if q_cliente:
