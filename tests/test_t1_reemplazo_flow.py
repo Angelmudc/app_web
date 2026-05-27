@@ -703,6 +703,50 @@ def test_t1b_reactivar_pendiente_servicio_con_historico_cancelado_no_bloquea_por
         assert repl_count_after == repl_count_before + 1
 
 
+def test_t1b_reactivar_pendiente_servicio_historico_cerrado_sin_fecha_fin_no_bloquea():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "pendiente_servicio"
+        prev = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="Histórico cerrado sin fecha_fin",
+            estado_previo_solicitud="reemplazo",
+        )
+        prev.iniciar_reemplazo()
+        prev.resultado_final = "cancelado"
+        prev.fase = "cerrado"
+        prev.fecha_fin_reemplazo = None
+        db.session.add(prev)
+        db.session.commit()
+        row_version = int(solicitud.row_version or 0)
+        repl_count_before = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "nota_reactivacion": "Reactivar pese a histórico cerrado lógico sin fecha fin.",
+            "row_version": str(row_version),
+            "idempotency_key": f"t1b-reopen-closed-null-end-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "reemplazo"
+        repl_count_after = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+        assert repl_count_after == repl_count_before + 1
+
+
 def test_t1b_reactivar_pendiente_servicio_repara_solicitud_candidata_faltante():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

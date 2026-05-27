@@ -12887,6 +12887,29 @@ def nuevo_reemplazo(s_id):
         if dynamic_target == '#solicitudesAsyncRegion' or dynamic_target.startswith("#solicitudReemplazoActionsAsyncRegion-")
         else fallback_detail
     )
+    has_solicitud_candidata_row = bool(
+        db.session.query(SolicitudCandidata.id)
+        .filter(
+            SolicitudCandidata.solicitud_id == sol.id,
+            SolicitudCandidata.candidata_id == getattr(sol, "candidata_id", None),
+        )
+        .first()
+    ) if getattr(sol, "candidata_id", None) else False
+
+    def _log_nuevo_reemplazo_409(reason: str):
+        current_app.logger.warning(
+            "[nuevo_reemplazo_409] sid=%s estado=%s rid_activo=%s reason=%s fase=%s resultado_final=%s fecha_inicio=%s fecha_fin=%s candidata_id=%s has_sc_row=%s",
+            sol.id,
+            sol.estado,
+            getattr(reemplazo_activo, "id", None),
+            reason,
+            getattr(reemplazo_activo, "fase", None),
+            getattr(reemplazo_activo, "resultado_final", None),
+            getattr(reemplazo_activo, "fecha_inicio_reemplazo", None),
+            getattr(reemplazo_activo, "fecha_fin_reemplazo", None),
+            getattr(sol, "candidata_id", None),
+            has_solicitud_candidata_row,
+        )
 
     def _action_response(
         *,
@@ -12946,6 +12969,7 @@ def nuevo_reemplazo(s_id):
     if _critical_concurrency_guards_enabled() and expected_version is not None:
         current_version = int(getattr(sol, "row_version", 0) or 0)
         if int(expected_version) != current_version:
+            _log_nuevo_reemplazo_409("row_version_conflict")
             return _action_response(
                 ok=False,
                 message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
@@ -12962,6 +12986,7 @@ def nuevo_reemplazo(s_id):
     )
     if duplicate:
         if _idempotency_request_conflict(idem_row):
+            _log_nuevo_reemplazo_409("idempotency_conflict")
             return _action_response(
                 ok=False,
                 message=_idempotency_conflict_message(),
@@ -12976,6 +13001,7 @@ def nuevo_reemplazo(s_id):
                 message='Acción ya aplicada previamente.',
                 category='info',
             )
+        _log_nuevo_reemplazo_409("idempotency_conflict")
         return _action_response(
             ok=False,
             message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
@@ -12992,6 +13018,8 @@ def nuevo_reemplazo(s_id):
 
     # Si no hay candidata asignada, no se puede iniciar reemplazo
     if not assigned_id or not cand_old_prefetch:
+        reason = "faltan_datos_candidata" if not assigned_id else "candidata_inconsistente_sin_fallback"
+        _log_nuevo_reemplazo_409(reason)
         return _action_response(
             ok=False,
             message='No se pudo reactivar el reemplazo porque la solicitud no tiene candidata asociada válida.',
@@ -13022,9 +13050,10 @@ def nuevo_reemplazo(s_id):
             redirect_to=existing_detail,
         )
     if (not is_reactivacion_pendiente) and estado_actual in {"pagada", "cancelada"}:
+        _log_nuevo_reemplazo_409("pagada_cancelada_no_pendiente_servicio")
         return _action_response(
             ok=False,
-            message='No se pudo reactivar el reemplazo porque la solicitud no está en un estado reactivable.',
+            message=f'No se puede reactivar reemplazo porque la solicitud está en estado {sol.estado}.',
             category='warning',
             http_status=409,
             error_code='conflict',
@@ -13188,6 +13217,7 @@ def nuevo_reemplazo(s_id):
 
         except InvariantConflictError as inv_exc:
             db.session.rollback()
+            _log_nuevo_reemplazo_409(getattr(inv_exc, "code", None) or "validacion_motivo_fallo")
             return _action_response(
                 ok=False,
                 message=str(inv_exc) or "Conflicto de estado de candidata.",
@@ -13197,6 +13227,7 @@ def nuevo_reemplazo(s_id):
             )
         except StaleDataError:
             db.session.rollback()
+            _log_nuevo_reemplazo_409("row_version_conflict")
             return _action_response(
                 ok=False,
                 message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
