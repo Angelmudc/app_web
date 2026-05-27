@@ -13184,6 +13184,14 @@ def nuevo_reemplazo(s_id):
             motivo_reemplazo = (form.motivo_fallo.data or '').strip()
             if is_reactivacion_pendiente:
                 motivo_reemplazo = f"[Reactivación] {nota_reactivacion}"
+            release_result = {"released_count": 0, "sc_ids": []}
+            if estado_actual in repairable_states:
+                release_result = _liberar_asignacion_actual_para_reemplazo(
+                    sol,
+                    candidata_id=int(cand_old.fila),
+                    motivo=motivo_reemplazo,
+                    actor=_matching_created_by(),
+                )
             r = Reemplazo(
                 solicitud_id=sol.id,
                 candidata_old_id=cand_old.fila,
@@ -13209,13 +13217,22 @@ def nuevo_reemplazo(s_id):
                 # para evitar conflictos operativos/financieros y mantener el flujo solo en reemplazo.
                 mark_lista_from_state = None
             elif descalificar:
-                _mark_candidata_estado(cand_old, 'descalificada', nota_descalificacion=motivo_descalificacion)
+                _mark_candidata_estado(
+                    cand_old,
+                    'descalificada',
+                    nota_descalificacion=motivo_descalificacion,
+                    exclude_solicitud_id_for_active_check=int(sol.id),
+                )
             else:
                 ready_ok, reasons = candidata_is_ready_to_send(cand_old)
                 blocking = [rr for rr in (reasons or []) if not str(rr).lower().startswith("advertencia:")]
                 if ready_ok and not blocking:
                     mark_lista_from_state = (getattr(cand_old, "estado", None) or "").strip().lower()
-                    _mark_candidata_estado(cand_old, 'lista_para_trabajar')
+                    _mark_candidata_estado(
+                        cand_old,
+                        'lista_para_trabajar',
+                        exclude_solicitud_id_for_active_check=int(sol.id),
+                    )
                 elif blocking:
                     flash(
                         "La candidata que falló no pudo volver a lista para trabajar. Falta: "
@@ -13246,7 +13263,13 @@ def nuevo_reemplazo(s_id):
                 entity_type="Solicitud",
                 entity_id=sol.id,
                 summary=f"Reemplazo iniciado para solicitud {sol.codigo_solicitud or sol.id}",
-                metadata={"reemplazo_id": r.id, "candidata_old_id": cand_old.fila, "descalificar": bool(descalificar)},
+                metadata={
+                    "reemplazo_id": r.id,
+                    "candidata_old_id": cand_old.fila,
+                    "descalificar": bool(descalificar),
+                    "released_sc_count": int(release_result.get("released_count", 0) or 0),
+                    "released_sc_ids": list(release_result.get("sc_ids") or []),
+                },
             )
             log_candidata_action(
                 action_type="REEMPLAZO_OPEN",
@@ -13257,6 +13280,8 @@ def nuevo_reemplazo(s_id):
                     "solicitud_id": sol.id,
                     "cliente_id": sol.cliente_id,
                     "descalificar": bool(descalificar),
+                    "released_sc_count": int(release_result.get("released_count", 0) or 0),
+                    "released_sc_ids": list(release_result.get("sc_ids") or []),
                 },
                 success=True,
             )
@@ -17597,6 +17622,53 @@ def _release_solicitud_candidatas_on_cancel(
         return {"released_count": 0, "candidata_ids": []}
 
 
+def _liberar_asignacion_actual_para_reemplazo(
+    solicitud: Solicitud,
+    *,
+    candidata_id: int,
+    motivo: str = "",
+    actor: str = "",
+) -> dict:
+    if not solicitud or not getattr(solicitud, "id", None) or int(candidata_id or 0) <= 0:
+        return {"released_count": 0, "sc_ids": []}
+    now_iso = iso_utc_z(utc_now_naive())
+    actor_value = (actor or _matching_created_by())[:120]
+    motivo_value = (motivo or "").strip()[:500]
+    released_sc_ids: list[int] = []
+    rows = (
+        SolicitudCandidata.query
+        .filter(
+            SolicitudCandidata.solicitud_id == int(solicitud.id),
+            SolicitudCandidata.candidata_id == int(candidata_id),
+            SolicitudCandidata.status.in_(_ACTIVE_ASSIGNMENT_STATUS),
+        )
+        .all()
+    )
+    for row in rows:
+        row.status = "liberada"
+        row.created_by = actor_value
+        snapshot = row.breakdown_snapshot if isinstance(row.breakdown_snapshot, dict) else {}
+        snapshot = dict(snapshot)
+        snapshot["client_action"] = "liberada_por_reemplazo_apertura"
+        snapshot["client_action_at"] = now_iso
+        snapshot["reemplazo_opening"] = True
+        if motivo_value:
+            snapshot["release_reason"] = motivo_value
+        if str(getattr(db.engine.dialect, "name", "") or "").strip().lower() == "postgresql":
+            row.breakdown_snapshot = snapshot
+        else:
+            row.breakdown_snapshot = json.dumps(snapshot, ensure_ascii=False)
+        try:
+            released_sc_ids.append(int(getattr(row, "id", 0) or 0))
+        except Exception:
+            continue
+    db.session.flush()
+    return {
+        "released_count": len([x for x in released_sc_ids if int(x or 0) > 0]),
+        "sc_ids": sorted({x for x in released_sc_ids if int(x or 0) > 0}),
+    }
+
+
 def _staff_actor_name() -> str:
     actor = (
         getattr(current_user, "username", None)
@@ -17713,7 +17785,13 @@ def _admin_noop_repeat_blocked(
     return True
 
 
-def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalificacion: str | None = None) -> None:
+def _mark_candidata_estado(
+    cand: Candidata,
+    nuevo_estado: str,
+    *,
+    nota_descalificacion: str | None = None,
+    exclude_solicitud_id_for_active_check: int | None = None,
+) -> None:
     if not cand:
         return
     try:
@@ -17738,6 +17816,7 @@ def _mark_candidata_estado(cand: Candidata, nuevo_estado: str, *, nota_descalifi
             actor=_staff_actor_name(),
             nota_descalificacion=nota_descalificacion,
             candidata_obj=cand,
+            exclude_solicitud_id_for_active_check=exclude_solicitud_id_for_active_check,
         )
     except InvariantConflictError:
         raise

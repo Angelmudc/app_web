@@ -220,6 +220,7 @@ def change_candidate_state(
     reason: str = "",
     candidata_obj: Candidata | None = None,
     enforce_working_requires_assignment: bool = True,
+    exclude_solicitud_id_for_active_check: int | None = None,
 ) -> Candidata:
     cand = candidata_obj or _lock_candidata(int(candidata_id))
     if cand is None:
@@ -229,7 +230,14 @@ def change_candidate_state(
     if target not in {"descalificada", "lista_para_trabajar", "trabajando"}:
         raise InvariantConflictError("conflict", "Estado de candidata no soportado.")
 
-    has_active_assignment = candidate_has_active_assignment(candidata_id=int(cand.fila))
+    has_active_assignment = candidate_has_active_assignment(
+        candidata_id=int(cand.fila),
+        exclude_solicitud_id=(
+            int(exclude_solicitud_id_for_active_check)
+            if int(exclude_solicitud_id_for_active_check or 0) > 0
+            else None
+        ),
+    )
     if target in {"descalificada", "lista_para_trabajar"} and has_active_assignment:
         raise InvariantConflictError(
             "conflict",

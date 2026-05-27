@@ -903,6 +903,92 @@ def test_t1b_pagada_repara_solicitud_candidata_faltante_y_abre_reemplazo():
         assert SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count() >= 1
 
 
+def test_t1b_pagada_con_asignacion_activa_libera_y_abre_reemplazo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id).delete()
+        db.session.add(
+            SolicitudCandidata(
+                solicitud_id=solicitud_id,
+                candidata_id=cand_old_id,
+                status="seleccionada",
+                created_by="seed",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "motivo_fallo": "Fallo operativo con asignacion activa",
+            "idempotency_key": f"t1b-pagada-active-assignment-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        sol_end = Solicitud.query.get(solicitud_id)
+        assert sol_end is not None
+        assert sol_end.estado == "reemplazo"
+        sc = SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).first()
+        assert sc is not None
+        assert (sc.status or "").strip().lower() == "liberada"
+        repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
+        assert repl is not None
+
+
+def test_t1b_pagada_con_asignacion_activa_y_descalificar_abre_reemplazo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id).delete()
+        db.session.add(
+            SolicitudCandidata(
+                solicitud_id=solicitud_id,
+                candidata_id=cand_old_id,
+                status="seleccionada",
+                created_by="seed",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "motivo_fallo": "Descalificar candidata fallida",
+            "descalificar_candidata_fallida": "1",
+            "motivo_descalificacion": "Incumplimiento confirmado",
+            "idempotency_key": f"t1b-pagada-active-assignment-descalifica-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        sol_end = Solicitud.query.get(solicitud_id)
+        cand_old = Candidata.query.get(cand_old_id)
+        sc = SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).first()
+        repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
+        assert sol_end is not None and sol_end.estado == "reemplazo"
+        assert repl is not None
+        assert sc is not None and (sc.status or "").strip().lower() == "liberada"
+        assert cand_old is not None and (cand_old.estado or "").strip().lower() == "descalificada"
+
+
 def test_t1b_pagada_sin_sc_row_repara_y_abre_reemplazo_equivalente_sid_550():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -991,6 +1077,40 @@ def test_t1b_nuevo_reemplazo_conflicto_loguea_reason_especifico(caplog):
     log_lines = [rec.getMessage() for rec in caplog.records]
     assert any("nuevo_reemplazo_invariant_conflict" in line for line in log_lines)
     assert any("nuevo_reemplazo_409" in line and "reason=invariant_conflict_unspecified" in line for line in log_lines)
+
+
+def test_t1b_pagada_apertura_normal_no_mensaje_invariante_asignacion_activa():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id).delete()
+        db.session.add(
+            SolicitudCandidata(
+                solicitud_id=solicitud_id,
+                candidata_id=cand_old_id,
+                status="seleccionada",
+                created_by="seed",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={"motivo_fallo": "Flujo normal pagada", "idempotency_key": f"t1b-no-invariant-{secrets.token_hex(4)}"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    assert payload.get("success") is True
+    assert "la candidata tiene una asignación activa" not in str(payload.get("message", "")).lower()
 
 
 def test_t1b_pagada_con_historico_cerrado_no_bloquea_apertura():
