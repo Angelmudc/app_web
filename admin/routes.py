@@ -11751,6 +11751,7 @@ def eliminar_solicitud_admin(cliente_id, id):
         category: str,
         http_status: int = 200,
         error_code: str | None = None,
+        redirect_to: str | None = None,
     ):
         return _solicitudes_list_action_response(
             ok=ok,
@@ -12894,6 +12895,7 @@ def nuevo_reemplazo(s_id):
         category: str,
         http_status: int = 200,
         error_code: str | None = None,
+        redirect_to: str | None = None,
     ):
         replace_html = None
         update_target = dynamic_target
@@ -12910,7 +12912,7 @@ def nuevo_reemplazo(s_id):
             ok=ok,
             message=message,
             category=category,
-            next_url=next_url,
+            next_url=(redirect_to or next_url),
             fallback=fallback,
             http_status=http_status,
             error_code=error_code,
@@ -12984,12 +12986,15 @@ def nuevo_reemplazo(s_id):
 
     # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
     assigned_id = getattr(sol, 'candidata_id', None)
+    cand_old_prefetch = getattr(sol, "candidata", None)
+    if not cand_old_prefetch and assigned_id:
+        cand_old_prefetch = Candidata.query.get(int(assigned_id))
 
     # Si no hay candidata asignada, no se puede iniciar reemplazo
-    if not assigned_id or not getattr(sol, 'candidata', None):
+    if not assigned_id or not cand_old_prefetch:
         return _action_response(
             ok=False,
-            message='Esta solicitud no tiene candidata asignada. Primero asigna una candidata antes de iniciar un reemplazo.',
+            message='No se pudo reactivar el reemplazo porque la solicitud no tiene candidata asociada válida.',
             category='warning',
             http_status=409,
             error_code='conflict',
@@ -13009,9 +13014,17 @@ def nuevo_reemplazo(s_id):
                 http_status=429,
                 error_code='rate_limit',
             )
+        existing_detail = url_for("admin.reemplazo_detail", reemplazo_id=int(getattr(reemplazo_activo, "id", 0) or 0))
+        return _action_response(
+            ok=True,
+            message='Ya existe un reemplazo activo para esta solicitud. Te llevamos al reemplazo abierto.',
+            category='info',
+            redirect_to=existing_detail,
+        )
+    if (not is_reactivacion_pendiente) and estado_actual in {"pagada", "cancelada"}:
         return _action_response(
             ok=False,
-            message='Ya existe un reemplazo activo para esta solicitud.',
+            message='No se pudo reactivar el reemplazo porque la solicitud no está en un estado reactivable.',
             category='warning',
             http_status=409,
             error_code='conflict',
@@ -13034,10 +13047,14 @@ def nuevo_reemplazo(s_id):
     if form.validate_on_submit():
         try:
             # ✅ Candidata anterior: SIEMPRE la asignada actual
-            cand_old = sol.candidata
+            cand_old = getattr(sol, "candidata", None) or cand_old_prefetch
             if not cand_old:
                 flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
                 return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
+            if is_reactivacion_pendiente:
+                _sync_solicitud_candidatas_after_assignment(sol, int(cand_old.fila))
+            elif (getattr(sol, "candidata", None) is None) and getattr(sol, "candidata_id", None) and int(getattr(sol, "candidata_id", 0) or 0) == int(getattr(cand_old, "fila", 0) or 0):
+                _sync_solicitud_candidatas_after_assignment(sol, int(cand_old.fila))
 
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
             if is_reactivacion_pendiente:
@@ -13099,7 +13116,11 @@ def nuevo_reemplazo(s_id):
             _set_solicitud_estado(sol, 'reemplazo', now_dt=ahora)
             mark_lista_from_state = None
 
-            if descalificar:
+            if is_reactivacion_pendiente:
+                # En reactivación desde pendiente_servicio no alteramos estado de candidata
+                # para evitar conflictos operativos/financieros y mantener el flujo solo en reemplazo.
+                mark_lista_from_state = None
+            elif descalificar:
                 _mark_candidata_estado(cand_old, 'descalificada', nota_descalificacion=motivo_descalificacion)
             else:
                 ready_ok, reasons = candidata_is_ready_to_send(cand_old)
@@ -17635,9 +17656,24 @@ def _log_lista_state_change(cand: Candidata, *, source: str, faltantes: list[str
 def _active_reemplazo_for_solicitud(solicitud: Solicitud):
     if not solicitud:
         return None
+    closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
+
+    def _is_open_reemplazo(row: Reemplazo) -> bool:
+        if not bool(getattr(row, "fecha_inicio_reemplazo", None)):
+            return False
+        if bool(getattr(row, "fecha_fin_reemplazo", None)):
+            return False
+        fase = str(getattr(row, "fase", "") or "").strip().lower()
+        if fase == "cerrado":
+            return False
+        resultado = str(getattr(row, "resultado_final", "") or "").strip().lower()
+        if resultado in closed_resultados:
+            return False
+        return True
+
     activos = [
         r for r in (getattr(solicitud, "reemplazos", None) or [])
-        if bool(getattr(r, "fecha_inicio_reemplazo", None)) and not bool(getattr(r, "fecha_fin_reemplazo", None))
+        if _is_open_reemplazo(r)
     ]
     if not activos:
         return None
@@ -17653,6 +17689,9 @@ def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int,
     if not ids:
         return {}
     try:
+        resultado_final_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.resultado_final, db.String), "")))
+        fase_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.fase, db.String), "")))
+        closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
         rows = (
             Reemplazo.query
             .options(load_only(
@@ -17666,6 +17705,8 @@ def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int,
                 Reemplazo.solicitud_id.in_(ids),
                 Reemplazo.fecha_inicio_reemplazo.isnot(None),
                 Reemplazo.fecha_fin_reemplazo.is_(None),
+                fase_norm != "cerrado",
+                ~resultado_final_norm.in_(closed_resultados),
             )
             .all()
         )

@@ -655,6 +655,161 @@ def test_t1b_abrir_reemplazo_desde_pendiente_servicio_no_crea_cobro_ni_ciclo_nue
         assert (repl.motivo_fallo or "").startswith("[Reactivación] ")
 
 
+def test_t1b_reactivar_pendiente_servicio_con_historico_cancelado_no_bloquea_por_historial():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "pendiente_servicio"
+        prev = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="Histórico cancelado",
+            estado_previo_solicitud="reemplazo",
+        )
+        prev.iniciar_reemplazo()
+        prev.resultado_final = "cancelado"
+        prev.fase = "cerrado"
+        prev.fecha_resolucion = datetime.utcnow()
+        prev.cerrar_reemplazo()
+        db.session.add(prev)
+        db.session.commit()
+        row_version = int(solicitud.row_version or 0)
+        pagos_before = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).count()
+        repl_count_before = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "nota_reactivacion": "Reabrir servicio pendiente con histórico cerrado.",
+            "row_version": str(row_version),
+            "idempotency_key": f"t1b-reopen-closed-history-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "reemplazo"
+        pagos_after = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).count()
+        repl_count_after = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+        assert pagos_after == pagos_before
+        assert repl_count_after == repl_count_before + 1
+
+
+def test_t1b_reactivar_pendiente_servicio_repara_solicitud_candidata_faltante():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "pendiente_servicio"
+        SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id).delete()
+        db.session.commit()
+        sc_before = SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count()
+        assert sc_before == 0
+        row_version = int(solicitud.row_version or 0)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "nota_reactivacion": "Reactivar y reparar vínculo de asignación.",
+            "row_version": str(row_version),
+            "idempotency_key": f"t1b-reopen-fix-sc-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "reemplazo"
+        sc_after = SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count()
+        assert sc_after >= 1
+
+
+def test_t1b_abrir_reemplazo_con_reemplazo_activo_no_duplica_y_redirige():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "reemplazo"
+        repl = Reemplazo(
+            solicitud_id=solicitud_id,
+            candidata_old_id=cand_old_id,
+            motivo_fallo="Activo",
+            estado_previo_solicitud="activa",
+        )
+        repl.iniciar_reemplazo()
+        db.session.add(repl)
+        db.session.commit()
+        repl_id = int(repl.id)
+        count_before = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={"motivo_fallo": "No se presentó", "idempotency_key": f"t1b-reopen-active-{secrets.token_hex(4)}"},
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    assert resp.headers.get("Location") and resp.headers["Location"].endswith(f"/admin/reemplazos/{repl_id}")
+    with flask_app.app_context():
+        count_after = Reemplazo.query.filter_by(solicitud_id=solicitud_id).count()
+        assert count_after == count_before
+
+
+def test_t1b_no_abre_reemplazo_en_pagada_o_cancelada_sin_pendiente_servicio():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_pagada_id, _cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        _cliente_id2, solicitud_cancelada_id, _cand_old_id2, _cand_new_id2 = _seed_reemplazo_fixture()
+        sol_pagada = Solicitud.query.get(solicitud_pagada_id)
+        sol_cancelada = Solicitud.query.get(solicitud_cancelada_id)
+        assert sol_pagada is not None and sol_cancelada is not None
+        sol_pagada.estado = "pagada"
+        sol_cancelada.estado = "cancelada"
+        db.session.commit()
+        pagada_count_before = Reemplazo.query.filter_by(solicitud_id=solicitud_pagada_id).count()
+        cancelada_count_before = Reemplazo.query.filter_by(solicitud_id=solicitud_cancelada_id).count()
+    _login_admin(client)
+    resp_pagada = client.post(
+        f"/admin/solicitudes/{solicitud_pagada_id}/reemplazos/nuevo",
+        data={"motivo_fallo": "No se presentó", "idempotency_key": f"t1b-open-pagada-{secrets.token_hex(4)}"},
+        follow_redirects=False,
+    )
+    resp_cancelada = client.post(
+        f"/admin/solicitudes/{solicitud_cancelada_id}/reemplazos/nuevo",
+        data={"motivo_fallo": "No se presentó", "idempotency_key": f"t1b-open-cancelada-{secrets.token_hex(4)}"},
+        follow_redirects=False,
+    )
+    assert resp_pagada.status_code in (302, 303, 409)
+    assert resp_cancelada.status_code in (302, 303, 409)
+    with flask_app.app_context():
+        pagada_count_after = Reemplazo.query.filter_by(solicitud_id=solicitud_pagada_id).count()
+        cancelada_count_after = Reemplazo.query.filter_by(solicitud_id=solicitud_cancelada_id).count()
+        assert pagada_count_after == pagada_count_before
+        assert cancelada_count_after == cancelada_count_before
+
+
 def test_t1b_cancelar_reemplazo_sin_ciclo_pagado_deja_pendiente_servicio():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
