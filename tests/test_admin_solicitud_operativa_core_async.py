@@ -261,9 +261,11 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
 
     def test_cta_contextual_sin_principal_en_estados_cerrados(self):
         html_pagada = self._render_operativa_region("pagada")
-        self.assertIn('data-testid="cta-recomendada-info"', html_pagada)
-        self.assertIn("Sin acción operativa prioritaria en este estado.", html_pagada)
-        self.assertNotIn('data-testid="cta-recomendada-action"', html_pagada)
+        self.assertIn("Abrir reemplazo", html_pagada)
+        self.assertIn("/admin/solicitudes/10/reemplazos/nuevo", html_pagada)
+        self.assertIn('data-testid="cta-recomendada-action"', html_pagada)
+        self.assertNotIn("Registrar pago", html_pagada)
+        self.assertNotIn("Plan / Abono", html_pagada)
 
         html_cancelada = self._render_operativa_region("cancelada")
         self.assertIn('data-testid="cta-recomendada-info"', html_cancelada)

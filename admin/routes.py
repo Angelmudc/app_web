@@ -13022,7 +13022,7 @@ def nuevo_reemplazo(s_id):
         _log_nuevo_reemplazo_409(reason)
         return _action_response(
             ok=False,
-            message='No se pudo reactivar el reemplazo porque la solicitud no tiene candidata asociada válida.',
+            message='No se puede abrir reemplazo porque la solicitud no tiene candidata asignada.',
             category='warning',
             http_status=409,
             error_code='conflict',
@@ -13049,11 +13049,11 @@ def nuevo_reemplazo(s_id):
             category='info',
             redirect_to=existing_detail,
         )
-    if (not is_reactivacion_pendiente) and estado_actual in {"pagada", "cancelada"}:
-        _log_nuevo_reemplazo_409("pagada_cancelada_no_pendiente_servicio")
+    if estado_actual == "cancelada":
+        _log_nuevo_reemplazo_409("cancelada_no_permite_reemplazo")
         return _action_response(
             ok=False,
-            message=f'No se puede reactivar reemplazo porque la solicitud está en estado {sol.estado}.',
+            message=f'No se puede abrir reemplazo porque la solicitud está en estado {sol.estado}.',
             category='warning',
             http_status=409,
             error_code='conflict',
@@ -13080,9 +13080,16 @@ def nuevo_reemplazo(s_id):
             if not cand_old:
                 flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
                 return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
-            if is_reactivacion_pendiente:
-                _sync_solicitud_candidatas_after_assignment(sol, int(cand_old.fila))
-            elif (getattr(sol, "candidata", None) is None) and getattr(sol, "candidata_id", None) and int(getattr(sol, "candidata_id", 0) or 0) == int(getattr(cand_old, "fila", 0) or 0):
+            should_repair_sc_row = (
+                is_reactivacion_pendiente
+                or (
+                    estado_actual == "pagada"
+                    and not has_solicitud_candidata_row
+                    and getattr(sol, "candidata_id", None)
+                    and int(getattr(sol, "candidata_id", 0) or 0) == int(getattr(cand_old, "fila", 0) or 0)
+                )
+            )
+            if should_repair_sc_row:
                 _sync_solicitud_candidatas_after_assignment(sol, int(cand_old.fila))
 
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
@@ -14872,7 +14879,7 @@ def _solicitudes_prioridad_next_step(*, estado_raw: str, is_stagnant: bool):
     if estado == 'pendiente_servicio':
         return 'Reactivar reemplazo', 'Cliente pagó y se debe servicio por reemplazo cancelado.', True
     if estado == 'pagada':
-        return 'Cerrada', 'Proceso finalizado sin acción operativa pendiente.', False
+        return 'Abrir reemplazo', 'Solicitud pagada con necesidad operativa de reemplazo.', True
     if estado == 'cancelada':
         return 'Sin acción', 'Solicitud cancelada, sin gestión operativa pendiente.', False
     return 'Sin acción', 'Estado sin acción operativa definida en esta vista.', False
@@ -14920,6 +14927,15 @@ def _solicitud_list_primary_cta(
             "href": url_for("admin.nuevo_reemplazo", s_id=solicitud.id),
             "btn_class": "btn-warning text-dark",
             "help": "No cobrar nuevamente. Reactivar el reemplazo pendiente de esta solicitud.",
+        }
+    if estado == "pagada":
+        return {
+            "label": "Abrir reemplazo",
+            "kind": "link",
+            "form_action": "",
+            "href": url_for("admin.nuevo_reemplazo", s_id=solicitud.id),
+            "btn_class": "btn-warning text-dark",
+            "help": "Solicitud pagada; abrir reemplazo sin crear nuevo cobro.",
         }
     if estado == "reemplazo":
         return {
