@@ -12183,9 +12183,9 @@ def gestionar_plan(cliente_id, id):
                     )
                 apply_payment_state_from_summary(s)
                 if estado_cancelada:
-                    summary_after_reactivation = get_payment_summary(s)
-                    if Decimal(summary_after_reactivation["total_pagado"]) <= Decimal("0.00") and Decimal(summary_after_reactivation["saldo_pendiente"]) > Decimal("0.00"):
-                        s.estado = "espera_pago"
+                    # Regla operativa: al reactivar una cancelada desde Gestionar plan
+                    # debe volver a estado activa aunque el nuevo ciclo inicie sin pagos.
+                    s.estado = "activa"
                 target_state = (getattr(s, "estado", "") or "activa").strip().lower()
                 if target_state not in {"activa", "proceso", "espera_pago", "pagada", "reemplazo", "pendiente_servicio"}:
                     target_state = "activa"

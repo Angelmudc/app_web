@@ -1020,7 +1020,8 @@ def test_t1_gestionar_plan_cancelada_permite_reactivar_con_ciclo_nuevo_limpio():
         assert solicitud_end is not None
         assert int(solicitud_end.payment_cycle_current or 0) == 2
         assert (solicitud_end.payment_cycle_plan or "") == "basico"
-        assert solicitud_end.estado == "espera_pago"
+        assert solicitud_end.estado == "activa"
+        assert solicitud_end.estado != "espera_pago"
         summary_end = get_payment_summary(solicitud_end)
         assert str(summary_end["total_pagado"]) == "0.00"
         assert str(summary_end["saldo_pendiente"]) == "3500.00"
