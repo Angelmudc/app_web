@@ -181,7 +181,7 @@ def test_reemplazos_dashboard_access_and_filters_and_detail():
         assert admin_routes._reemplazo_prioridad_derivada(reemplazo=repl, solicitud=sol, seguimiento=seg) in {"media", "alta", "urgente", "critica"}
 
 
-def test_reemplazos_dashboard_activos_excluye_historico_cerrado_incluso_pagada_cancelada():
+def test_reemplazos_dashboard_activos_solo_muestra_reemplazo_realmente_activo():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -190,24 +190,32 @@ def test_reemplazos_dashboard_activos_excluye_historico_cerrado_incluso_pagada_c
         _ensure_tables()
         repl_pagada_cerrado, sol_pagada_id = _seed_case(closed=True, motivo="Caso pagada cerrado")
         repl_cancelada_cerrado, sol_cancelada_id = _seed_case(closed=True, motivo="Caso cancelada cerrado")
-        repl_activo, sol_activa_id = _seed_case(closed=False, motivo="Caso activo abierto")
-        repl_pagada_activo, sol_pagada_activa_id = _seed_case(closed=False, motivo="Caso pagada activa")
+        repl_activa_cerrado, sol_activa_id = _seed_case(closed=True, motivo="Caso activa cerrado")
+        repl_pendiente_servicio_abierto, sol_pendiente_servicio_id = _seed_case(closed=False, motivo="Caso pendiente_servicio")
+        repl_reemplazo_abierto, sol_reemplazo_abierto_id = _seed_case(closed=False, motivo="Caso reemplazo abierto")
+        repl_reemplazo_cerrado_por_flags, sol_reemplazo_cerrado_por_flags_id = _seed_case(closed=False, motivo="Caso reemplazo cerrado por flags")
 
         sol_pagada = Solicitud.query.get(sol_pagada_id)
         sol_cancelada = Solicitud.query.get(sol_cancelada_id)
         sol_activa = Solicitud.query.get(sol_activa_id)
-        sol_pagada_activa = Solicitud.query.get(sol_pagada_activa_id)
-        assert sol_pagada is not None and sol_cancelada is not None and sol_activa is not None and sol_pagada_activa is not None
+        sol_pendiente_servicio = Solicitud.query.get(sol_pendiente_servicio_id)
+        sol_reemplazo_abierto = Solicitud.query.get(sol_reemplazo_abierto_id)
+        sol_reemplazo_cerrado_por_flags = Solicitud.query.get(sol_reemplazo_cerrado_por_flags_id)
+        assert sol_pagada is not None and sol_cancelada is not None and sol_activa is not None
+        assert sol_pendiente_servicio is not None and sol_reemplazo_abierto is not None and sol_reemplazo_cerrado_por_flags is not None
 
         sol_pagada.estado = "pagada"
         sol_cancelada.estado = "cancelada"
-        sol_activa.estado = "reemplazo"
-        sol_pagada_activa.estado = "pagada"
+        sol_activa.estado = "activa"
+        sol_pendiente_servicio.estado = "pendiente_servicio"
+        sol_reemplazo_abierto.estado = "reemplazo"
+        sol_reemplazo_cerrado_por_flags.estado = "reemplazo"
 
-        repl_cancelado = Reemplazo.query.get(repl_cancelada_cerrado)
+        repl_cancelado = Reemplazo.query.get(repl_reemplazo_cerrado_por_flags)
         assert repl_cancelado is not None
         repl_cancelado.resultado_final = "cancelado"
         repl_cancelado.fase = "cerrado"
+        repl_cancelado.fecha_fin_reemplazo = None
         db.session.commit()
 
     _login_staff(client)
@@ -217,8 +225,10 @@ def test_reemplazos_dashboard_activos_excluye_historico_cerrado_incluso_pagada_c
 
     assert f"/admin/reemplazos/{repl_pagada_cerrado}" not in html
     assert f"/admin/reemplazos/{repl_cancelada_cerrado}" not in html
-    assert f"/admin/reemplazos/{repl_activo}" in html
-    assert f"/admin/reemplazos/{repl_pagada_activo}" in html
+    assert f"/admin/reemplazos/{repl_activa_cerrado}" not in html
+    assert f"/admin/reemplazos/{repl_pendiente_servicio_abierto}" not in html
+    assert f"/admin/reemplazos/{repl_reemplazo_abierto}" in html
+    assert f"/admin/reemplazos/{repl_reemplazo_cerrado_por_flags}" not in html
 
 
 def test_reemplazo_prioridad_derivada_por_dias_abiertos():

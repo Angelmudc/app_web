@@ -17844,7 +17844,21 @@ def _log_lista_state_change(cand: Candidata, *, source: str, faltantes: list[str
 def _active_reemplazo_for_solicitud(solicitud: Solicitud):
     if not solicitud:
         return None
-    closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
+    closed_resultados = {
+        "cancelado",
+        "cancelada",
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+        "finalizado",
+        "finalizada",
+        "resuelto",
+        "resuelta",
+        "completado",
+        "completada",
+    }
 
     def _is_open_reemplazo(row: Reemplazo) -> bool:
         if not bool(getattr(row, "fecha_inicio_reemplazo", None)):
@@ -17879,7 +17893,21 @@ def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int,
     try:
         resultado_final_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.resultado_final, db.String), "")))
         fase_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.fase, db.String), "")))
-        closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
+        closed_resultados = {
+            "cancelado",
+            "cancelada",
+            "cerrado",
+            "cerrado_exitoso",
+            "exitoso",
+            "cerrado_fallido",
+            "fallido",
+            "finalizado",
+            "finalizada",
+            "resuelto",
+            "resuelta",
+            "completado",
+            "completada",
+        }
         rows = (
             Reemplazo.query
             .options(load_only(
@@ -18902,7 +18930,21 @@ def reemplazos_dashboard():
 
     resultado_final_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.resultado_final, db.String), "")))
     fase_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.fase, db.String), "")))
-    closed_resultados = {"cancelado", "cerrado", "cerrado_exitoso", "exitoso", "cerrado_fallido", "fallido", "finalizado", "resuelto"}
+    closed_resultados = {
+        "cancelado",
+        "cancelada",
+        "cerrado",
+        "cerrado_exitoso",
+        "exitoso",
+        "cerrado_fallido",
+        "fallido",
+        "finalizado",
+        "finalizada",
+        "resuelto",
+        "resuelta",
+        "completado",
+        "completada",
+    }
     closed_logic_filter = or_(
         Reemplazo.fecha_fin_reemplazo.isnot(None),
         fase_norm == "cerrado",
@@ -18922,6 +18964,7 @@ def reemplazos_dashboard():
     )
     if estado == "activos":
         query = query.filter(
+            Solicitud.estado == "reemplazo",
             Reemplazo.fecha_inicio_reemplazo.isnot(None),
             Reemplazo.fecha_fin_reemplazo.is_(None),
             ~closed_logic_filter,
