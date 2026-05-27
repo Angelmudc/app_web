@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import os
 import secrets
+import logging
 from datetime import datetime
+from unittest.mock import patch
 
 from sqlalchemy import text
 
 from app import app as flask_app
+import admin.routes as admin_routes
 from config_app import db
 from models import (
     Candidata,
@@ -898,6 +901,96 @@ def test_t1b_pagada_repara_solicitud_candidata_faltante_y_abre_reemplazo():
         assert sol_end is not None
         assert sol_end.estado == "reemplazo"
         assert SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count() >= 1
+
+
+def test_t1b_pagada_sin_sc_row_repara_y_abre_reemplazo_equivalente_sid_550():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        sol.candidata_id = int(cand_old_id)
+        SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id).delete()
+        db.session.commit()
+        assert SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count() == 0
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={
+            "motivo_fallo": "Caso productivo pagada + candidata_id sin SC row",
+            "idempotency_key": f"t1b-pagada-missing-sc-{secrets.token_hex(4)}",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code in (302, 303)
+    with flask_app.app_context():
+        sol_end = Solicitud.query.get(solicitud_id)
+        assert sol_end is not None
+        assert sol_end.estado == "reemplazo"
+        assert SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).count() >= 1
+        repl = Reemplazo.query.filter_by(solicitud_id=solicitud_id).order_by(Reemplazo.id.desc()).first()
+        assert repl is not None
+
+
+def test_t1b_nuevo_reemplazo_sin_candidata_devuelve_mensaje_claro_no_generico():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, _cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        sol.candidata_id = None
+        db.session.commit()
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+        data={"motivo_fallo": "Sin candidata", "idempotency_key": f"t1b-sin-candidata-{secrets.token_hex(4)}"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 409
+    payload = resp.get_json() or {}
+    assert payload.get("error_code") == "conflict"
+    assert "no tiene candidata asignada" in str(payload.get("message", "")).lower()
+
+
+def test_t1b_nuevo_reemplazo_conflicto_loguea_reason_especifico(caplog):
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, solicitud_id, cand_old_id, _cand_new_id = _seed_reemplazo_fixture()
+        sol = Solicitud.query.get(solicitud_id)
+        assert sol is not None
+        sol.estado = "pagada"
+        SolRow = SolicitudCandidata.query.filter_by(solicitud_id=solicitud_id, candidata_id=cand_old_id).first()
+        if SolRow is None:
+            db.session.add(SolicitudCandidata(solicitud_id=solicitud_id, candidata_id=cand_old_id, status="seleccionada"))
+        db.session.commit()
+    _login_admin(client)
+    with caplog.at_level(logging.WARNING):
+        with patch("admin.routes.candidata_is_ready_to_send", side_effect=admin_routes.InvariantConflictError("", "Conflicto forzado")):
+            resp = client.post(
+                f"/admin/solicitudes/{solicitud_id}/reemplazos/nuevo",
+                data={"motivo_fallo": "forzar conflicto", "idempotency_key": f"t1b-log-conflict-{secrets.token_hex(4)}"},
+                headers=_async_headers(),
+                follow_redirects=False,
+            )
+    assert resp.status_code == 409
+    log_lines = [rec.getMessage() for rec in caplog.records]
+    assert any("nuevo_reemplazo_invariant_conflict" in line for line in log_lines)
+    assert any("nuevo_reemplazo_409" in line and "reason=invariant_conflict_unspecified" in line for line in log_lines)
 
 
 def test_t1b_pagada_con_historico_cerrado_no_bloquea_apertura():

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Query
@@ -58,6 +59,24 @@ def _lock_solicitud_candidata(sc_id: int) -> SolicitudCandidata | None:
     query = SolicitudCandidata.query.filter_by(id=int(sc_id))
     query = _with_for_update_if_supported(query)
     return query.first()
+
+
+def _snapshot_to_dict(raw_value: object) -> dict:
+    if isinstance(raw_value, dict):
+        return dict(raw_value)
+    if isinstance(raw_value, str):
+        try:
+            parsed = json.loads(raw_value)
+            return parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _snapshot_for_storage(snapshot: dict) -> object:
+    if str(getattr(db.engine.dialect, "name", "") or "").strip().lower() == "postgresql":
+        return snapshot
+    return json.dumps(snapshot, ensure_ascii=False)
 
 
 def candidate_has_active_assignment(*, candidata_id: int, exclude_solicitud_id: int | None = None) -> bool:
@@ -137,11 +156,11 @@ def sync_solicitud_candidatas_after_assignment(
         if row_status not in _ASSIGNMENT_CLOSEABLE_STATUS:
             continue
         row.status = "liberada"
-        snapshot = row.breakdown_snapshot if isinstance(row.breakdown_snapshot, dict) else {}
+        snapshot = _snapshot_to_dict(row.breakdown_snapshot)
         snapshot["client_action"] = "liberada_por_asignacion"
         snapshot["client_action_at"] = now_iso
         snapshot["assigned_candidata_id"] = assigned_id
-        row.breakdown_snapshot = snapshot
+        row.breakdown_snapshot = _snapshot_for_storage(snapshot)
         try:
             released_ids.append(int(getattr(row, "candidata_id", 0) or 0))
         except Exception:
@@ -175,12 +194,12 @@ def release_solicitud_candidatas_on_cancel(
     for row in rows:
         row.status = "liberada"
         row.created_by = actor_value
-        snapshot = row.breakdown_snapshot if isinstance(row.breakdown_snapshot, dict) else {}
+        snapshot = _snapshot_to_dict(row.breakdown_snapshot)
         snapshot["client_action"] = "liberada_por_cancelacion_solicitud"
         snapshot["client_action_at"] = now_iso
         if motivo_value:
             snapshot["release_reason"] = motivo_value
-        row.breakdown_snapshot = snapshot
+        row.breakdown_snapshot = _snapshot_for_storage(snapshot)
         try:
             released_ids.append(int(getattr(row, "candidata_id", 0) or 0))
         except Exception:
@@ -266,7 +285,7 @@ def transition_solicitud_candidata_status(
             )
 
     sc.status = target_status
-    snapshot = sc.breakdown_snapshot if isinstance(sc.breakdown_snapshot, dict) else {}
+    snapshot = _snapshot_to_dict(sc.breakdown_snapshot)
     if target_status == "vista":
         snapshot["client_action"] = "vista"
     elif target_status == "seleccionada":
@@ -276,6 +295,6 @@ def transition_solicitud_candidata_status(
         if reason:
             snapshot["client_reason"] = reason[:500]
     snapshot["client_action_at"] = iso_utc_z(utc_now_naive())
-    sc.breakdown_snapshot = snapshot
+    sc.breakdown_snapshot = _snapshot_for_storage(snapshot)
     sc.created_by = (actor or "cliente")[:120]
     return sc

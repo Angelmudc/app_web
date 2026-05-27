@@ -12895,6 +12895,7 @@ def nuevo_reemplazo(s_id):
         )
         .first()
     ) if getattr(sol, "candidata_id", None) else False
+    repairable_states = {"pagada", "pendiente_servicio", "activa", "proceso", "espera_pago"}
 
     def _log_nuevo_reemplazo_409(reason: str):
         current_app.logger.warning(
@@ -13012,6 +13013,58 @@ def nuevo_reemplazo(s_id):
 
     # ✅ SIEMPRE usar la candidata asignada originalmente a la solicitud (por relación)
     assigned_id = getattr(sol, 'candidata_id', None)
+    if (
+        assigned_id
+        and not has_solicitud_candidata_row
+        and estado_actual in repairable_states
+    ):
+        try:
+            _sync_solicitud_candidatas_after_assignment(sol, int(assigned_id))
+            db.session.flush()
+            has_solicitud_candidata_row = bool(
+                db.session.query(SolicitudCandidata.id)
+                .filter(
+                    SolicitudCandidata.solicitud_id == sol.id,
+                    SolicitudCandidata.candidata_id == int(assigned_id),
+                )
+                .first()
+            )
+        except InvariantConflictError as exc:
+            db.session.rollback()
+            current_app.logger.warning(
+                "[nuevo_reemplazo_invariant_conflict] sid=%s code=%s message=%s estado=%s candidata_id=%s has_sc_row=%s",
+                sol.id,
+                getattr(exc, "code", None),
+                str(exc),
+                sol.estado,
+                getattr(sol, "candidata_id", None),
+                has_solicitud_candidata_row,
+            )
+            _log_nuevo_reemplazo_409(getattr(exc, "code", None) or "repair_solicitud_candidata_conflict")
+            return _action_response(
+                ok=False,
+                message='No se pudo abrir reemplazo porque no se pudo reparar la relación de candidata asignada.',
+                category='warning',
+                http_status=409,
+                error_code=getattr(exc, "code", "conflict"),
+            )
+        except Exception:
+            db.session.rollback()
+            current_app.logger.exception(
+                "[nuevo_reemplazo_conflict_exception] sid=%s estado=%s candidata_id=%s has_sc_row=%s",
+                sol.id,
+                sol.estado,
+                getattr(sol, "candidata_id", None),
+                has_solicitud_candidata_row,
+            )
+            _log_nuevo_reemplazo_409("repair_solicitud_candidata_error")
+            return _action_response(
+                ok=False,
+                message='No se pudo abrir reemplazo porque no se pudo reparar la relación de candidata asignada.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
     cand_old_prefetch = getattr(sol, "candidata", None)
     if not cand_old_prefetch and assigned_id:
         cand_old_prefetch = Candidata.query.get(int(assigned_id))
@@ -13081,16 +13134,15 @@ def nuevo_reemplazo(s_id):
                 flash('No se encontró la candidata asignada a esta solicitud.', 'danger')
                 return redirect(next_url if _is_safe_redirect_url(next_url) else fallback_detail)
             should_repair_sc_row = (
-                is_reactivacion_pendiente
-                or (
-                    estado_actual == "pagada"
-                    and not has_solicitud_candidata_row
-                    and getattr(sol, "candidata_id", None)
-                    and int(getattr(sol, "candidata_id", 0) or 0) == int(getattr(cand_old, "fila", 0) or 0)
-                )
+                not has_solicitud_candidata_row
+                and estado_actual in repairable_states
+                and getattr(sol, "candidata_id", None)
+                and int(getattr(sol, "candidata_id", 0) or 0) == int(getattr(cand_old, "fila", 0) or 0)
             )
             if should_repair_sc_row:
                 _sync_solicitud_candidatas_after_assignment(sol, int(cand_old.fila))
+                db.session.flush()
+                has_solicitud_candidata_row = True
 
             descalificar = str(request.form.get('descalificar_candidata_fallida') or '').strip().lower() in ('1', 'true', 'on', 'yes')
             if is_reactivacion_pendiente:
@@ -13224,7 +13276,17 @@ def nuevo_reemplazo(s_id):
 
         except InvariantConflictError as inv_exc:
             db.session.rollback()
-            _log_nuevo_reemplazo_409(getattr(inv_exc, "code", None) or "validacion_motivo_fallo")
+            current_app.logger.warning(
+                "[nuevo_reemplazo_invariant_conflict] sid=%s code=%s message=%s estado=%s candidata_id=%s has_sc_row=%s",
+                sol.id,
+                getattr(inv_exc, "code", None),
+                str(inv_exc),
+                sol.estado,
+                getattr(sol, "candidata_id", None),
+                has_solicitud_candidata_row,
+            )
+            conflict_reason = getattr(inv_exc, "code", None) or "invariant_conflict_unspecified"
+            _log_nuevo_reemplazo_409(conflict_reason)
             return _action_response(
                 ok=False,
                 message=str(inv_exc) or "Conflicto de estado de candidata.",
