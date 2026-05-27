@@ -419,24 +419,24 @@ def test_reemplazos_dashboard_paginacion_per_page_2_conserva_filtros():
             _seed_case(closed=False, motivo="No se presentó para turno de prueba")
 
     _login_staff(client)
-    resp_p1 = client.get("/admin/reemplazos?estado=activos&motivo=No%20se&per_page=2&page=1", follow_redirects=False)
+    resp_p1 = client.get("/admin/reemplazos?q=Cliente&per_page=2&page=1", follow_redirects=False)
     assert resp_p1.status_code == 200
     html_p1 = resp_p1.get_data(as_text=True)
     assert "Mostrando 1–2 de" in html_p1
     assert "page=2" in html_p1
     assert "per_page=2" in html_p1
-    assert "motivo=No+se" in html_p1
+    assert "q=Cliente" in html_p1
     next_match_p1 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*>Siguiente</a>', html_p1)
     assert next_match_p1 is not None
     assert "disabled" not in (next_match_p1.group(1) or "")
 
-    resp_p2 = client.get("/admin/reemplazos?estado=activos&motivo=No%20se&per_page=2&page=2", follow_redirects=False)
+    resp_p2 = client.get("/admin/reemplazos?q=Cliente&per_page=2&page=2", follow_redirects=False)
     assert resp_p2.status_code == 200
     html_p2 = resp_p2.get_data(as_text=True)
     assert "página 2 de" in html_p2
     assert "page=1" in html_p2
     assert "per_page=2" in html_p2
-    assert "motivo=No+se" in html_p2
+    assert "q=Cliente" in html_p2
     prev_match_p2 = re.search(r'<a class="btn btn-sm btn-outline-secondary ([^"]*)"[^>]*>Anterior</a>', html_p2)
     assert prev_match_p2 is not None
     assert "disabled" not in (prev_match_p2.group(1) or "")
@@ -488,7 +488,7 @@ def test_reemplazos_dashboard_paginacion_multipagina_exacta_page_1_2_3():
     assert "page=2" in (prev_href_p3.group(2) or "")
 
 
-def test_reemplazos_dashboard_paginacion_conserva_todos_filtros_en_links():
+def test_reemplazos_dashboard_paginacion_conserva_query_q_en_links():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     os.environ["ADMIN_LEGACY_ENABLED"] = "1"
@@ -499,10 +499,7 @@ def test_reemplazos_dashboard_paginacion_conserva_todos_filtros_en_links():
             _seed_case(closed=False, motivo="Filtro avanzado")
 
     _login_staff(client)
-    query = (
-        "/admin/reemplazos?per_page=2&page=1&estado=activos&cliente=Cliente&prioridad=media"
-        "&motivo=Filtro&ciudad=Santo&responsable=&fecha_desde=&fecha_hasta=&vencidos=&sin_candidata_nueva="
-    )
+    query = "/admin/reemplazos?per_page=2&page=1&q=Cliente"
     resp = client.get(query, follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
@@ -511,16 +508,57 @@ def test_reemplazos_dashboard_paginacion_conserva_todos_filtros_en_links():
     href = next_href.group(2) or ""
     assert "page=2" in href
     assert "per_page=2" in href
-    assert "estado=activos" in href
-    assert "cliente=Cliente" in href
-    assert "prioridad=media" in href
-    assert "motivo=Filtro" in href
-    assert "ciudad=Santo" in href
-    assert "responsable=" in href
-    assert "fecha_desde=" in href
-    assert "fecha_hasta=" in href
-    assert "vencidos=" in href
-    assert "sin_candidata_nueva=" in href
+    assert "q=Cliente" in href
+
+
+def test_reemplazos_dashboard_busqueda_por_nombre_codigo_y_telefono():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        repl_id, _ = _seed_case(closed=False, motivo="Búsqueda principal")
+        repl = Reemplazo.query.get(repl_id)
+        assert repl is not None and repl.solicitud_id is not None
+        sol = Solicitud.query.get(repl.solicitud_id)
+        assert sol is not None and sol.cliente_id is not None
+        cli = Cliente.query.get(sol.cliente_id)
+        assert cli is not None
+        cli.nombre_completo = "Cliente Buscar Uno"
+        cli.codigo = "CLI-BUS-100"
+        cli.telefono = "8099991212"
+        db.session.commit()
+
+    _login_staff(client)
+    by_nombre = client.get("/admin/reemplazos?q=Buscar%20Uno&per_page=50", follow_redirects=False)
+    by_codigo = client.get("/admin/reemplazos?q=CLI-BUS-100&per_page=50", follow_redirects=False)
+    by_tel = client.get("/admin/reemplazos?q=8099991212&per_page=50", follow_redirects=False)
+    assert by_nombre.status_code == 200
+    assert by_codigo.status_code == 200
+    assert by_tel.status_code == 200
+    assert f"/admin/reemplazos/{repl_id}" in by_nombre.get_data(as_text=True)
+    assert f"/admin/reemplazos/{repl_id}" in by_codigo.get_data(as_text=True)
+    assert f"/admin/reemplazos/{repl_id}" in by_tel.get_data(as_text=True)
+
+
+def test_reemplazos_dashboard_html_busqueda_y_cards_movil():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_case(closed=False, motivo="UI móvil")
+
+    _login_staff(client)
+    resp = client.get("/admin/reemplazos", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert 'name="q"' in html
+    assert 'placeholder="Buscar por cliente, código o teléfono..."' in html
+    assert 'data-testid="reemplazos-mobile-cards"' in html
+    assert "reemp-mobile-card" in html
 
 
 def test_reemplazos_dashboard_paginacion_una_sola_pagina_desactiva_botones():

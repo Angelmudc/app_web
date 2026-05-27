@@ -18908,22 +18908,8 @@ def reemplazos_dashboard():
             503,
         )
 
-    estado = (request.args.get("estado") or "activos").strip().lower()
-    if estado not in {"activos", "cerrados", "todos"}:
-        estado = "activos"
-    q_cliente = (request.args.get("cliente") or "").strip()
-    q_cliente_id = max(0, _safe_int(request.args.get("cliente_id"), default=0))
-    q_solicitud = (request.args.get("solicitud") or "").strip()
-    q_candidata = (request.args.get("candidata") or "").strip()
-    q_motivo = (request.args.get("motivo") or "").strip()
-    q_prioridad = (request.args.get("prioridad") or "").strip().lower()
-    q_ciudad = (request.args.get("ciudad") or "").strip()
-    q_modalidad = (request.args.get("modalidad") or "").strip().lower()
-    q_responsable = (request.args.get("responsable") or "").strip().lower()
-    q_vencidos = str(request.args.get("vencidos") or "").strip().lower() in {"1", "true", "on", "yes"}
-    q_sin_candidata_nueva = str(request.args.get("sin_candidata_nueva") or "").strip().lower() in {"1", "true", "on", "yes"}
-    q_fecha_desde = (request.args.get("fecha_desde") or "").strip()
-    q_fecha_hasta = (request.args.get("fecha_hasta") or "").strip()
+    estado = "activos"
+    q = (request.args.get("q") or "").strip()
 
     page = max(1, _safe_int(request.args.get("page"), default=1))
     per_page = min(100, max(2, _safe_int(request.args.get("per_page"), default=50)))
@@ -18962,80 +18948,31 @@ def reemplazos_dashboard():
             joinedload(Reemplazo.candidata_new),
         )
     )
-    if estado == "activos":
+    query = query.filter(
+        Solicitud.estado == "reemplazo",
+        Reemplazo.fecha_inicio_reemplazo.isnot(None),
+        Reemplazo.fecha_fin_reemplazo.is_(None),
+        ~closed_logic_filter,
+    )
+    if q:
+        like = f"%{q}%"
         query = query.filter(
-            Solicitud.estado == "reemplazo",
-            Reemplazo.fecha_inicio_reemplazo.isnot(None),
-            Reemplazo.fecha_fin_reemplazo.is_(None),
-            ~closed_logic_filter,
-        )
-    elif estado == "cerrados":
-        query = query.filter(closed_logic_filter)
-    if q_cliente_id > 0:
-        query = query.filter(Cliente.id == q_cliente_id)
-    if q_cliente:
-        like = f"%{q_cliente}%"
-        query = query.filter(or_(Cliente.nombre_completo.ilike(like), Cliente.codigo.ilike(like)))
-    if q_solicitud:
-        like = f"%{q_solicitud}%"
-        query = query.filter(or_(Solicitud.codigo_solicitud.ilike(like), cast(Solicitud.id, db.String).ilike(like)))
-    if q_candidata:
-        like = f"%{q_candidata}%"
-        cand_old = aliased(Candidata)
-        cand_new = aliased(Candidata)
-        query = (
-            query.outerjoin(cand_old, cand_old.fila == Reemplazo.candidata_old_id)
-            .outerjoin(cand_new, cand_new.fila == Reemplazo.candidata_new_id)
-            .filter(
-                or_(
-                    cand_old.nombre_completo.ilike(like),
-                    cand_old.cedula.ilike(like),
-                    cand_new.nombre_completo.ilike(like),
-                    cand_new.cedula.ilike(like),
-                )
+            or_(
+                Cliente.nombre_completo.ilike(like),
+                Cliente.codigo.ilike(like),
+                Cliente.telefono.ilike(like),
+                Solicitud.codigo_solicitud.ilike(like),
+                cast(Solicitud.id, db.String).ilike(like),
             )
         )
-    if q_motivo:
-        query = query.filter(Reemplazo.motivo_fallo.ilike(f"%{q_motivo}%"))
-    if q_ciudad:
-        query = query.filter(Solicitud.ciudad_sector.ilike(f"%{q_ciudad}%"))
-    if q_modalidad:
-        query = query.filter(func.lower(cast(Solicitud.modalidad_trabajo, db.String)).like(f"%{q_modalidad}%"))
-    if q_responsable:
-        query = query.join(StaffUser, StaffUser.id == Reemplazo.responsable_id, isouter=True)
-        query = query.filter(func.lower(cast(StaffUser.username, db.String)).like(f"%{q_responsable}%"))
-    if q_sin_candidata_nueva:
-        query = query.filter(Reemplazo.candidata_new_id.is_(None))
-
-    fecha_desde_dt = None
-    fecha_hasta_dt = None
-    try:
-        if q_fecha_desde:
-            fecha_desde_dt = datetime.strptime(q_fecha_desde, "%Y-%m-%d")
-    except Exception:
-        fecha_desde_dt = None
-    try:
-        if q_fecha_hasta:
-            fecha_hasta_dt = datetime.strptime(q_fecha_hasta, "%Y-%m-%d") + timedelta(days=1)
-    except Exception:
-        fecha_hasta_dt = None
-    if fecha_desde_dt is not None:
-        query = query.filter(func.coalesce(Reemplazo.fecha_reporte, Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) >= fecha_desde_dt)
-    if fecha_hasta_dt is not None:
-        query = query.filter(func.coalesce(Reemplazo.fecha_reporte, Reemplazo.fecha_inicio_reemplazo, Reemplazo.created_at) < fecha_hasta_dt)
 
     ordered_query = query.order_by(
         Reemplazo.fecha_inicio_reemplazo.desc().nullslast(),
         Reemplazo.created_at.desc(),
         Reemplazo.id.desc(),
     )
-    derived_filters = bool(q_prioridad or q_vencidos)
-    items = None
-    if derived_filters:
-        reemplazos = list(ordered_query.all() or [])
-    else:
-        items = ordered_query.paginate(page=page, per_page=per_page, error_out=False)
-        reemplazos = list(items.items or [])
+    items = ordered_query.paginate(page=page, per_page=per_page, error_out=False)
+    reemplazos = list(items.items or [])
     solicitud_ids = [int(r.solicitud_id) for r in reemplazos if int(getattr(r, "solicitud_id", 0) or 0) > 0]
     seguimientos = []
     if solicitud_ids:
@@ -19069,10 +19006,6 @@ def reemplazos_dashboard():
         if solicitud_reemplazos_total >= 2:
             alertas_activas.append("Solicitud con reemplazos previos")
         dias_abierto = int(getattr(row, "dias_en_reemplazo", 0) or 0)
-        if q_prioridad and prioridad != q_prioridad:
-            continue
-        if q_vencidos and "Seguimiento atrasado" not in set(alertas_activas):
-            continue
         motivo_full = str(getattr(row, "motivo_fallo", None) or "").strip()
         motivo_compacto = motivo_full[:47].rstrip()
         if len(motivo_full) > 47:
@@ -19114,21 +19047,10 @@ def reemplazos_dashboard():
             }
         )
 
-    if derived_filters:
-        total_cards = len(cards_all)
-        total_pages = max(1, ((total_cards - 1) // per_page) + 1) if total_cards > 0 else 1
-        if page > total_pages:
-            page = total_pages
-        start = (page - 1) * per_page
-        end = start + per_page
-        cards = cards_all[start:end]
-        total_rows = total_cards
-        has_more = page < total_pages
-    else:
-        cards = cards_all
-        total_rows = int(items.total or 0) if items is not None else len(cards_all)
-        total_pages = int(items.pages or 1) if items is not None else 1
-        has_more = bool(items.has_next) if items is not None else False
+    cards = cards_all
+    total_rows = int(items.total or 0) if items is not None else len(cards_all)
+    total_pages = int(items.pages or 1) if items is not None else 1
+    has_more = bool(items.has_next) if items is not None else False
 
     week_start = (to_rd(now).date() - timedelta(days=to_rd(now).weekday()))
     activos_rows = [c for c in cards if getattr(c["reemplazo"], "fecha_fin_reemplazo", None) is None]
@@ -19162,19 +19084,7 @@ def reemplazos_dashboard():
         "admin/reemplazos_dashboard.html",
         rows=cards,
         estado=estado,
-        cliente=q_cliente,
-        solicitud=q_solicitud,
-        candidata=q_candidata,
-        motivo=q_motivo,
-        prioridad=q_prioridad,
-        ciudad=q_ciudad,
-        cliente_id=q_cliente_id,
-        modalidad=q_modalidad,
-        responsable=q_responsable,
-        vencidos=q_vencidos,
-        sin_candidata_nueva=q_sin_candidata_nueva,
-        fecha_desde=q_fecha_desde,
-        fecha_hasta=q_fecha_hasta,
+        q=q,
         page=page,
         per_page=per_page,
         total=total_rows,

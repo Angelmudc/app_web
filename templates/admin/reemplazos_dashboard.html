@@ -27,25 +27,19 @@
     <div class="col-6 col-md-2"><div class="glass-card p-2"><div class="small text-muted">Prom. resolución</div><div class="h5 mb-0">{{ metric_promedio_resolucion }}</div></div></div>
   </div>
 
-  <div class="glass-card p-3 mb-3 reemp-filter-card">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-2"><label class="form-label small mb-1">Cliente</label><input class="form-control form-control-sm" name="cliente" value="{{ cliente or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Estado</label><select name="estado" class="form-select form-select-sm"><option value="activos" {% if estado == 'activos' %}selected{% endif %}>Activos</option><option value="cerrados" {% if estado == 'cerrados' %}selected{% endif %}>Cerrados</option><option value="todos" {% if estado == 'todos' %}selected{% endif %}>Todos</option></select></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Prioridad</label><select name="prioridad" class="form-select form-select-sm"><option value="">Todas</option><option value="baja" {% if prioridad == 'baja' %}selected{% endif %}>Baja</option><option value="media" {% if prioridad == 'media' %}selected{% endif %}>Media</option><option value="alta" {% if prioridad == 'alta' %}selected{% endif %}>Alta</option><option value="critica" {% if prioridad == 'critica' %}selected{% endif %}>Crítica</option></select></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Motivo</label><input class="form-control form-control-sm" name="motivo" value="{{ motivo or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Ciudad</label><input class="form-control form-control-sm" name="ciudad" value="{{ ciudad or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Modalidad</label><input class="form-control form-control-sm" name="modalidad" value="{{ modalidad or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Responsable</label><input class="form-control form-control-sm" name="responsable" value="{{ responsable or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Fecha desde</label><input type="date" class="form-control form-control-sm" name="fecha_desde" value="{{ fecha_desde or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Fecha hasta</label><input type="date" class="form-control form-control-sm" name="fecha_hasta" value="{{ fecha_hasta or '' }}"></div>
-      <div class="col-md-2"><label class="form-label small mb-1">Por página</label><select name="per_page" class="form-select form-select-sm"><option value="2" {% if per_page == 2 %}selected{% endif %}>2</option><option value="25" {% if per_page == 25 %}selected{% endif %}>25</option><option value="50" {% if per_page == 50 %}selected{% endif %}>50</option><option value="100" {% if per_page == 100 %}selected{% endif %}>100</option></select></div>
-      <div class="col-md-2 form-check mt-4 ms-2"><input class="form-check-input" type="checkbox" value="1" id="vencidos" name="vencidos" {% if vencidos %}checked{% endif %}><label class="form-check-label" for="vencidos">Solo vencidos</label></div>
-      <div class="col-md-3 form-check mt-4"><input class="form-check-input" type="checkbox" value="1" id="sin_candidata_nueva" name="sin_candidata_nueva" {% if sin_candidata_nueva %}checked{% endif %}><label class="form-check-label" for="sin_candidata_nueva">Sin candidata nueva</label></div>
-      <div class="col-md-2 d-grid"><button class="btn btn-primary btn-sm">Filtrar</button></div>
+  <div class="glass-card p-3 mb-3 reemp-search-card">
+    <form method="get" class="reemp-search-form">
+      <label class="form-label small mb-1" for="q">Buscar reemplazo activo</label>
+      <div class="input-group input-group-lg">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input id="q" class="form-control" type="search" name="q" value="{{ q or '' }}" placeholder="Buscar por cliente, código o teléfono...">
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+        <button class="btn btn-primary" type="submit">Buscar</button>
+      </div>
     </form>
   </div>
 
-  <div class="table-responsive glass-card reemp-table-shell">
+  <div class="table-responsive glass-card reemp-table-shell d-none d-lg-block">
     <table class="table table-sm align-middle mb-0 reemp-table">
       <colgroup>
         <col class="reemp-col-cliente">
@@ -141,10 +135,32 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="9" class="text-center reemp-empty py-4">No hay reemplazos para mostrar</td></tr>
+      <tr><td colspan="9" class="text-center reemp-empty py-4">No hay reemplazos activos para mostrar</td></tr>
       {% endfor %}
       </tbody>
     </table>
+  </div>
+  <div class="d-lg-none reemp-mobile-cards" data-testid="reemplazos-mobile-cards">
+    {% for row in (rows or []) %}
+    {% set r = row.reemplazo %}
+    <article class="glass-card reemp-mobile-card">
+      <div class="reemp-mobile-head">
+        <div class="fw-semibold">{{ row.cliente and row.cliente.nombre_completo or '—' }}</div>
+        <span class="badge reemp-badge reemp-badge-estado-activo">Reemplazo activo</span>
+      </div>
+      <div class="reemp-mobile-meta">
+        <div><strong>Código cliente:</strong> {{ row.cliente and row.cliente.codigo or '—' }}</div>
+        <div><strong>Teléfono:</strong> {{ row.cliente and row.cliente.telefono or '—' }}</div>
+        <div><strong>Solicitud:</strong> {{ row.solicitud and (row.solicitud.codigo_solicitud or ('SOL-' ~ row.solicitud.id)) or '—' }}</div>
+        <div><strong>Candidata actual:</strong> {{ r.candidata_old and r.candidata_old.nombre_completo or '—' }}</div>
+        <div><strong>Nueva candidata:</strong> {{ r.candidata_new and r.candidata_new.nombre_completo or 'Pendiente' }}</div>
+        <div><strong>Inicio reemplazo:</strong> {{ r.fecha_inicio_reemplazo and r.fecha_inicio_reemplazo|rd_datetime('%Y-%m-%d %H:%M') or '—' }}</div>
+      </div>
+      <a class="btn btn-primary btn-lg w-100 mt-2" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Gestionar reemplazo</a>
+    </article>
+    {% else %}
+    <div class="glass-card p-3 text-center reemp-empty">No hay reemplazos activos para mostrar</div>
+    {% endfor %}
   </div>
 
   {% set is_single_page = (total_pages or 1) <= 1 %}
@@ -162,8 +178,8 @@
       {% endif %}
     </div>
     <div class="d-flex gap-2">
-      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if page <= 1 %}disabled{% endif %}" aria-disabled="{{ 'true' if page <= 1 else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
-      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if not has_more %}disabled{% endif %}" aria-disabled="{{ 'true' if not has_more else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', estado=estado, cliente=cliente, solicitud=solicitud, candidata=candidata, motivo=motivo, prioridad=prioridad, ciudad=ciudad, modalidad=modalidad, responsable=responsable, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, vencidos=('1' if vencidos else ''), sin_candidata_nueva=('1' if sin_candidata_nueva else ''), page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
+      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if page <= 1 %}disabled{% endif %}" aria-disabled="{{ 'true' if page <= 1 else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', q=q, page=page-1, per_page=per_page) if page > 1 else '#' }}">Anterior</a>
+      <a class="btn btn-sm btn-outline-secondary reemp-pagination-link {% if not has_more %}disabled{% endif %}" aria-disabled="{{ 'true' if not has_more else 'false' }}" href="{{ url_for('admin.reemplazos_dashboard', q=q, page=page+1, per_page=per_page) if has_more else '#' }}">Siguiente</a>
     </div>
   </div>
 </div>
