@@ -18,6 +18,7 @@
   {% endif %}
 
   {% set _estado_operativo = (solicitud.estado or '')|lower in ['activa', 'proceso', 'espera_pago', 'reemplazo', 'pendiente_servicio'] %}
+  {% set _estado_cancelada = (solicitud.estado or '')|lower == 'cancelada' %}
   {% set _cycle_has_payments = cycle_has_payments if cycle_has_payments is defined else has_payments_current_cycle %}
   {% set _cycle_has_payments = _cycle_has_payments if _cycle_has_payments is not none else ((payment_summary.total_pagado if payment_summary is defined else 0)|float > 0) %}
   {% set _cycle_is_paid = cycle_is_paid if cycle_is_paid is defined else false %}
@@ -25,9 +26,9 @@
   {% if _remaining_balance is none %}
     {% set _remaining_balance = remaining_balance if remaining_balance is defined else 0 %}
   {% endif %}
-  {% set _show_create_new_cycle_btn = _cycle_is_paid or (_estado_operativo and ((_remaining_balance|float <= 0) or _cycle_has_payments)) %}
+  {% set _show_create_new_cycle_btn = _estado_cancelada or _cycle_is_paid or (_estado_operativo and ((_remaining_balance|float <= 0) or _cycle_has_payments)) %}
 
-  {% if _cycle_has_payments %}
+  {% if _cycle_has_payments and not _estado_cancelada %}
     <div class="alert alert-info border-0 mb-3" role="alert" aria-live="polite">
       {% if _cycle_is_paid %}
         Este ciclo ya está pagado. Para volver a cobrar esta solicitud, crea un nuevo ciclo de pago.
@@ -118,7 +119,11 @@
         <i class="bi bi-x-circle me-1"></i> Cancelar
       </a>
       <button type="submit" class="btn btn-primary" id="btn-submit" name="plan_action" value="update" data-loading-text="Guardando...">
-        <i class="bi bi-save-fill me-1"></i> Guardar plan y registrar abono inicial
+        {% if _estado_cancelada %}
+          <i class="bi bi-arrow-clockwise me-1"></i> Reactivar solicitud con nuevo ciclo
+        {% else %}
+          <i class="bi bi-save-fill me-1"></i> Guardar plan y registrar abono inicial
+        {% endif %}
       </button>
     </div>
   </form>

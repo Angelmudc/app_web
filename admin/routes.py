@@ -12101,6 +12101,8 @@ def gestionar_plan(cliente_id, id):
     if form.validate_on_submit():
         try:
             action = (request.form.get("plan_action") or "update").strip().lower()
+            if estado_cancelada and action == "update":
+                action = "create_new_cycle"
             # --- Validar tipo_plan contra choices si existen ---
             if hasattr(form, 'tipo_plan') and getattr(form.tipo_plan, "choices", None):
                 allowed = _choice_codes(form.tipo_plan.choices)

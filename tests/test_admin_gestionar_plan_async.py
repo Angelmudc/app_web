@@ -333,6 +333,37 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         open_cycle_mock.assert_called_once()
         commit_mock.assert_called_once()
 
+    def test_get_cancelada_oculta_bloqueo_y_muestra_accion_reactivar(self):
+        solicitud = _solicitud_stub(estado="cancelada")
+        self._payment_summary["total_pagado"] = 1000.00
+        self._payment_summary["saldo_pendiente"] = 2500.00
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertNotIn("Este ciclo ya tiene pagos registrados", html)
+        self.assertIn("Reactivar solicitud con nuevo ciclo", html)
+        self.assertNotIn("Guardar plan y registrar abono inicial", html)
+
+    def test_post_cancelada_sin_plan_action_reencamina_a_nuevo_ciclo(self):
+        solicitud = _solicitud_stub(estado="cancelada")
+        self._payment_summary["total_pagado"] = 1000.00
+        self._payment_summary["saldo_pendiente"] = 2500.00
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.open_new_payment_cycle") as open_cycle_mock, \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self._invoke(
+                    data={"tipo_plan": "premium"},
+                    headers=self._async_headers(),
+                )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertNotIn("Este ciclo ya tiene pagos registrados", data["message"])
+        open_cycle_mock.assert_called_once()
+        commit_mock.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()
