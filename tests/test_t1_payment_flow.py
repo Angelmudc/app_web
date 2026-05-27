@@ -974,6 +974,60 @@ def test_t1_gestionar_plan_estado_pagada_ciclo_pagado_permite_crear_nuevo_ciclo(
         assert solicitud_end.payment_cycle_closed_at is None
 
 
+def test_t1_gestionar_plan_cancelada_permite_reactivar_con_ciclo_nuevo_limpio():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="2500.00",
+                tipo_pago="abono",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"cancelada-cycle1-abono:{solicitud_id}",
+            )
+        )
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "premium"
+        solicitud.payment_cycle_precio_total = "5000.00"
+        solicitud.payment_cycle_abono_requerido = "2500.00"
+        solicitud.payment_cycle_estado = "parcial"
+        solicitud.estado = "cancelada"
+        db.session.commit()
+    _login_admin(client)
+
+    resp_post = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        data={"tipo_plan": "basico", "plan_action": "create_new_cycle"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_post.status_code == 200
+    payload = resp_post.get_json() or {}
+    assert payload.get("success") is True
+    assert "No corresponde crear un nuevo ciclo en el estado actual." not in (payload.get("message") or "")
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert int(solicitud_end.payment_cycle_current or 0) == 2
+        assert (solicitud_end.payment_cycle_plan or "") == "basico"
+        assert solicitud_end.estado == "espera_pago"
+        summary_end = get_payment_summary(solicitud_end)
+        assert str(summary_end["total_pagado"]) == "0.00"
+        assert str(summary_end["saldo_pendiente"]) == "3500.00"
+        cycle2_movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id, ciclo_numero=2, anulado_at=None).all()
+        assert len(cycle2_movs) == 0
+
+
 def test_t1_crear_nuevo_ciclo_reactivacion_registra_abono_inicial_en_ciclo_nuevo():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

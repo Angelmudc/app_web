@@ -11980,6 +11980,7 @@ def gestionar_plan(cliente_id, id):
     ensure_current_payment_cycle(s, motivo="plan_init")
     estado_norm = (getattr(s, "estado", "") or "").strip().lower()
     estado_operativo = estado_norm in {"activa", "proceso", "espera_pago", "reemplazo", "pendiente_servicio"}
+    estado_cancelada = estado_norm == "cancelada"
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
@@ -12000,7 +12001,7 @@ def gestionar_plan(cliente_id, id):
         summary = get_payment_summary(s)
         cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(cycle_is_paid or (estado_operativo and cycle_has_payments))
+        can_create_new_cycle = bool(cycle_is_paid or estado_cancelada or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -12025,7 +12026,7 @@ def gestionar_plan(cliente_id, id):
         summary = get_payment_summary(s)
         cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
-        can_create_new_cycle = bool(cycle_is_paid or (estado_operativo and cycle_has_payments))
+        can_create_new_cycle = bool(cycle_is_paid or estado_cancelada or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
         plan_price = get_plan_price(plan_code)
         required_deposit = get_required_deposit(plan_code)
@@ -12145,7 +12146,7 @@ def gestionar_plan(cliente_id, id):
             cycle_is_paid_now = Decimal(summary_now["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary_now["precio_plan"]) > Decimal("0.00")
 
             if action == "create_new_cycle":
-                can_create_new_cycle_now = bool(cycle_is_paid_now or (estado_operativo and has_payments_current_cycle))
+                can_create_new_cycle_now = bool(cycle_is_paid_now or estado_cancelada or (estado_operativo and has_payments_current_cycle))
                 if not can_create_new_cycle_now:
                     msg = 'No corresponde crear un nuevo ciclo en el estado actual.'
                     if _admin_async_wants_json():
@@ -12166,7 +12167,7 @@ def gestionar_plan(cliente_id, id):
                 cycle_now = get_current_payment_cycle(s)
                 cycle_num = int(cycle_now["numero_ciclo"])
                 abono_required = Decimal(cycle_now["abono_requerido"])
-                if _find_initial_abono(cycle_num) is None and abono_required > Decimal("0.00"):
+                if (not estado_cancelada) and _find_initial_abono(cycle_num) is None and abono_required > Decimal("0.00"):
                     crear_pago_solicitud(
                         solicitud_id=int(s.id),
                         cliente_id=int(s.cliente_id),
@@ -12181,11 +12182,20 @@ def gestionar_plan(cliente_id, id):
                         nota="Abono inicial registrado al gestionar plan",
                     )
                 apply_payment_state_from_summary(s)
-                _set_solicitud_estado_with_outbox(s, 'activa')
+                if estado_cancelada:
+                    summary_after_reactivation = get_payment_summary(s)
+                    if Decimal(summary_after_reactivation["total_pagado"]) <= Decimal("0.00") and Decimal(summary_after_reactivation["saldo_pendiente"]) > Decimal("0.00"):
+                        s.estado = "espera_pago"
+                target_state = (getattr(s, "estado", "") or "activa").strip().lower()
+                if target_state not in {"activa", "proceso", "espera_pago", "pagada", "reemplazo", "pendiente_servicio"}:
+                    target_state = "activa"
+                _set_solicitud_estado_with_outbox(s, target_state)
                 s.fecha_cancelacion = None
                 s.motivo_cancelacion = None
                 db.session.commit()
-                success_message = 'Nuevo ciclo de pago creado correctamente. Abono inicial registrado.'
+                success_message = 'Nuevo ciclo de pago creado correctamente.'
+                if not estado_cancelada:
+                    success_message = 'Nuevo ciclo de pago creado correctamente. Abono inicial registrado.'
                 if _admin_async_wants_json():
                     form = AdminGestionPlanForm(formdata=None, obj=s)
                     return _async_plan_response(
@@ -12311,7 +12321,10 @@ def gestionar_plan(cliente_id, id):
 
             # --- Estado ---
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
-            _set_solicitud_estado_with_outbox(s, 'activa')
+            target_state = (getattr(s, "estado", "") or "activa").strip().lower()
+            if target_state not in {"activa", "proceso", "espera_pago", "pagada", "reemplazo", "pendiente_servicio"}:
+                target_state = "activa"
+            _set_solicitud_estado_with_outbox(s, target_state)
             s.fecha_cancelacion = None
             s.motivo_cancelacion = None
 
