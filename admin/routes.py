@@ -213,6 +213,7 @@ from services.payment_ledger import (
     ensure_reactivation_cycle,
     get_payment_summary,
     get_current_payment_cycle,
+    has_recorded_payments,
     recalcular_estado_pago_solicitud,
     sync_cycle_plan_if_no_payments,
     sync_solicitud_payment_cache,
@@ -11999,7 +12000,7 @@ def gestionar_plan(cliente_id, id):
 
     def _render_plan_region(async_feedback=None) -> str:
         summary = get_payment_summary(s)
-        cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_has_payments = has_recorded_payments(int(s.id), ciclo_numero=int(summary["numero_ciclo"]))
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
         can_create_new_cycle = bool(cycle_is_paid or estado_cancelada or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
@@ -12024,7 +12025,7 @@ def gestionar_plan(cliente_id, id):
 
     def _render_plan_page(async_feedback=None):
         summary = get_payment_summary(s)
-        cycle_has_payments = Decimal(summary["total_pagado"]) > Decimal("0.00")
+        cycle_has_payments = has_recorded_payments(int(s.id), ciclo_numero=int(summary["numero_ciclo"]))
         cycle_is_paid = Decimal(summary["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary["precio_plan"]) > Decimal("0.00")
         can_create_new_cycle = bool(cycle_is_paid or estado_cancelada or (estado_operativo and cycle_has_payments))
         plan_code = normalize_plan((form.tipo_plan.data if request.method == "POST" else s.tipo_plan))
@@ -12144,7 +12145,7 @@ def gestionar_plan(cliente_id, id):
             s.abono = format_money_payment(required_deposit)
             ensure_current_payment_cycle(s, motivo="plan_init")
             summary_now = get_payment_summary(s)
-            has_payments_current_cycle = Decimal(summary_now["total_pagado"]) > Decimal("0.00")
+            has_payments_current_cycle = has_recorded_payments(int(s.id), ciclo_numero=int(summary_now["numero_ciclo"]))
             cycle_is_paid_now = Decimal(summary_now["saldo_pendiente"]) <= Decimal("0.00") and Decimal(summary_now["precio_plan"]) > Decimal("0.00")
 
             if action == "create_new_cycle":
@@ -12190,6 +12191,8 @@ def gestionar_plan(cliente_id, id):
                     s.estado = "activa"
                 target_state = (getattr(s, "estado", "") or "activa").strip().lower()
                 if target_state not in {"activa", "proceso", "espera_pago", "pagada", "reemplazo", "pendiente_servicio"}:
+                    target_state = "activa"
+                if target_state == "espera_pago":
                     target_state = "activa"
                 _set_solicitud_estado_with_outbox(s, target_state)
                 s.fecha_cancelacion = None
@@ -12325,6 +12328,8 @@ def gestionar_plan(cliente_id, id):
             # Reactivar SIEMPRE, aunque esté pagada o cancelada.
             target_state = (getattr(s, "estado", "") or "activa").strip().lower()
             if target_state not in {"activa", "proceso", "espera_pago", "pagada", "reemplazo", "pendiente_servicio"}:
+                target_state = "activa"
+            if target_state == "espera_pago":
                 target_state = "activa"
             _set_solicitud_estado_with_outbox(s, target_state)
             s.fecha_cancelacion = None

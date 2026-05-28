@@ -64,6 +64,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             "legacy_abono": 0.00,
             "ciclo_estado": "pendiente",
         }
+        self._has_recorded_payments = False
 
     def _raw_view(self):
         view = admin_routes.gestionar_plan
@@ -82,6 +83,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                  patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
                  patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result), \
                  patch("admin.routes.get_payment_summary", return_value=self._payment_summary), \
+                 patch("admin.routes.has_recorded_payments", return_value=self._has_recorded_payments), \
                  patch("admin.routes.crear_pago_solicitud"), \
                  patch("admin.routes.apply_payment_state_from_summary", return_value="espera_pago"):
                 rv = self._raw_view()(7, 101)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from decimal import Decimal
 from pathlib import Path
 
 import admin.routes as admin_routes
@@ -1369,6 +1370,103 @@ def test_t1_gestionar_plan_con_historico_pero_ciclo_actual_en_cero_permite_cambi
         assert (solicitud_end.payment_cycle_plan or "") == "vip"
         assert str(solicitud_end.payment_cycle_precio_total) == "8000.00"
         assert str(solicitud_end.payment_cycle_abono_requerido) == "4000.00"
+
+
+def test_t1_gestionar_plan_solicitud_nueva_sin_pagos_no_bloquea_y_queda_activa():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "proceso"
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "basico"
+        solicitud.payment_cycle_precio_total = "3500.00"
+        solicitud.payment_cycle_abono_requerido = "1750.00"
+        solicitud.payment_cycle_estado = "pendiente"
+        db.session.commit()
+    _login_admin(client)
+
+    resp_get = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_get.status_code == 200
+    html_get = resp_get.get_data(as_text=True)
+    assert "Este ciclo ya tiene pagos registrados" not in html_get
+    assert 'value="create_new_cycle"' not in html_get
+
+    resp_post = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        data={"tipo_plan": "basico", "plan_action": "update"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_post.status_code == 200
+    payload = resp_post.get_json() or {}
+    assert payload.get("success") is True
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "activa"
+        assert solicitud_end.estado != "espera_pago"
+        assert int(solicitud_end.payment_cycle_current or 0) == 1
+        summary_end = get_payment_summary(solicitud_end)
+        assert str(summary_end["total_pagado"]) == "1750.00"
+        pagos_ciclo_actual = PagoSolicitud.query.filter_by(
+            solicitud_id=solicitud_id,
+            ciclo_numero=1,
+            anulado_at=None,
+        ).all()
+        assert len(pagos_ciclo_actual) == 1
+        assert pagos_ciclo_actual[0].tipo_pago == "abono"
+        assert str(Decimal(pagos_ciclo_actual[0].monto).quantize(Decimal("0.01"))) == "1750.00"
+
+
+def test_t1_gestionar_plan_solicitud_con_pagos_reales_mantiene_bloqueo():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "activa"
+        solicitud.payment_cycle_current = 1
+        solicitud.payment_cycle_plan = "premium"
+        solicitud.payment_cycle_precio_total = "5000.00"
+        solicitud.payment_cycle_abono_requerido = "2500.00"
+        solicitud.payment_cycle_estado = "parcial"
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="1000.00",
+                tipo_pago="abono",
+                ciclo_numero=1,
+                origen="seed",
+                origen_id=f"real-payment-current-cycle:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+
+    resp_get = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp_get.status_code == 200
+    html_get = resp_get.get_data(as_text=True)
+    assert "Este ciclo ya tiene pagos registrados" in html_get
 
 
 def test_t1_ui_pago_manual_muestra_bloque_manual_y_al_volver_auto_lo_oculta():

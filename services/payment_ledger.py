@@ -153,6 +153,17 @@ def calcular_total_abonado(solicitud_id: int, *, ciclo_numero: int | None = None
     return total.quantize(Decimal("0.01"))
 
 
+def has_recorded_payments(solicitud_id: int, *, ciclo_numero: int | None = None) -> bool:
+    for mov in _iter_active_movimientos(solicitud_id, ciclo_numero=ciclo_numero):
+        monto = _to_decimal(mov.monto)
+        if monto <= Decimal("0.00"):
+            continue
+        tipo = (mov.tipo_pago or "").strip().lower()
+        if tipo in POSITIVE_TYPES or tipo in NEGATIVE_TYPES:
+            return True
+    return False
+
+
 def calcular_total_pagado_cliente(cliente_id: int) -> Decimal:
     total = Decimal("0.00")
     movimientos = (
@@ -265,8 +276,8 @@ def recalcular_estado_pago_solicitud(solicitud) -> str:
 
 
 def sync_cycle_plan_if_no_payments(solicitud, *, motivo: str = "plan_update") -> bool:
-    summary = get_payment_summary(solicitud)
-    if Decimal(summary["total_pagado"]) > Decimal("0.00"):
+    cycle = get_current_payment_cycle(solicitud)
+    if has_recorded_payments(int(getattr(solicitud, "id", 0) or 0), ciclo_numero=int(cycle["numero_ciclo"])):
         return False
     plan_norm = normalize_plan(getattr(solicitud, "tipo_plan", None))
     solicitud.payment_cycle_plan = plan_norm
