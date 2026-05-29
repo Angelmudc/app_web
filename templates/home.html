@@ -1,4 +1,7 @@
 {% extends 'base.html' %}
+{% set body_class = ((body_class|default('')) ~ ' perf home-perf')|trim %}
+{% set requires_pages_css = false %}
+{% set requires_animations_css = false %}
 
 {% block title %}Doméstica del Cibao A&D – Inicio{% endblock %}
 
@@ -15,7 +18,7 @@
          alt="Doméstica del Cibao A&D"
          class="img-fluid mb-4 animate-fade"
          style="max-width: 640px; width: 90%;
-                filter: drop-shadow(0 8px 16px rgba(0,0,0,0.15));">
+                filter: drop-shadow(0 3px 8px rgba(0,0,0,0.10));">
 
     <h1 class="fw-bold text-dark mb-2 animate-slide" style="font-size: 2rem;">
       Doméstica del Cibao A&D
@@ -479,6 +482,24 @@
   @keyframes slideUp {
     from {opacity:0; transform:translateY(25px)}
     to {opacity:1; transform:translateY(0)}
+  }
+
+  /* Modo liviano exclusivo de Home (Fase 2C): mismo diseño, menor costo de pintura/composición */
+  body.home-perf { transition:none; }
+  body.home-perf .dashboard-card {
+    box-shadow:0 2px 10px rgba(0,0,0,.06);
+    transition:box-shadow .18s ease, border-color .18s ease;
+  }
+  body.home-perf .dashboard-card:hover {
+    transform:none;
+    box-shadow:0 4px 14px rgba(74,105,189,.14);
+  }
+  body.home-perf .home-notif-item {
+    box-shadow:0 1px 5px rgba(27,40,64,.05);
+  }
+  body.home-perf .animate-fade,
+  body.home-perf .animate-slide {
+    animation-duration:.45s;
   }
 </style>
 {% endblock %}

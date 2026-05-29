@@ -10,6 +10,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#ffffff">
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo_nuevo.png') }}">
 
   {#
     ✅ Base sólida y segura para producción (sin romper CDNs)
@@ -80,6 +81,8 @@
   <!-- DataTables CSS -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.4/css/jquery.dataTables.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   {% endif %}
+  {% set _requires_pages_css = (requires_pages_css if requires_pages_css is defined else true) %}
+  {% set _requires_animations_css = (requires_animations_css if requires_animations_css is defined else true) %}
 
   <!-- Modular CSS -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
@@ -89,8 +92,12 @@
   {% if _base_is_internal_surface %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/admin_surface.css') }}">
   {% endif %}
+  {% if _requires_animations_css %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/animations.css') }}">
+  {% endif %}
+  {% if _requires_pages_css %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  {% endif %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
   {% if _base_is_internal_surface %}
   <link rel="stylesheet" href="{{ url_for('static', filename='css/secretarias_styles.css') }}">

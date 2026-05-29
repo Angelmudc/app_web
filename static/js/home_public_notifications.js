@@ -22,6 +22,7 @@
   var trayOpen = false;
   var listLoading = false;
   var lastUnread = 0;
+  var pollTimer = null;
   var lastSnapshot = {
     pending_items: [],
     reviewed_items: [],
@@ -250,6 +251,37 @@
     });
   }
 
+  function canPollNow() {
+    return document.visibilityState === "visible";
+  }
+
+  function pollTick() {
+    if (!canPollNow()) return;
+    refreshCount();
+    if (trayOpen) {
+      refreshList("poll");
+    }
+  }
+
+  function stopPolling() {
+    if (!pollTimer) return;
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+
+  function startPolling() {
+    if (pollTimer) return;
+    pollTimer = setInterval(pollTick, POLL_MS);
+  }
+
+  function syncPollingState() {
+    if (canPollNow()) {
+      startPolling();
+      return;
+    }
+    stopPolling();
+  }
+
   toggleBtn.addEventListener("click", function () {
     setTrayOpen(!trayOpen);
     if (trayOpen) {
@@ -275,6 +307,12 @@
       setTrayOpen(false);
     }
   });
+  document.addEventListener("visibilitychange", function () {
+    syncPollingState();
+    if (document.visibilityState === "visible") {
+      pollTick();
+    }
+  });
 
   listNode.addEventListener("click", function (ev) {
     var btn = ev.target.closest(".js-mark-read");
@@ -294,7 +332,5 @@
   });
 
   refreshCount();
-  setInterval(function () {
-    refreshCount();
-  }, POLL_MS);
+  syncPollingState();
 })();
