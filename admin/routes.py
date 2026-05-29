@@ -9469,12 +9469,21 @@ def solicitud_puede_registrar_pago(solicitud) -> bool:
         if not guard.can_charge:
             return False
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+    estados_bloqueados = {"reemplazo", "pendiente_servicio", "cancelada"}
+    estados_permitidos = {"activa", "proceso", "pagada", "espera_pago"}
+    if estado in estados_bloqueados:
+        return False
+    if estado not in estados_permitidos:
+        return False
+    if estado == "espera_pago":
+        # En espera de pago debe permitirse gestionar cobro, aunque exista desalineación temporal de resumen.
+        return True
     summary = get_payment_summary(solicitud)
     saldo_pendiente = Decimal(summary["saldo_pendiente"])
     estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
     if saldo_pendiente <= Decimal("0.00") or estado_pago == "pagado":
         return False
-    return estado in {"espera_pago", "activa", "proceso", "pagada"}
+    return True
 
 
 def _cliente_detail_regions_context(

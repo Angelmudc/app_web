@@ -247,16 +247,18 @@ def apply_payment_state_from_summary(solicitud, summary: dict[str, Decimal | str
     precio_plan = Decimal(summary_data["precio_plan"])
     saldo_pendiente = Decimal(summary_data["saldo_pendiente"])
     estado_actual = (getattr(solicitud, "estado", "") or "").strip().lower()
+    monto_requerido = max(precio_plan, Decimal("0.00")).quantize(Decimal("0.01"))
 
     solicitud.monto_pagado = format_money(total_pagado)
-    if saldo_pendiente <= Decimal("0.00") and precio_plan > Decimal("0.00"):
+    # Regla financiera: pago completo del ciclo actual => estado pagada.
+    if monto_requerido > Decimal("0.00") and total_pagado >= monto_requerido:
         solicitud.payment_cycle_estado = "pagado"
         if getattr(solicitud, "payment_cycle_closed_at", None) is None:
             solicitud.payment_cycle_closed_at = utc_now_naive()
         solicitud.estado = "pagada"
         return "pagada"
 
-    if saldo_pendiente > Decimal("0.00"):
+    if saldo_pendiente > Decimal("0.00") or (monto_requerido > Decimal("0.00") and total_pagado < monto_requerido):
         solicitud.payment_cycle_estado = "parcial" if total_pagado > Decimal("0.00") else "pendiente"
         solicitud.payment_cycle_closed_at = None
         solicitud.estado = "espera_pago" if total_pagado > Decimal("0.00") else "proceso"

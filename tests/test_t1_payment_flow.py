@@ -1704,6 +1704,108 @@ def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_reemplazo():
         assert admin_routes.solicitud_puede_registrar_pago(solicitud) is False
 
 
+def test_t1_solicitud_espera_pago_muestra_boton_pago_habilitado_en_cliente_detail():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        db.session.commit()
+    _login_admin(client)
+    resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
+
+
+def test_t1_pago_completo_desde_espera_pago_deja_solicitud_pagada():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        db.session.commit()
+        version = int(solicitud.row_version or 0)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "auto_saldo",
+            "row_version": str(version),
+            "idempotency_key": f"t1a-espera-full-{secrets.token_hex(4)}",
+            "_async_target": "#registrarPagoAsyncRegion",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    assert (resp.get_json() or {}).get("success") is True
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "pagada"
+        assert solicitud_end.estado != "espera_pago"
+
+
+def test_t1_pago_parcial_desde_espera_pago_mantiene_espera_pago():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="basico", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        db.session.commit()
+        version = int(solicitud.row_version or 0)
+    _login_admin(client)
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        data={
+            "candidata_id": str(candidata_id),
+            "payment_mode": "manual",
+            "monto_pagado": "1000",
+            "manual_reason": "abono parcial test",
+            "row_version": str(version),
+            "idempotency_key": f"t1a-espera-partial-{secrets.token_hex(4)}",
+            "_async_target": "#registrarPagoAsyncRegion",
+        },
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    assert (resp.get_json() or {}).get("success") is True
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "espera_pago"
+
+
+def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_cancelada():
+    flask_app.config["TESTING"] = True
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "cancelada"
+        db.session.commit()
+        assert admin_routes.solicitud_puede_registrar_pago(solicitud) is False
+
+
 def test_t1_cliente_detail_reactivada_con_ciclo_nuevo_pendiente_habilita_boton_pago():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
