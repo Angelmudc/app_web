@@ -64,6 +64,7 @@ rapidfuzz
 reportlab
 requests
 requests-oauthlib
+redis
 rsa
 six
 sqlalchemy
