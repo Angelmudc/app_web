@@ -121,7 +121,72 @@
     manualPanel.classList.add("d-none");
   }
 
-  async function handleCopyClick(forceGenerate) {
+  function buildMessageForLink(linkPublico) {
+    var messageBuilder = window.buildClientPublicFormMessage;
+    return typeof messageBuilder === "function"
+      ? messageBuilder(linkPublico)
+      : [
+          "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud.",
+          "",
+          "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.",
+          "",
+          linkPublico,
+          "",
+          "Cuando lo completes, envíame tu nombre y dime que ya terminaste."
+        ].join("\n");
+  }
+
+  async function generateNewPublicLink() {
+    showFeedback("Generando enlace...");
+    console.info("[client-public-message-island] requesting endpoint", {
+      url: linkUrl,
+      method: "GET"
+    });
+
+    var resp = await fetch(linkUrl, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "XMLHttpRequest" }
+    });
+    var payload = {};
+    try {
+      payload = await resp.json();
+    } catch (jsonErr) {
+      console.error("[client-public-message-island] failed to parse JSON", jsonErr);
+      payload = {};
+    }
+    console.info("[client-public-message-island] endpoint response", {
+      status: resp.status,
+      ok: resp.ok,
+      payload: payload
+    });
+
+    if (!resp.ok || !payload.ok || !payload.link_publico) {
+      var generationError = new Error("link-generation-failed");
+      generationError.details = {
+        status: resp.status,
+        payload: payload
+      };
+      throw generationError;
+    }
+    var linkPublico = String(payload.link_publico || "").trim();
+    if (!linkPublico) {
+      throw new Error("link-generation-failed");
+    }
+    lastGeneratedLink = linkPublico;
+    lastGeneratedMessage = buildMessageForLink(linkPublico);
+    return linkPublico;
+  }
+
+  async function copyLastGeneratedLink() {
+    if (!lastGeneratedLink) return false;
+    if (!lastGeneratedMessage) {
+      lastGeneratedMessage = buildMessageForLink(lastGeneratedLink);
+    }
+    return copyTextSafe(lastGeneratedMessage);
+  }
+
+  async function handleGenerateClick() {
     if (inFlight) return;
     if (Date.now() < cooldownUntilMs) return;
 
@@ -133,61 +198,8 @@
     hideManualPanel();
 
     try {
-      var linkPublico = lastGeneratedLink;
-      if (!linkPublico || forceGenerate) {
-        showFeedback("Generando enlace...");
-        console.info("[client-public-message-island] requesting endpoint", {
-          url: linkUrl,
-          method: "GET"
-        });
-
-        var resp = await fetch(linkUrl, {
-          method: "GET",
-          credentials: "same-origin",
-          headers: { "X-Requested-With": "XMLHttpRequest" }
-        });
-        var payload = {};
-        try {
-          payload = await resp.json();
-        } catch (jsonErr) {
-          console.error("[client-public-message-island] failed to parse JSON", jsonErr);
-          payload = {};
-        }
-        console.info("[client-public-message-island] endpoint response", {
-          status: resp.status,
-          ok: resp.ok,
-          payload: payload
-        });
-
-        if (!resp.ok || !payload.ok || !payload.link_publico) {
-          var generationError = new Error("link-generation-failed");
-          generationError.details = {
-            status: resp.status,
-            payload: payload
-          };
-          throw generationError;
-        }
-        linkPublico = String(payload.link_publico || "").trim();
-        if (!linkPublico) {
-          throw new Error("link-generation-failed");
-        }
-        lastGeneratedLink = linkPublico;
-      }
-
-      var messageBuilder = window.buildClientPublicFormMessage;
-      var message = typeof messageBuilder === "function"
-        ? messageBuilder(linkPublico)
-        : [
-            "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud.",
-            "",
-            "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor.",
-            "",
-            linkPublico,
-            "",
-            "Cuando lo completes, envíame tu nombre y dime que ya terminaste."
-          ].join("\n");
-      lastGeneratedMessage = message;
-      var copied = await copyTextSafe(message);
+      await generateNewPublicLink();
+      var copied = await copyLastGeneratedLink();
       if (!copied) {
         throw new Error("copy-failed");
       }
@@ -226,14 +238,49 @@
     }
   }
 
+  async function handleRetryCopyClick() {
+    if (!lastGeneratedLink && !lastGeneratedMessage) return;
+    if (inFlight) return;
+    if (Date.now() < cooldownUntilMs) return;
+
+    inFlight = true;
+    cooldownUntilMs = Date.now() + 2500;
+    btn.disabled = true;
+    setButtonVisualState("loading");
+    setButtonLabel("Copiando mensaje...");
+
+    try {
+      var copied = await copyLastGeneratedLink();
+      if (!copied) {
+        throw new Error("copy-failed");
+      }
+      hideManualPanel();
+      setButtonVisualState("success");
+      setButtonLabel("Mensaje copiado");
+      showFeedback("Mensaje copiado");
+      cooldownUntilMs = Date.now() + 1400;
+    } catch (err) {
+      setButtonVisualState("error");
+      setButtonLabel("Copia automática falló");
+      showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
+      showManualPanel(
+        lastGeneratedLink,
+        lastGeneratedMessage,
+        "Enlace generado, pero no se pudo copiar automáticamente. Puedes copiar manualmente o reintentar."
+      );
+    } finally {
+      inFlight = false;
+      restoreButtonWhenReady();
+    }
+  }
+
   btn.addEventListener("click", function () {
-    handleCopyClick(!lastGeneratedLink);
+    handleGenerateClick();
   });
 
   if (retryCopyBtn) {
     retryCopyBtn.addEventListener("click", function () {
-      if (!lastGeneratedMessage && !lastGeneratedLink) return;
-      handleCopyClick(false);
+      handleRetryCopyClick();
     });
   }
 
