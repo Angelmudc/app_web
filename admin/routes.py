@@ -25172,8 +25172,16 @@ def generar_link_publico_cliente_nuevo():
 
 @admin_bp.route('/solicitudes/nueva-publica/link.json', methods=['GET'])
 @login_required
-@admin_required
+@staff_required
 def generar_link_publico_cliente_nuevo_json():
+    role = str(getattr(current_user, "role", "") or "").strip().lower()
+    if role not in {"owner", "admin"}:
+        return jsonify({
+            "ok": False,
+            "error": "forbidden_role",
+            "message": "No tienes permisos para generar este enlace.",
+        }), 403
+
     limit = _consume_nueva_publica_link_quota()
     if not limit.get("allowed"):
         retry_after = int(limit.get("retry_after_sec") or 10)
@@ -25202,9 +25210,12 @@ def generar_link_publico_cliente_nuevo_json():
 
     created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
     link = generar_link_publico_compartible_cliente_nuevo(created_by=created_by)
+    link_publico = str(link or "").strip()
+    if link_publico and not link_publico.lower().startswith(("http://", "https://")):
+        link_publico = urljoin(request.host_url, link_publico)
     return jsonify({
         "ok": True,
-        "link_publico": link,
+        "link_publico": link_publico,
     })
 
 

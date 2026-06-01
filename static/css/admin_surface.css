@@ -388,6 +388,16 @@
   opacity: 1;
   transform: translateY(0);
 }
+.client-public-message-manual{
+  border: 1px solid rgba(130, 190, 179, .35);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(248, 252, 251, .98), rgba(243, 249, 248, .98));
+}
+.client-public-message-manual textarea,
+.client-public-message-manual input{
+  font-size: .84rem;
+  line-height: 1.35;
+}
 
 @media (max-width: 768px){
   .client-public-message-island{
@@ -399,6 +409,12 @@
   .client-public-message-feedback{
     right: 12px;
     bottom: 228px;
+  }
+  .client-public-message-manual{
+    right: 12px !important;
+    left: 12px;
+    width: auto !important;
+    bottom: 86px !important;
   }
 }
 
