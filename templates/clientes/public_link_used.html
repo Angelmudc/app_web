@@ -1,5 +1,5 @@
 {% extends 'clientes/public_base.html' %}
-{% set meta_description = "Este enlace oficial ya fue utilizado. Si necesita otra solicitud, solicite un nuevo enlace a Doméstica del Cibao A&D." %}
+{% set meta_description = "Tu solicitud ya fue enviada correctamente. Este enlace oficial ya cumplió su propósito y no necesitas volver a llenar el formulario." %}
 {% set og_title = "Doméstica del Cibao A&D — Enlace Ya Utilizado" %}
 {% set og_description = "La solicitud asociada a este enlace oficial ya fue registrada correctamente." %}
 {% set og_type = "website" %}
@@ -7,7 +7,7 @@
 {% block title %}Doméstica del Cibao A&D — Enlace Ya Utilizado{% endblock %}
 {% set wa_number = (config.get("SUPPORT_WHATSAPP_NUMBER") or "18094296892") %}
 {% set wa_display = (config.get("SUPPORT_WHATSAPP_DISPLAY") or "+1 809 429 6892") %}
-{% set wa_text = "Hola, necesito ayuda para continuar con mi solicitud." %}
+{% set wa_text = "Hola, necesito ayuda con el seguimiento de mi solicitud ya enviada." %}
 {% set wa_url = "https://wa.me/" ~ wa_number ~ "?text=" ~ (wa_text|urlencode) %}
 
 {% block head %}
@@ -83,14 +83,14 @@
       <div class="card-body">
         <div class="used-badge"><i class="bi bi-check-circle"></i> Enlace ya utilizado</div>
 
-        <h1 class="h4 fw-bold mt-3 mb-2">Este enlace ya fue utilizado</h1>
-        <p class="text-secondary mb-0">Tu solicitud ya fue enviada correctamente y este enlace no se puede reutilizar.</p>
+        <h1 class="h4 fw-bold mt-3 mb-2">Tu solicitud ya fue enviada correctamente.</h1>
+        <p class="text-secondary mb-0">Este enlace ya cumplió su propósito y no se puede reutilizar.</p>
 
         <div class="used-note">
           {% if solicitud and solicitud.codigo_solicitud %}
-            Solicitud registrada: <strong>{{ solicitud.codigo_solicitud }}</strong>.
+            Solicitud registrada con código: <strong>{{ solicitud.codigo_solicitud }}</strong>.
           {% elif solicitud_id %}
-            Solicitud registrada con referencia interna #{{ solicitud_id }}.
+            Solicitud registrada con referencia interna: <strong>#{{ solicitud_id }}</strong>.
           {% else %}
             Ya existe una solicitud asociada a este enlace.
           {% endif %}
@@ -99,8 +99,13 @@
           {% endif %}
         </div>
 
+        <div class="used-note mt-3">
+          No necesitas volver a llenar el formulario.
+          El equipo de <strong>Doméstica del Cibao</strong> estará revisando tu solicitud.
+        </div>
+
         <div class="used-wa">
-          <div class="fw-semibold mb-1">Para continuar, escríbenos directamente al WhatsApp:</div>
+          <div class="fw-semibold mb-1">Si deseas dar seguimiento, escríbenos por WhatsApp:</div>
           <a class="used-wa-number" href="{{ wa_url }}" target="_blank" rel="noopener">
             <i class="bi bi-whatsapp me-1"></i>{{ wa_display }}
           </a>
