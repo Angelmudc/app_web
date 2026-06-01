@@ -17118,7 +17118,7 @@ def bandeja_formularios_publicos_nuevos():
             ),
         )
         .filter(Solicitud.review_status.isnot(None))
-        .filter(Solicitud.review_status == "nuevo")
+        .filter(Solicitud.review_status.in_(tuple(_PUBLIC_INTAKE_PENDING_STATUSES)))
     )
 
     try:

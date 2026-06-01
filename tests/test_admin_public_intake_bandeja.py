@@ -95,7 +95,7 @@ def test_owner_sees_public_intake_menu_and_bandeja_lists_pending_items():
     assert inbox.status_code == 200
     inbox_html = inbox.get_data(as_text=True)
     assert "Bandeja de formularios públicos" in inbox_html
-    assert "Solicitudes nuevas por revisar" in inbox_html
+    assert ("Solicitudes pendientes por revisar" in inbox_html) or ("Solicitudes nuevas por revisar" in inbox_html)
     assert "Solicitudes de hoy" in inbox_html
     assert "Cliente Test" in inbox_html
     assert "EXT-0007" in inbox_html
@@ -176,7 +176,7 @@ def test_clientes_list_shows_inbox_quick_card_only_for_owner_admin():
     assert "Bandeja de solicitudes nuevas" not in secretaria_html
 
 
-def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures():
+def test_bandeja_nuevas_pending_and_hoy_shows_all_statuses_with_real_fixtures():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     owner = flask_app.test_client()
@@ -253,7 +253,7 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
 
         def paginate(self, **_kwargs):
             self._paginate_calls += 1
-            selected = [r for r in self._items if r.review_status == "nuevo"] if self._paginate_calls == 1 else list(self._items)
+            selected = [r for r in self._items if r.review_status in {"nuevo", "en_gestion"}] if self._paginate_calls == 1 else list(self._items)
             return SimpleNamespace(
                 items=selected,
                 page=1,
@@ -280,16 +280,17 @@ def test_bandeja_nuevas_only_nuevo_and_hoy_shows_all_statuses_with_real_fixtures
     assert denied_resp.status_code == 403
 
     html = owner_resp.get_data(as_text=True)
-    assert "Solicitudes nuevas por revisar" in html
+    assert ("Solicitudes pendientes por revisar" in html) or ("Solicitudes nuevas por revisar" in html)
     assert "Solicitudes de hoy" in html
 
-    nuevas_section = html.split("Solicitudes nuevas por revisar", 1)[1].split("Solicitudes de hoy", 1)[0]
+    marker = "Solicitudes pendientes por revisar" if "Solicitudes pendientes por revisar" in html else "Solicitudes nuevas por revisar"
+    nuevas_section = html.split(marker, 1)[1].split("Solicitudes de hoy", 1)[0]
     hoy_section = html.split("Solicitudes de hoy", 1)[1]
 
-    # Bandeja nuevas: solo review_status = nuevo
+    # Bandeja pendientes: incluye nuevo + en_gestion
     assert n_new in nuevas_section
     assert "EXT-0011" in nuevas_section
-    assert n_mgmt not in nuevas_section
+    assert n_mgmt in nuevas_section
     assert n_rev not in nuevas_section
     assert n_dis not in nuevas_section
 

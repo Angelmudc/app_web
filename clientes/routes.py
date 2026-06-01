@@ -1006,6 +1006,8 @@ def _consume_public_new_token_on_duplicate(
     actor_ip: str,
 ):
     now_ref = utc_now_naive()
+    req_ip = str(actor_ip or "")[:64] or None
+    req_ua = str((request.user_agent.string or ""))[:512] or None
     usage_row = _public_new_link_usage_by_hash(token_hash_storage)
     if usage_row is None:
         db.session.add(
@@ -1013,6 +1015,10 @@ def _consume_public_new_token_on_duplicate(
                 token_hash=token_hash_storage,
                 cliente_id=int(getattr(dup_row, "id", 0) or 0) or None,
                 solicitud_id=None,
+                consumption_reason="duplicate_client_blocked",
+                public_form_source="cliente_nuevo",
+                request_ip=req_ip,
+                request_user_agent=req_ua,
                 used_at=now_ref,
             )
         )
@@ -1048,6 +1054,10 @@ def _consume_public_existing_token_on_terms_reject(
             token_hash=token_hash_storage,
             cliente_id=int(cliente_id or 0) or None,
             solicitud_id=None,
+            consumption_reason="terms_rejected",
+            public_form_source="cliente_existente",
+            request_ip=str((_client_ip_for_security_layer() or request.remote_addr or ""))[:64] or None,
+            request_user_agent=str((request.user_agent.string or ""))[:512] or None,
             used_at=utc_now_naive(),
         )
     )
@@ -1068,6 +1078,10 @@ def _consume_public_new_token_on_terms_reject(
             token_hash=token_hash_storage,
             cliente_id=None,
             solicitud_id=None,
+            consumption_reason="terms_rejected",
+            public_form_source="cliente_nuevo",
+            request_ip=str((_client_ip_for_security_layer() or request.remote_addr or ""))[:64] or None,
+            request_user_agent=str((request.user_agent.string or ""))[:512] or None,
             used_at=utc_now_naive(),
         )
     )
@@ -7798,6 +7812,10 @@ def solicitud_publica_nueva_token(token):
                         token_hash=token_hash_storage,
                         cliente_id=int(getattr(c, "id", 0) or 0) or None,
                         solicitud_id=int(getattr(s, "id", 0) or 0) or None,
+                        consumption_reason="submitted",
+                        public_form_source="cliente_nuevo",
+                        request_ip=str(terms_evidence_ip or "")[:64] or None,
+                        request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
                         used_at=now_ref,
                     )
                 )
@@ -8349,6 +8367,10 @@ def solicitud_publica(token):
                     token_hash=token_hash_storage,
                     cliente_id=int(c.id),
                     solicitud_id=int(getattr(s, "id", 0) or 0) or None,
+                    consumption_reason="submitted",
+                    public_form_source="cliente_existente",
+                    request_ip=str(terms_evidence_ip or "")[:64] or None,
+                    request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
                     used_at=now_ref,
                 )
             )

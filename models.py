@@ -738,6 +738,10 @@ class PublicSolicitudTokenUso(db.Model):
     token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=False, index=True)
     solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+    consumption_reason = db.Column(db.String(40), nullable=False, default="submitted", server_default=text("'submitted'"), index=True)
+    public_form_source = db.Column(db.String(30), nullable=True, index=True)
+    request_ip = db.Column(db.String(64), nullable=True)
+    request_user_agent = db.Column(db.String(512), nullable=True)
 
     used_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
@@ -756,6 +760,10 @@ class PublicSolicitudClienteNuevoTokenUso(db.Model):
     token_hash = db.Column(db.String(64), nullable=False, unique=True, index=True)
     cliente_id = db.Column(db.Integer, db.ForeignKey("clientes.id"), nullable=True, index=True)
     solicitud_id = db.Column(db.Integer, db.ForeignKey("solicitudes.id"), nullable=True, index=True)
+    consumption_reason = db.Column(db.String(40), nullable=False, default="submitted", server_default=text("'submitted'"), index=True)
+    public_form_source = db.Column(db.String(30), nullable=True, index=True)
+    request_ip = db.Column(db.String(64), nullable=True)
+    request_user_agent = db.Column(db.String(512), nullable=True)
 
     used_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive)
