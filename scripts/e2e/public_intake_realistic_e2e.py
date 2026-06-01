@@ -441,7 +441,7 @@ def _extract_new_entities_since(ts_start: datetime) -> tuple[list[Cliente], list
         return clientes, solicitudes
 
 
-def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str, Any]:
+def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud], *, started_at: datetime) -> dict[str, Any]:
     cliente_ids = [int(c.id) for c in clientes]
     with flask_app.app_context():
         dups_email = (
@@ -482,6 +482,7 @@ def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str
             PublicSolicitudTokenUso.query
             .filter(PublicSolicitudTokenUso.consumption_reason == "submitted")
             .filter(PublicSolicitudTokenUso.solicitud_id.is_(None))
+            .filter(PublicSolicitudTokenUso.used_at >= started_at)
             .count()
             or 0
         )
@@ -489,6 +490,7 @@ def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str
             PublicSolicitudClienteNuevoTokenUso.query
             .filter(PublicSolicitudClienteNuevoTokenUso.consumption_reason == "submitted")
             .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id.is_(None))
+            .filter(PublicSolicitudClienteNuevoTokenUso.used_at >= started_at)
             .count()
             or 0
         )
@@ -624,6 +626,8 @@ def run() -> E2EReport:
                 def on_console(msg):
                     if msg.type != "error":
                         return
+                    if scope == "public_form" and "status of 410 (GONE)" in (msg.text or ""):
+                        return
                     item = {"scope": scope, "error": msg.text}
                     runtime["console_errors"].append(item)
                     if _is_external_runtime_noise(msg.text or "") or scope != "public_form":
@@ -636,6 +640,8 @@ def run() -> E2EReport:
                     if status < 400:
                         return
                     item = {"scope": scope, "url": resp.url, "status": status}
+                    if scope == "public_form" and status == 410 and "/solicitud/" in (resp.url or ""):
+                        return
                     runtime["responses_4xx_5xx"].append(item)
                     if _is_external_runtime_noise(resp.url or ""):
                         runtime["external_runtime_noise"].append({"type": "http_error", **item})
@@ -746,7 +752,15 @@ def run() -> E2EReport:
                     cid = created_client_ids[0]
                     page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
                     same_token_link = _extract_link_from_input(page, "linkPublico", base_url)
-                    token_value = same_token_link.rstrip("/").split("/")[-1]
+                    with flask_app.app_context():
+                        usage_before = int(
+                            PublicSolicitudTokenUso.query
+                            .filter(PublicSolicitudTokenUso.cliente_id == int(cid))
+                            .filter(PublicSolicitudTokenUso.consumption_reason == "submitted")
+                            .filter(PublicSolicitudTokenUso.public_form_source == "cliente_existente")
+                            .count()
+                            or 0
+                        )
                     p_a = context.new_page()
                     p_b = context.new_page()
                     _wire_runtime_monitor(p_a, "public_form")
@@ -763,11 +777,24 @@ def run() -> E2EReport:
                         p_a.wait_for_load_state("networkidle", timeout=12000)
                         p_b.wait_for_load_state("networkidle", timeout=12000)
                         with flask_app.app_context():
-                            th = hashlib.sha256(token_value.encode("utf-8")).hexdigest()
-                            usage_count = int(PublicSolicitudTokenUso.query.filter_by(token_hash=th).count() or 0)
-                            row = PublicSolicitudTokenUso.query.filter_by(token_hash=th).first()
+                            usage_after = int(
+                                PublicSolicitudTokenUso.query
+                                .filter(PublicSolicitudTokenUso.cliente_id == int(cid))
+                                .filter(PublicSolicitudTokenUso.consumption_reason == "submitted")
+                                .filter(PublicSolicitudTokenUso.public_form_source == "cliente_existente")
+                                .count()
+                                or 0
+                            )
+                            row = (
+                                PublicSolicitudTokenUso.query
+                                .filter(PublicSolicitudTokenUso.cliente_id == int(cid))
+                                .filter(PublicSolicitudTokenUso.consumption_reason == "submitted")
+                                .filter(PublicSolicitudTokenUso.public_form_source == "cliente_existente")
+                                .order_by(PublicSolicitudTokenUso.id.desc())
+                                .first()
+                            )
                             runtime["concurrency_same_token_ok"] = bool(
-                                usage_count == 1 and int(getattr(row, "solicitud_id", 0) or 0) > 0
+                                (usage_after - usage_before) == 1 and int(getattr(row, "solicitud_id", 0) or 0) > 0
                             )
                     finally:
                         p_a.close()
@@ -847,7 +874,7 @@ def run() -> E2EReport:
         if len(solicitudes) < expected_solicitudes_min:
             bugs.append(f"Esperado >={expected_solicitudes_min} solicitudes, encontradas {len(solicitudes)}")
 
-        audit = _audit_db(clientes, solicitudes)
+        audit = _audit_db(clientes, solicitudes, started_at=started)
         if audit["duplicados_email"]:
             bugs.append("Duplicados por email detectados")
         if audit["duplicados_telefono"]:

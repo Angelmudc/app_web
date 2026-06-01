@@ -40,6 +40,7 @@ def _args() -> argparse.Namespace:
     p.add_argument("--telefono-like", default="")
     p.add_argument("--nombre-like", default="")
     p.add_argument("--cedula-like", default="")
+    p.add_argument("--new-since", default="2026-06-01 15:45:00")
     return p.parse_args()
 
 
@@ -59,6 +60,7 @@ def run() -> int:
         cedula_expr = "coalesce(s.cedula,'')" if has_solicitud_cedula else "''"
 
         print("PUBLIC_INTAKE_AUDIT_START")
+        new_since = (args.new_since or "2026-06-01").strip()
 
         summary = db.session.execute(text("""
             select
@@ -101,6 +103,7 @@ def run() -> int:
               s.public_form_source as solicitud_source,
               case when s.review_status in ('nuevo','en_gestion') then true else false end as appears_in_pending,
               case
+                when s.id is null and u.consumption_reason='submitted' and u.used_at < cast(:new_since as timestamp) then 'token_submitted_without_solicitud_historico'
                 when s.id is null and u.consumption_reason='submitted' then 'token_submitted_without_solicitud'
                 when s.id is null then 'token_consumed_non_submit_path'
                 when s.review_status not in ('nuevo','en_gestion') then 'solicitud_outside_pending_filter'
@@ -125,6 +128,7 @@ def run() -> int:
             "telefono_like": (args.telefono_like or "").strip(),
             "nombre_like": (args.nombre_like or "").strip(),
             "cedula_like": (args.cedula_like or "").strip(),
+            "new_since": new_since,
         }).mappings().all()
 
         for r in rows:
@@ -153,6 +157,25 @@ def run() -> int:
         """)).mappings().all()
         for a in agg:
             print(f"AGG reason={a['consumption_reason']} total={a['total']} without_solicitud={a['without_solicitud']}")
+
+        agg_new = db.session.execute(text(f"""
+            with used as (
+                select used_at, {reason_expr} as consumption_reason, solicitud_id
+                from public_solicitud_tokens_usados
+                union all
+                select used_at, {reason_expr} as consumption_reason, solicitud_id
+                from public_solicitud_cliente_nuevo_tokens_usados
+            )
+            select
+              sum(case when consumption_reason='submitted' and solicitud_id is null and used_at >= cast(:new_since as timestamp) then 1 else 0 end) as token_submitted_without_solicitud_new,
+              sum(case when consumption_reason='submitted' and solicitud_id is null and used_at < cast(:new_since as timestamp) then 1 else 0 end) as token_submitted_without_solicitud_historico
+            from used
+        """), {"new_since": new_since}).mappings().first()
+        print(
+            f"AGG_NEW since={new_since}"
+            f" token_submitted_without_solicitud_new={int(agg_new['token_submitted_without_solicitud_new'] or 0)}"
+            f" token_submitted_without_solicitud_historico={int(agg_new['token_submitted_without_solicitud_historico'] or 0)}"
+        )
 
         print("PUBLIC_INTAKE_AUDIT_END")
     return 0

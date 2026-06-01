@@ -7732,6 +7732,19 @@ def solicitud_publica_nueva_token(token):
             }
 
             def _persist_public_new(_attempt: int) -> None:
+                provisional_usage = PublicSolicitudClienteNuevoTokenUso(
+                    token_hash=token_hash_storage,
+                    cliente_id=None,
+                    solicitud_id=None,
+                    consumption_reason="submitted",
+                    public_form_source="cliente_nuevo",
+                    request_ip=str(terms_evidence_ip or "")[:64] or None,
+                    request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
+                    used_at=now_ref,
+                )
+                db.session.add(provisional_usage)
+                db.session.flush()
+
                 codigo_cliente = _next_cliente_codigo_publico()
                 state["cliente_codigo"] = codigo_cliente
 
@@ -7804,21 +7817,8 @@ def solicitud_publica_nueva_token(token):
                 db.session.flush()
                 state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
 
-                existing_usage = _public_new_link_usage_by_hash(token_hash_storage)
-                if existing_usage is not None:
-                    raise RuntimeError("token_already_used")
-                db.session.add(
-                    PublicSolicitudClienteNuevoTokenUso(
-                        token_hash=token_hash_storage,
-                        cliente_id=int(getattr(c, "id", 0) or 0) or None,
-                        solicitud_id=int(getattr(s, "id", 0) or 0) or None,
-                        consumption_reason="submitted",
-                        public_form_source="cliente_nuevo",
-                        request_ip=str(terms_evidence_ip or "")[:64] or None,
-                        request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
-                        used_at=now_ref,
-                    )
-                )
+                provisional_usage.cliente_id = int(getattr(c, "id", 0) or 0) or None
+                provisional_usage.solicitud_id = int(getattr(s, "id", 0) or 0) or None
 
                 c.total_solicitudes = (c.total_solicitudes or 0) + 1
                 c.fecha_ultima_solicitud = now_ref
@@ -8311,6 +8311,19 @@ def solicitud_publica(token):
         now_ref = utc_now_naive()
 
         def _persist_public_solicitud(_attempt: int) -> None:
+            provisional_usage = PublicSolicitudTokenUso(
+                token_hash=token_hash_storage,
+                cliente_id=int(c.id),
+                solicitud_id=None,
+                consumption_reason="submitted",
+                public_form_source="cliente_existente",
+                request_ip=str(terms_evidence_ip or "")[:64] or None,
+                request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
+                used_at=now_ref,
+            )
+            db.session.add(provisional_usage)
+            db.session.flush()
+
             idx = Solicitud.query.filter_by(cliente_id=c.id).count()
             while True:
                 codigo = compose_codigo_solicitud(str(c.codigo or ""), idx)
@@ -8359,21 +8372,7 @@ def solicitud_publica(token):
             db.session.flush()
             solicitud_id_holder["value"] = int(getattr(s, "id", 0) or 0)
 
-            existing_usage = _public_link_usage_by_hash(token_hash_storage)
-            if existing_usage is not None:
-                raise RuntimeError("token_already_used")
-            db.session.add(
-                PublicSolicitudTokenUso(
-                    token_hash=token_hash_storage,
-                    cliente_id=int(c.id),
-                    solicitud_id=int(getattr(s, "id", 0) or 0) or None,
-                    consumption_reason="submitted",
-                    public_form_source="cliente_existente",
-                    request_ip=str(terms_evidence_ip or "")[:64] or None,
-                    request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
-                    used_at=now_ref,
-                )
-            )
+            provisional_usage.solicitud_id = int(getattr(s, "id", 0) or 0) or None
 
             c.total_solicitudes = (c.total_solicitudes or 0) + 1
             c.fecha_ultima_solicitud = now_ref
