@@ -1241,8 +1241,6 @@ def resolve_public_share_alias(code: str):
         row = PublicSolicitudShareAlias.query.filter_by(code=code, is_active=True).first()
         if row is None:
             return None
-        row.last_seen_at = utc_now_naive()
-        db.session.commit()
         return row
     except Exception:
         db.session.rollback()
@@ -1274,6 +1272,7 @@ def _public_link_usage_by_hash(token_hash: str):
     try:
         return PublicSolicitudTokenUso.query.filter_by(token_hash=token_hash).first()
     except Exception:
+        db.session.rollback()
         return None
 
 
@@ -1321,6 +1320,7 @@ def _public_new_link_usage_by_hash(token_hash: str):
     try:
         return PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=token_hash).first()
     except Exception:
+        db.session.rollback()
         return None
 
 
