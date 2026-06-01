@@ -363,11 +363,47 @@
   background: rgba(82, 229, 193, .23);
   color: #d5fff4;
   border: 1px solid rgba(142, 248, 223, .45);
+  transition: transform .2s ease, background-color .2s ease, border-color .2s ease;
 }
 .client-public-message-island .cpmi-label{
   font-weight: 800;
   letter-spacing: .2px;
   font-size: .92rem;
+}
+.client-public-message-island:disabled{
+  cursor: wait;
+  opacity: .92;
+}
+.client-public-message-island.is-loading{
+  border-color: rgba(133, 225, 255, .72);
+  background: linear-gradient(145deg, rgba(9, 30, 43, .95), rgba(10, 56, 71, .85));
+}
+.client-public-message-island.is-loading .cpmi-icon{
+  animation: cpmiSpin .9s linear infinite;
+  background: rgba(90, 205, 255, .28);
+  border-color: rgba(151, 229, 255, .65);
+}
+.client-public-message-island.is-success{
+  border-color: rgba(121, 233, 190, .78);
+  background: linear-gradient(145deg, rgba(8, 31, 29, .95), rgba(10, 61, 46, .84));
+}
+.client-public-message-island.is-success .cpmi-icon{
+  background: rgba(114, 248, 186, .28);
+  border-color: rgba(170, 255, 220, .75);
+  transform: scale(1.04);
+}
+.client-public-message-island.is-error{
+  border-color: rgba(255, 166, 166, .78);
+  background: linear-gradient(145deg, rgba(39, 17, 18, .94), rgba(58, 22, 24, .84));
+}
+.client-public-message-island.is-error .cpmi-icon{
+  background: rgba(255, 136, 136, .25);
+  border-color: rgba(255, 188, 188, .72);
+}
+
+@keyframes cpmiSpin{
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 .client-public-message-feedback{
   position: fixed;

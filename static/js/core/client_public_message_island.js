@@ -22,6 +22,7 @@
   var lastGeneratedLink = "";
   var lastGeneratedMessage = "";
   var labelNode = btn.querySelector(".cpmi-label");
+  var iconNode = btn.querySelector(".cpmi-icon");
   var defaultLabel = labelNode ? String(labelNode.textContent || "").trim() : "";
 
   function setButtonLabel(text) {
@@ -29,11 +30,22 @@
     labelNode.textContent = text;
   }
 
+  function setButtonVisualState(state) {
+    btn.classList.remove("is-loading", "is-success", "is-error");
+    if (state) {
+      btn.classList.add("is-" + state);
+    }
+    if (iconNode) {
+      iconNode.setAttribute("aria-hidden", "true");
+    }
+  }
+
   function restoreButtonWhenReady() {
     var waitMs = Math.max(0, cooldownUntilMs - Date.now());
     window.setTimeout(function () {
       if (!inFlight && Date.now() >= cooldownUntilMs) {
         btn.disabled = false;
+        setButtonVisualState("");
         setButtonLabel(defaultLabel || "Copiar formulario cliente");
       }
     }, waitMs);
@@ -116,12 +128,13 @@
     inFlight = true;
     cooldownUntilMs = Date.now() + 5000;
     btn.disabled = true;
+    setButtonVisualState("loading");
+    setButtonLabel("Generando enlace...");
     hideManualPanel();
 
     try {
       var linkPublico = lastGeneratedLink;
       if (!linkPublico || forceGenerate) {
-        setButtonLabel("Generando enlace...");
         showFeedback("Generando enlace...");
         console.info("[client-public-message-island] requesting endpoint", {
           url: linkUrl,
@@ -179,7 +192,10 @@
         throw new Error("copy-failed");
       }
       hideManualPanel();
+      setButtonVisualState("success");
+      setButtonLabel("Mensaje copiado");
       showFeedback("Mensaje copiado");
+      cooldownUntilMs = Date.now() + 1400;
     } catch (err) {
       cooldownUntilMs = Date.now() + 2500;
       if (String((err && err.message) || "") === "link-generation-failed") {
@@ -187,12 +203,16 @@
           error: err,
           details: err && err.details ? err.details : null
         });
+        setButtonVisualState("error");
+        setButtonLabel("No se pudo generar el enlace");
         showFeedback("No se pudo generar el enlace");
       } else {
         console.error("[client-public-message-island] copy failed after link generation", {
           error: err,
           link: lastGeneratedLink
         });
+        setButtonVisualState("error");
+        setButtonLabel("Copia automática falló");
         showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
         showManualPanel(
           lastGeneratedLink,
