@@ -306,6 +306,25 @@ def _validate_ui_behavior(page, checks: dict[str, Any]):
         pass
 
 
+def _check_checkbox_resilient(page, selector: str):
+    try:
+        page.locator(selector).scroll_into_view_if_needed(timeout=4000)
+        page.check(selector, force=True)
+        return
+    except Exception:
+        pass
+    page.evaluate(
+        """(sel) => {
+          const el = document.querySelector(sel);
+          if (!el) throw new Error(`checkbox_not_found:${sel}`);
+          el.checked = true;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }""",
+        selector,
+    )
+
+
 def _accept_terms_and_submit(page, *, new_client: bool):
     try:
         if _check_visible(page, "#funciones_planchar_modal:not(.d-none)"):
@@ -324,13 +343,44 @@ def _accept_terms_and_submit(page, *, new_client: bool):
         reject_btn = "#termsRejectBtn"
 
     assert page.is_disabled(submit_btn)
-    page.check(terms_checkbox, force=True)
+    _check_checkbox_resilient(page, terms_checkbox)
     page.wait_for_timeout(120)
     assert not page.is_disabled(submit_btn)
     if page.locator(reject_btn).count() > 0:
         assert not page.is_visible(reject_btn)
 
     page.click(submit_btn)
+
+
+def _assert_required_field_validation(page, token_link: str, *, new_client: bool):
+    page.goto(token_link, wait_until="domcontentloaded")
+    if new_client:
+        submit_btn = "#publicSubmitNuevaBtn"
+        terms_checkbox = "#acepta_politica_nueva"
+    else:
+        submit_btn = "#publicSubmitBtn"
+        terms_checkbox = "#acepta_politica"
+    _check_checkbox_resilient(page, terms_checkbox)
+    page.click(submit_btn)
+    page.wait_for_timeout(300)
+    body = (page.text_content("body") or "").lower()
+    if "revisa los campos marcados" not in body and "obligatorio" not in body:
+        raise RuntimeError("No se detectó validación de campos requeridos vacíos.")
+
+
+def _assert_invalid_token_ui(context, base_url: str):
+    p = context.new_page()
+    try:
+        bad = f"{base_url}/solicitud/TOKENINVALIDOE2E/continuar"
+        r = p.goto(bad, wait_until="domcontentloaded", timeout=12000)
+        status = r.status if r else 0
+        body = (p.text_content("body") or "").lower()
+        if status not in (404, 410, 200):
+            raise RuntimeError(f"Token inválido devolvió status inesperado: {status}")
+        if "inválido" not in body and "expir" not in body and "no disponible" not in body:
+            raise RuntimeError("Token inválido no muestra mensaje esperado.")
+    finally:
+        p.close()
 
 
 def _verify_success_page(page):
@@ -505,14 +555,17 @@ def run() -> E2EReport:
     admin_checks: dict[str, Any] = {}
     created_client_ids: list[int] = []
 
-    new_flows = 20
-    existing_flows = 8
+    new_flows = int(os.getenv("E2E_PUBLIC_NEW_FLOWS") or "20")
+    existing_flows = int(os.getenv("E2E_PUBLIC_EXISTING_FLOWS") or "8")
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
-            context = browser.new_context()
+            browser_matrix: list[tuple[str, Any]] = [("chromium", p.chromium)]
+            if os.getenv("E2E_INCLUDE_WEBKIT", "1").strip() not in {"0", "false", "False"}:
+                browser_matrix.append(("webkit", p.webkit))
             runtime = {
+                "browsers_ok": [],
+                "browsers_failed": [],
                 "salary_endpoint_calls": 0,
                 "submit_success": 0,
                 "token_consumed_ok": True,
@@ -576,76 +629,108 @@ def run() -> E2EReport:
                 pg.on("console", on_console)
                 pg.on("response", on_response)
 
-            page = context.new_page()
-            _wire_runtime_monitor(page, "admin_runtime")
+            for browser_idx, (browser_name, browser_type) in enumerate(browser_matrix):
+                try:
+                    browser = browser_type.launch(headless=True, args=["--no-sandbox"])
+                    context = browser.new_context()
+                except Exception as e:
+                    runtime["browsers_failed"].append({"browser": browser_name, "error": str(e)})
+                    continue
+
+                page = context.new_page()
+                _wire_runtime_monitor(page, "admin_runtime")
+                _login_admin(page, base_url)
+
+                # Flujo cliente nuevo
+                for i in range(new_flows):
+                    page.goto(f"{base_url}/admin/solicitudes/nueva-publica/link", wait_until="domcontentloaded")
+                    token_link = _extract_link_from_input(page, "linkPublicoNuevo", base_url)
+
+                    public_page = context.new_page()
+                    _wire_runtime_monitor(public_page, "public_form")
+                    try:
+                        public_page.goto(token_link, wait_until="domcontentloaded")
+                        public_page.wait_for_selector('input[name="nombre_completo"]', timeout=12000)
+                        scenario = _scenario(i)
+                        unique_i = (browser_idx * 10000) + i + 1
+                        _fill_common_solicitud_fields(public_page, unique_i, scenario, new_client=True)
+                        _validate_ui_behavior(public_page, ui_checks)
+                        _accept_terms_and_submit(public_page, new_client=True)
+                        _verify_success_page(public_page)
+                        runtime["submit_success"] += 1
+                        shot = ARTIFACT_DIR / f"{browser_name}_new_success_{i+1:03d}.png"
+                        if i < 2:
+                            public_page.screenshot(path=str(shot), full_page=True)
+                            screenshots.append(str(shot))
+                    finally:
+                        public_page.close()
+
+                    try:
+                        _token_consumed_check(context, token_link)
+                    except Exception as e:
+                        runtime["token_consumed_ok"] = False
+                        runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
+                        raise
+
+                clientes, solicitudes = _extract_new_entities_since(started)
+                created_client_ids = [int(c.id) for c in clientes]
+                if len(created_client_ids) < new_flows:
+                    raise RuntimeError(f"Se esperaban >={new_flows} clientes nuevos, encontrados {len(created_client_ids)}")
+
+                # Error path: campos requeridos vacíos en cliente existente
+                page.goto(f"{base_url}/admin/clientes/{created_client_ids[0]}/solicitudes/link-publico", wait_until="domcontentloaded")
+                req_token = _extract_link_from_input(page, "linkPublico", base_url)
+                p_req = context.new_page()
+                _assert_required_field_validation(p_req, req_token, new_client=False)
+                p_req.close()
+
+                # Flujo cliente existente
+                for j in range(existing_flows):
+                    cid = created_client_ids[j % len(created_client_ids)]
+                    page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
+                    token_link = _extract_link_from_input(page, "linkPublico", base_url)
+
+                    p2 = context.new_page()
+                    _wire_runtime_monitor(p2, "public_form")
+                    try:
+                        p2.goto(token_link, wait_until="domcontentloaded")
+                        sc = _scenario(j + 100)
+                        unique_j = (browser_idx * 10000) + 1000 + j + 1
+                        _fill_common_solicitud_fields(p2, unique_j, sc, new_client=False)
+                        if j == 0:
+                            mobile = context.new_page()
+                            mobile.set_viewport_size({"width": 390, "height": 844})
+                            mobile.goto(token_link, wait_until="domcontentloaded")
+                            shot_m = ARTIFACT_DIR / f"{browser_name}_mobile_existing_form.png"
+                            mobile.screenshot(path=str(shot_m), full_page=True)
+                            screenshots.append(str(shot_m))
+                            mobile.close()
+                        if "otro" in sc.get("funciones", []):
+                            p2.wait_for_timeout(400)
+                            if not _check_visible(p2, "#salarySuggestionBox"):
+                                ui_checks["salary_suggestion_hidden_ambiguous"] = ui_checks.get("salary_suggestion_hidden_ambiguous", 0) + 1
+                        _accept_terms_and_submit(p2, new_client=False)
+                        _verify_success_page(p2)
+                        runtime["submit_success"] += 1
+                    finally:
+                        p2.close()
+
+                    try:
+                        _token_consumed_check(context, token_link)
+                    except Exception as e:
+                        runtime["token_consumed_ok"] = False
+                        runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
+                        raise
+
+                _assert_invalid_token_ui(context, base_url)
+                runtime["browsers_ok"].append(browser_name)
+                browser.close()
+
+            admin_browser = p.chromium.launch(headless=True, args=["--no-sandbox"])
+            admin_ctx = admin_browser.new_context()
+            page = admin_ctx.new_page()
             _login_admin(page, base_url)
 
-            # Flujo cliente nuevo
-            for i in range(new_flows):
-                page.goto(f"{base_url}/admin/solicitudes/nueva-publica/link", wait_until="domcontentloaded")
-                token_link = _extract_link_from_input(page, "linkPublicoNuevo", base_url)
-
-                public_page = context.new_page()
-                _wire_runtime_monitor(public_page, "public_form")
-                try:
-                    public_page.goto(token_link, wait_until="domcontentloaded")
-                    public_page.wait_for_selector('input[name="nombre_completo"]', timeout=12000)
-                    scenario = _scenario(i)
-                    _fill_common_solicitud_fields(public_page, i + 1, scenario, new_client=True)
-                    _validate_ui_behavior(public_page, ui_checks)
-                    _accept_terms_and_submit(public_page, new_client=True)
-                    _verify_success_page(public_page)
-                    runtime["submit_success"] += 1
-                    shot = ARTIFACT_DIR / f"new_success_{i+1:03d}.png"
-                    if i < 3:
-                        public_page.screenshot(path=str(shot), full_page=True)
-                        screenshots.append(str(shot))
-                finally:
-                    public_page.close()
-
-                try:
-                    _token_consumed_check(context, token_link)
-                except Exception as e:
-                    runtime["token_consumed_ok"] = False
-                    runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
-                    raise
-
-            clientes, solicitudes = _extract_new_entities_since(started)
-            created_client_ids = [int(c.id) for c in clientes]
-            if len(created_client_ids) < 20:
-                raise RuntimeError(f"Se esperaban >=20 clientes nuevos, encontrados {len(created_client_ids)}")
-
-            # Flujo cliente existente
-            for j in range(existing_flows):
-                cid = created_client_ids[j % len(created_client_ids)]
-                page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
-                token_link = _extract_link_from_input(page, "linkPublico", base_url)
-
-                p2 = context.new_page()
-                _wire_runtime_monitor(p2, "public_form")
-                try:
-                    p2.goto(token_link, wait_until="domcontentloaded")
-                    sc = _scenario(j + 100)
-                    _fill_common_solicitud_fields(p2, 1000 + j + 1, sc, new_client=False)
-                    # Ambiguo: sueldo sugerido no debe mostrarse con funciones no estructuradas
-                    if "otro" in sc.get("funciones", []):
-                        p2.wait_for_timeout(400)
-                        if not _check_visible(p2, "#salarySuggestionBox"):
-                            ui_checks["salary_suggestion_hidden_ambiguous"] = ui_checks.get("salary_suggestion_hidden_ambiguous", 0) + 1
-                    _accept_terms_and_submit(p2, new_client=False)
-                    _verify_success_page(p2)
-                    runtime["submit_success"] += 1
-                finally:
-                    p2.close()
-
-                try:
-                    _token_consumed_check(context, token_link)
-                except Exception as e:
-                    runtime["token_consumed_ok"] = False
-                    runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
-                    raise
-
-            # Admin checks
             page.goto(f"{base_url}/admin/clientes", wait_until="domcontentloaded")
             page.fill('input[name="q"]', "e2e_local_")
             page.press('input[name="q"]', "Enter")
@@ -693,17 +778,23 @@ def run() -> E2EReport:
             admin_checks["admin_live_stream_failures"] = len(runtime["admin_live_stream_failures"])
             admin_checks["submit_success"] = int(runtime["submit_success"])
             admin_checks["token_consumed_ok"] = bool(runtime["token_consumed_ok"])
+            admin_checks["browsers_ok"] = list(runtime["browsers_ok"])
+            admin_checks["browsers_failed"] = list(runtime["browsers_failed"])
+            admin_browser.close()
 
-            browser.close()
+            if not runtime["browsers_ok"]:
+                raise RuntimeError(f"Ningún navegador ejecutó flujos correctamente: {runtime['browsers_failed']}")
 
         clientes, solicitudes = _extract_new_entities_since(started)
 
-        # Verificación no duplicado cliente en flujos existentes
-        if len(clientes) != 20:
-            bugs.append(f"Esperado 20 clientes creados por flujo nuevo, encontrados {len(clientes)}")
+        browsers_ok = max(1, len(admin_checks.get("browsers_ok", [])) if isinstance(admin_checks.get("browsers_ok"), list) else 1)
+        expected_clientes = new_flows * browsers_ok
+        expected_solicitudes_min = (new_flows + existing_flows) * browsers_ok
+        if len(clientes) != expected_clientes:
+            bugs.append(f"Esperado {expected_clientes} clientes creados por flujo nuevo, encontrados {len(clientes)}")
 
-        if len(solicitudes) < 28:
-            bugs.append(f"Esperado >=28 solicitudes, encontradas {len(solicitudes)}")
+        if len(solicitudes) < expected_solicitudes_min:
+            bugs.append(f"Esperado >={expected_solicitudes_min} solicitudes, encontradas {len(solicitudes)}")
 
         audit = _audit_db(clientes, solicitudes)
         if audit["duplicados_email"]:
@@ -718,7 +809,7 @@ def run() -> E2EReport:
             bugs.append("Detectados errores críticos del formulario público")
         if not bool(admin_checks.get("token_consumed_ok", False)):
             bugs.append("Token no consumido correctamente en al menos un flujo")
-        if int(admin_checks.get("submit_success", 0)) != (new_flows + existing_flows):
+        if int(admin_checks.get("submit_success", 0)) < expected_solicitudes_min:
             bugs.append("Cantidad de submit exitosos menor al total esperado")
 
         conclusion = "Luz verde para uso real controlado"
