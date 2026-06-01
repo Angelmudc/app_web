@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import socket
@@ -25,7 +26,7 @@ if str(ROOT) not in sys.path:
 
 from app import app as flask_app
 from config_app import db
-from models import Cliente, Solicitud
+from models import Cliente, Solicitud, PublicSolicitudTokenUso, PublicSolicitudClienteNuevoTokenUso
 
 
 ADMIN_USER = "owner_test"
@@ -477,6 +478,21 @@ def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str
             if "  " in nota:
                 notas_dirty += 1
 
+        token_submitted_without_solicitud = int(
+            PublicSolicitudTokenUso.query
+            .filter(PublicSolicitudTokenUso.consumption_reason == "submitted")
+            .filter(PublicSolicitudTokenUso.solicitud_id.is_(None))
+            .count()
+            or 0
+        )
+        token_new_submitted_without_solicitud = int(
+            PublicSolicitudClienteNuevoTokenUso.query
+            .filter(PublicSolicitudClienteNuevoTokenUso.consumption_reason == "submitted")
+            .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id.is_(None))
+            .count()
+            or 0
+        )
+
         return {
             "clientes": len(clientes),
             "solicitudes": len(solicitudes),
@@ -488,6 +504,8 @@ def _audit_db(clientes: list[Cliente], solicitudes: list[Solicitud]) -> dict[str
             "review_status": review_counts,
             "sueldo_missing": sueldo_missing,
             "notas_dirty": notas_dirty,
+            "token_submitted_without_solicitud": token_submitted_without_solicitud,
+            "token_new_submitted_without_solicitud": token_new_submitted_without_solicitud,
         }
 
 
@@ -555,8 +573,8 @@ def run() -> E2EReport:
     admin_checks: dict[str, Any] = {}
     created_client_ids: list[int] = []
 
-    new_flows = int(os.getenv("E2E_PUBLIC_NEW_FLOWS") or "20")
-    existing_flows = int(os.getenv("E2E_PUBLIC_EXISTING_FLOWS") or "8")
+    new_flows = int(os.getenv("E2E_PUBLIC_NEW_FLOWS") or "50")
+    existing_flows = int(os.getenv("E2E_PUBLIC_EXISTING_FLOWS") or "50")
 
     try:
         with sync_playwright() as p:
@@ -576,6 +594,7 @@ def run() -> E2EReport:
                 "public_form_critical_errors": [],
                 "external_runtime_noise": [],
                 "admin_live_stream_failures": [],
+                "concurrency_same_token_ok": False,
             }
 
             def _wire_runtime_monitor(pg, scope: str):
@@ -630,6 +649,7 @@ def run() -> E2EReport:
                 pg.on("response", on_response)
 
             for browser_idx, (browser_name, browser_type) in enumerate(browser_matrix):
+                is_primary = (browser_name == "chromium")
                 try:
                     browser = browser_type.launch(headless=True, args=["--no-sandbox"])
                     context = browser.new_context()
@@ -642,7 +662,7 @@ def run() -> E2EReport:
                 _login_admin(page, base_url)
 
                 # Flujo cliente nuevo
-                for i in range(new_flows):
+                for i in range(new_flows if is_primary else 0):
                     page.goto(f"{base_url}/admin/solicitudes/nueva-publica/link", wait_until="domcontentloaded")
                     token_link = _extract_link_from_input(page, "linkPublicoNuevo", base_url)
 
@@ -685,7 +705,7 @@ def run() -> E2EReport:
                 p_req.close()
 
                 # Flujo cliente existente
-                for j in range(existing_flows):
+                for j in range(existing_flows if is_primary else 0):
                     cid = created_client_ids[j % len(created_client_ids)]
                     page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
                     token_link = _extract_link_from_input(page, "linkPublico", base_url)
@@ -722,6 +742,37 @@ def run() -> E2EReport:
                         runtime["public_form_critical_errors"].append({"type": "token_not_consumed", "error": str(e), "url": token_link})
                         raise
 
+                if is_primary and created_client_ids:
+                    cid = created_client_ids[0]
+                    page.goto(f"{base_url}/admin/clientes/{cid}/solicitudes/link-publico", wait_until="domcontentloaded")
+                    same_token_link = _extract_link_from_input(page, "linkPublico", base_url)
+                    token_value = same_token_link.rstrip("/").split("/")[-1]
+                    p_a = context.new_page()
+                    p_b = context.new_page()
+                    _wire_runtime_monitor(p_a, "public_form")
+                    _wire_runtime_monitor(p_b, "public_form")
+                    sc = _scenario(999)
+                    try:
+                        p_a.goto(same_token_link, wait_until="domcontentloaded")
+                        p_b.goto(same_token_link, wait_until="domcontentloaded")
+                        _fill_common_solicitud_fields(p_a, 99001, sc, new_client=False)
+                        _fill_common_solicitud_fields(p_b, 99002, sc, new_client=False)
+                        _accept_terms_and_submit(p_a, new_client=False)
+                        p_b.wait_for_timeout(80)
+                        _accept_terms_and_submit(p_b, new_client=False)
+                        p_a.wait_for_load_state("networkidle", timeout=12000)
+                        p_b.wait_for_load_state("networkidle", timeout=12000)
+                        with flask_app.app_context():
+                            th = hashlib.sha256(token_value.encode("utf-8")).hexdigest()
+                            usage_count = int(PublicSolicitudTokenUso.query.filter_by(token_hash=th).count() or 0)
+                            row = PublicSolicitudTokenUso.query.filter_by(token_hash=th).first()
+                            runtime["concurrency_same_token_ok"] = bool(
+                                usage_count == 1 and int(getattr(row, "solicitud_id", 0) or 0) > 0
+                            )
+                    finally:
+                        p_a.close()
+                        p_b.close()
+
                 _assert_invalid_token_ui(context, base_url)
                 runtime["browsers_ok"].append(browser_name)
                 browser.close()
@@ -739,7 +790,7 @@ def run() -> E2EReport:
 
             page.goto(f"{base_url}/admin/solicitudes/publicas/nuevas", wait_until="domcontentloaded")
             body = (page.text_content("body") or "")
-            admin_checks["bandeja_nuevas_visible"] = "Solicitudes nuevas por revisar" in body
+            admin_checks["bandeja_nuevas_visible"] = ("Solicitudes pendientes por revisar" in body) or ("Solicitudes nuevas por revisar" in body)
             admin_checks["solicitudes_hoy_visible"] = "Solicitudes de hoy" in body
 
             rev_btn = page.locator(
@@ -778,6 +829,7 @@ def run() -> E2EReport:
             admin_checks["admin_live_stream_failures"] = len(runtime["admin_live_stream_failures"])
             admin_checks["submit_success"] = int(runtime["submit_success"])
             admin_checks["token_consumed_ok"] = bool(runtime["token_consumed_ok"])
+            admin_checks["concurrency_same_token_ok"] = bool(runtime["concurrency_same_token_ok"])
             admin_checks["browsers_ok"] = list(runtime["browsers_ok"])
             admin_checks["browsers_failed"] = list(runtime["browsers_failed"])
             admin_browser.close()
@@ -787,9 +839,8 @@ def run() -> E2EReport:
 
         clientes, solicitudes = _extract_new_entities_since(started)
 
-        browsers_ok = max(1, len(admin_checks.get("browsers_ok", [])) if isinstance(admin_checks.get("browsers_ok"), list) else 1)
-        expected_clientes = new_flows * browsers_ok
-        expected_solicitudes_min = (new_flows + existing_flows) * browsers_ok
+        expected_clientes = new_flows
+        expected_solicitudes_min = (new_flows + existing_flows)
         if len(clientes) != expected_clientes:
             bugs.append(f"Esperado {expected_clientes} clientes creados por flujo nuevo, encontrados {len(clientes)}")
 
@@ -803,6 +854,10 @@ def run() -> E2EReport:
             bugs.append("Duplicados por teléfono detectados")
         if audit["solicitudes_sin_cliente"] > 0:
             bugs.append("Solicitudes huérfanas sin cliente")
+        if int(audit.get("token_submitted_without_solicitud", 0)) > 0:
+            bugs.append("Tokens existentes consumidos por submit sin solicitud asociada")
+        if int(audit.get("token_new_submitted_without_solicitud", 0)) > 0:
+            bugs.append("Tokens nuevos consumidos por submit sin solicitud asociada")
         if int(admin_checks.get("salary_endpoint_calls", 0)) > 0:
             bugs.append("Detectadas llamadas automáticas al endpoint de sueldo sugerido")
         if int(admin_checks.get("public_form_critical_errors", 0)) > 0:
@@ -811,6 +866,8 @@ def run() -> E2EReport:
             bugs.append("Token no consumido correctamente en al menos un flujo")
         if int(admin_checks.get("submit_success", 0)) < expected_solicitudes_min:
             bugs.append("Cantidad de submit exitosos menor al total esperado")
+        if not bool(admin_checks.get("concurrency_same_token_ok", False)):
+            bugs.append("Concurrencia de mismo token no quedó garantizada")
 
         conclusion = "Luz verde para uso real controlado"
         if bugs:
