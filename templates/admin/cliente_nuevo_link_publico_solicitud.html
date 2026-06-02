@@ -60,6 +60,56 @@
       transform: translateY(0);
     }
 
+    .public-link-manual-panel {
+      position: fixed;
+      right: 20px;
+      bottom: 124px;
+      z-index: 1040;
+      width: min(560px, calc(100vw - 24px));
+      max-width: calc(100vw - 24px);
+      border: 1px solid rgba(13, 110, 253, 0.18);
+      border-radius: 16px;
+      background: #ffffff;
+      box-shadow: 0 18px 42px rgba(2, 38, 89, 0.16);
+      display: none;
+    }
+
+    .public-link-manual-panel.is-visible {
+      display: block;
+    }
+
+    .public-link-manual-panel .card-body {
+      padding: 16px;
+    }
+
+    .public-link-manual-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .public-link-manual-head strong {
+      display: block;
+      color: #0f172a;
+    }
+
+    .public-link-manual-status {
+      color: #475569;
+      font-size: .92rem;
+      line-height: 1.45;
+    }
+
+    .public-link-manual-panel input {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+
+    .public-link-manual-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
     @media (max-width: 575.98px) {
       .public-link-copy-island {
         right: 12px;
@@ -68,6 +118,10 @@
       .public-link-copy-feedback {
         right: 12px;
         bottom: 68px;
+      }
+      .public-link-manual-panel {
+        right: 12px;
+        bottom: 118px;
       }
     }
   </style>
@@ -139,10 +193,38 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
   Copiar link
 </button>
 <div class="public-link-copy-feedback" id="copyIslandNuevoFeedback" role="status" aria-live="polite">Link copiado</div>
+<div class="public-link-manual-panel card shadow-sm"
+     id="linkPublicoNuevoManualPanel"
+     role="region"
+     aria-labelledby="linkPublicoNuevoManualPanelTitle">
+  <div class="card-body">
+    <div class="public-link-manual-head mb-2">
+      <div>
+        <strong id="linkPublicoNuevoManualPanelTitle">Enlace listo para copiar manualmente</strong>
+        <div class="public-link-manual-status" id="linkPublicoNuevoManualStatus">No se pudo copiar automáticamente. Puedes seguir usando la página y copiar el enlace manualmente.</div>
+      </div>
+    </div>
+    <label class="form-label fw-semibold mb-1" for="linkPublicoNuevoManualInput">Enlace</label>
+    <input
+      id="linkPublicoNuevoManualInput"
+      class="form-control form-control-lg mb-2"
+      type="text"
+      value=""
+      readonly
+      aria-label="Enlace generado para cliente nuevo"
+    />
+    <div class="public-link-manual-actions">
+      <button class="btn btn-sm btn-outline-primary" type="button" id="linkPublicoNuevoManualSelectBtn">Seleccionar enlace</button>
+      <button class="btn btn-sm btn-primary" type="button" id="linkPublicoNuevoManualRetryBtn">Copiar de nuevo</button>
+      <button class="btn btn-sm btn-outline-secondary" type="button" id="linkPublicoNuevoManualCloseBtn">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <script src="{{ url_for('static', filename='js/core/client_public_form_message.js') }}" defer></script>
 <script>
   let _copyIslandTimer = null;
+  let _manualPanelCurrentValue = '';
 
   function showCopyIslandFeedback(text) {
     const node = document.getElementById('copyIslandNuevoFeedback');
@@ -178,6 +260,49 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     return !!ok;
   }
 
+  function selectManualLinkNuevo() {
+    const input = document.getElementById('linkPublicoNuevoManualInput');
+    if (!input || !input.value) return false;
+    try {
+      input.focus();
+      input.removeAttribute('readonly');
+      input.select();
+      input.setSelectionRange(0, input.value.length);
+      input.setAttribute('readonly', 'readonly');
+      return true;
+    } catch (_err) {
+      try {
+        input.setAttribute('readonly', 'readonly');
+      } catch (_err2) {
+        // noop
+      }
+      return false;
+    }
+  }
+
+  function hideManualPanelNuevo() {
+    const panel = document.getElementById('linkPublicoNuevoManualPanel');
+    const status = document.getElementById('linkPublicoNuevoManualStatus');
+    const input = document.getElementById('linkPublicoNuevoManualInput');
+    if (!panel || !status || !input) return;
+    panel.classList.remove('is-visible');
+    input.value = '';
+    _manualPanelCurrentValue = '';
+    status.textContent = 'No se pudo copiar automáticamente. Puedes seguir usando la página y copiar el enlace manualmente.';
+  }
+
+  function showManualPanelNuevo(value, statusText) {
+    const panel = document.getElementById('linkPublicoNuevoManualPanel');
+    const status = document.getElementById('linkPublicoNuevoManualStatus');
+    const input = document.getElementById('linkPublicoNuevoManualInput');
+    if (!panel || !status || !input) return;
+    _manualPanelCurrentValue = String(value || '').trim();
+    input.value = _manualPanelCurrentValue;
+    status.textContent = statusText || 'No se pudo copiar automáticamente. Puedes seguir usando la página y copiar el enlace manualmente.';
+    panel.classList.add('is-visible');
+    selectManualLinkNuevo();
+  }
+
   async function copyLinkNuevo() {
     const input = document.getElementById('linkPublicoNuevo');
     const copyMsg = document.getElementById('copyMsgNuevo');
@@ -193,11 +318,13 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
       if (!ok) {
         throw new Error('copy failed');
       }
+      hideManualPanelNuevo();
       copyMsg.innerText = 'Enlace copiado correctamente.';
       showCopyIslandFeedback('Link copiado');
     } catch (_err) {
       copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente la URL visible.';
-      showCopyIslandFeedback('Error al copiar');
+      showManualPanelNuevo(text, 'No se pudo copiar automáticamente. El enlace sigue visible y puedes seleccionarlo manualmente.');
+      showCopyIslandFeedback('Selecciona el link');
     }
   }
 
@@ -225,10 +352,46 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
   document.addEventListener('DOMContentLoaded', function () {
     const field = document.getElementById('waMensajeClienteNuevo');
     const input = document.getElementById('linkPublicoNuevo');
+    const manualSelectBtn = document.getElementById('linkPublicoNuevoManualSelectBtn');
+    const manualRetryBtn = document.getElementById('linkPublicoNuevoManualRetryBtn');
+    const manualCloseBtn = document.getElementById('linkPublicoNuevoManualCloseBtn');
     if (!field || !input) return;
     const builder = window.buildClientPublicFormMessageNuevo || window.buildClientPublicFormMessage;
     if (typeof builder === 'function') {
       field.value = builder(String(input.value || '').trim());
+    }
+    if (manualSelectBtn) {
+      manualSelectBtn.addEventListener('click', function () {
+        selectManualLinkNuevo();
+      });
+    }
+    if (manualRetryBtn) {
+      manualRetryBtn.addEventListener('click', async function () {
+        const copyMsg = document.getElementById('copyMsgNuevo');
+        const value = String(_manualPanelCurrentValue || input.value || '').trim();
+        if (!value) {
+          if (copyMsg) copyMsg.innerText = 'No se encontró un enlace para copiar.';
+          return;
+        }
+        try {
+          const ok = await copyTextSafe(value);
+          if (!ok) {
+            throw new Error('retry copy failed');
+          }
+          hideManualPanelNuevo();
+          if (copyMsg) copyMsg.innerText = 'Enlace copiado correctamente.';
+          showCopyIslandFeedback('Link copiado');
+        } catch (_err) {
+          showManualPanelNuevo(value, 'No se pudo copiar automáticamente. El enlace sigue visible y puedes seleccionarlo manualmente.');
+          if (copyMsg) copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente la URL visible.';
+          showCopyIslandFeedback('Selecciona el link');
+        }
+      });
+    }
+    if (manualCloseBtn) {
+      manualCloseBtn.addEventListener('click', function () {
+        hideManualPanelNuevo();
+      });
     }
   });
 </script>

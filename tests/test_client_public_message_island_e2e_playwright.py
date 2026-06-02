@@ -491,3 +491,105 @@ def test_rapid_double_click_creates_single_request_then_next_click_creates_new_t
 
         context.close()
         browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, browser_name):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = browser.new_context()
+        _install_cpmi_clipboard_stub(context, "both_fail")
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        page.goto(f"{base_url}/admin/clientes", wait_until="domcontentloaded")
+        page.wait_for_selector('a[href$="/admin/solicitudes/nueva-publica/link"]', timeout=12000)
+
+        with context.expect_page() as popup_info:
+            page.click('a[href$="/admin/solicitudes/nueva-publica/link"]')
+        popup = popup_info.value
+        popup.wait_for_load_state("domcontentloaded")
+        popup.wait_for_selector("#linkPublicoNuevo", timeout=12000)
+
+        initial_url = popup.url
+        original_link = popup.input_value("#linkPublicoNuevo").strip()
+        assert original_link
+
+        extra_requests = []
+
+        def _capture_request(req):
+            if req.url.endswith("/admin/solicitudes/nueva-publica/link"):
+                extra_requests.append(req.url)
+
+        popup.on("request", _capture_request)
+
+        popup.click('button[onclick="copyLinkNuevo()"]')
+        popup.wait_for_selector("#linkPublicoNuevoManualPanel.is-visible", timeout=12000)
+
+        assert popup.locator(".modal-backdrop").count() == 0
+        assert popup.locator("#linkPublicoNuevoManualPanel").get_attribute("aria-modal") is None
+        assert popup.input_value("#linkPublicoNuevoManualInput").strip() == original_link
+        assert popup.locator("#linkPublicoNuevoManualSelectBtn").count() == 1
+
+        dom_state = popup.evaluate(
+            """
+            () => {
+              const panel = document.querySelector('#linkPublicoNuevoManualPanel');
+              const input = document.querySelector('#linkPublicoNuevoManualInput');
+              const selectBtn = document.querySelector('#linkPublicoNuevoManualSelectBtn');
+              const style = panel ? window.getComputedStyle(panel) : null;
+              return {
+                htmlClasses: document.documentElement.className,
+                bodyClasses: document.body.className,
+                hasOldBackdrop: !!document.querySelector('#clientPublicMessageIslandManualBackdrop'),
+                hasModalBackdrop: !!document.querySelector('.modal-backdrop'),
+                panelVisible: !!(panel && panel.classList.contains('is-visible')),
+                panelClasses: panel ? panel.className : '',
+                panelZIndex: style ? style.zIndex : '',
+                panelPointerEvents: style ? style.pointerEvents : '',
+                panelPosition: style ? style.position : '',
+                panelDisplay: style ? style.display : '',
+                inputValue: input ? input.value : '',
+                selectExists: !!selectBtn
+              };
+            }
+            """
+        )
+        assert "modal-open" not in dom_state["htmlClasses"]
+        assert "modal-open" not in dom_state["bodyClasses"]
+        assert dom_state["hasOldBackdrop"] is False
+        assert dom_state["hasModalBackdrop"] is False
+        assert dom_state["panelVisible"] is True
+        assert dom_state["panelPosition"] == "fixed"
+        assert dom_state["panelDisplay"] == "block"
+        assert dom_state["panelPointerEvents"] != "none"
+        assert dom_state["inputValue"].strip() == original_link
+        assert dom_state["selectExists"] is True
+
+        popup.click("#linkPublicoNuevoManualRetryBtn")
+        popup.wait_for_selector("#linkPublicoNuevoManualPanel.is-visible", timeout=12000)
+        assert popup.input_value("#linkPublicoNuevoManualInput").strip() == original_link
+        assert popup.url == initial_url
+        assert extra_requests == []
+
+        popup.click("#linkPublicoNuevoManualCloseBtn")
+        popup.wait_for_function(
+            """
+            () => {
+              const panel = document.querySelector('#linkPublicoNuevoManualPanel');
+              const input = document.querySelector('#linkPublicoNuevoManualInput');
+              return !!panel && !panel.classList.contains('is-visible') && !!input && input.value === '';
+            }
+            """,
+            timeout=12000,
+        )
+
+        context.close()
+        browser.close()
