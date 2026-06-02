@@ -14,6 +14,7 @@
   var retryCopyBtn = document.getElementById("clientPublicMessageIslandRetryCopyBtn");
   var closeManualBtn = document.getElementById("clientPublicMessageIslandCloseManualBtn");
   var linkUrl = String(body.getAttribute("data-client-public-message-link-url") || "").trim();
+  var debugEnabled = String(body.getAttribute("data-client-public-message-debug") || "") === "1";
   if (!btn || !feedbackNode || !linkUrl) return;
 
   var feedbackTimer = null;
@@ -24,6 +25,17 @@
   var labelNode = btn.querySelector(".cpmi-label");
   var iconNode = btn.querySelector(".cpmi-icon");
   var defaultLabel = labelNode ? String(labelNode.textContent || "").trim() : "";
+
+  function debugClipboard(eventName, details) {
+    if (!debugEnabled || !window.console || typeof window.console.info !== "function") return;
+    console.info("[client-public-message-island]", eventName, details || {});
+  }
+
+  function summarizeUserAgent() {
+    var ua = String((window.navigator && window.navigator.userAgent) || "").trim();
+    if (!ua) return "unknown";
+    return ua.slice(0, 120);
+  }
 
   function setButtonLabel(text) {
     if (!labelNode) return;
@@ -64,42 +76,119 @@
   }
 
   function copyWithExecCommand(value) {
-    if (!value) return false;
+    if (!value) return { ok: false, method: "execCommand", error: null };
     var tmp = document.createElement("textarea");
+    var activeElement = document.activeElement;
     tmp.value = value;
-    tmp.setAttribute("readonly", "");
+    tmp.setAttribute("aria-hidden", "true");
     tmp.style.position = "fixed";
     tmp.style.opacity = "0";
     tmp.style.pointerEvents = "none";
-    tmp.style.left = "0";
+    tmp.style.left = "-9999px";
     tmp.style.top = "0";
+    tmp.style.fontSize = "16px";
+    tmp.style.contain = "strict";
     document.body.appendChild(tmp);
-    tmp.focus();
-    tmp.select();
-    tmp.setSelectionRange(0, value.length);
     var ok = false;
+    var execError = null;
     try {
+      tmp.focus();
+      tmp.select();
+      tmp.setSelectionRange(0, value.length);
       ok = document.execCommand("copy");
-    } catch (_err) {
+    } catch (err) {
+      execError = err || null;
       ok = false;
     }
     document.body.removeChild(tmp);
-    return !!ok;
+    if (activeElement && typeof activeElement.focus === "function") {
+      try {
+        activeElement.focus();
+      } catch (_focusErr) {
+        // noop
+      }
+    }
+    return {
+      ok: !!ok,
+      method: "execCommand",
+      error: execError
+    };
   }
 
   async function copyTextSafe(text) {
     var value = String(text || "").trim();
-    if (!value) return false;
+    var diagnostics = {
+      clipboardAvailable: !!(navigator.clipboard && typeof navigator.clipboard.writeText === "function"),
+      secureContext: !!window.isSecureContext,
+      userAgent: summarizeUserAgent()
+    };
+    if (!value) {
+      return {
+        ok: false,
+        method: "none",
+        error: null,
+        diagnostics: diagnostics
+      };
+    }
 
-    if (navigator.clipboard && window.isSecureContext) {
+    debugClipboard("copy-attempt", diagnostics);
+
+    if (diagnostics.clipboardAvailable) {
       try {
         await navigator.clipboard.writeText(value);
-        return true;
+        debugClipboard("copy-success", {
+          method: "clipboard",
+          secureContext: diagnostics.secureContext,
+          clipboardAvailable: diagnostics.clipboardAvailable,
+          userAgent: diagnostics.userAgent
+        });
+        return {
+          ok: true,
+          method: "clipboard",
+          error: null,
+          diagnostics: diagnostics
+        };
       } catch (err) {
-        console.error("[client-public-message-island] navigator.clipboard.writeText failed", err);
+        diagnostics.clipboardError = {
+          name: String((err && err.name) || "Error"),
+          message: String((err && err.message) || "unknown")
+        };
+        debugClipboard("clipboard-write-failed", {
+          clipboardAvailable: diagnostics.clipboardAvailable,
+          secureContext: diagnostics.secureContext,
+          errorName: diagnostics.clipboardError.name,
+          errorMessage: diagnostics.clipboardError.message,
+          userAgent: diagnostics.userAgent
+        });
       }
     }
-    return copyWithExecCommand(value);
+    var fallbackResult = copyWithExecCommand(value);
+    diagnostics.execCommandSupported = typeof document.execCommand === "function";
+    diagnostics.execCommandSucceeded = !!fallbackResult.ok;
+    if (fallbackResult.error) {
+      diagnostics.execCommandError = {
+        name: String((fallbackResult.error && fallbackResult.error.name) || "Error"),
+        message: String((fallbackResult.error && fallbackResult.error.message) || "unknown")
+      };
+    }
+    debugClipboard(
+      fallbackResult.ok ? "execCommand-copy-success" : "execCommand-copy-failed",
+      {
+        clipboardAvailable: diagnostics.clipboardAvailable,
+        secureContext: diagnostics.secureContext,
+        execCommandSupported: diagnostics.execCommandSupported,
+        execCommandSucceeded: diagnostics.execCommandSucceeded,
+        errorName: diagnostics.execCommandError ? diagnostics.execCommandError.name : "",
+        errorMessage: diagnostics.execCommandError ? diagnostics.execCommandError.message : "",
+        userAgent: diagnostics.userAgent
+      }
+    );
+    return {
+      ok: !!fallbackResult.ok,
+      method: fallbackResult.ok ? "execCommand" : "none",
+      error: fallbackResult.error || null,
+      diagnostics: diagnostics
+    };
   }
 
   function showManualPanel(link, message, statusText) {
@@ -138,7 +227,7 @@
 
   async function generateNewPublicLink() {
     showFeedback("Generando enlace...");
-    console.info("[client-public-message-island] requesting endpoint", {
+    debugClipboard("request-link", {
       url: linkUrl,
       method: "GET"
     });
@@ -155,10 +244,11 @@
       console.error("[client-public-message-island] failed to parse JSON", jsonErr);
       payload = {};
     }
-    console.info("[client-public-message-island] endpoint response", {
+    debugClipboard("link-response", {
       status: resp.status,
       ok: resp.ok,
-      payload: payload
+      payloadOk: !!payload.ok,
+      hasLink: !!payload.link_publico
     });
 
     if (!resp.ok || !payload.ok || !payload.link_publico) {
@@ -179,7 +269,14 @@
   }
 
   async function copyLastGeneratedLink() {
-    if (!lastGeneratedLink) return false;
+    if (!lastGeneratedLink) {
+      return {
+        ok: false,
+        method: "none",
+        error: null,
+        diagnostics: null
+      };
+    }
     if (!lastGeneratedMessage) {
       lastGeneratedMessage = buildMessageForLink(lastGeneratedLink);
     }
@@ -199,8 +296,8 @@
 
     try {
       await generateNewPublicLink();
-      var copied = await copyLastGeneratedLink();
-      if (!copied) {
+      var copyResult = await copyLastGeneratedLink();
+      if (!copyResult.ok) {
         throw new Error("copy-failed");
       }
       hideManualPanel();
@@ -220,11 +317,10 @@
         showFeedback("No se pudo generar el enlace");
       } else {
         console.error("[client-public-message-island] copy failed after link generation", {
-          error: err,
-          link: lastGeneratedLink
+          error: err
         });
         setButtonVisualState("error");
-        setButtonLabel("Copia automática falló");
+        setButtonLabel("Copia manual disponible");
         showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
         showManualPanel(
           lastGeneratedLink,
@@ -250,8 +346,8 @@
     setButtonLabel("Copiando mensaje...");
 
     try {
-      var copied = await copyLastGeneratedLink();
-      if (!copied) {
+      var copyResult = await copyLastGeneratedLink();
+      if (!copyResult.ok) {
         throw new Error("copy-failed");
       }
       hideManualPanel();
@@ -261,7 +357,7 @@
       cooldownUntilMs = Date.now() + 1400;
     } catch (err) {
       setButtonVisualState("error");
-      setButtonLabel("Copia automática falló");
+      setButtonLabel("Copia manual disponible");
       showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
       showManualPanel(
         lastGeneratedLink,

@@ -103,6 +103,147 @@ def _admin_login(page, base_url: str) -> None:
     page.wait_for_url("**/admin/**", timeout=15000)
 
 
+def _install_cpmi_clipboard_stub(context, mode: str) -> None:
+    scripts = {
+        "clipboard_ok": """
+            Object.defineProperty(window.navigator, 'clipboard', {
+              configurable: true,
+              value: { writeText: () => Promise.resolve() }
+            });
+            Object.defineProperty(window, 'isSecureContext', {
+              configurable: true,
+              value: true
+            });
+            document.execCommand = () => true;
+        """,
+        "clipboard_fail_exec_ok": """
+            Object.defineProperty(window.navigator, 'clipboard', {
+              configurable: true,
+              value: { writeText: () => Promise.reject(new DOMException('write denied', 'NotAllowedError')) }
+            });
+            Object.defineProperty(window, 'isSecureContext', {
+              configurable: true,
+              value: false
+            });
+            document.execCommand = () => true;
+        """,
+        "both_fail": """
+            Object.defineProperty(window.navigator, 'clipboard', {
+              configurable: true,
+              value: { writeText: () => Promise.reject(new DOMException('write denied', 'NotAllowedError')) }
+            });
+            Object.defineProperty(window, 'isSecureContext', {
+              configurable: true,
+              value: false
+            });
+            document.execCommand = () => false;
+        """,
+    }
+    context.add_init_script(scripts[mode])
+
+
+def _wait_cpmi_idle(page) -> None:
+    page.wait_for_function(
+        """
+        () => {
+          const btn = document.querySelector('#clientPublicMessageIslandBtn');
+          return !!btn && !btn.disabled;
+        }
+        """,
+        timeout=12000,
+    )
+
+
+def _attach_cpmi_link_capture(page):
+    endpoint_hits = []
+    links = []
+
+    def _capture_response(resp):
+        if "/admin/solicitudes/nueva-publica/link.json" not in resp.url:
+            return
+        endpoint_hits.append(resp.status)
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = {}
+        link = str((payload or {}).get("link_publico") or "").strip()
+        if link:
+            links.append(link)
+
+    page.on("response", _capture_response)
+    return endpoint_hits, links
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+@pytest.mark.parametrize(
+    ("copy_mode", "expected_feedback", "manual_visible", "expected_label"),
+    [
+        ("clipboard_ok", "Mensaje copiado", False, "Mensaje copiado"),
+        ("clipboard_fail_exec_ok", "Mensaje copiado", False, "Mensaje copiado"),
+        (
+            "both_fail",
+            "Enlace generado, pero no se pudo copiar automáticamente",
+            True,
+            "Copia manual disponible",
+        ),
+    ],
+)
+def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode, expected_feedback, manual_visible, expected_label):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = browser.new_context()
+        _install_cpmi_clipboard_stub(context, copy_mode)
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
+        page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
+        page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
+
+        page.click("#clientPublicMessageIslandBtn")
+        page.wait_for_function(
+            """
+            ({ expectedFeedback, expectedLabel }) => {
+              const feedback = document.querySelector('#clientPublicMessageIslandFeedback');
+              const label = document.querySelector('#clientPublicMessageIslandBtn .cpmi-label');
+              if (!feedback || !label) return false;
+              return feedback.textContent.trim() === expectedFeedback && label.textContent.trim() === expectedLabel;
+            }
+            """,
+            arg={"expectedFeedback": expected_feedback, "expectedLabel": expected_label},
+            timeout=12000,
+        )
+
+        assert endpoint_hits == [200]
+        assert len(links) == 1
+
+        if manual_visible:
+            page.wait_for_selector("#clientPublicMessageIslandManual:not(.d-none)", timeout=12000)
+            assert page.input_value("#clientPublicMessageIslandManualLink").strip()
+        else:
+            page.wait_for_function(
+                """
+                () => {
+                  const panel = document.querySelector('#clientPublicMessageIslandManual');
+                  return !!panel && panel.classList.contains('d-none');
+                }
+                """,
+                timeout=12000,
+            )
+
+        _wait_cpmi_idle(page)
+
+        context.close()
+        browser.close()
+
+
 @pytest.mark.e2e
 @pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
 def test_main_button_generates_fresh_token_each_time(cpmi_e2e_env, browser_name):
@@ -116,48 +257,17 @@ def test_main_button_generates_fresh_token_each_time(cpmi_e2e_env, browser_name)
 
         context = browser.new_context()
         # Fuerza éxito de copiado para observar únicamente generación/token.
-        context.add_init_script(
-            """
-            Object.defineProperty(window.navigator, 'clipboard', {
-              configurable: true,
-              value: { writeText: () => Promise.resolve() }
-            });
-            document.execCommand = () => true;
-            """
-        )
+        _install_cpmi_clipboard_stub(context, "clipboard_ok")
         page = context.new_page()
         _admin_login(page, base_url)
 
-        endpoint_hits = []
-        links = []
-
-        def _capture_response(resp):
-            if "/admin/solicitudes/nueva-publica/link.json" not in resp.url:
-                return
-            endpoint_hits.append(resp.status)
-            try:
-                payload = resp.json()
-            except Exception:
-                payload = {}
-            link = str((payload or {}).get("link_publico") or "").strip()
-            if link:
-                links.append(link)
-
-        page.on("response", _capture_response)
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
         page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
         page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
 
         for _ in range(5):
             page.click("#clientPublicMessageIslandBtn")
-            page.wait_for_function(
-                """
-                () => {
-                  const btn = document.querySelector('#clientPublicMessageIslandBtn');
-                  return !!btn && !btn.disabled;
-                }
-                """,
-                timeout=12000,
-            )
+            _wait_cpmi_idle(page)
 
         assert len(endpoint_hits) == 5
         assert all(int(code) == 200 for code in endpoint_hits)
@@ -195,34 +305,11 @@ def test_copy_again_reuses_current_token_without_new_request(cpmi_e2e_env, brows
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
         context = browser.new_context()
-        context.add_init_script(
-            """
-            Object.defineProperty(window.navigator, 'clipboard', {
-              configurable: true,
-              value: { writeText: () => Promise.reject(new Error('clipboard blocked')) }
-            });
-            document.execCommand = () => false;
-            """
-        )
+        _install_cpmi_clipboard_stub(context, "both_fail")
         page = context.new_page()
         _admin_login(page, base_url)
 
-        endpoint_hits = []
-        links = []
-
-        def _capture_response(resp):
-            if "/admin/solicitudes/nueva-publica/link.json" not in resp.url:
-                return
-            endpoint_hits.append(resp.status)
-            try:
-                payload = resp.json()
-            except Exception:
-                payload = {}
-            link = str((payload or {}).get("link_publico") or "").strip()
-            if link:
-                links.append(link)
-
-        page.on("response", _capture_response)
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
         page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
         page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
 
@@ -234,15 +321,7 @@ def test_copy_again_reuses_current_token_without_new_request(cpmi_e2e_env, brows
         assert len(endpoint_hits) == 1
 
         page.click("#clientPublicMessageIslandRetryCopyBtn")
-        page.wait_for_function(
-            """
-            () => {
-              const btn = document.querySelector('#clientPublicMessageIslandBtn');
-              return !!btn && !btn.disabled;
-            }
-            """,
-            timeout=12000,
-        )
+        _wait_cpmi_idle(page)
 
         # Copiar de nuevo no debe llamar endpoint ni regenerar token/link.
         assert len(endpoint_hits) == 1
@@ -271,60 +350,21 @@ def test_rapid_double_click_creates_single_request_then_next_click_creates_new_t
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
         context = browser.new_context()
-        context.add_init_script(
-            """
-            Object.defineProperty(window.navigator, 'clipboard', {
-              configurable: true,
-              value: { writeText: () => Promise.resolve() }
-            });
-            document.execCommand = () => true;
-            """
-        )
+        _install_cpmi_clipboard_stub(context, "clipboard_ok")
         page = context.new_page()
         _admin_login(page, base_url)
 
-        endpoint_hits = []
-        links = []
-
-        def _capture_response(resp):
-            if "/admin/solicitudes/nueva-publica/link.json" not in resp.url:
-                return
-            endpoint_hits.append(resp.status)
-            try:
-                payload = resp.json()
-            except Exception:
-                payload = {}
-            link = str((payload or {}).get("link_publico") or "").strip()
-            if link:
-                links.append(link)
-
-        page.on("response", _capture_response)
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
         page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
         page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
 
         page.dblclick("#clientPublicMessageIslandBtn")
-        page.wait_for_function(
-            """
-            () => {
-              const btn = document.querySelector('#clientPublicMessageIslandBtn');
-              return !!btn && !btn.disabled;
-            }
-            """,
-            timeout=12000,
-        )
+        _wait_cpmi_idle(page)
         assert len(endpoint_hits) == 1
         assert len(links) == 1
 
         page.click("#clientPublicMessageIslandBtn")
-        page.wait_for_function(
-            """
-            () => {
-              const btn = document.querySelector('#clientPublicMessageIslandBtn');
-              return !!btn && !btn.disabled;
-            }
-            """,
-            timeout=12000,
-        )
+        _wait_cpmi_idle(page)
         assert len(endpoint_hits) == 2
         assert len(links) == 2
         assert links[0] != links[1]

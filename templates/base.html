@@ -236,6 +236,7 @@
       data-seg-candidatas-create-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_crear_caso') %}{{ url_for('admin.seguimiento_candidatas_crear_caso') }}{% endif %}"
       data-client-public-message-island-enabled="{% if _client_public_message_island_enabled %}1{% else %}0{% endif %}"
       data-client-public-message-link-url="{% if _client_public_message_island_enabled %}{{ url_for('admin.generar_link_publico_cliente_nuevo_json') }}{% endif %}"
+      data-client-public-message-debug="{% if request.host.startswith('127.0.0.1') or request.host.startswith('localhost') %}1{% else %}0{% endif %}"
       data-staff-username="{{ _staff_username }}"
       data-admin-runtime="{% if _is_admin_runtime_page %}1{% else %}0{% endif %}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
@@ -697,10 +698,16 @@
        aria-live="polite">Mensaje copiado</div>
   <div class="client-public-message-manual card shadow-sm d-none"
        id="clientPublicMessageIslandManual"
-       style="position:fixed; right:20px; bottom:94px; z-index:1042; width:min(460px, calc(100vw - 24px));">
+       role="dialog"
+       aria-modal="false"
+       aria-labelledby="clientPublicMessageIslandManualTitle">
     <div class="card-body p-3">
-      <div class="small fw-semibold mb-2">Enlace generado</div>
-      <div class="small text-muted mb-2" id="clientPublicMessageIslandManualStatus">No se pudo copiar automáticamente. Puedes copiar manualmente o reintentar.</div>
+      <div class="client-public-message-manual-head mb-2">
+        <div>
+          <div class="small fw-semibold mb-1" id="clientPublicMessageIslandManualTitle">Enlace generado</div>
+          <div class="small text-muted mb-0" id="clientPublicMessageIslandManualStatus">No se pudo copiar automáticamente. Puedes copiar manualmente o reintentar.</div>
+        </div>
+      </div>
       <label for="clientPublicMessageIslandManualMessage" class="form-label form-label-sm mb-1">Mensaje completo</label>
       <textarea class="form-control form-control-sm mb-2"
                 id="clientPublicMessageIslandManualMessage"
@@ -713,7 +720,7 @@
              id="clientPublicMessageIslandManualLink"
              readonly
              aria-label="Enlace generado para cliente nuevo">
-      <div class="d-flex gap-2">
+      <div class="client-public-message-manual-actions d-flex gap-2">
         <button class="btn btn-sm btn-primary" type="button" id="clientPublicMessageIslandRetryCopyBtn">Copiar de nuevo</button>
         <button class="btn btn-sm btn-outline-secondary" type="button" id="clientPublicMessageIslandCloseManualBtn">Cerrar</button>
       </div>
