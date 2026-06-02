@@ -373,6 +373,36 @@ def test_public_link_is_invalidated_when_sensitive_client_data_changes():
     assert reason == "fingerprint_mismatch"
 
 
+def test_public_link_token_is_valid_before_24h_and_expires_after_24h():
+    flask_app.config["TESTING"] = True
+    base_ts = 1_700_000_000
+
+    with flask_app.app_context():
+        c = _dummy_cliente(email="uno@example.com")
+        c.updated_at = datetime.utcfromtimestamp(base_ts)
+
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts):
+            token = clientes_routes.generar_token_publico_cliente(c)
+
+        fake_query = SimpleNamespace(filter_by=lambda **_kwargs: SimpleNamespace(first=lambda: c))
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 86399), \
+             patch("clientes.routes.Cliente.query", fake_query):
+            resolved, reason, _meta = clientes_routes._resolve_public_link_token(token)
+
+        assert resolved is c
+        assert reason == ""
+
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 86401), \
+             patch("clientes.routes.Cliente.query", fake_query):
+            expired, reason, _meta = clientes_routes._resolve_public_link_token(token)
+
+    assert expired is None
+    assert reason == "expired"
+
+
 def test_public_link_expired_returns_410_page():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -383,6 +413,7 @@ def test_public_link_expired_returns_410_page():
 
     assert resp.status_code == 410
     assert "Enlace expirado" in resp.get_data(as_text=True)
+    assert "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao." in resp.get_data(as_text=True)
 
 
 def test_public_link_ignores_posted_identity_fields_and_uses_token_cliente():
@@ -664,6 +695,47 @@ def test_share_landing_route_is_corporate_and_does_not_expose_long_token():
     assert "tok123" not in html
     assert 'property="og:title"' in html
     assert 'property="og:url" content="https://www.domesticadelcibao.com/solicitud/ABCD2345EF"' in html
+
+
+def test_share_landing_existing_alias_is_valid_before_24h_and_marks_expired_after_24h():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    base_ts = 1_700_100_000
+
+    with flask_app.app_context():
+        c = _dummy_cliente(email="uno@example.com")
+        c.updated_at = datetime.utcfromtimestamp(base_ts)
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts):
+            token = clientes_routes.generar_token_publico_cliente(c)
+
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token=token)
+    fake_query = SimpleNamespace(filter_by=lambda **_kwargs: SimpleNamespace(first=lambda: c))
+
+    with flask_app.app_context():
+        with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+             patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+             patch("clientes.routes.Cliente.query", fake_query), \
+             patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 86399):
+            valid = client.get("/solicitud/ABCD2345EF")
+
+    assert valid.status_code == 200
+    valid_html = valid.get_data(as_text=True)
+    assert "Enlace válido. Puedes continuar al formulario." in valid_html
+
+    with flask_app.app_context():
+        with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+             patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+             patch("clientes.routes.Cliente.query", fake_query), \
+             patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 86401):
+            expired = client.get("/solicitud/ABCD2345EF")
+
+    assert expired.status_code == 200
+    expired_html = expired.get_data(as_text=True)
+    assert "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao." in expired_html
 
 
 def test_share_continue_existing_route_uses_alias_canonical_url_and_existing_security():

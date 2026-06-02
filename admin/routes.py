@@ -25138,9 +25138,9 @@ def generar_link_publico_solicitud(cliente_id):
     created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
     link = generar_link_publico_compartible_cliente(c, created_by=created_by)
     try:
-        max_age_days = int((os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip())
+        max_age_days = int((os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "1").strip())
     except Exception:
-        max_age_days = 30
+        max_age_days = 1
     max_age_days = max(1, min(365, max_age_days))
 
     return render_template(
@@ -25158,9 +25158,11 @@ def generar_link_publico_cliente_nuevo():
     created_by = str(getattr(current_user, "username", "") or getattr(current_user, "id", "") or "")
     link = generar_link_publico_compartible_cliente_nuevo(created_by=created_by)
     try:
-        max_age_days = int((os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip())
+        max_age_days = int(
+            (os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "1").strip()
+        )
     except Exception:
-        max_age_days = 30
+        max_age_days = 1
     max_age_days = max(1, min(365, max_age_days))
 
     return render_template(

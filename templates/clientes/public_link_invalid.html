@@ -1,5 +1,5 @@
 {% extends 'clientes/public_base.html' %}
-{% set meta_description = "Este enlace oficial no está disponible o expiró. Solicite un nuevo enlace a Doméstica del Cibao A&D." %}
+{% set meta_description = "Este enlace oficial no está disponible o expiró. Solicita uno nuevo a Doméstica del Cibao." %}
 {% set og_title = "Doméstica del Cibao A&D — Enlace No Disponible" %}
 {% set og_description = "Este enlace oficial no está disponible. Contacte a la agencia para generar uno nuevo." %}
 {% set og_type = "website" %}
@@ -80,6 +80,8 @@
         <h1 class="h4 fw-bold mt-3 mb-2">
           {% if csrf_issue %}
             La sesion del formulario expiro
+          {% elif expired %}
+            Este enlace ha expirado
           {% else %}
             Este enlace no es valido o ha expirado
           {% endif %}
@@ -88,14 +90,14 @@
           {% if csrf_issue %}
             Recarga este enlace e intenta enviar nuevamente la solicitud.
           {% elif expired %}
-            Este acceso ya superó su tiempo de validez para este proceso.
+            Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao.
           {% else %}
             El enlace no coincide con una solicitud publica activa o fue alterado.
           {% endif %}
         </p>
 
         <div class="invalid-note">
-          Este enlace no está disponible o ha expirado. Comunícate con Doméstica del Cibao A&D para solicitar un nuevo enlace.
+          Este enlace no está disponible o ha expirado. Solicita uno nuevo a Doméstica del Cibao.
           {% if status_code %}<span class="d-block mt-1 small">Referencia: HTTP {{ status_code }}</span>{% endif %}
         </div>
       </div>

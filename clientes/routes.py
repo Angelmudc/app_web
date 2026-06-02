@@ -1134,13 +1134,29 @@ def _public_link_serializers_for_verify(*, salt: str) -> list[URLSafeTimedSerial
     return [URLSafeTimedSerializer(secret, salt=salt) for secret in _public_link_secret_keys()]
 
 
-def _public_link_max_age_seconds() -> int:
-    raw_days = (os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "30").strip()
+def _public_solicitud_token_max_age_days(*, link_type: str = "existente") -> int:
+    normalized = str(link_type or "existente").strip().lower()
+    candidates: list[str] = []
+
+    primary = str(os.getenv("PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS") or "").strip()
+    if primary:
+        candidates.append(primary)
+
+    if normalized == "nuevo":
+        legacy_new = str(os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "").strip()
+        if legacy_new:
+            candidates.append(legacy_new)
+
+    raw_days = candidates[0] if candidates else "1"
     try:
         days = int(raw_days)
     except Exception:
-        days = 30
-    days = min(365, max(1, days))
+        days = 1
+    return min(365, max(1, days))
+
+
+def _public_link_max_age_seconds() -> int:
+    days = _public_solicitud_token_max_age_days(link_type="existente")
     return int(timedelta(days=days).total_seconds())
 
 
@@ -1323,12 +1339,7 @@ def _public_new_link_serializer() -> URLSafeTimedSerializer:
 
 
 def _public_new_link_max_age_seconds() -> int:
-    raw_days = (os.getenv("PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS") or "30").strip()
-    try:
-        days = int(raw_days)
-    except Exception:
-        days = 30
-    days = min(365, max(1, days))
+    days = _public_solicitud_token_max_age_days(link_type="nuevo")
     return int(timedelta(days=days).total_seconds())
 
 
@@ -7560,9 +7571,11 @@ def solicitud_publica_nueva_token(token):
     if not token_ok:
         reason_key = "invalid"
         status_code = 404
+        user_message = "Este enlace no es válido. Solicita uno nuevo a Doméstica del Cibao."
         if fail_reason == "expired":
             reason_key = "expired"
             status_code = 410
+            user_message = "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao."
         _log_public_new_link_event(
             "PUBLIC_NEW_LINK_VIEW_FAIL",
             token,
@@ -7570,7 +7583,7 @@ def solicitud_publica_nueva_token(token):
             reason=fail_reason or "invalid_token",
             metadata_extra={"method": request.method, "status_code": status_code},
         )
-        flash("Este enlace no es válido o expiró. Solicita uno nuevo a la agencia.", "warning")
+        flash(user_message, "warning")
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key=reason_key,
@@ -8075,11 +8088,11 @@ def solicitud_publica(token):
     if not cliente:
         reason_key = "invalid"
         status_code = 404
-        user_message = "Este enlace no es válido."
+        user_message = "Este enlace no es válido. Solicita uno nuevo a Doméstica del Cibao."
         if fail_reason == "expired":
             reason_key = "expired"
             status_code = 410
-            user_message = "Este enlace ha expirado."
+            user_message = "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao."
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
             token,
@@ -8087,7 +8100,7 @@ def solicitud_publica(token):
             reason=fail_reason or "invalid_token",
             metadata_extra={"method": request.method, "status_code": status_code},
         )
-        flash(f"{user_message} Solicita uno nuevo a la agencia.", "warning")
+        flash(user_message, "warning")
         return render_template(
             'clientes/public_link_invalid.html',
             reason_key=reason_key,
