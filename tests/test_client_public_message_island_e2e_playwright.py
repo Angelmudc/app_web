@@ -246,6 +246,58 @@ def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+def test_generation_error_shows_backend_message_with_retry_after(cpmi_e2e_env, browser_name):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = browser.new_context()
+        _install_cpmi_clipboard_stub(context, "clipboard_ok")
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
+        page.route(
+            "**/admin/solicitudes/nueva-publica/link.json",
+            lambda route: route.fulfill(
+                status=429,
+                content_type="application/json",
+                headers={"Retry-After": "60"},
+                body='{"ok": false, "error": "rate_limited", "message": "Has generado varios enlaces recientemente.", "retry_after_sec": 60}',
+            ),
+        )
+        page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
+        page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
+
+        page.click("#clientPublicMessageIslandBtn")
+        page.wait_for_function(
+            """
+            ({ expectedFeedback }) => {
+              const feedback = document.querySelector('#clientPublicMessageIslandFeedback');
+              const label = document.querySelector('#clientPublicMessageIslandBtn .cpmi-label');
+              if (!feedback || !label) return false;
+              return feedback.textContent.trim() === expectedFeedback && label.textContent.trim() === expectedFeedback;
+            }
+            """,
+            arg={"expectedFeedback": "Has generado varios enlaces recientemente. (60s)"},
+            timeout=12000,
+        )
+
+        assert endpoint_hits == [429]
+        assert links == []
+        assert page.locator("#clientPublicMessageIslandFeedback").inner_text().strip() == "Has generado varios enlaces recientemente. (60s)"
+        assert page.locator("#clientPublicMessageIslandBtn .cpmi-label").inner_text().strip() == "Has generado varios enlaces recientemente. (60s)"
+
+        context.close()
+        browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
 def test_main_button_generates_fresh_token_each_time(cpmi_e2e_env, browser_name):
     base_url = cpmi_e2e_env.base_url
 

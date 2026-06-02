@@ -268,6 +268,20 @@
     return linkPublico;
   }
 
+  function resolveGenerationErrorMessage(err) {
+    var fallback = "No se pudo generar el enlace";
+    var details = err && err.details ? err.details : null;
+    var payload = details && details.payload ? details.payload : null;
+    var message = String((payload && payload.message) || "").trim();
+    if (!message) return fallback;
+
+    var retryAfterSec = parseInt((payload && payload.retry_after_sec), 10);
+    if (Number.isFinite(retryAfterSec) && retryAfterSec > 0) {
+      return message + " (" + retryAfterSec + "s)";
+    }
+    return message;
+  }
+
   async function copyLastGeneratedLink() {
     if (!lastGeneratedLink) {
       return {
@@ -312,9 +326,10 @@
           error: err,
           details: err && err.details ? err.details : null
         });
+        var generationErrorMessage = resolveGenerationErrorMessage(err);
         setButtonVisualState("error");
-        setButtonLabel("No se pudo generar el enlace");
-        showFeedback("No se pudo generar el enlace");
+        setButtonLabel(generationErrorMessage);
+        showFeedback(generationErrorMessage);
       } else {
         console.error("[client-public-message-island] copy failed after link generation", {
           error: err
