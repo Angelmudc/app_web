@@ -82,12 +82,31 @@
     console.info("[client-public-message-island]", eventName, details || {});
   }
 
+  function updateCopyDebugState(method, error, diagnostics) {
+    try {
+      window.__CPMI_LAST_COPY_METHOD = String(method || "");
+      window.__CPMI_LAST_COPY_ERROR = error ? {
+        name: String((error && error.name) || "Error"),
+        message: String((error && error.message) || "unknown")
+      } : null;
+      window.__CPMI_LAST_COPY_DIAGNOSIS = diagnostics || null;
+    } catch (_err) {
+      // noop
+    }
+  }
+
   function reportClipboardDiagnosis(stage, diagnostics) {
     if (!debugEnabled || !window.console || typeof window.console.info !== "function") return;
     console.info("[client-public-message-island] clipboard diagnosis", {
       stage: stage,
       secureContext: !!(diagnostics && diagnostics.secureContext),
       clipboardAvailable: !!(diagnostics && diagnostics.clipboardAvailable),
+      clipboardWriteAvailable: !!(diagnostics && diagnostics.clipboardWriteAvailable),
+      clipboardItemAvailable: !!(diagnostics && diagnostics.clipboardItemAvailable),
+      writePromiseAttempted: !!(diagnostics && diagnostics.writePromiseAttempted),
+      writePromiseSuccess: diagnostics ? diagnostics.writePromiseSuccess : null,
+      writePromiseErrorName: diagnostics && diagnostics.clipboardPromiseError ? diagnostics.clipboardPromiseError.name : "",
+      writePromiseErrorMessage: diagnostics && diagnostics.clipboardPromiseError ? diagnostics.clipboardPromiseError.message : "",
       writeTextAttempted: !!(diagnostics && diagnostics.writeTextAttempted),
       writeTextSuccess: diagnostics ? diagnostics.writeTextSuccess : null,
       writeTextErrorName: diagnostics && diagnostics.clipboardError ? diagnostics.clipboardError.name : "",
@@ -101,6 +120,7 @@
       textareaSelected: !!(diagnostics && diagnostics.textareaSelected),
       activeElementIsTextarea: !!(diagnostics && diagnostics.activeElementIsTextarea),
       userActivationAtAttempt: diagnostics ? diagnostics.userActivationAtAttempt : null,
+      userActivationAtWritePromise: diagnostics ? diagnostics.userActivationAtWritePromise : null,
       userActivationAtWriteText: diagnostics ? diagnostics.userActivationAtWriteText : null,
       userActivationAtExecCommand: diagnostics ? diagnostics.userActivationAtExecCommand : null,
       userAgent: diagnostics ? diagnostics.userAgent : "unknown"
@@ -219,12 +239,15 @@
     };
   }
 
-  async function copyTextSafe(text) {
-    var value = String(text || "").trim();
-    var diagnostics = {
+  function createCopyDiagnostics() {
+    return {
       clipboardAvailable: !!(navigator.clipboard && typeof navigator.clipboard.writeText === "function"),
+      clipboardWriteAvailable: !!(navigator.clipboard && typeof navigator.clipboard.write === "function"),
+      clipboardItemAvailable: typeof window.ClipboardItem === "function",
       secureContext: !!window.isSecureContext,
       userAgent: summarizeUserAgent(),
+      writePromiseAttempted: false,
+      writePromiseSuccess: null,
       writeTextAttempted: false,
       writeTextSuccess: null,
       execCommandAttempted: false,
@@ -234,9 +257,96 @@
       textareaSelected: false,
       activeElementIsTextarea: false,
       userActivationAtAttempt: getUserActivationSnapshot(),
+      userActivationAtWritePromise: null,
       userActivationAtWriteText: null,
       userActivationAtExecCommand: null
     };
+  }
+
+  function createTextClipboardBlob(value) {
+    return new Blob([String(value || "")], { type: "text/plain" });
+  }
+
+  function copyTextFromPromiseWithinGesture(textPromise) {
+    if (!navigator.clipboard || typeof navigator.clipboard.write !== "function" || typeof window.ClipboardItem !== "function") {
+      return null;
+    }
+
+    var diagnostics = createCopyDiagnostics();
+    diagnostics.writePromiseAttempted = true;
+    diagnostics.userActivationAtWritePromise = getUserActivationSnapshot();
+
+    try {
+      var item = new window.ClipboardItem({
+        "text/plain": Promise.resolve(textPromise).then(function (value) {
+          return createTextClipboardBlob(value);
+        })
+      });
+      return navigator.clipboard.write([item]).then(function () {
+        diagnostics.writePromiseSuccess = true;
+        lastCopyDiagnosis = diagnostics;
+        updateCopyDebugState("clipboard-write", null, diagnostics);
+        debugClipboard("copy-success", {
+          method: "clipboard-write",
+          secureContext: diagnostics.secureContext,
+          clipboardAvailable: diagnostics.clipboardAvailable,
+          clipboardWriteAvailable: diagnostics.clipboardWriteAvailable,
+          clipboardItemAvailable: diagnostics.clipboardItemAvailable,
+          userAgent: diagnostics.userAgent
+        });
+        reportClipboardDiagnosis("clipboard-write-success", diagnostics);
+        return {
+          ok: true,
+          method: "clipboard-write",
+          error: null,
+          diagnostics: diagnostics
+        };
+      }).catch(function (err) {
+        diagnostics.writePromiseSuccess = false;
+        diagnostics.clipboardPromiseError = {
+          name: String((err && err.name) || "Error"),
+          message: String((err && err.message) || "unknown")
+        };
+        lastCopyDiagnosis = diagnostics;
+        updateCopyDebugState("clipboard-write", err || null, diagnostics);
+        debugClipboard("clipboard-write-failed", {
+          clipboardAvailable: diagnostics.clipboardAvailable,
+          clipboardWriteAvailable: diagnostics.clipboardWriteAvailable,
+          clipboardItemAvailable: diagnostics.clipboardItemAvailable,
+          secureContext: diagnostics.secureContext,
+          errorName: diagnostics.clipboardPromiseError.name,
+          errorMessage: diagnostics.clipboardPromiseError.message,
+          userAgent: diagnostics.userAgent
+        });
+        reportClipboardDiagnosis("clipboard-write-failed", diagnostics);
+        return {
+          ok: false,
+          method: "clipboard-write",
+          error: err || null,
+          diagnostics: diagnostics
+        };
+      });
+    } catch (err) {
+      diagnostics.writePromiseSuccess = false;
+      diagnostics.clipboardPromiseError = {
+        name: String((err && err.name) || "Error"),
+        message: String((err && err.message) || "unknown")
+      };
+      lastCopyDiagnosis = diagnostics;
+      updateCopyDebugState("clipboard-write", err || null, diagnostics);
+      reportClipboardDiagnosis("clipboard-write-failed", diagnostics);
+      return Promise.resolve({
+        ok: false,
+        method: "clipboard-write",
+        error: err || null,
+        diagnostics: diagnostics
+      });
+    }
+  }
+
+  async function copyTextSafe(text) {
+    var value = String(text || "").trim();
+    var diagnostics = createCopyDiagnostics();
     if (!value) {
       lastCopyDiagnosis = diagnostics;
       reportClipboardDiagnosis("empty-text", diagnostics);
@@ -256,6 +366,7 @@
       try {
         await navigator.clipboard.writeText(value);
         diagnostics.writeTextSuccess = true;
+        updateCopyDebugState("clipboard", null, diagnostics);
         debugClipboard("copy-success", {
           method: "clipboard",
           secureContext: diagnostics.secureContext,
@@ -276,6 +387,7 @@
           message: String((err && err.message) || "unknown")
         };
         diagnostics.writeTextSuccess = false;
+        updateCopyDebugState("clipboard", err || null, diagnostics);
         debugClipboard("clipboard-write-failed", {
           clipboardAvailable: diagnostics.clipboardAvailable,
           secureContext: diagnostics.secureContext,
@@ -314,6 +426,7 @@
       }
     );
     lastCopyDiagnosis = diagnostics;
+    updateCopyDebugState(fallbackResult.ok ? "execCommand" : "none", fallbackResult.error || null, diagnostics);
     reportClipboardDiagnosis(
       fallbackResult.ok ? "execCommand-copy-success" : "execCommand-copy-failed",
       diagnostics
@@ -388,6 +501,10 @@
     reportClipboardDiagnosis("link-response", {
       secureContext: !!window.isSecureContext,
       clipboardAvailable: !!(navigator.clipboard && typeof navigator.clipboard.writeText === "function"),
+      clipboardWriteAvailable: !!(navigator.clipboard && typeof navigator.clipboard.write === "function"),
+      clipboardItemAvailable: typeof window.ClipboardItem === "function",
+      writePromiseAttempted: false,
+      writePromiseSuccess: null,
       writeTextAttempted: false,
       writeTextSuccess: null,
       execCommandSupported: typeof document.queryCommandSupported === "function" ? document.queryCommandSupported("copy") : null,
@@ -397,6 +514,7 @@
       textareaSelected: false,
       activeElementIsTextarea: false,
       userActivationAtAttempt: null,
+      userActivationAtWritePromise: null,
       userActivationAtWriteText: null,
       userActivationAtExecCommand: null,
       userAgent: summarizeUserAgent()
@@ -460,8 +578,17 @@
     hideManualPanel();
 
     try {
-      await generateNewPublicLink();
-      var copyResult = await copyLastGeneratedLink();
+      var linkPromise = generateNewPublicLink();
+      var gestureCopyPromise = copyTextFromPromiseWithinGesture(
+        linkPromise.then(function (linkPublico) {
+          return buildMessageForLink(linkPublico);
+        })
+      );
+      await linkPromise;
+      var copyResult = gestureCopyPromise ? await gestureCopyPromise : null;
+      if (!copyResult || !copyResult.ok) {
+        copyResult = await copyLastGeneratedLink();
+      }
       if (!copyResult.ok) {
         throw new Error("copy-failed");
       }

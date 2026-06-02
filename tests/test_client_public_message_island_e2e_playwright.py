@@ -187,6 +187,24 @@ def _install_cpmi_clipboard_stub(context, mode: str) -> None:
     context.add_init_script(scripts[mode])
 
 
+def _new_context(browser, real_clipboard: bool = False, browser_name: str = ""):
+    permissions = ["clipboard-read", "clipboard-write"] if real_clipboard and browser_name != "webkit" else None
+    return browser.new_context(permissions=permissions)
+
+
+def _read_real_clipboard(page) -> str:
+    return page.evaluate(
+        """
+        async () => {
+          if (!navigator.clipboard || typeof navigator.clipboard.readText !== 'function') {
+            throw new Error('clipboard-read-unavailable');
+          }
+          return await navigator.clipboard.readText();
+        }
+        """
+    )
+
+
 def _wait_cpmi_idle(page) -> None:
     page.wait_for_function(
         """
@@ -219,6 +237,100 @@ def _attach_cpmi_link_capture(page):
     return endpoint_hits, links
 
 
+def _mask_link(value: str) -> str:
+    text = str(value or "").strip()
+    if len(text) <= 18:
+        return text
+    return f"{text[:12]}...{text[-6:]}"
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+def test_global_island_copies_real_clipboard_same_click(cpmi_e2e_env, browser_name):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = _new_context(browser, real_clipboard=True, browser_name=browser_name)
+        try:
+            page = context.new_page()
+        except Exception as exc:
+            if browser_name == "webkit":
+                pytest.skip(f"webkit real clipboard limitado en este runner: {exc}")
+            raise
+        _admin_login(page, base_url)
+
+        endpoint_hits, links = _attach_cpmi_link_capture(page)
+        debug_errors = []
+        page.on("console", lambda msg: debug_errors.append(msg.text) if "clipboard diagnosis" in msg.text else None)
+
+        page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
+        page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
+
+        try:
+            page.evaluate(
+                """
+                async () => {
+                  if (!navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') return;
+                  await navigator.clipboard.writeText('seed-before-click');
+                }
+                """
+            )
+            page.click("#clientPublicMessageIslandBtn")
+            page.wait_for_function(
+                """
+                () => {
+                  const feedback = document.querySelector('#clientPublicMessageIslandFeedback');
+                  const label = document.querySelector('#clientPublicMessageIslandBtn .cpmi-label');
+                  const panel = document.querySelector('#clientPublicMessageIslandManual');
+                  return !!feedback
+                    && !!label
+                    && feedback.textContent.trim() === 'Mensaje copiado'
+                    && label.textContent.trim() === 'Mensaje copiado'
+                    && !!panel
+                    && panel.classList.contains('d-none');
+                }
+                """,
+                timeout=12000,
+            )
+            assert endpoint_hits == [200]
+            assert len(links) == 1
+            clipboard_text = _read_real_clipboard(page).strip()
+            copy_method = page.evaluate("() => window.__CPMI_LAST_COPY_METHOD || ''").strip()
+            copy_error = page.evaluate("() => window.__CPMI_LAST_COPY_ERROR || null")
+        except Exception as exc:
+            if browser_name == "webkit":
+                pytest.skip(f"webkit clipboard real no verificable en este entorno: {exc}")
+            raise
+
+        generated_link = links[0].strip()
+        assert generated_link
+        assert clipboard_text
+        assert generated_link in clipboard_text
+        assert clipboard_text.endswith("Cuando lo completes, envíame tu nombre y dime que ya terminaste.")
+
+        print(
+            "[cpmi-e2e]",
+            {
+                "browser": browser_name,
+                "route": "/admin/solicitudes",
+                "endpoint_status": endpoint_hits[0],
+                "generated_link": _mask_link(generated_link),
+                "clipboard": _mask_link(clipboard_text),
+                "copy_method": copy_method,
+                "copy_error": copy_error,
+                "diagnostics": debug_errors[-1] if debug_errors else "",
+            },
+        )
+
+        context.close()
+        browser.close()
+
+
 @pytest.mark.e2e
 @pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
 @pytest.mark.parametrize(
@@ -243,7 +355,7 @@ def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, copy_mode)
         page = context.new_page()
         _admin_login(page, base_url)
@@ -366,7 +478,7 @@ def test_generation_error_shows_backend_message_with_retry_after(cpmi_e2e_env, b
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, "clipboard_ok")
         page = context.new_page()
         _admin_login(page, base_url)
@@ -418,7 +530,7 @@ def test_main_button_generates_fresh_token_each_time(cpmi_e2e_env, browser_name)
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         # Fuerza éxito de copiado para observar únicamente generación/token.
         _install_cpmi_clipboard_stub(context, "clipboard_ok")
         page = context.new_page()
@@ -467,7 +579,7 @@ def test_copy_again_reuses_current_token_without_new_request(cpmi_e2e_env, brows
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, "both_fail")
         page = context.new_page()
         _admin_login(page, base_url)
@@ -514,7 +626,7 @@ def test_rapid_double_click_creates_single_request_then_next_click_creates_new_t
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, "clipboard_ok")
         page = context.new_page()
         _admin_login(page, base_url)
@@ -557,7 +669,7 @@ def test_clientes_link_page_auto_copy_uses_fallbacks_before_manual_panel(cpmi_e2
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, copy_mode)
         page = context.new_page()
         _admin_login(page, base_url)
@@ -623,7 +735,7 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
         except Exception as exc:
             pytest.skip(f"{browser_name} no disponible: {exc}")
 
-        context = browser.new_context()
+        context = _new_context(browser, browser_name=browser_name)
         _install_cpmi_clipboard_stub(context, "both_fail")
         page = context.new_page()
         _admin_login(page, base_url)
