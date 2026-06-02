@@ -106,37 +106,82 @@ def _admin_login(page, base_url: str) -> None:
 def _install_cpmi_clipboard_stub(context, mode: str) -> None:
     scripts = {
         "clipboard_ok": """
+            window.__CPMI_COPIES = [];
             Object.defineProperty(window.navigator, 'clipboard', {
               configurable: true,
-              value: { writeText: () => Promise.resolve() }
+              value: {
+                writeText: (text) => {
+                  window.__CPMI_COPIES.push({ method: 'clipboard', text: String(text || '') });
+                  return Promise.resolve();
+                }
+              }
             });
             Object.defineProperty(window, 'isSecureContext', {
               configurable: true,
               value: true
             });
-            document.execCommand = () => true;
+            document.execCommand = (command) => {
+              if (String(command || '').toLowerCase() === 'copy') {
+                const el = document.activeElement;
+                const value = el && typeof el.value === 'string' ? el.value : '';
+                const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : 0;
+                const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : value.length;
+                window.__CPMI_COPIES.push({ method: 'execCommand', text: String(value).slice(start, end) || String(value) });
+              }
+              return true;
+            };
         """,
         "clipboard_fail_exec_ok": """
+            window.__CPMI_COPIES = [];
             Object.defineProperty(window.navigator, 'clipboard', {
               configurable: true,
-              value: { writeText: () => Promise.reject(new DOMException('write denied', 'NotAllowedError')) }
+              value: {
+                writeText: (text) => {
+                  window.__CPMI_COPIES.push({ method: 'clipboard-attempt', text: String(text || '') });
+                  return Promise.reject(new DOMException('write denied', 'NotAllowedError'));
+                }
+              }
             });
             Object.defineProperty(window, 'isSecureContext', {
               configurable: true,
               value: false
             });
-            document.execCommand = () => true;
+            document.execCommand = (command) => {
+              if (String(command || '').toLowerCase() === 'copy') {
+                const el = document.activeElement;
+                const value = el && typeof el.value === 'string' ? el.value : '';
+                const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : 0;
+                const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : value.length;
+                window.__CPMI_COPIES.push({ method: 'execCommand', text: String(value).slice(start, end) || String(value) });
+              }
+              return true;
+            };
         """,
         "both_fail": """
+            window.__CPMI_COPIES = [];
             Object.defineProperty(window.navigator, 'clipboard', {
               configurable: true,
-              value: { writeText: () => Promise.reject(new DOMException('write denied', 'NotAllowedError')) }
+              value: {
+                writeText: (text) => {
+                  window.__CPMI_COPIES.push({ method: 'clipboard-attempt', text: String(text || '') });
+                  return Promise.reject(new DOMException('write denied', 'NotAllowedError'));
+                }
+              }
             });
             Object.defineProperty(window, 'isSecureContext', {
               configurable: true,
               value: false
             });
-            document.execCommand = () => false;
+            document.execCommand = (command) => {
+              if (String(command || '').toLowerCase() === 'copy') {
+                const el = document.activeElement;
+                const value = el && typeof el.value === 'string' ? el.value : '';
+                const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : 0;
+                const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : value.length;
+                window.__CPMI_COPIES.push({ method: 'execCommand-attempt', text: String(value).slice(start, end) || String(value) });
+              }
+              return false;
+            };
         """,
     }
     context.add_init_script(scripts[mode])
@@ -495,6 +540,80 @@ def test_rapid_double_click_creates_single_request_then_next_click_creates_new_t
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+@pytest.mark.parametrize(
+    ("copy_mode", "expected_feedback", "manual_visible"),
+    [
+        ("clipboard_ok", "Mensaje copiado", False),
+        ("clipboard_fail_exec_ok", "Mensaje copiado", False),
+        ("both_fail", "Enlace listo para copiar manualmente", True),
+    ],
+)
+def test_clientes_link_page_auto_copy_uses_fallbacks_before_manual_panel(cpmi_e2e_env, browser_name, copy_mode, expected_feedback, manual_visible):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = browser.new_context()
+        _install_cpmi_clipboard_stub(context, copy_mode)
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        page.goto(f"{base_url}/admin/clientes", wait_until="domcontentloaded")
+        page.wait_for_selector('a[href$="/admin/solicitudes/nueva-publica/link"]', timeout=12000)
+
+        with context.expect_page() as popup_info:
+          page.click('a[href$="/admin/solicitudes/nueva-publica/link"]')
+        popup = popup_info.value
+        popup.wait_for_load_state("domcontentloaded")
+        popup.wait_for_selector("#linkPublicoNuevo", timeout=12000)
+
+        popup.wait_for_function(
+            """
+            ({ expectedFeedback, manualVisible }) => {
+              const feedback = document.querySelector('#copyIslandNuevoFeedback');
+              const panel = document.querySelector('#linkPublicoNuevoManualPanel');
+              const msg = document.querySelector('#copyMsgNuevo');
+              if (!feedback || !panel || !msg) return false;
+              if (feedback.textContent.trim() !== expectedFeedback) return false;
+              const isVisible = panel.classList.contains('is-visible');
+              if (isVisible !== manualVisible) return false;
+              if (!manualVisible) return msg.textContent.trim() === 'Mensaje copiado.';
+              return msg.textContent.includes('No se pudo copiar automáticamente');
+            }
+            """,
+            arg={"expectedFeedback": expected_feedback, "manualVisible": manual_visible},
+            timeout=12000,
+        )
+
+        original_link = popup.input_value("#linkPublicoNuevo").strip()
+        copied_entries = popup.evaluate("() => window.__CPMI_COPIES || []")
+        assert copied_entries
+        assert any(original_link in str(entry.get("text") or "") for entry in copied_entries)
+
+        if manual_visible:
+            popup.wait_for_selector("#linkPublicoNuevoManualPanel.is-visible", timeout=12000)
+            assert popup.input_value("#linkPublicoNuevoManualInput").strip() == original_link
+        else:
+            popup.wait_for_function(
+                """
+                () => {
+                  const panel = document.querySelector('#linkPublicoNuevoManualPanel');
+                  return !!panel && !panel.classList.contains('is-visible');
+                }
+                """,
+                timeout=12000,
+            )
+
+        context.close()
+        browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
 def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, browser_name):
     base_url = cpmi_e2e_env.base_url
 
@@ -530,7 +649,6 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
 
         popup.on("request", _capture_request)
 
-        popup.click('button[onclick="copyLinkNuevo()"]')
         popup.wait_for_selector("#linkPublicoNuevoManualPanel.is-visible", timeout=12000)
 
         assert popup.locator(".modal-backdrop").count() == 0

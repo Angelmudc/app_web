@@ -225,6 +225,29 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
 <script>
   let _copyIslandTimer = null;
   let _manualPanelCurrentValue = '';
+  let _autoCopyAttempted = false;
+
+  function shouldDebugCopyNuevo() {
+    try {
+      if (window.__CPMI_DEBUG) return true;
+    } catch (_err) {
+      // noop
+    }
+    const host = String((window.location && window.location.hostname) || '').trim().toLowerCase();
+    return host === '127.0.0.1' || host === 'localhost';
+  }
+
+  function logCopyNuevo(stage, payload) {
+    if (!shouldDebugCopyNuevo() || !window.console || typeof window.console.info !== 'function') return;
+    console.info('[cliente-nuevo-link-publico]', stage, payload || {});
+  }
+
+  function summarizeCopyError(error) {
+    return {
+      name: String((error && error.name) || 'Error'),
+      message: String((error && error.message) || 'unknown'),
+    };
+  }
 
   function showCopyIslandFeedback(text) {
     const node = document.getElementById('copyIslandNuevoFeedback');
@@ -240,24 +263,94 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     }, 1700);
   }
 
-  async function copyTextSafe(text) {
-    const value = String(text || '').trim();
-    if (!value) return false;
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(value);
-      return true;
+  function copyWithExecCommandNuevo(value) {
+    const text = String(value || '').trim();
+    if (!text) {
+      return { ok: false, method: 'execCommand', error: null };
     }
     const tmp = document.createElement('textarea');
-    tmp.value = value;
+    const activeElement = document.activeElement;
+    let ok = false;
+    let error = null;
+    tmp.value = text;
     tmp.setAttribute('readonly', '');
-    tmp.style.position = 'absolute';
+    tmp.setAttribute('aria-hidden', 'true');
+    tmp.style.position = 'fixed';
     tmp.style.left = '-9999px';
+    tmp.style.top = '0';
+    tmp.style.opacity = '0';
+    tmp.style.pointerEvents = 'none';
     document.body.appendChild(tmp);
-    tmp.select();
-    tmp.setSelectionRange(0, value.length);
-    const ok = document.execCommand('copy');
+    try {
+      tmp.focus();
+      tmp.select();
+      tmp.setSelectionRange(0, text.length);
+      ok = document.execCommand('copy');
+    } catch (err) {
+      error = err || null;
+      ok = false;
+    }
     document.body.removeChild(tmp);
-    return !!ok;
+    if (activeElement && typeof activeElement.focus === 'function') {
+      try {
+        activeElement.focus();
+      } catch (_focusErr) {
+        // noop
+      }
+    }
+    return { ok: !!ok, method: 'execCommand', error };
+  }
+
+  async function copyTextSafeDetailed(text) {
+    const value = String(text || '').trim();
+    if (!value) {
+      return { ok: false, method: 'none', error: null };
+    }
+    const clipboardAvailable = !!(navigator.clipboard && typeof navigator.clipboard.writeText === 'function');
+    logCopyNuevo('copy-attempt', {
+      clipboardAvailable,
+      secureContext: !!window.isSecureContext,
+      userActivation: !!(navigator.userActivation && navigator.userActivation.isActive),
+    });
+    if (clipboardAvailable) {
+      try {
+        await navigator.clipboard.writeText(value);
+        logCopyNuevo('clipboard-write-success', {
+          method: 'clipboard',
+          secureContext: !!window.isSecureContext,
+        });
+        return { ok: true, method: 'clipboard', error: null };
+      } catch (err) {
+        const error = summarizeCopyError(err);
+        logCopyNuevo('clipboard-write-failed', {
+          method: 'clipboard',
+          secureContext: !!window.isSecureContext,
+          errorName: error.name,
+          errorMessage: error.message,
+        });
+      }
+    }
+    const fallback = copyWithExecCommandNuevo(value);
+    if (fallback.error) {
+      const error = summarizeCopyError(fallback.error);
+      logCopyNuevo('execCommand-copy-failed', {
+        method: 'execCommand',
+        errorName: error.name,
+        errorMessage: error.message,
+      });
+    } else {
+      logCopyNuevo(fallback.ok ? 'execCommand-copy-success' : 'execCommand-copy-failed', {
+        method: 'execCommand',
+        errorName: '',
+        errorMessage: '',
+      });
+    }
+    return fallback.ok ? fallback : { ok: false, method: 'none', error: fallback.error };
+  }
+
+  async function copyTextSafe(text) {
+    const result = await copyTextSafeDetailed(text);
+    return !!result.ok;
   }
 
   function selectManualLinkNuevo() {
@@ -314,8 +407,8 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     }
 
     try {
-      const ok = await copyTextSafe(text);
-      if (!ok) {
+      const result = await copyTextSafeDetailed(text);
+      if (!result.ok) {
         throw new Error('copy failed');
       }
       hideManualPanelNuevo();
@@ -328,8 +421,10 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     }
   }
 
-  async function copyWaMessageNuevo() {
+  async function copyWaMessageNuevo(options) {
+    const config = options || {};
     const field = document.getElementById('waMensajeClienteNuevo');
+    const input = document.getElementById('linkPublicoNuevo');
     const copyMsg = document.getElementById('copyMsgNuevo');
     const text = (field && field.value ? String(field.value) : '').trim();
     if (!text) {
@@ -337,19 +432,32 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
       return;
     }
     try {
-      const ok = await copyTextSafe(text);
-      if (!ok) {
+      const result = await copyTextSafeDetailed(text);
+      if (!result.ok) {
         throw new Error('copy message failed');
       }
-      copyMsg.innerText = 'Mensaje de WhatsApp copiado.';
+      hideManualPanelNuevo();
+      copyMsg.innerText = 'Mensaje copiado.';
       showCopyIslandFeedback('Mensaje copiado');
-    } catch (_err) {
-      copyMsg.innerText = 'No se pudo copiar el mensaje automáticamente.';
-      showCopyIslandFeedback('Error al copiar');
+    } catch (err) {
+      const linkValue = String((input && input.value) || '').trim();
+      const failure = summarizeCopyError(err);
+      logCopyNuevo('message-copy-failed', {
+        errorName: failure.name,
+        errorMessage: failure.message,
+        auto: !!config.auto,
+      });
+      copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente el enlace visible.';
+      if (config.showManualOnFailure && linkValue) {
+        showManualPanelNuevo(linkValue, 'Safari no permitió copiar automáticamente. Copia el enlace manualmente.');
+        showCopyIslandFeedback('Enlace listo para copiar manualmente');
+      } else {
+        showCopyIslandFeedback('Error al copiar');
+      }
     }
   }
 
-  document.addEventListener('DOMContentLoaded', function () {
+  (function initClienteNuevoLinkPage() {
     const field = document.getElementById('waMensajeClienteNuevo');
     const input = document.getElementById('linkPublicoNuevo');
     const manualSelectBtn = document.getElementById('linkPublicoNuevoManualSelectBtn');
@@ -368,23 +476,30 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
     if (manualRetryBtn) {
       manualRetryBtn.addEventListener('click', async function () {
         const copyMsg = document.getElementById('copyMsgNuevo');
-        const value = String(_manualPanelCurrentValue || input.value || '').trim();
-        if (!value) {
+        const builder = window.buildClientPublicFormMessageNuevo || window.buildClientPublicFormMessage;
+        const linkValue = String(_manualPanelCurrentValue || input.value || '').trim();
+        const messageValue = typeof builder === 'function' ? builder(linkValue) : String(field.value || '').trim();
+        if (!messageValue) {
           if (copyMsg) copyMsg.innerText = 'No se encontró un enlace para copiar.';
           return;
         }
         try {
-          const ok = await copyTextSafe(value);
-          if (!ok) {
+          const result = await copyTextSafeDetailed(messageValue);
+          if (!result.ok) {
             throw new Error('retry copy failed');
           }
           hideManualPanelNuevo();
-          if (copyMsg) copyMsg.innerText = 'Enlace copiado correctamente.';
-          showCopyIslandFeedback('Link copiado');
-        } catch (_err) {
-          showManualPanelNuevo(value, 'No se pudo copiar automáticamente. El enlace sigue visible y puedes seleccionarlo manualmente.');
-          if (copyMsg) copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente la URL visible.';
-          showCopyIslandFeedback('Selecciona el link');
+          if (copyMsg) copyMsg.innerText = 'Mensaje copiado.';
+          showCopyIslandFeedback('Mensaje copiado');
+        } catch (err) {
+          const failure = summarizeCopyError(err);
+          logCopyNuevo('retry-copy-failed', {
+            errorName: failure.name,
+            errorMessage: failure.message,
+          });
+          showManualPanelNuevo(linkValue, 'Safari no permitió copiar automáticamente. Copia el enlace manualmente.');
+          if (copyMsg) copyMsg.innerText = 'No se pudo copiar automáticamente. Copia manualmente el enlace visible.';
+          showCopyIslandFeedback('Enlace listo para copiar manualmente');
         }
       });
     }
@@ -393,7 +508,11 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
         hideManualPanelNuevo();
       });
     }
-  });
+    if (!_autoCopyAttempted) {
+      _autoCopyAttempted = true;
+      copyWaMessageNuevo({ auto: true, showManualOnFailure: true });
+    }
+  })();
 </script>
 
 {% endblock %}
