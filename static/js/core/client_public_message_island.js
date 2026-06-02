@@ -2,6 +2,49 @@
   var body = document.body;
   if (!body) return;
 
+  var DEBUG_STORAGE_KEY = "cpmi_debug_enabled";
+
+  function persistDebugFlag(value) {
+    try {
+      if (value) {
+        window.sessionStorage.setItem(DEBUG_STORAGE_KEY, "1");
+      } else {
+        window.sessionStorage.removeItem(DEBUG_STORAGE_KEY);
+      }
+    } catch (_err) {
+      // noop
+    }
+  }
+
+  function readPersistedDebugFlag() {
+    try {
+      return window.sessionStorage.getItem(DEBUG_STORAGE_KEY) === "1";
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  function installDebugFlagBridge() {
+    if (window.__CPMIDebugBridgeInstalled) return;
+    window.__CPMIDebugBridgeInstalled = true;
+    try {
+      Object.defineProperty(window, "__CPMI_DEBUG", {
+        configurable: true,
+        enumerable: false,
+        get: function () {
+          return readPersistedDebugFlag();
+        },
+        set: function (value) {
+          persistDebugFlag(!!value);
+        }
+      });
+    } catch (_err) {
+      // noop
+    }
+  }
+
+  installDebugFlagBridge();
+
   var enabled = String(body.getAttribute("data-client-public-message-island-enabled") || "") === "1";
   if (!enabled) return;
 
@@ -14,7 +57,7 @@
   var retryCopyBtn = document.getElementById("clientPublicMessageIslandRetryCopyBtn");
   var closeManualBtn = document.getElementById("clientPublicMessageIslandCloseManualBtn");
   var linkUrl = String(body.getAttribute("data-client-public-message-link-url") || "").trim();
-  var debugEnabled = String(body.getAttribute("data-client-public-message-debug") || "") === "1";
+  var debugEnabled = String(body.getAttribute("data-client-public-message-debug") || "") === "1" || readPersistedDebugFlag();
   if (!btn || !feedbackNode || !linkUrl) return;
 
   var feedbackTimer = null;
@@ -25,10 +68,43 @@
   var labelNode = btn.querySelector(".cpmi-label");
   var iconNode = btn.querySelector(".cpmi-icon");
   var defaultLabel = labelNode ? String(labelNode.textContent || "").trim() : "";
+  var lastCopyDiagnosis = null;
+
+  function getUserActivationSnapshot() {
+    return {
+      isActive: !!(navigator.userActivation && navigator.userActivation.isActive),
+      hasBeenActive: !!(navigator.userActivation && navigator.userActivation.hasBeenActive)
+    };
+  }
 
   function debugClipboard(eventName, details) {
     if (!debugEnabled || !window.console || typeof window.console.info !== "function") return;
     console.info("[client-public-message-island]", eventName, details || {});
+  }
+
+  function reportClipboardDiagnosis(stage, diagnostics) {
+    if (!debugEnabled || !window.console || typeof window.console.info !== "function") return;
+    console.info("[client-public-message-island] clipboard diagnosis", {
+      stage: stage,
+      secureContext: !!(diagnostics && diagnostics.secureContext),
+      clipboardAvailable: !!(diagnostics && diagnostics.clipboardAvailable),
+      writeTextAttempted: !!(diagnostics && diagnostics.writeTextAttempted),
+      writeTextSuccess: diagnostics ? diagnostics.writeTextSuccess : null,
+      writeTextErrorName: diagnostics && diagnostics.clipboardError ? diagnostics.clipboardError.name : "",
+      writeTextErrorMessage: diagnostics && diagnostics.clipboardError ? diagnostics.clipboardError.message : "",
+      execCommandSupported: diagnostics ? diagnostics.execCommandSupported : null,
+      execCommandAttempted: !!(diagnostics && diagnostics.execCommandAttempted),
+      execCommandSuccess: diagnostics ? diagnostics.execCommandSucceeded : null,
+      execCommandErrorName: diagnostics && diagnostics.execCommandError ? diagnostics.execCommandError.name : "",
+      execCommandErrorMessage: diagnostics && diagnostics.execCommandError ? diagnostics.execCommandError.message : "",
+      textareaInserted: !!(diagnostics && diagnostics.textareaInserted),
+      textareaSelected: !!(diagnostics && diagnostics.textareaSelected),
+      activeElementIsTextarea: !!(diagnostics && diagnostics.activeElementIsTextarea),
+      userActivationAtAttempt: diagnostics ? diagnostics.userActivationAtAttempt : null,
+      userActivationAtWriteText: diagnostics ? diagnostics.userActivationAtWriteText : null,
+      userActivationAtExecCommand: diagnostics ? diagnostics.userActivationAtExecCommand : null,
+      userAgent: diagnostics ? diagnostics.userAgent : "unknown"
+    });
   }
 
   function summarizeUserAgent() {
@@ -79,6 +155,7 @@
     if (!value) return { ok: false, method: "execCommand", error: null };
     var tmp = document.createElement("textarea");
     var activeElement = document.activeElement;
+    var selected = false;
     tmp.value = value;
     tmp.setAttribute("aria-hidden", "true");
     tmp.style.position = "fixed";
@@ -89,12 +166,15 @@
     tmp.style.fontSize = "16px";
     tmp.style.contain = "strict";
     document.body.appendChild(tmp);
+    var activeElementIsTextarea = false;
     var ok = false;
     var execError = null;
     try {
       tmp.focus();
+      activeElementIsTextarea = document.activeElement === tmp;
       tmp.select();
       tmp.setSelectionRange(0, value.length);
+      selected = true;
       ok = document.execCommand("copy");
     } catch (err) {
       execError = err || null;
@@ -111,7 +191,12 @@
     return {
       ok: !!ok,
       method: "execCommand",
-      error: execError
+      error: execError,
+      diagnostics: {
+        textareaInserted: true,
+        textareaSelected: selected,
+        activeElementIsTextarea: activeElementIsTextarea
+      }
     };
   }
 
@@ -120,9 +205,22 @@
     var diagnostics = {
       clipboardAvailable: !!(navigator.clipboard && typeof navigator.clipboard.writeText === "function"),
       secureContext: !!window.isSecureContext,
-      userAgent: summarizeUserAgent()
+      userAgent: summarizeUserAgent(),
+      writeTextAttempted: false,
+      writeTextSuccess: null,
+      execCommandAttempted: false,
+      execCommandSupported: null,
+      execCommandSucceeded: null,
+      textareaInserted: false,
+      textareaSelected: false,
+      activeElementIsTextarea: false,
+      userActivationAtAttempt: getUserActivationSnapshot(),
+      userActivationAtWriteText: null,
+      userActivationAtExecCommand: null
     };
     if (!value) {
+      lastCopyDiagnosis = diagnostics;
+      reportClipboardDiagnosis("empty-text", diagnostics);
       return {
         ok: false,
         method: "none",
@@ -134,14 +232,19 @@
     debugClipboard("copy-attempt", diagnostics);
 
     if (diagnostics.clipboardAvailable) {
+      diagnostics.writeTextAttempted = true;
+      diagnostics.userActivationAtWriteText = getUserActivationSnapshot();
       try {
         await navigator.clipboard.writeText(value);
+        diagnostics.writeTextSuccess = true;
         debugClipboard("copy-success", {
           method: "clipboard",
           secureContext: diagnostics.secureContext,
           clipboardAvailable: diagnostics.clipboardAvailable,
           userAgent: diagnostics.userAgent
         });
+        lastCopyDiagnosis = diagnostics;
+        reportClipboardDiagnosis("clipboard-write-success", diagnostics);
         return {
           ok: true,
           method: "clipboard",
@@ -153,6 +256,7 @@
           name: String((err && err.name) || "Error"),
           message: String((err && err.message) || "unknown")
         };
+        diagnostics.writeTextSuccess = false;
         debugClipboard("clipboard-write-failed", {
           clipboardAvailable: diagnostics.clipboardAvailable,
           secureContext: diagnostics.secureContext,
@@ -163,8 +267,15 @@
       }
     }
     var fallbackResult = copyWithExecCommand(value);
+    diagnostics.execCommandAttempted = true;
+    diagnostics.userActivationAtExecCommand = getUserActivationSnapshot();
     diagnostics.execCommandSupported = typeof document.execCommand === "function";
     diagnostics.execCommandSucceeded = !!fallbackResult.ok;
+    if (fallbackResult.diagnostics) {
+      diagnostics.textareaInserted = !!fallbackResult.diagnostics.textareaInserted;
+      diagnostics.textareaSelected = !!fallbackResult.diagnostics.textareaSelected;
+      diagnostics.activeElementIsTextarea = !!fallbackResult.diagnostics.activeElementIsTextarea;
+    }
     if (fallbackResult.error) {
       diagnostics.execCommandError = {
         name: String((fallbackResult.error && fallbackResult.error.name) || "Error"),
@@ -182,6 +293,11 @@
         errorMessage: diagnostics.execCommandError ? diagnostics.execCommandError.message : "",
         userAgent: diagnostics.userAgent
       }
+    );
+    lastCopyDiagnosis = diagnostics;
+    reportClipboardDiagnosis(
+      fallbackResult.ok ? "execCommand-copy-success" : "execCommand-copy-failed",
+      diagnostics
     );
     return {
       ok: !!fallbackResult.ok,
@@ -249,6 +365,22 @@
       ok: resp.ok,
       payloadOk: !!payload.ok,
       hasLink: !!payload.link_publico
+    });
+    reportClipboardDiagnosis("link-response", {
+      secureContext: !!window.isSecureContext,
+      clipboardAvailable: !!(navigator.clipboard && typeof navigator.clipboard.writeText === "function"),
+      writeTextAttempted: false,
+      writeTextSuccess: null,
+      execCommandSupported: typeof document.queryCommandSupported === "function" ? document.queryCommandSupported("copy") : null,
+      execCommandAttempted: false,
+      execCommandSucceeded: null,
+      textareaInserted: false,
+      textareaSelected: false,
+      activeElementIsTextarea: false,
+      userActivationAtAttempt: null,
+      userActivationAtWriteText: null,
+      userActivationAtExecCommand: null,
+      userAgent: summarizeUserAgent()
     });
 
     if (!resp.ok || !payload.ok || !payload.link_publico) {
@@ -334,6 +466,7 @@
         console.error("[client-public-message-island] copy failed after link generation", {
           error: err
         });
+        reportClipboardDiagnosis("copy-failed-after-link-generation", lastCopyDiagnosis);
         setButtonVisualState("error");
         setButtonLabel("Copia manual disponible");
         showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
