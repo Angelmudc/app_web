@@ -210,24 +210,24 @@ def test_new_public_form_token_invalid_returns_controlled_response():
     assert "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao." in resp.get_data(as_text=True)
 
 
-def test_new_public_token_is_valid_before_24h_and_expires_after_24h():
+def test_new_public_token_is_valid_before_48h_and_expires_after_48h():
     flask_app.config["TESTING"] = True
     base_ts = 1_700_200_000
 
     with flask_app.app_context():
-        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
              patch("itsdangerous.timed.time.time", return_value=base_ts):
             token = clientes_routes.generar_token_publico_cliente_nuevo()
 
-        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
-             patch("itsdangerous.timed.time.time", return_value=base_ts + 86399):
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 172799):
             valid, reason, _meta = clientes_routes._resolve_public_new_link_token(token)
 
         assert valid is True
         assert reason == ""
 
-        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
-             patch("itsdangerous.timed.time.time", return_value=base_ts + 86401):
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
+             patch("itsdangerous.timed.time.time", return_value=base_ts + 172801):
             expired, reason, _meta = clientes_routes._resolve_public_new_link_token(token)
 
     assert expired is False
@@ -592,14 +592,14 @@ def test_share_continue_route_supports_new_client_flow_without_exposing_token_in
     assert "/clientes/n/tok123" not in html
 
 
-def test_share_continue_new_alias_is_valid_before_24h_and_expires_after_24h():
+def test_share_continue_new_alias_is_valid_before_48h_and_expires_after_48h():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
     base_ts = 1_700_300_000
 
     with flask_app.app_context():
-        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
+        with patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
              patch("itsdangerous.timed.time.time", return_value=base_ts):
             token = clientes_routes.generar_token_publico_cliente_nuevo()
 
@@ -608,8 +608,8 @@ def test_share_continue_new_alias_is_valid_before_24h_and_expires_after_24h():
     with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
          patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
-         patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
-         patch("itsdangerous.timed.time.time", return_value=base_ts + 86399):
+         patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
+         patch("itsdangerous.timed.time.time", return_value=base_ts + 172799):
         valid = client.get("/solicitud/WXYZ5678JK/continuar")
 
     assert valid.status_code == 200
@@ -618,8 +618,8 @@ def test_share_continue_new_alias_is_valid_before_24h_and_expires_after_24h():
     with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
          patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
-         patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "1"}, clear=False), \
-         patch("itsdangerous.timed.time.time", return_value=base_ts + 86401):
+         patch.dict("os.environ", {"PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "2"}, clear=False), \
+         patch("itsdangerous.timed.time.time", return_value=base_ts + 172801):
         expired = client.get("/solicitud/WXYZ5678JK/continuar")
 
     assert expired.status_code == 410

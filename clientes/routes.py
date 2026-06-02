@@ -1147,11 +1147,11 @@ def _public_solicitud_token_max_age_days(*, link_type: str = "existente") -> int
         if legacy_new:
             candidates.append(legacy_new)
 
-    raw_days = candidates[0] if candidates else "1"
+    raw_days = candidates[0] if candidates else "2"
     try:
         days = int(raw_days)
     except Exception:
-        days = 1
+        days = 2
     return min(365, max(1, days))
 
 
