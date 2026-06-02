@@ -183,6 +183,46 @@ def _install_cpmi_clipboard_stub(context, mode: str) -> None:
               return false;
             };
         """,
+        "clipboard_write_promise_ok": """
+            window.__CPMI_COPIES = [];
+            window.ClipboardItem = function ClipboardItem(items) {
+              this.items = items || {};
+            };
+            Object.defineProperty(window.navigator, 'clipboard', {
+              configurable: true,
+              value: {
+                write: async (items) => {
+                  const first = Array.isArray(items) ? items[0] : null;
+                  const plain = first && first.items ? first.items['text/plain'] : null;
+                  let text = '';
+                  if (plain && typeof plain.then === 'function') {
+                    const blob = await plain;
+                    text = await blob.text();
+                  }
+                  window.__CPMI_COPIES.push({ method: 'clipboard-write', text: String(text || '') });
+                  return Promise.resolve();
+                },
+                writeText: (text) => {
+                  window.__CPMI_COPIES.push({ method: 'clipboard', text: String(text || '') });
+                  return Promise.resolve();
+                }
+              }
+            });
+            Object.defineProperty(window, 'isSecureContext', {
+              configurable: true,
+              value: true
+            });
+            document.execCommand = (command) => {
+              if (String(command || '').toLowerCase() === 'copy') {
+                const el = document.activeElement;
+                const value = el && typeof el.value === 'string' ? el.value : '';
+                const start = el && typeof el.selectionStart === 'number' ? el.selectionStart : 0;
+                const end = el && typeof el.selectionEnd === 'number' ? el.selectionEnd : value.length;
+                window.__CPMI_COPIES.push({ method: 'execCommand', text: String(value).slice(start, end) || String(value) });
+              }
+              return true;
+            };
+        """,
     }
     context.add_init_script(scripts[mode])
 
@@ -652,6 +692,53 @@ def test_rapid_double_click_creates_single_request_then_next_click_creates_new_t
 
 @pytest.mark.e2e
 @pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+def test_global_island_attempts_auto_copy_with_live_user_activation(cpmi_e2e_env, browser_name):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = _new_context(browser, browser_name=browser_name)
+        _install_cpmi_clipboard_stub(context, "clipboard_write_promise_ok")
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        page.goto(f"{base_url}/admin/solicitudes", wait_until="domcontentloaded")
+        page.wait_for_selector("#clientPublicMessageIslandBtn", timeout=12000)
+
+        page.click("#clientPublicMessageIslandBtn")
+        page.wait_for_function(
+            """
+            () => {
+              const diagnosis = window.__CPMI_LAST_COPY_DIAGNOSIS || null;
+              return !!(diagnosis && diagnosis.writePromiseAttempted === true && diagnosis.writePromiseSuccess === true);
+            }
+            """,
+            timeout=12000,
+        )
+
+        diagnosis = page.evaluate("() => window.__CPMI_LAST_COPY_DIAGNOSIS || null")
+        assert diagnosis is not None
+        assert diagnosis["writePromiseAttempted"] is True
+        assert diagnosis["writePromiseSuccess"] is True
+        assert diagnosis["userActivationAtWritePromise"]["isActive"] is True
+        assert diagnosis["userActivationAtWritePromise"]["hasBeenActive"] is True
+        assert diagnosis["userActivationAtAttempt"]["hasBeenActive"] is True
+
+        copied_entries = page.evaluate("() => window.__CPMI_COPIES || []")
+        assert copied_entries
+        assert copied_entries[0]["method"] == "clipboard-write"
+        assert "https://" in str(copied_entries[0]["text"] or "")
+
+        context.close()
+        browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
 @pytest.mark.parametrize(
     ("copy_mode", "expected_feedback", "manual_visible"),
     [
@@ -767,6 +854,16 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
         assert popup.locator("#linkPublicoNuevoManualPanel").get_attribute("aria-modal") is None
         assert popup.input_value("#linkPublicoNuevoManualInput").strip() == original_link
         assert popup.locator("#linkPublicoNuevoManualSelectBtn").count() == 1
+        popup.click("#linkPublicoNuevoManualSelectBtn")
+        popup.wait_for_function(
+            """
+            () => {
+              const input = document.querySelector('#linkPublicoNuevoManualInput');
+              return !!input && input.selectionStart === 0 && input.selectionEnd === input.value.length;
+            }
+            """,
+            timeout=12000,
+        )
 
         dom_state = popup.evaluate(
             """
@@ -787,7 +884,10 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
                 panelPosition: style ? style.position : '',
                 panelDisplay: style ? style.display : '',
                 inputValue: input ? input.value : '',
-                selectExists: !!selectBtn
+                selectExists: !!selectBtn,
+                selectionStart: input ? input.selectionStart : -1,
+                selectionEnd: input ? input.selectionEnd : -1,
+                inputLength: input ? input.value.length : 0
               };
             }
             """
@@ -802,6 +902,8 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
         assert dom_state["panelPointerEvents"] != "none"
         assert dom_state["inputValue"].strip() == original_link
         assert dom_state["selectExists"] is True
+        assert dom_state["selectionStart"] == 0
+        assert dom_state["selectionEnd"] == dom_state["inputLength"]
 
         popup.click("#linkPublicoNuevoManualRetryBtn")
         popup.wait_for_selector("#linkPublicoNuevoManualPanel.is-visible", timeout=12000)
@@ -820,6 +922,59 @@ def test_clientes_link_page_manual_copy_panel_is_non_blocking(cpmi_e2e_env, brow
             """,
             timeout=12000,
         )
+
+        context.close()
+        browser.close()
+
+
+@pytest.mark.e2e
+@pytest.mark.parametrize("browser_name", ["chromium", "webkit"])
+def test_clientes_link_page_separate_opens_generate_distinct_links(cpmi_e2e_env, browser_name):
+    base_url = cpmi_e2e_env.base_url
+
+    with sync_playwright() as p:
+        try:
+            browser = _launch_browser(p, browser_name)
+        except Exception as exc:
+            pytest.skip(f"{browser_name} no disponible: {exc}")
+
+        context = _new_context(browser, browser_name=browser_name)
+        _install_cpmi_clipboard_stub(context, "clipboard_ok")
+        page = context.new_page()
+        _admin_login(page, base_url)
+
+        page.goto(f"{base_url}/admin/clientes", wait_until="domcontentloaded")
+        page.wait_for_selector('a[href$="/admin/solicitudes/nueva-publica/link"]', timeout=12000)
+
+        with context.expect_page() as first_popup_info:
+            page.click('a[href$="/admin/solicitudes/nueva-publica/link"]')
+        first_popup = first_popup_info.value
+        first_popup.wait_for_load_state("domcontentloaded")
+        first_popup.wait_for_selector("#linkPublicoNuevo", timeout=12000)
+        first_link = first_popup.input_value("#linkPublicoNuevo").strip()
+        assert first_link
+        first_popup.close()
+
+        with context.expect_page() as second_popup_info:
+            page.click('a[href$="/admin/solicitudes/nueva-publica/link"]')
+        second_popup = second_popup_info.value
+        second_popup.wait_for_load_state("domcontentloaded")
+        second_popup.wait_for_selector("#linkPublicoNuevo", timeout=12000)
+        second_link = second_popup.input_value("#linkPublicoNuevo").strip()
+        assert second_link
+        assert second_link != first_link
+
+        with flask_app.app_context():
+            first_code = _extract_share_code(first_link)
+            second_code = _extract_share_code(second_link)
+            rows = (
+                PublicSolicitudShareAlias.query
+                .filter(PublicSolicitudShareAlias.code.in_([first_code, second_code]))
+                .filter_by(link_type="nuevo", is_active=True)
+                .all()
+            )
+            assert len(rows) == 2
+            assert len({str(getattr(row, "token_hash", "") or "") for row in rows}) == 2
 
         context.close()
         browser.close()
