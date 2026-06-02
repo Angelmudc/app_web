@@ -487,7 +487,9 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
     assert "/clientes/solicitudes/publica/tok123" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
     assert second.status_code == 410
-    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+    second_html = second.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in second_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
 
 
 def test_public_link_short_route_keeps_same_validation_and_security_behavior():
@@ -554,7 +556,9 @@ def test_public_link_successful_save_shows_professional_success_page_once():
     assert "envíanos tu nombre por WhatsApp" not in success_html
     assert "/clientes/login" not in success_html
     assert later.status_code == 410
-    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+    later_html = later.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in later_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
 
 
 def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
@@ -702,7 +706,9 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
         invalid_resp = client.get("/solicitud/ZZZZ")
 
     assert used_resp.status_code == 410
-    assert "Este enlace ya fue utilizado" in used_resp.get_data(as_text=True)
+    used_html = used_resp.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in used_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in used_html
     assert invalid_resp.status_code == 404
 
 
@@ -739,7 +745,9 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
     assert "CL-001-B" in success_html
     assert "/clientes/login" not in success_html
     assert later.status_code == 410
-    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+    later_html = later.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in later_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
 
 
 def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_request():

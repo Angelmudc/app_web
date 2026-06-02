@@ -279,7 +279,9 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
     assert "/clientes/solicitudes/nueva-publica/tok123" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
     assert second.status_code == 410
-    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+    second_html = second.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in second_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
 
 
 def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once():
@@ -316,7 +318,9 @@ def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once()
     assert "envíanos tu nombre por WhatsApp" in success_html
     assert "/clientes/login" not in success_html
     assert later.status_code == 410
-    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+    later_html = later.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in later_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
 
 
 def test_new_public_form_token_save_fail_keeps_token_valid():
@@ -386,7 +390,10 @@ def test_new_public_duplicate_email_case_insensitive_blocks_and_consumes_token()
 
     assert first.status_code == 409
     assert second.status_code == 410
-    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+    second_html = second.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in second_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
+    assert "Ya existe una solicitud asociada a este enlace." in second_html
 
 
 def test_new_public_duplicate_phone_with_format_variants_blocks_and_consumes_token():
@@ -416,7 +423,10 @@ def test_new_public_duplicate_phone_with_format_variants_blocks_and_consumes_tok
 
     assert first.status_code == 409
     assert second.status_code == 410
-    assert "Este enlace ya fue utilizado" in second.get_data(as_text=True)
+    second_html = second.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in second_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
+    assert "Ya existe una solicitud asociada a este enlace." in second_html
 
 
 def test_existing_token_public_flow_still_available():
@@ -592,7 +602,9 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
     assert "Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario." in success_html
     assert "/clientes/login" not in success_html
     assert later.status_code == 410
-    assert "Este enlace ya fue utilizado" in later.get_data(as_text=True)
+    later_html = later.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in later_html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
 
 
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
