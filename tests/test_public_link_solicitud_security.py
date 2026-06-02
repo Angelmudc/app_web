@@ -8,8 +8,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import app as flask_app
+from config_app import db
 import clientes.routes as clientes_routes
+from models import Cliente, PublicSolicitudShareAlias, PublicSolicitudTokenUso
+from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.robust_save import RobustSaveResult
+from utils.timezone import utc_now_naive
 
 
 class _FakeField:
@@ -403,6 +407,28 @@ def test_public_link_token_is_valid_before_48h_and_expires_after_48h():
     assert reason == "expired"
 
 
+def test_public_link_uses_48h_default_and_shared_env_override_for_existing_and_new_tokens():
+    flask_app.config["TESTING"] = True
+
+    with patch.dict("os.environ", {
+        "PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "",
+        "PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS": "",
+    }, clear=False):
+        assert clientes_routes._public_solicitud_token_max_age_days(link_type="existente") == 2
+        assert clientes_routes._public_solicitud_token_max_age_days(link_type="nuevo") == 2
+        assert clientes_routes._public_link_max_age_seconds() == 172800
+        assert clientes_routes._public_new_link_max_age_seconds() == 172800
+
+    with patch.dict("os.environ", {
+        "PUBLIC_SOLICITUD_TOKEN_MAX_AGE_DAYS": "5",
+        "PUBLIC_SOLICITUD_NUEVA_TOKEN_MAX_AGE_DAYS": "9",
+    }, clear=False):
+        assert clientes_routes._public_solicitud_token_max_age_days(link_type="existente") == 5
+        assert clientes_routes._public_solicitud_token_max_age_days(link_type="nuevo") == 5
+        assert clientes_routes._public_link_max_age_seconds() == 432000
+        assert clientes_routes._public_new_link_max_age_seconds() == 432000
+
+
 def test_public_link_expired_returns_410_page():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -414,6 +440,23 @@ def test_public_link_expired_returns_410_page():
     assert resp.status_code == 410
     assert "Enlace expirado" in resp.get_data(as_text=True)
     assert "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao." in resp.get_data(as_text=True)
+
+
+def test_public_link_invalid_signature_shows_clear_message_without_technical_text():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(None, "invalid_signature", {})):
+        resp = client.get("/clientes/solicitudes/publica/firma-rota")
+
+    assert resp.status_code == 404
+    html = resp.get_data(as_text=True)
+    assert "Este enlace no es valido o ha expirado" in html
+    assert "invalid_signature" not in html
+    assert "Traceback" not in html
+    assert "HTTP 500" not in html
+    assert "Internal Server Error" not in html
 
 
 def test_public_link_ignores_posted_identity_fields_and_uses_token_cliente():
@@ -544,6 +587,48 @@ def test_public_link_short_route_keeps_same_validation_and_security_behavior():
     assert "Nueva solicitud" in ok_html
     assert '/clientes/f/tok123' in ok_html
     assert invalid.status_code == 404
+
+
+def test_generated_existing_public_link_persists_active_alias_and_public_routes_respond_before_use():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Cliente, PublicSolicitudShareAlias, PublicSolicitudTokenUso], reset=True)
+        cliente = Cliente(
+            codigo="CL-REAL-01",
+            nombre_completo="Cliente Alias Real",
+            email="alias.real@example.com",
+            role="cliente",
+            is_active=True,
+            created_at=utc_now_naive(),
+            updated_at=utc_now_naive(),
+            fecha_registro=utc_now_naive(),
+            fecha_ultima_actividad=utc_now_naive(),
+            total_solicitudes=0,
+        )
+        db.session.add(cliente)
+        db.session.commit()
+
+        with flask_app.test_request_context("/"):
+            link = clientes_routes.generar_link_publico_compartible_cliente(cliente, created_by="test-suite")
+        code = str(link or "").rstrip("/").split("/")[-1].strip().upper()
+        alias = PublicSolicitudShareAlias.query.filter_by(code=code).first()
+
+    assert code
+    assert alias is not None
+    assert alias.is_active is True
+    assert alias.link_type == "existente"
+    assert str(alias.token or "").strip()
+
+    landing = client.get(f"/solicitud/{code}")
+    continue_resp = client.get(f"/solicitud/{code}/continuar")
+
+    assert landing.status_code == 200
+    assert "Enlace válido. Puedes continuar al formulario." in landing.get_data(as_text=True)
+    assert continue_resp.status_code == 200
+    assert "Nueva solicitud" in continue_resp.get_data(as_text=True)
 
 
 def test_public_link_successful_save_shows_professional_success_page_once():
@@ -782,6 +867,31 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
     assert "Tu solicitud ya fue enviada correctamente." in used_html
     assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in used_html
     assert invalid_resp.status_code == 404
+
+
+def test_share_continue_existing_used_alias_blocks_repost_with_clear_used_message():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="ABCD2345EF", link_type="existente", token="tok123")
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=91,
+        used_at=datetime.utcnow(),
+        solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
+    )
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
+        resp = client.post("/solicitud/ABCD2345EF/continuar", data={"dummy": "1"})
+
+    assert resp.status_code == 410
+    html = resp.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in html
+    assert "Traceback" not in html
+    assert "invalid_signature" not in html
 
 
 def test_share_continue_route_shows_success_once_after_submit_then_used_for_existing_flow():

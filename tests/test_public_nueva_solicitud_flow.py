@@ -7,8 +7,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import app as flask_app
+from config_app import db
 from utils.robust_save import RobustSaveResult
 import clientes.routes as clientes_routes
+from models import PublicSolicitudClienteNuevoTokenUso, PublicSolicitudShareAlias
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 class _FakeField:
@@ -210,6 +213,25 @@ def test_new_public_form_token_invalid_returns_controlled_response():
     assert "Este enlace ha expirado. Solicita uno nuevo a Doméstica del Cibao." in resp.get_data(as_text=True)
 
 
+def test_new_public_invalid_signature_shows_clear_message_without_technical_text():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(False, "invalid_signature", {})):
+        resp = client.get("/clientes/solicitudes/nueva-publica/firma-rota")
+
+    assert resp.status_code == 404
+    html = resp.get_data(as_text=True)
+    assert "Este enlace no es valido o ha expirado" in html
+    assert "invalid_signature" not in html
+    assert "Traceback" not in html
+    assert "HTTP 500" not in html
+    assert "Internal Server Error" not in html
+
+
 def test_new_public_token_is_valid_before_48h_and_expires_after_48h():
     flask_app.config["TESTING"] = True
     base_ts = 1_700_200_000
@@ -232,6 +254,33 @@ def test_new_public_token_is_valid_before_48h_and_expires_after_48h():
 
     assert expired is False
     assert reason == "expired"
+
+
+def test_new_public_generated_link_persists_active_alias_and_public_routes_respond_before_use():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([PublicSolicitudShareAlias, PublicSolicitudClienteNuevoTokenUso], reset=True)
+        with flask_app.test_request_context("/"):
+            link = clientes_routes.generar_link_publico_compartible_cliente_nuevo(created_by="test-suite")
+        code = str(link or "").rstrip("/").split("/")[-1].strip().upper()
+        alias = PublicSolicitudShareAlias.query.filter_by(code=code).first()
+
+    assert code
+    assert alias is not None
+    assert alias.is_active is True
+    assert alias.link_type == "nuevo"
+    assert str(alias.token or "").strip()
+
+    landing = client.get(f"/solicitud/{code}")
+    continue_resp = client.get(f"/solicitud/{code}/continuar")
+
+    assert landing.status_code == 200
+    assert "Enlace válido. Puedes continuar al formulario." in landing.get_data(as_text=True)
+    assert continue_resp.status_code == 200
+    assert "Seccion 1 - Datos del cliente" in continue_resp.get_data(as_text=True)
 
 
 def test_new_public_form_token_blocks_abuse_with_controlled_429():
@@ -667,6 +716,32 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
     later_html = later.get_data(as_text=True)
     assert "Tu solicitud ya fue enviada correctamente." in later_html
     assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
+
+
+def test_share_continue_new_used_alias_blocks_repost_with_clear_used_message():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    alias = SimpleNamespace(code="WXYZ5678JK", link_type="nuevo", token="tok123")
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=88,
+        used_at=None,
+        solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
+    )
+
+    with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
+        resp = client.post("/solicitud/WXYZ5678JK/continuar", data={"dummy": "1"})
+
+    assert resp.status_code == 410
+    html = resp.get_data(as_text=True)
+    assert "Tu solicitud ya fue enviada correctamente." in html
+    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in html
+    assert "Traceback" not in html
+    assert "invalid_signature" not in html
 
 
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
