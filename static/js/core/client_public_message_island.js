@@ -50,10 +50,11 @@
 
   var btn = document.getElementById("clientPublicMessageIslandBtn");
   var feedbackNode = document.getElementById("clientPublicMessageIslandFeedback");
+  var manualBackdrop = document.getElementById("clientPublicMessageIslandManualBackdrop");
   var manualPanel = document.getElementById("clientPublicMessageIslandManual");
   var manualStatus = document.getElementById("clientPublicMessageIslandManualStatus");
-  var manualMessageInput = document.getElementById("clientPublicMessageIslandManualMessage");
   var manualLinkInput = document.getElementById("clientPublicMessageIslandManualLink");
+  var selectLinkBtn = document.getElementById("clientPublicMessageIslandSelectLinkBtn");
   var retryCopyBtn = document.getElementById("clientPublicMessageIslandRetryCopyBtn");
   var closeManualBtn = document.getElementById("clientPublicMessageIslandCloseManualBtn");
   var linkUrl = String(body.getAttribute("data-client-public-message-link-url") || "").trim();
@@ -149,6 +150,25 @@
       feedbackNode.classList.remove("is-visible");
       feedbackTimer = null;
     }, 1700);
+  }
+
+  function selectManualLinkInput() {
+    if (!manualLinkInput || !manualLinkInput.value) return false;
+    try {
+      manualLinkInput.focus();
+      manualLinkInput.removeAttribute("readonly");
+      manualLinkInput.select();
+      manualLinkInput.setSelectionRange(0, manualLinkInput.value.length);
+      manualLinkInput.setAttribute("readonly", "readonly");
+      return true;
+    } catch (_err) {
+      try {
+        manualLinkInput.setAttribute("readonly", "readonly");
+      } catch (_err2) {
+        // noop
+      }
+      return false;
+    }
   }
 
   function copyWithExecCommand(value) {
@@ -312,17 +332,23 @@
     lastGeneratedMessage = String(message || "").trim();
     if (!manualPanel || !manualLinkInput || !lastGeneratedLink) return;
     if (manualStatus) {
-      manualStatus.textContent = String(statusText || "No se pudo copiar automáticamente. Puedes copiar manualmente o reintentar.");
-    }
-    if (manualMessageInput) {
-      manualMessageInput.value = lastGeneratedMessage;
+      manualStatus.textContent = String(statusText || "Safari no permitió copiar automáticamente. Copia el enlace manualmente.");
     }
     manualLinkInput.value = lastGeneratedLink;
+    if (manualBackdrop) {
+      manualBackdrop.classList.remove("d-none");
+    }
     manualPanel.classList.remove("d-none");
+    window.setTimeout(function () {
+      selectManualLinkInput();
+    }, 40);
   }
 
   function hideManualPanel() {
     if (!manualPanel) return;
+    if (manualBackdrop) {
+      manualBackdrop.classList.add("d-none");
+    }
     manualPanel.classList.add("d-none");
   }
 
@@ -468,12 +494,12 @@
         });
         reportClipboardDiagnosis("copy-failed-after-link-generation", lastCopyDiagnosis);
         setButtonVisualState("error");
-        setButtonLabel("Copia manual disponible");
-        showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
+        setButtonLabel("Enlace listo para copiar manualmente");
+        showFeedback("Enlace listo para copiar manualmente");
         showManualPanel(
           lastGeneratedLink,
           lastGeneratedMessage,
-          "Enlace generado, pero no se pudo copiar automáticamente. Puedes copiar manualmente o reintentar."
+          "Safari no permitió copiar automáticamente. Copia el enlace manualmente."
         );
       }
     } finally {
@@ -505,12 +531,12 @@
       cooldownUntilMs = Date.now() + 1400;
     } catch (err) {
       setButtonVisualState("error");
-      setButtonLabel("Copia manual disponible");
-      showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
+      setButtonLabel("Enlace listo para copiar manualmente");
+      showFeedback("Enlace listo para copiar manualmente");
       showManualPanel(
         lastGeneratedLink,
         lastGeneratedMessage,
-        "Enlace generado, pero no se pudo copiar automáticamente. Puedes copiar manualmente o reintentar."
+        "Safari no permitió copiar automáticamente. Copia el enlace manualmente."
       );
     } finally {
       inFlight = false;
@@ -528,8 +554,20 @@
     });
   }
 
+  if (selectLinkBtn) {
+    selectLinkBtn.addEventListener("click", function () {
+      selectManualLinkInput();
+    });
+  }
+
   if (closeManualBtn) {
     closeManualBtn.addEventListener("click", function () {
+      hideManualPanel();
+    });
+  }
+
+  if (manualBackdrop) {
+    manualBackdrop.addEventListener("click", function () {
       hideManualPanel();
     });
   }

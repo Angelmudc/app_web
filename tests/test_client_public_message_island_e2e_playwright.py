@@ -183,9 +183,9 @@ def _attach_cpmi_link_capture(page):
         ("clipboard_fail_exec_ok", "Mensaje copiado", False, "Mensaje copiado"),
         (
             "both_fail",
-            "Enlace generado, pero no se pudo copiar automáticamente",
+            "Enlace listo para copiar manualmente",
             True,
-            "Copia manual disponible",
+            "Enlace listo para copiar manualmente",
         ),
     ],
 )
@@ -227,6 +227,39 @@ def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode
         if manual_visible:
             page.wait_for_selector("#clientPublicMessageIslandManual:not(.d-none)", timeout=12000)
             assert page.input_value("#clientPublicMessageIslandManualLink").strip()
+            assert page.locator("#clientPublicMessageIslandManualStatus").inner_text().strip() == "Safari no permitió copiar automáticamente. Copia el enlace manualmente."
+            page.wait_for_function(
+                """
+                () => {
+                  const el = document.querySelector('#clientPublicMessageIslandManualLink');
+                  return !!el && el.selectionStart === 0 && el.selectionEnd === el.value.length;
+                }
+                """,
+                timeout=12000,
+            )
+            selected = page.locator("#clientPublicMessageIslandManualLink").evaluate(
+                """
+                (el) => ({
+                  start: el.selectionStart,
+                  end: el.selectionEnd,
+                  length: el.value.length
+                })
+                """
+            )
+            assert selected["start"] == 0
+            assert selected["end"] == selected["length"]
+            page.click("#clientPublicMessageIslandSelectLinkBtn")
+            selected_after_btn = page.locator("#clientPublicMessageIslandManualLink").evaluate(
+                """
+                (el) => ({
+                  start: el.selectionStart,
+                  end: el.selectionEnd,
+                  length: el.value.length
+                })
+                """
+            )
+            assert selected_after_btn["start"] == 0
+            assert selected_after_btn["end"] == selected_after_btn["length"]
         else:
             page.wait_for_function(
                 """
@@ -380,6 +413,8 @@ def test_copy_again_reuses_current_token_without_new_request(cpmi_e2e_env, brows
         assert len(links) == 1
         link_in_manual_after = page.input_value("#clientPublicMessageIslandManualLink").strip()
         assert link_in_manual_after == link_in_manual_before
+        page.wait_for_selector("#clientPublicMessageIslandManual:not(.d-none)", timeout=12000)
+        assert page.locator("#clientPublicMessageIslandFeedback").inner_text().strip() == "Enlace listo para copiar manualmente"
 
         with flask_app.app_context():
             code = _extract_share_code(link_in_manual_before)

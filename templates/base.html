@@ -696,31 +696,29 @@
        id="clientPublicMessageIslandFeedback"
        role="status"
        aria-live="polite">Mensaje copiado</div>
+  <div class="client-public-message-manual-backdrop d-none"
+       id="clientPublicMessageIslandManualBackdrop"
+       aria-hidden="true"></div>
   <div class="client-public-message-manual card shadow-sm d-none"
        id="clientPublicMessageIslandManual"
        role="dialog"
-       aria-modal="false"
+       aria-modal="true"
        aria-labelledby="clientPublicMessageIslandManualTitle">
     <div class="card-body p-3">
       <div class="client-public-message-manual-head mb-2">
         <div>
           <div class="small fw-semibold mb-1" id="clientPublicMessageIslandManualTitle">Enlace generado</div>
-          <div class="small text-muted mb-0" id="clientPublicMessageIslandManualStatus">No se pudo copiar automáticamente. Puedes copiar manualmente o reintentar.</div>
+          <div class="small text-muted mb-0" id="clientPublicMessageIslandManualStatus">Safari no permitió copiar automáticamente. Copia el enlace manualmente.</div>
         </div>
       </div>
-      <label for="clientPublicMessageIslandManualMessage" class="form-label form-label-sm mb-1">Mensaje completo</label>
-      <textarea class="form-control form-control-sm mb-2"
-                id="clientPublicMessageIslandManualMessage"
-                rows="4"
-                readonly
-                aria-label="Mensaje completo para enviar al cliente"></textarea>
       <label for="clientPublicMessageIslandManualLink" class="form-label form-label-sm mb-1">Enlace</label>
       <input type="text"
-             class="form-control form-control-sm mb-2"
+             class="form-control form-control-lg mb-2"
              id="clientPublicMessageIslandManualLink"
              readonly
              aria-label="Enlace generado para cliente nuevo">
       <div class="client-public-message-manual-actions d-flex gap-2">
+        <button class="btn btn-sm btn-outline-primary" type="button" id="clientPublicMessageIslandSelectLinkBtn">Seleccionar enlace</button>
         <button class="btn btn-sm btn-primary" type="button" id="clientPublicMessageIslandRetryCopyBtn">Copiar de nuevo</button>
         <button class="btn btn-sm btn-outline-secondary" type="button" id="clientPublicMessageIslandCloseManualBtn">Cerrar</button>
       </div>
