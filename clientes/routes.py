@@ -1090,9 +1090,48 @@ def _consume_public_new_token_on_terms_reject(
 
 def _public_link_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
-        current_app.config["SECRET_KEY"],
+        _public_link_signing_secret(),
         salt="clientes-solicitud-publica"
     )
+
+
+def _public_link_signing_secret() -> str:
+    return _public_link_secret_keys()[0]
+
+
+def _public_link_secret_keys() -> list[str]:
+    """
+    Keyring para verificar tokens durante rotaciones/despliegues parciales.
+    Firma con la primera clave; verifica contra todas.
+    """
+    keys: list[str] = []
+
+    primary = str(current_app.config.get("SECRET_KEY") or "").strip()
+    if primary:
+        keys.append(primary)
+
+    env_candidates = [
+        "PUBLIC_LINK_ADDITIONAL_SECRET_KEYS",
+        "PUBLIC_LINK_FALLBACK_SECRET_KEYS",
+        "FLASK_SECRET_KEY_PREVIOUS",
+        "SECRET_KEY_PREVIOUS",
+    ]
+    for name in env_candidates:
+        raw = str(os.getenv(name) or "").strip()
+        if not raw:
+            continue
+        for part in raw.split(","):
+            candidate = str(part or "").strip()
+            if candidate and candidate not in keys:
+                keys.append(candidate)
+
+    if not keys:
+        raise RuntimeError("SECRET_KEY no configurada para links públicos")
+    return keys
+
+
+def _public_link_serializers_for_verify(*, salt: str) -> list[URLSafeTimedSerializer]:
+    return [URLSafeTimedSerializer(secret, salt=salt) for secret in _public_link_secret_keys()]
 
 
 def _public_link_max_age_seconds() -> int:
@@ -1278,7 +1317,7 @@ def _public_link_usage_by_hash(token_hash: str):
 
 def _public_new_link_serializer() -> URLSafeTimedSerializer:
     return URLSafeTimedSerializer(
-        current_app.config["SECRET_KEY"],
+        _public_link_signing_secret(),
         salt="clientes-solicitud-publica-nueva"
     )
 
@@ -1343,14 +1382,21 @@ def generar_link_publico_compartible_cliente_nuevo(*, created_by: str = "") -> s
 
 def _resolve_public_new_link_token(token: str):
     metadata: dict = {}
-    try:
-        payload = _public_new_link_serializer().loads(token, max_age=_public_new_link_max_age_seconds())
-    except SignatureExpired:
-        return False, "expired", metadata
-    except BadSignature:
-        return False, "invalid_signature", metadata
-    except Exception:
-        return False, "invalid_payload", metadata
+    payload = None
+    invalid_signature = False
+    for serializer in _public_link_serializers_for_verify(salt="clientes-solicitud-publica-nueva"):
+        try:
+            payload = serializer.loads(token, max_age=_public_new_link_max_age_seconds())
+            break
+        except SignatureExpired:
+            return False, "expired", metadata
+        except BadSignature:
+            invalid_signature = True
+            continue
+        except Exception:
+            continue
+    if payload is None:
+        return False, ("invalid_signature" if invalid_signature else "invalid_payload"), metadata
 
     if not isinstance(payload, dict):
         return False, "invalid_payload", metadata
@@ -1442,14 +1488,21 @@ def _log_public_link_event(
 
 def _resolve_public_link_token(token: str):
     metadata: dict = {"legacy_token": False}
-    try:
-        payload = _public_link_serializer().loads(token, max_age=_public_link_max_age_seconds())
-    except SignatureExpired:
-        return None, "expired", metadata
-    except BadSignature:
-        return None, "invalid_signature", metadata
-    except Exception:
-        return None, "invalid_payload", metadata
+    payload = None
+    invalid_signature = False
+    for serializer in _public_link_serializers_for_verify(salt="clientes-solicitud-publica"):
+        try:
+            payload = serializer.loads(token, max_age=_public_link_max_age_seconds())
+            break
+        except SignatureExpired:
+            return None, "expired", metadata
+        except BadSignature:
+            invalid_signature = True
+            continue
+        except Exception:
+            continue
+    if payload is None:
+        return None, ("invalid_signature" if invalid_signature else "invalid_payload"), metadata
 
     if not isinstance(payload, dict):
         return None, "invalid_payload", metadata
