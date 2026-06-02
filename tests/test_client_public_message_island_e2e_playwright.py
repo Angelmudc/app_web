@@ -226,8 +226,30 @@ def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode
 
         if manual_visible:
             page.wait_for_selector("#clientPublicMessageIslandManual:not(.d-none)", timeout=12000)
+            assert page.locator("#clientPublicMessageIslandManualBackdrop").count() == 0
             assert page.input_value("#clientPublicMessageIslandManualLink").strip()
             assert page.locator("#clientPublicMessageIslandManualStatus").inner_text().strip() == "Safari no permitió copiar automáticamente. Copia el enlace manualmente."
+            panel_rect = page.locator("#clientPublicMessageIslandManual").evaluate(
+                """
+                (el) => {
+                  const rect = el.getBoundingClientRect();
+                  return {
+                    top: rect.top,
+                    left: rect.left,
+                    right: rect.right,
+                    bottom: rect.bottom,
+                    width: rect.width,
+                    height: rect.height,
+                    viewportWidth: window.innerWidth,
+                    viewportHeight: window.innerHeight
+                  };
+                }
+                """
+            )
+            assert panel_rect["width"] < panel_rect["viewportWidth"]
+            assert panel_rect["height"] < panel_rect["viewportHeight"]
+            assert panel_rect["bottom"] > 0
+            assert panel_rect["right"] > 0
             page.wait_for_function(
                 """
                 () => {
@@ -260,6 +282,17 @@ def test_copy_feedback_and_manual_fallback(cpmi_e2e_env, browser_name, copy_mode
             )
             assert selected_after_btn["start"] == 0
             assert selected_after_btn["end"] == selected_after_btn["length"]
+            page.click("#clientPublicMessageIslandCloseManualBtn")
+            page.wait_for_function(
+                """
+                () => {
+                  const panel = document.querySelector('#clientPublicMessageIslandManual');
+                  return !!panel && panel.classList.contains('d-none');
+                }
+                """,
+                timeout=12000,
+            )
+            page.wait_for_selector("#clientPublicMessageIslandBtn", state="visible", timeout=12000)
         else:
             page.wait_for_function(
                 """

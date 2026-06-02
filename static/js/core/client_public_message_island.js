@@ -50,7 +50,6 @@
 
   var btn = document.getElementById("clientPublicMessageIslandBtn");
   var feedbackNode = document.getElementById("clientPublicMessageIslandFeedback");
-  var manualBackdrop = document.getElementById("clientPublicMessageIslandManualBackdrop");
   var manualPanel = document.getElementById("clientPublicMessageIslandManual");
   var manualStatus = document.getElementById("clientPublicMessageIslandManualStatus");
   var manualLinkInput = document.getElementById("clientPublicMessageIslandManualLink");
@@ -335,9 +334,6 @@
       manualStatus.textContent = String(statusText || "Safari no permitió copiar automáticamente. Copia el enlace manualmente.");
     }
     manualLinkInput.value = lastGeneratedLink;
-    if (manualBackdrop) {
-      manualBackdrop.classList.remove("d-none");
-    }
     manualPanel.classList.remove("d-none");
     window.setTimeout(function () {
       selectManualLinkInput();
@@ -346,9 +342,6 @@
 
   function hideManualPanel() {
     if (!manualPanel) return;
-    if (manualBackdrop) {
-      manualBackdrop.classList.add("d-none");
-    }
     manualPanel.classList.add("d-none");
   }
 
@@ -562,12 +555,6 @@
 
   if (closeManualBtn) {
     closeManualBtn.addEventListener("click", function () {
-      hideManualPanel();
-    });
-  }
-
-  if (manualBackdrop) {
-    manualBackdrop.addEventListener("click", function () {
       hideManualPanel();
     });
   }
