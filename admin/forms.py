@@ -664,7 +664,7 @@ class AdminSolicitudForm(FlaskForm):
     tipo_plan = RadioField(
         'Plan',
         choices=PLAN_CHOICES,
-        validators=[DataRequired("Selecciona un plan para continuar.")],
+        validators=[Optional()],
         coerce=str,
         validate_choice=False,
     )
@@ -803,14 +803,10 @@ class AdminSolicitudForm(FlaskForm):
                 rv = False
 
         raw_plan = (self.tipo_plan.data or "").strip()
-        if not raw_plan:
-            if "Selecciona un plan para continuar." not in (self.tipo_plan.errors or []):
-                self.tipo_plan.errors = ["Selecciona un plan para continuar."]
-            rv = False
-        elif not is_valid_plan(raw_plan):
+        if raw_plan and not is_valid_plan(raw_plan):
             self.tipo_plan.errors = ["Selecciona un plan válido: Básico, Premium o VIP."]
             rv = False
-        else:
+        elif raw_plan:
             self.tipo_plan.data = normalize_plan(raw_plan)
 
         return rv

@@ -12861,6 +12861,7 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
     sid = int(solicitud_id or 0)
     cid = int(cliente_id or 0)
     summary: dict[str, int] = {
+        "pagos": 0,
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
         "notificaciones_solicitud": 0,
@@ -12888,6 +12889,12 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
         )
         if int(summary.get("reemplazos") or 0) > 0:
             blocked_issues.append("La solicitud tiene reemplazos asociados.")
+
+    if _table_exists("pagos_solicitud"):
+        summary["pagos"] = _safe_count(
+            db.session.query(func.count(PagoSolicitud.id))
+            .filter(PagoSolicitud.solicitud_id == sid)
+        )
 
     if _table_exists("clientes_notificaciones"):
         summary["notificaciones_solicitud"] = _safe_count(
@@ -12977,6 +12984,7 @@ def _collect_solicitud_delete_plan(*, solicitud_id: int, cliente_id: int) -> dic
 
     managed_tables = {
         "solicitudes",
+        "pagos_solicitud",
         "solicitudes_candidatas",
         "reemplazos",
         "clientes_notificaciones",
@@ -13039,6 +13047,7 @@ def _delete_solicitud_tree(*, solicitud_id: int, cliente_id: int) -> dict[str, i
     sid = int(solicitud_id or 0)
     cid = int(cliente_id or 0)
     deleted: dict[str, int] = {
+        "pagos": 0,
         "solicitudes_candidatas": 0,
         "notificaciones_solicitud": 0,
         "tokens_publicos_solicitud": 0,
@@ -13050,6 +13059,17 @@ def _delete_solicitud_tree(*, solicitud_id: int, cliente_id: int) -> dict[str, i
     }
     run_ids: list[int] = []
     item_ids: list[int] = []
+
+    if _table_exists("pagos_solicitud"):
+        deleted["pagos"] = int(
+            PagoSolicitud.query
+            .filter(
+                PagoSolicitud.solicitud_id == sid,
+                PagoSolicitud.cliente_id == cid,
+            )
+            .delete(synchronize_session=False)
+            or 0
+        )
 
     if _table_exists("solicitudes_candidatas"):
         deleted["solicitudes_candidatas"] = int(

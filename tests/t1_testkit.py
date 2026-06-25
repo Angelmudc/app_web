@@ -22,8 +22,7 @@ def _patch_postgres_types_for_sqlite(models: list[type]) -> None:
     for model in models:
         for col in model.__table__.columns:
             if isinstance(col.type, (ARRAY, JSONB)):
-                col.type = db.Text()
-                col.default = None
+                col.type = db.JSON()
                 col.server_default = None
 
 
