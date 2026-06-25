@@ -30,15 +30,71 @@ def _cycle_plan(solicitud) -> str:
 
 
 def _set_cycle_defaults(solicitud, *, cycle_num: int, motivo: str) -> None:
+    snapshot = _default_cycle_snapshot(solicitud, cycle_num=cycle_num, motivo=motivo)
+    solicitud.payment_cycle_current = int(snapshot["numero_ciclo"])
+    solicitud.payment_cycle_plan = snapshot["plan"]
+    solicitud.payment_cycle_precio_total = snapshot["precio_total_requerido"]
+    solicitud.payment_cycle_abono_requerido = snapshot["abono_requerido"]
+    solicitud.payment_cycle_estado = snapshot["estado_pago"]
+    solicitud.payment_cycle_opened_at = snapshot["opened_at"]
+    solicitud.payment_cycle_closed_at = snapshot["closed_at"]
+    solicitud.payment_cycle_motivo_apertura = snapshot["motivo_apertura"]
+
+
+def _default_cycle_snapshot(solicitud, *, cycle_num: int, motivo: str) -> dict:
     plan_norm = _cycle_plan(solicitud)
-    solicitud.payment_cycle_current = int(max(1, int(cycle_num)))
-    solicitud.payment_cycle_plan = plan_norm
-    solicitud.payment_cycle_precio_total = get_plan_price(plan_norm)
-    solicitud.payment_cycle_abono_requerido = get_required_deposit(plan_norm)
-    solicitud.payment_cycle_estado = "pendiente"
-    solicitud.payment_cycle_opened_at = getattr(solicitud, "payment_cycle_opened_at", None) or utc_now_naive()
-    solicitud.payment_cycle_closed_at = None
-    solicitud.payment_cycle_motivo_apertura = (motivo or "").strip() or "auto_init"
+    return {
+        "numero_ciclo": int(max(1, int(cycle_num))),
+        "plan": plan_norm,
+        "precio_total_requerido": get_plan_price(plan_norm),
+        "abono_requerido": get_required_deposit(plan_norm),
+        "estado_pago": "pendiente",
+        "opened_at": getattr(solicitud, "payment_cycle_opened_at", None) or utc_now_naive(),
+        "closed_at": None,
+        "motivo_apertura": (motivo or "").strip() or "auto_init",
+    }
+
+
+def _build_cycle_snapshot(solicitud, *, persist: bool, motivo: str = "auto_init") -> dict:
+    current = int(getattr(solicitud, "payment_cycle_current", 0) or 0)
+    if current <= 0:
+        current = 1
+
+    missing_plan = not getattr(solicitud, "payment_cycle_plan", None)
+    missing_precio = getattr(solicitud, "payment_cycle_precio_total", None) is None
+    missing_abono = getattr(solicitud, "payment_cycle_abono_requerido", None) is None
+    missing_estado = not getattr(solicitud, "payment_cycle_estado", None)
+    needs_defaults = bool(missing_plan or missing_precio or missing_abono)
+
+    if persist:
+        if needs_defaults:
+            _set_cycle_defaults(solicitud, cycle_num=current, motivo=motivo)
+        elif missing_estado:
+            solicitud.payment_cycle_estado = "pendiente"
+        return {
+            "numero_ciclo": int(getattr(solicitud, "payment_cycle_current", None) or 1),
+            "plan": _cycle_plan(solicitud),
+            "precio_total_requerido": _to_decimal(getattr(solicitud, "payment_cycle_precio_total", None)),
+            "abono_requerido": _to_decimal(getattr(solicitud, "payment_cycle_abono_requerido", None)),
+            "estado_pago": str(getattr(solicitud, "payment_cycle_estado", None) or "pendiente").strip().lower(),
+            "opened_at": getattr(solicitud, "payment_cycle_opened_at", None),
+            "closed_at": getattr(solicitud, "payment_cycle_closed_at", None),
+            "motivo_apertura": getattr(solicitud, "payment_cycle_motivo_apertura", None),
+        }
+
+    if needs_defaults:
+        return _default_cycle_snapshot(solicitud, cycle_num=current, motivo=motivo)
+
+    return {
+        "numero_ciclo": current,
+        "plan": _cycle_plan(solicitud),
+        "precio_total_requerido": _to_decimal(getattr(solicitud, "payment_cycle_precio_total", None)),
+        "abono_requerido": _to_decimal(getattr(solicitud, "payment_cycle_abono_requerido", None)),
+        "estado_pago": str(getattr(solicitud, "payment_cycle_estado", None) or "pendiente").strip().lower(),
+        "opened_at": getattr(solicitud, "payment_cycle_opened_at", None),
+        "closed_at": getattr(solicitud, "payment_cycle_closed_at", None),
+        "motivo_apertura": getattr(solicitud, "payment_cycle_motivo_apertura", None),
+    }
 
 
 def ensure_current_payment_cycle(solicitud, *, motivo: str = "auto_init") -> int:
@@ -57,17 +113,11 @@ def ensure_current_payment_cycle(solicitud, *, motivo: str = "auto_init") -> int
 
 
 def get_current_payment_cycle(solicitud) -> dict:
-    cycle_num = ensure_current_payment_cycle(solicitud)
-    return {
-        "numero_ciclo": cycle_num,
-        "plan": _cycle_plan(solicitud),
-        "precio_total_requerido": _to_decimal(getattr(solicitud, "payment_cycle_precio_total", None)),
-        "abono_requerido": _to_decimal(getattr(solicitud, "payment_cycle_abono_requerido", None)),
-        "estado_pago": str(getattr(solicitud, "payment_cycle_estado", None) or "pendiente").strip().lower(),
-        "opened_at": getattr(solicitud, "payment_cycle_opened_at", None),
-        "closed_at": getattr(solicitud, "payment_cycle_closed_at", None),
-        "motivo_apertura": getattr(solicitud, "payment_cycle_motivo_apertura", None),
-    }
+    return _build_cycle_snapshot(solicitud, persist=True)
+
+
+def get_current_payment_cycle_readonly(solicitud) -> dict:
+    return _build_cycle_snapshot(solicitud, persist=False)
 
 
 def open_new_payment_cycle(solicitud, motivo: str, *, force: bool = False) -> dict:
@@ -153,6 +203,24 @@ def calcular_total_abonado(solicitud_id: int, *, ciclo_numero: int | None = None
     return total.quantize(Decimal("0.01"))
 
 
+def _compute_payment_totals_from_movimientos(movimientos) -> tuple[Decimal, Decimal]:
+    total_pagado = Decimal("0.00")
+    total_abonado = Decimal("0.00")
+    for mov in (movimientos or []):
+        monto = _to_decimal(mov.monto)
+        tipo = (mov.tipo_pago or "").strip().lower()
+        if tipo in POSITIVE_TYPES and monto > Decimal("0.00"):
+            total_pagado += monto
+        elif tipo in NEGATIVE_TYPES and monto > Decimal("0.00"):
+            total_pagado -= monto
+        if tipo == "abono" and monto > Decimal("0.00"):
+            total_abonado += monto
+    return (
+        total_pagado.quantize(Decimal("0.01")),
+        total_abonado.quantize(Decimal("0.01")),
+    )
+
+
 def has_recorded_payments(solicitud_id: int, *, ciclo_numero: int | None = None) -> bool:
     for mov in _iter_active_movimientos(solicitud_id, ciclo_numero=ciclo_numero):
         monto = _to_decimal(mov.monto)
@@ -195,11 +263,21 @@ def get_remaining_balance(solicitud) -> Decimal:
 def get_payment_summary(solicitud) -> dict[str, Decimal | str | int | bool]:
     cycle = get_current_payment_cycle(solicitud)
     solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+    return _build_payment_summary_from_cycle(solicitud, cycle=cycle, solicitud_id=solicitud_id)
+
+
+def get_payment_summary_readonly(solicitud) -> dict[str, Decimal | str | int | bool]:
+    cycle = get_current_payment_cycle_readonly(solicitud)
+    solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+    return _build_payment_summary_from_cycle(solicitud, cycle=cycle, solicitud_id=solicitud_id)
+
+
+def _build_payment_summary_from_cycle(solicitud, *, cycle: dict, solicitud_id: int) -> dict[str, Decimal | str | int | bool]:
     cycle_num = int(cycle["numero_ciclo"])
     precio_plan = Decimal(cycle["precio_total_requerido"])
     abono_requerido = Decimal(cycle["abono_requerido"])
-    total_pagado = calcular_total_pagado(solicitud_id, ciclo_numero=cycle_num)
-    total_abonado = calcular_total_abonado(solicitud_id, ciclo_numero=cycle_num)
+    movimientos_activos = _iter_active_movimientos(solicitud_id, ciclo_numero=cycle_num)
+    total_pagado, total_abonado = _compute_payment_totals_from_movimientos(movimientos_activos)
     legacy_abono = Decimal("0.00")
     legacy_abono_fallback = False
     if cycle_num == 1:

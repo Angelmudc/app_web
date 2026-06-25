@@ -12,6 +12,8 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app import app as flask_app
 import admin.routes as admin_routes
+from models import SolicitudCandidata
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 class _SolicitudQueryStub:
@@ -264,6 +266,30 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         html = resp.get_data(as_text=True)
         self.assertIn("SOL-CAN-21", html)
         self.assertIn("Reemplazo cancelado", html)
+
+    def test_listado_no_calcula_quick_summary(self):
+        row = _solicitud_stub(22, "SOL-NO-QS-22", "activa")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([row])), \
+                 patch("admin.routes._solicitud_quick_summary") as quick_summary_mock:
+                resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("SOL-NO-QS-22", resp.get_data(as_text=True))
+        quick_summary_mock.assert_not_called()
+
+    def test_listado_calcula_reemplazo_cancelado_no_resuelta_una_vez_por_fila(self):
+        rows = [
+            _solicitud_stub(31, "SOL-REP-31", "activa"),
+            _solicitud_stub(32, "SOL-REP-32", "reemplazo"),
+        ]
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)), \
+                 patch("admin.routes._solicitud_reemplazo_cancelado_no_resuelta", return_value=False) as reemplazo_flag_mock:
+                resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(reemplazo_flag_mock.call_count, len(rows))
 
     def test_triage_sql_parts_castea_estado_enum_antes_de_lower(self):
         with flask_app.app_context():
@@ -737,6 +763,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         solicitud.estado_previo_espera_pago = "activa"
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/solicitudes/10/quitar_espera_pago",
@@ -873,6 +900,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         solicitud.candidata = SimpleNamespace(fila=1, nombre_completo="Candidata 1", estado="trabajando")
         solicitud.candidata_id = 1
         with flask_app.app_context():
+            ensure_sqlite_compat_tables([SolicitudCandidata], reset=False)
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
                  patch("admin.routes._admin_block_sensitive_action", return_value=redirect("/admin/solicitudes")):
                 resp = self.client.post(

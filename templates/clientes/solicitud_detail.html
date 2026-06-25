@@ -40,6 +40,11 @@
 
         <div class="no-print solicitud-detail-actions">
           <div class="d-flex flex-wrap gap-2 solicitud-detail-actions-primary">
+            {% if not s.tipo_plan %}
+            <a href="{{ url_for('clientes.solicitud_elegir_plan', id=s.id) }}" class="btn btn-warning">
+              <i class="bi bi-stars me-1"></i> Elegir plan
+            </a>
+            {% endif %}
             <a href="{{ url_for('clientes.seguimiento_solicitud', id=s.id) }}" class="btn btn-primary">
               <i class="bi bi-clock-history me-1"></i> Ver seguimiento
             </a>
@@ -190,7 +195,12 @@
     <div class="kard-b">
       <dl class="row meta">
         <dt class="col-sm-4">Plan</dt>
-        <dd class="col-sm-8">{{ s.tipo_plan or '—' }}</dd>
+        <dd class="col-sm-8">
+          {{ s.tipo_plan or 'Sin plan seleccionado' }}
+          {% if not s.tipo_plan %}
+            <a href="{{ url_for('clientes.solicitud_elegir_plan', id=s.id) }}" class="btn btn-sm btn-outline-warning ms-2 no-print">Completar ahora</a>
+          {% endif %}
+        </dd>
 
         <dt class="col-sm-4">Abono</dt>
         <dd class="col-sm-8">{{ s.abono or '—' }}</dd>

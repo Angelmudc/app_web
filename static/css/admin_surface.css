@@ -1,6 +1,73 @@
 /* static/css/admin_surface.css
    Estilos exclusivos de superficies internas (admin/secretarias). */
 
+.admin-floating-islands-toggle{
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1195;
+  width: 42px;
+  height: 42px;
+  border: 1px solid rgba(148, 197, 255, .32);
+  border-radius: 999px;
+  background: linear-gradient(145deg, rgba(10, 18, 34, .92), rgba(15, 27, 49, .86));
+  color: #eaf3ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 12px 30px rgba(3, 8, 20, .34);
+  backdrop-filter: blur(10px);
+  transition: transform .18s ease, opacity .18s ease, border-color .18s ease, background-color .18s ease;
+}
+
+.admin-floating-islands-toggle:hover{
+  color: #fff;
+  border-color: rgba(141, 220, 255, .62);
+  transform: translateY(-1px);
+}
+
+.admin-floating-islands-toggle:focus-visible{
+  outline: 0;
+  box-shadow: 0 0 0 .2rem rgba(110, 187, 255, .22), 0 12px 30px rgba(3, 8, 20, .34);
+}
+
+.admin-floating-islands{
+  transition: opacity .18s ease, visibility .18s ease, transform .18s ease;
+}
+
+body.is-floating-islands-hidden .admin-floating-islands{
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(14px);
+}
+
+body.is-floating-islands-hidden .admin-floating-islands .seg-candidatas-backdrop,
+body.is-floating-islands-hidden .admin-floating-islands .seg-candidatas-drawer,
+body.is-floating-islands-hidden .admin-floating-islands .client-public-message-manual,
+body.is-floating-islands-hidden .admin-floating-islands .client-public-message-feedback{
+  display: none !important;
+}
+
+html[data-theme="light"] .admin-floating-islands-toggle,
+body[data-theme="light"] .admin-floating-islands-toggle,
+html.theme-light .admin-floating-islands-toggle,
+body.theme-light .admin-floating-islands-toggle{
+  background: linear-gradient(145deg, rgba(255, 255, 255, .95), rgba(235, 244, 255, .92));
+  color: #12304f;
+  border-color: rgba(16, 68, 120, .14);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, .16);
+}
+
+@media (max-width: 768px){
+  .admin-floating-islands-toggle{
+    right: 12px;
+    bottom: 12px;
+    width: 40px;
+    height: 40px;
+  }
+}
+
 /* Floating island — Candidatas por finalizar (staff only, render guarded in template) */
 .candidatas-finalizar-island{
   position: fixed;

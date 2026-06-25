@@ -2,8 +2,11 @@
 
 import re
 import pytest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from app import app as flask_app
+import admin.routes as admin_routes
 
 
 def _login(client, usuario: str, clave: str):
@@ -51,6 +54,52 @@ def test_admin_quick_view_fragment_staff_access_and_denied_for_others():
     _mark_cliente_session(cliente_client)
     denied_cliente = cliente_client.get("/admin/solicitudes/10/quick-view", follow_redirects=False)
     assert denied_cliente.status_code in (302, 303, 403)
+
+
+def test_admin_quick_view_fragment_sigue_renderizando_quick_summary():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    client = flask_app.test_client()
+    assert _login(client, "Karla", "9989").status_code in (302, 303)
+
+    row = SimpleNamespace(
+        id=10,
+        cliente_id=7,
+        codigo_solicitud="SOL-QV-10",
+        ciudad_sector="Santiago",
+        modalidad_trabajo="Dormir",
+        horario="L-V",
+        estado="activa",
+        fecha_solicitud=None,
+        cliente=SimpleNamespace(nombre_completo="Cliente 10"),
+        fecha_ultima_actividad=None,
+        fecha_ultima_modificacion=None,
+        fecha_seguimiento_manual=None,
+        updated_at=None,
+        candidata=None,
+        candidata_id=None,
+        reemplazos=[],
+    )
+
+    class _QuickViewQueryStub:
+        def options(self, *_args, **_kwargs):
+            return self
+
+        def filter(self, *_args, **_kwargs):
+            return self
+
+        def first_or_404(self):
+            return row
+
+    with flask_app.app_context():
+        with patch.object(admin_routes.Solicitud, "query", _QuickViewQueryStub()), \
+             patch("admin.routes._solicitud_quick_summary", return_value="Resumen de prueba quick view") as quick_summary_mock:
+            resp = client.get("/admin/solicitudes/10/quick-view", follow_redirects=False)
+
+    assert resp.status_code == 200
+    assert "Resumen de prueba quick view" in resp.get_data(as_text=True)
+    quick_summary_mock.assert_called_once_with(row)
 
 
 def test_secretarias_texto_endpoint_staff_access_and_denied_for_others():

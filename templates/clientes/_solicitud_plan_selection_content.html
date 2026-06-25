@@ -1,0 +1,96 @@
+{% set selected_code = (selected_plan or '')|lower %}
+<section class="plan-flow-page">
+  <div class="plan-flow-shell">
+    <div class="plan-flow-hero">
+      <div class="plan-flow-hero-main">
+        <div class="plan-flow-eyebrow">Paso 2 de 2</div>
+        <h1>Elige el plan ideal para tu solicitud</h1>
+        <p class="plan-flow-hero-lead">Compara las opciones y selecciona el plan que mejor se ajuste a tus necesidades.</p>
+        <div class="plan-flow-hero-note">Todos los planes incluyen orientación personalizada.</div>
+        <div class="plan-flow-hero-meta">
+          <span class="plan-flow-meta-chip">Solicitud {{ solicitud.codigo_solicitud }}</span>
+          <span class="plan-flow-meta-chip">Selección segura de plan</span>
+        </div>
+      </div>
+      <div class="plan-flow-hero-card">
+        <div class="plan-flow-hero-label">Solicitud creada</div>
+        <div class="plan-flow-hero-code">{{ solicitud.codigo_solicitud }}</div>
+        <div class="plan-flow-hero-copy">Verás el resumen con monto total, 50% requerido y saldo restante antes de continuar.</div>
+      </div>
+    </div>
+
+    <form method="post" action="{{ form_action }}" class="plan-flow-grid">
+      {% if csrf_token is defined %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+      {% for plan in plan_catalog %}
+      <label class="plan-card{% if plan.recommended %} plan-card--recommended{% endif %}{% if selected_code == plan.code %} is-selected{% endif %}">
+        <input class="plan-card-input" type="radio" name="tipo_plan_visual" value="{{ plan.code }}" {% if selected_code == plan.code %}checked{% endif %}>
+        {% if plan.recommended %}
+        <span class="plan-card-badge">Recomendado</span>
+        {% endif %}
+        <div class="plan-card-top">
+          <div class="plan-card-plan">
+            <div class="plan-card-title-row">
+              <div class="plan-card-title">{{ plan.label }}</div>
+              <span class="plan-card-radio-mark" aria-hidden="true"></span>
+            </div>
+            <div class="plan-card-subtitle">Plan {{ plan.label|lower }} para completar tu solicitud.</div>
+          </div>
+          <div class="plan-card-price-block">
+            <div class="plan-card-price-label">Precio total</div>
+            <div class="plan-card-price">{{ plan.price_display }}</div>
+          </div>
+        </div>
+
+        <div class="plan-card-financials">
+          <div class="plan-card-financial-item">
+            <span class="plan-card-financial-label">50% requerido</span>
+            <strong>{{ plan.deposit_display }}</strong>
+          </div>
+          <div class="plan-card-financial-item">
+            <span class="plan-card-financial-label">Saldo restante</span>
+            <strong>{{ plan.balance_display }}</strong>
+          </div>
+        </div>
+
+        <div class="plan-card-section">
+          <div class="plan-card-section-title">Beneficios del plan</div>
+          <ul class="plan-card-list">
+            {% for feature in plan.features %}
+            <li>{{ feature }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="plan-card-shared">
+          <div class="plan-card-shared-title">Todos los planes incluyen</div>
+          <ul class="plan-card-shared-list">
+            {% for feature in plan.shared_features %}
+            <li>{{ feature }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+
+        <div class="plan-card-totals">
+          <div class="plan-card-section-title">Resumen</div>
+          <div class="plan-card-total-row">Total: <strong>{{ plan.price_display }}</strong></div>
+          <div class="plan-card-total-row">50% requerido: <strong>{{ plan.deposit_display }}</strong></div>
+          <div class="plan-card-total-row">Saldo restante: <strong>{{ plan.balance_display }}</strong></div>
+        </div>
+
+        <button type="submit" class="btn btn-primary plan-card-btn" name="tipo_plan" value="{{ plan.code }}">
+          Elegir {{ plan.label }}
+        </button>
+      </label>
+      {% endfor %}
+    </form>
+
+    <div class="plan-flow-footer">
+      {% if back_url %}
+      <a href="{{ back_url }}" class="btn btn-outline-secondary">Volver</a>
+      {% else %}
+      <span></span>
+      {% endif %}
+      <div class="plan-flow-footer-copy">La selección del plan no registra pagos ni modifica estados financieros.</div>
+    </div>
+  </div>
+</section>

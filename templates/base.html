@@ -32,11 +32,19 @@
   {% set _needs_datatables_vendor = _vendor_flags.needs_datatables %}
   {% set _needs_select2_vendor = _select2_opt_in %}
   {% set _needs_jquery_vendor = _needs_datatables_vendor or _needs_select2_vendor %}
-  {% set _base_staff_role = ((session.get('role') if session else '') or (current_user.role if current_user.is_authenticated and current_user.role is defined else ''))|string|lower %}
+  {% set _base_staff_role = ((session.get('role') if session else '') or '')|string|lower %}
   {% if _base_staff_role in ['secretary', 'secre', 'secretaría'] %}
     {% set _base_staff_role = 'secretaria' %}
   {% endif %}
-  {% set _base_is_internal_surface = current_user.is_authenticated and (_base_staff_role in ['owner', 'admin', 'secretaria']) and not (
+  {% set _base_staff_authenticated = ((session.get('is_admin_session') if session else false) and (_base_staff_role in ['owner', 'admin', 'secretaria'])) %}
+  {% if (not _base_staff_authenticated) and (not _base_staff_role) and current_user.is_authenticated and current_user.role is defined %}
+    {% set _base_staff_role = (current_user.role or '')|string|lower %}
+    {% if _base_staff_role in ['secretary', 'secre', 'secretaría'] %}
+      {% set _base_staff_role = 'secretaria' %}
+    {% endif %}
+    {% set _base_staff_authenticated = (_base_staff_role in ['owner', 'admin', 'secretaria']) %}
+  {% endif %}
+  {% set _base_is_internal_surface = _base_staff_authenticated and not (
     _vendor_path.startswith('/clientes/')
     or _vendor_path == '/clientes'
     or _vendor_path.startswith('/cliente/')
@@ -145,11 +153,19 @@
   {% set _p_name = cliente.nombre_completo or '' %}
   {% set _p_code = cliente.codigo or '' %}
 {% endif %}
-{% set _staff_role = ((session.get('role') if session else '') or (current_user.role if current_user.is_authenticated and current_user.role is defined else ''))|string|lower %}
+{% set _staff_role = ((session.get('role') if session else '') or '')|string|lower %}
 {% if _staff_role in ['secretary', 'secre', 'secretaría'] %}
   {% set _staff_role = 'secretaria' %}
 {% endif %}
-{% set _staff_username = (current_user.username if current_user.is_authenticated and current_user.username is defined else '')|string %}
+{% set _staff_authenticated = ((session.get('is_admin_session') if session else false) and (_staff_role in ['owner', 'admin', 'secretaria'])) %}
+{% if (not _staff_authenticated) and current_user.is_authenticated and current_user.role is defined %}
+  {% set _staff_role = (current_user.role or '')|string|lower %}
+  {% if _staff_role in ['secretary', 'secre', 'secretaría'] %}
+    {% set _staff_role = 'secretaria' %}
+  {% endif %}
+  {% set _staff_authenticated = (_staff_role in ['owner', 'admin', 'secretaria']) %}
+{% endif %}
+{% set _staff_username = ((session.get('usuario') if session else '') or (current_user.username if _staff_authenticated and current_user.username is defined else ''))|string %}
 {% set _presence_auth_endpoints = ['admin.login', 'admin.mfa_setup', 'admin.mfa_verify', 'admin.mfa_cancel'] %}
 {% set _presence_path = request.path or '' %}
 {% set _ui_path = _presence_path %}
@@ -157,19 +173,27 @@
 {% set _requires_validate = (requires_validate if requires_validate is defined else false) %}
 {% set _requires_search_ui = (requires_search_ui if requires_search_ui is defined else false) %}
 {% set _requires_live_refresh = (requires_live_refresh if requires_live_refresh is defined else false) %}
+{% set _requires_live_updates = (requires_live_updates if requires_live_updates is defined else none) %}
+{% set _requires_chat_badge = (requires_chat_badge if requires_chat_badge is defined else none) %}
+{% set _requires_presence_tracking = (requires_presence_tracking if requires_presence_tracking is defined else none) %}
+{% set _requires_partial_nav = (requires_partial_nav if requires_partial_nav is defined else none) %}
+{% set _requires_lazy_runtime = (requires_lazy_runtime if requires_lazy_runtime is defined else none) %}
 {% set _is_admin_entrevistas_path = _ui_path.startswith('/admin/entrevista') or _ui_path.startswith('/admin/entrevistas') %}
 {% set _is_admin_auth_view = (request.endpoint in _presence_auth_endpoints) or _presence_path.startswith('/admin/login') or _presence_path.startswith('/admin/mfa/') %}
 {% set _is_admin_runtime_page = _presence_path.startswith('/admin/') and (not _is_admin_auth_view) %}
 {% set _admin_light_runtime_endpoints = ['admin.tareas_hoy'] %}
 {% set _is_admin_light_runtime_view = _is_admin_runtime_page and (request.endpoint in _admin_light_runtime_endpoints) %}
 {% set _admin_core_runtime_enabled = _is_admin_runtime_page and (not _is_admin_light_runtime_view) %}
-{% set _admin_lazy_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _requires_live_refresh) %}
-{% set _admin_nav_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes/')) %}
-{% set _live_invalidation_enabled = _admin_core_runtime_enabled and (
+{% set _admin_lazy_default_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _requires_live_refresh) %}
+{% set _admin_lazy_enabled = _admin_lazy_default_enabled if _requires_lazy_runtime is none else (_admin_lazy_default_enabled and _requires_lazy_runtime) %}
+{% set _admin_nav_default_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes/')) %}
+{% set _admin_nav_enabled = _admin_nav_default_enabled if _requires_partial_nav is none else (_admin_nav_default_enabled and _requires_partial_nav) %}
+{% set _live_invalidation_default_enabled = _admin_core_runtime_enabled and (
   _ui_path.startswith('/admin/solicitudes')
   or _ui_path.startswith('/admin/clientes/')
   or _ui_path.startswith('/admin/seguimiento-candidatas')
 ) %}
+{% set _live_invalidation_enabled = _live_invalidation_default_enabled if _requires_live_updates is none else (_live_invalidation_default_enabled and _requires_live_updates) %}
 {% set _presence_operational_path = false %}
 {% if _presence_path.startswith('/buscar') %}
   {% set _presence_operational_path = true %}
@@ -190,9 +214,11 @@
 {% elif _presence_path.startswith('/admin/entrevistas') %}
   {% set _presence_operational_path = true %}
 {% endif %}
-{% set _presence_enabled = _is_admin_runtime_page and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
-{% set _chat_badge_enabled = _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
-{% set is_internal_surface = current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and not (
+{% set _presence_default_enabled = _is_admin_runtime_page and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.monitoreo_presence_ping') and _presence_operational_path %}
+{% set _presence_enabled = _presence_default_enabled if _requires_presence_tracking is none else (_presence_default_enabled and _requires_presence_tracking) %}
+{% set _chat_badge_default_enabled = _admin_core_runtime_enabled and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.chat_staff_inbox') and has_endpoint('admin.chat_staff_badge_json') and request.endpoint != 'admin.chat_staff_inbox' %}
+{% set _chat_badge_enabled = _chat_badge_default_enabled if _requires_chat_badge is none else (_chat_badge_default_enabled and _requires_chat_badge) %}
+{% set is_internal_surface = _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and not (
   _presence_path.startswith('/clientes/')
   or _presence_path == '/clientes'
   or _presence_path.startswith('/cliente/')
@@ -209,6 +235,7 @@
 {% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
 {% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
 {% set _client_public_message_island_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.generar_link_publico_cliente_nuevo_json') %}
+{% set _has_admin_floating_islands = _candidatas_finalizar_island_enabled or _seg_candidatas_island_enabled or _client_public_message_island_enabled %}
 {% set _public_intake_badge_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.bandeja_formularios_publicos_nuevos') %}
 {% set _public_intake_badge_count = (public_intake_badge_count() if _public_intake_badge_enabled and (public_intake_badge_count is defined) else 0) %}
 {% set _tienda_intereses_badge_enabled = is_internal_surface and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.tienda_intereses_list') %}
@@ -222,8 +249,8 @@
       data-presence-entity-id="{{ _p_id }}"
       data-presence-entity-name="{{ _p_name }}"
       data-presence-entity-code="{{ _p_code }}"
-      data-entity-lock-url="{% if _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
-      data-entity-lock-takeover-url="{% if _admin_core_runtime_enabled and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
+      data-entity-lock-url="{% if _admin_core_runtime_enabled and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_ping') %}{{ url_for('admin.seguridad_locks_ping') }}{% endif %}"
+      data-entity-lock-takeover-url="{% if _admin_core_runtime_enabled and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.seguridad_locks_takeover') %}{{ url_for('admin.seguridad_locks_takeover') }}{% endif %}"
       data-chat-global-badge-enabled="{% if _chat_badge_enabled %}1{% else %}0{% endif %}"
       data-chat-global-badge-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_badge_json') }}{% endif %}"
       data-chat-global-inbox-url="{% if _chat_badge_enabled %}{{ url_for('admin.chat_staff_inbox') }}{% endif %}"
@@ -241,7 +268,17 @@
       data-admin-runtime="{% if _is_admin_runtime_page %}1{% else %}0{% endif %}"
       data-lazy-script-solicitud-detail-ui="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/admin/solicitud_detail_ui.js') }}{% endif %}"
       data-lazy-script-live-refresh="{% if _admin_lazy_enabled %}{{ url_for('static', filename='js/core/live-refresh.js') }}{% endif %}"
-      data-staff-role="{{ _staff_role if current_user.is_authenticated else '' }}">
+      data-staff-role="{{ _staff_role if _staff_authenticated else '' }}">
+
+  <script>
+    (function () {
+      try {
+        if (window.localStorage.getItem("adminFloatingIslandsHidden") === "1") {
+          document.body.classList.add("is-floating-islands-hidden");
+        }
+      } catch (_err) {}
+    })();
+  </script>
 
   <noscript>
     <div class="container mt-3">
@@ -326,35 +363,35 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('contratos.listado_contratos_admin') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('contratos.listado_contratos_admin') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view'] %}active{% endif %}"
                href="{{ url_for('contratos.listado_contratos_admin') }}">Contratos</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.monitoreo_staff') and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
+          {% if has_endpoint('admin.monitoreo_staff') and _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
                href="{{ url_for('admin.monitoreo_staff') }}">Control Room</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.metricas_dashboard') and current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
+          {% if has_endpoint('admin.metricas_dashboard') and _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view'] %}active{% endif %}"
                href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.matching_inteligente') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('admin.matching_inteligente') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
                href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.chat_staff_inbox') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('admin.chat_staff_inbox') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.chat_staff_inbox'] %}active{% endif %}"
                href="{{ url_for('admin.chat_staff_inbox') }}"
@@ -368,7 +405,7 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.seguimiento_candidatas_cola') and current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('admin.seguimiento_candidatas_cola') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}active{% endif %}"
                href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
@@ -404,7 +441,7 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('admin.listar_usuarios') and current_user.is_authenticated and (_staff_role == 'owner') %}
+          {% if has_endpoint('admin.listar_usuarios') and _staff_authenticated and (_staff_role == 'owner') %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
                href="#"
@@ -445,7 +482,7 @@
             {% endif %}
           {% endfor %}
 
-          {% set _show_admin_more = current_user.is_authenticated and (_staff_role in ['owner', 'admin']) %}
+          {% set _show_admin_more = _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
           {% if _show_admin_more %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle"
@@ -508,7 +545,7 @@
           {% endif %}
 
           {% block quick_actions_nav %}
-            {% if has_endpoint('admin.acciones_solicitudes_proceso') and current_user.is_authenticated %}
+            {% if has_endpoint('admin.acciones_solicitudes_proceso') and _staff_authenticated %}
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('admin.acciones_solicitudes_proceso') }}">Acciones Rápidas</a>
             </li>
@@ -527,7 +564,7 @@
           </li>
           {% endif %}
 
-          {% if current_user.is_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.logout') %}
+          {% if _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.logout') %}
           <li class="nav-item ms-lg-2">
             <form method="post" action="{{ url_for('admin.logout') }}" class="m-0">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -571,153 +608,169 @@
     </div>
   </main>
 
-  {% if _candidatas_finalizar_island_enabled %}
-  <a class="candidatas-finalizar-island {% if request.endpoint == 'admin.candidatas_por_finalizar' %}is-active{% endif %}"
-     href="{{ url_for('admin.candidatas_por_finalizar') }}"
-     aria-label="Abrir candidatas por finalizar">
-    <span class="cfi-icon" aria-hidden="true"><i class="fa-solid fa-clipboard-list"></i></span>
-    <span class="cfi-label">Por finalizar</span>
-    <span class="cfi-count">{{ _candidatas_finalizar_badge_count|int }}</span>
-  </a>
-  {% endif %}
-  {% if _seg_candidatas_island_enabled %}
-  <button class="seg-candidatas-island {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}is-active{% endif %}"
-          type="button"
-          id="segCandidatasIslandBtn"
-          aria-label="Abrir seguimiento de candidatas"
-          aria-controls="segCandidatasDrawer"
-          aria-expanded="false">
-    <span class="sci-icon" aria-hidden="true"><i class="fa-solid fa-user-clock"></i></span>
-    <span class="sci-label">Seguimiento</span>
-    <span class="sci-count" id="segCandidatasIslandCount">{{ _seg_candidatas_badge_count|int }}</span>
-  </button>
-
-  <div class="seg-candidatas-backdrop" id="segCandidatasBackdrop" hidden></div>
-  <aside class="seg-candidatas-drawer"
-         id="segCandidatasDrawer"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="segCandidatasDrawerTitle"
-         hidden>
-    <div class="seg-drawer-head">
-      <h2 class="seg-drawer-title" id="segCandidatasDrawerTitle">Seguimiento candidatas</h2>
-      <button type="button" class="btn btn-outline-secondary btn-sm" id="segCandidatasCloseBtn" aria-label="Cerrar panel">
-        <i class="fa-solid fa-xmark"></i>
+  {% if _has_admin_floating_islands %}
+  <div class="admin-floating-islands-shell" id="adminFloatingIslandsShell" data-admin-floating-islands-shell>
+    <button class="admin-floating-islands-toggle"
+            id="adminFloatingIslandsToggle"
+            type="button"
+            aria-controls="adminFloatingIslands"
+            aria-expanded="true"
+            aria-label="Ocultar accesos rápidos"
+            title="Ocultar accesos rápidos">
+      <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+      <span class="visually-hidden" id="adminFloatingIslandsToggleText">Ocultar accesos rápidos</span>
+    </button>
+    <div class="admin-floating-islands" id="adminFloatingIslands">
+      {% if _candidatas_finalizar_island_enabled %}
+      <a class="candidatas-finalizar-island {% if request.endpoint == 'admin.candidatas_por_finalizar' %}is-active{% endif %}"
+         href="{{ url_for('admin.candidatas_por_finalizar') }}"
+         aria-label="Abrir candidatas por finalizar">
+        <span class="cfi-icon" aria-hidden="true"><i class="fa-solid fa-clipboard-list"></i></span>
+        <span class="cfi-label">Por finalizar</span>
+        <span class="cfi-count">{{ _candidatas_finalizar_badge_count|int }}</span>
+      </a>
+      {% endif %}
+      {% if _seg_candidatas_island_enabled %}
+      <button class="seg-candidatas-island {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}is-active{% endif %}"
+              type="button"
+              id="segCandidatasIslandBtn"
+              aria-label="Abrir seguimiento de candidatas"
+              aria-controls="segCandidatasDrawer"
+              aria-expanded="false">
+        <span class="sci-icon" aria-hidden="true"><i class="fa-solid fa-user-clock"></i></span>
+        <span class="sci-label">Seguimiento</span>
+        <span class="sci-count" id="segCandidatasIslandCount">{{ _seg_candidatas_badge_count|int }}</span>
       </button>
-    </div>
-    <div class="seg-drawer-body" id="segCandidatasDrawerBody">
-      <div class="seg-loading" id="segCandidatasLoading">
-        <div class="seg-skeleton seg-skeleton-lg"></div>
-        <div class="seg-skeleton"></div>
-        <div class="seg-skeleton"></div>
-        <div class="seg-skeleton"></div>
-      </div>
-      <div id="segCandidatasError" class="alert alert-danger d-none" role="alert"></div>
-      <div id="segCandidatasContent" class="d-none">
-        <div class="seg-kpis" id="segCandidatasKpis"></div>
-        <div class="seg-tabs" role="tablist" aria-label="Seguimiento candidatas secciones">
-          <button type="button" class="seg-tab is-active" data-seg-tab-btn="pendientes" aria-controls="segCandidatasTabPendientes">Pendientes</button>
-          <button type="button" class="seg-tab" data-seg-tab-btn="mine" aria-controls="segCandidatasTabMine">Mis casos</button>
-          <button type="button" class="seg-tab" data-seg-tab-btn="create" aria-controls="segCandidatasTabCreate">Crear caso</button>
+
+      <div class="seg-candidatas-backdrop" id="segCandidatasBackdrop" hidden></div>
+      <aside class="seg-candidatas-drawer"
+             id="segCandidatasDrawer"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="segCandidatasDrawerTitle"
+             hidden>
+        <div class="seg-drawer-head">
+          <h2 class="seg-drawer-title" id="segCandidatasDrawerTitle">Seguimiento candidatas</h2>
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="segCandidatasCloseBtn" aria-label="Cerrar panel">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
         </div>
-        <div class="seg-tab-pane is-active" id="segCandidatasTabPendientes" data-seg-tab-pane="pendientes">
-          <div class="seg-list-wrap">
-            <div class="seg-list-title">Pendientes críticos</div>
-            <div id="segCandidatasCriticalList"></div>
+        <div class="seg-drawer-body" id="segCandidatasDrawerBody">
+          <div class="seg-loading" id="segCandidatasLoading">
+            <div class="seg-skeleton seg-skeleton-lg"></div>
+            <div class="seg-skeleton"></div>
+            <div class="seg-skeleton"></div>
+            <div class="seg-skeleton"></div>
+          </div>
+          <div id="segCandidatasError" class="alert alert-danger d-none" role="alert"></div>
+          <div id="segCandidatasContent" class="d-none">
+            <div class="seg-kpis" id="segCandidatasKpis"></div>
+            <div class="seg-tabs" role="tablist" aria-label="Seguimiento candidatas secciones">
+              <button type="button" class="seg-tab is-active" data-seg-tab-btn="pendientes" aria-controls="segCandidatasTabPendientes">Pendientes</button>
+              <button type="button" class="seg-tab" data-seg-tab-btn="mine" aria-controls="segCandidatasTabMine">Mis casos</button>
+              <button type="button" class="seg-tab" data-seg-tab-btn="create" aria-controls="segCandidatasTabCreate">Crear caso</button>
+            </div>
+            <div class="seg-tab-pane is-active" id="segCandidatasTabPendientes" data-seg-tab-pane="pendientes">
+              <div class="seg-list-wrap">
+                <div class="seg-list-title">Pendientes críticos</div>
+                <div id="segCandidatasCriticalList"></div>
+              </div>
+            </div>
+            <div class="seg-tab-pane" id="segCandidatasTabMine" data-seg-tab-pane="mine">
+              <div class="seg-list-wrap">
+                <div class="seg-list-title">Mis casos activos</div>
+                <div id="segCandidatasMineList"></div>
+              </div>
+            </div>
+            <div class="seg-tab-pane" id="segCandidatasTabCreate" data-seg-tab-pane="create">
+              <form id="segCandidatasQuickCreateForm" class="seg-inline-form" novalidate>
+                <div id="segQuickCreateFeedback" class="alert d-none" role="alert"></div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreateNombre">Nombre contacto</label>
+                  <input class="form-control form-control-sm" id="segCreateNombre" name="nombre_contacto" maxlength="200">
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreateTelefono">Telefono</label>
+                  <input class="form-control form-control-sm" id="segCreateTelefono" name="telefono_norm" maxlength="40" required>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreateQuePidio">Que pidio</label>
+                  <input class="form-control form-control-sm" id="segCreateQuePidio" name="que_pidio" maxlength="120" required>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreateNota">Que se le pregunto / nota inicial</label>
+                  <textarea class="form-control form-control-sm" id="segCreateNota" name="proxima_accion_detalle" rows="3" maxlength="300"></textarea>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreateNextAction">Proxima accion</label>
+                  <input class="form-control form-control-sm" id="segCreateNextAction" name="proxima_accion_tipo" maxlength="40" required>
+                </div>
+                <div class="mb-2">
+                  <div class="form-text text-muted small">Se vence automáticamente en 7 días.</div>
+                </div>
+                <div class="mb-2">
+                  <label class="form-label form-label-sm mb-1" for="segCreatePriority">Prioridad</label>
+                  <select class="form-select form-select-sm" id="segCreatePriority" name="prioridad">
+                    <option value="normal" selected>Normal</option>
+                    <option value="alta">Alta</option>
+                  </select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label form-label-sm mb-1" for="segCreateOwner">Responsable</label>
+                  <input class="form-control form-control-sm" id="segCreateOwner" value="{{ _staff_username or 'Actual' }}" disabled>
+                  <div class="form-text">Se asigna al usuario actual al crear.</div>
+                </div>
+                <div class="d-flex gap-2">
+                  <button type="submit" class="btn btn-sm btn-primary" id="segQuickCreateSubmitBtn">Guardar caso</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="segQuickCreateResetBtn">Limpiar</button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
-        <div class="seg-tab-pane" id="segCandidatasTabMine" data-seg-tab-pane="mine">
-          <div class="seg-list-wrap">
-            <div class="seg-list-title">Mis casos activos</div>
-            <div id="segCandidatasMineList"></div>
+        <div class="seg-drawer-foot">
+          <a class="btn btn-primary btn-sm" id="segCandidatasFullBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Ver cola completa</a>
+          <button class="btn btn-outline-secondary btn-sm" id="segCandidatasQuickCreateBtn" type="button">Crear caso rapido</button>
+        </div>
+      </aside>
+      {% endif %}
+      {% if _client_public_message_island_enabled %}
+      <button class="client-public-message-island"
+              type="button"
+              id="clientPublicMessageIslandBtn"
+              aria-label="Copiar mensaje con formulario de cliente">
+        <span class="cpmi-icon" aria-hidden="true"><i class="fa-solid fa-file-signature"></i></span>
+        <span class="cpmi-label">Copiar formulario cliente</span>
+      </button>
+      <div class="client-public-message-feedback"
+           id="clientPublicMessageIslandFeedback"
+           role="status"
+           aria-live="polite">Mensaje copiado</div>
+      <div class="client-public-message-manual card shadow-sm d-none"
+           id="clientPublicMessageIslandManual"
+           role="region"
+           aria-labelledby="clientPublicMessageIslandManualTitle">
+        <div class="card-body p-3">
+          <div class="client-public-message-manual-head mb-2">
+            <div>
+              <div class="small fw-semibold mb-1" id="clientPublicMessageIslandManualTitle">Enlace generado</div>
+              <div class="small text-muted mb-0" id="clientPublicMessageIslandManualStatus">Safari no permitió copiar automáticamente. Copia el enlace manualmente.</div>
+            </div>
+          </div>
+          <label for="clientPublicMessageIslandManualLink" class="form-label form-label-sm mb-1">Enlace</label>
+          <input type="text"
+                 class="form-control form-control-lg mb-2"
+                 id="clientPublicMessageIslandManualLink"
+                 readonly
+                 aria-label="Enlace generado para cliente nuevo">
+          <div class="client-public-message-manual-actions d-flex gap-2">
+            <button class="btn btn-sm btn-outline-primary" type="button" id="clientPublicMessageIslandSelectLinkBtn">Seleccionar enlace</button>
+            <button class="btn btn-sm btn-primary" type="button" id="clientPublicMessageIslandRetryCopyBtn">Copiar de nuevo</button>
+            <button class="btn btn-sm btn-outline-secondary" type="button" id="clientPublicMessageIslandCloseManualBtn">Cerrar</button>
           </div>
         </div>
-        <div class="seg-tab-pane" id="segCandidatasTabCreate" data-seg-tab-pane="create">
-          <form id="segCandidatasQuickCreateForm" class="seg-inline-form" novalidate>
-            <div id="segQuickCreateFeedback" class="alert d-none" role="alert"></div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreateNombre">Nombre contacto</label>
-              <input class="form-control form-control-sm" id="segCreateNombre" name="nombre_contacto" maxlength="200">
-            </div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreateTelefono">Telefono</label>
-              <input class="form-control form-control-sm" id="segCreateTelefono" name="telefono_norm" maxlength="40" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreateQuePidio">Que pidio</label>
-              <input class="form-control form-control-sm" id="segCreateQuePidio" name="que_pidio" maxlength="120" required>
-            </div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreateNota">Que se le pregunto / nota inicial</label>
-              <textarea class="form-control form-control-sm" id="segCreateNota" name="proxima_accion_detalle" rows="3" maxlength="300"></textarea>
-            </div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreateNextAction">Proxima accion</label>
-              <input class="form-control form-control-sm" id="segCreateNextAction" name="proxima_accion_tipo" maxlength="40" required>
-            </div>
-            <div class="mb-2">
-              <div class="form-text text-muted small">Se vence automáticamente en 7 días.</div>
-            </div>
-            <div class="mb-2">
-              <label class="form-label form-label-sm mb-1" for="segCreatePriority">Prioridad</label>
-              <select class="form-select form-select-sm" id="segCreatePriority" name="prioridad">
-                <option value="normal" selected>Normal</option>
-                <option value="alta">Alta</option>
-              </select>
-            </div>
-            <div class="mb-3">
-              <label class="form-label form-label-sm mb-1" for="segCreateOwner">Responsable</label>
-              <input class="form-control form-control-sm" id="segCreateOwner" value="{{ _staff_username or 'Actual' }}" disabled>
-              <div class="form-text">Se asigna al usuario actual al crear.</div>
-            </div>
-            <div class="d-flex gap-2">
-              <button type="submit" class="btn btn-sm btn-primary" id="segQuickCreateSubmitBtn">Guardar caso</button>
-              <button type="button" class="btn btn-sm btn-outline-secondary" id="segQuickCreateResetBtn">Limpiar</button>
-            </div>
-          </form>
-        </div>
       </div>
-    </div>
-    <div class="seg-drawer-foot">
-      <a class="btn btn-primary btn-sm" id="segCandidatasFullBtn" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">Ver cola completa</a>
-      <button class="btn btn-outline-secondary btn-sm" id="segCandidatasQuickCreateBtn" type="button">Crear caso rapido</button>
-    </div>
-  </aside>
-  {% endif %}
-  {% if _client_public_message_island_enabled %}
-  <button class="client-public-message-island"
-          type="button"
-          id="clientPublicMessageIslandBtn"
-          aria-label="Copiar mensaje con formulario de cliente">
-    <span class="cpmi-icon" aria-hidden="true"><i class="fa-solid fa-file-signature"></i></span>
-    <span class="cpmi-label">Copiar formulario cliente</span>
-  </button>
-  <div class="client-public-message-feedback"
-       id="clientPublicMessageIslandFeedback"
-       role="status"
-       aria-live="polite">Mensaje copiado</div>
-  <div class="client-public-message-manual card shadow-sm d-none"
-       id="clientPublicMessageIslandManual"
-       role="region"
-       aria-labelledby="clientPublicMessageIslandManualTitle">
-    <div class="card-body p-3">
-      <div class="client-public-message-manual-head mb-2">
-        <div>
-          <div class="small fw-semibold mb-1" id="clientPublicMessageIslandManualTitle">Enlace generado</div>
-          <div class="small text-muted mb-0" id="clientPublicMessageIslandManualStatus">Safari no permitió copiar automáticamente. Copia el enlace manualmente.</div>
-        </div>
-      </div>
-      <label for="clientPublicMessageIslandManualLink" class="form-label form-label-sm mb-1">Enlace</label>
-      <input type="text"
-             class="form-control form-control-lg mb-2"
-             id="clientPublicMessageIslandManualLink"
-             readonly
-             aria-label="Enlace generado para cliente nuevo">
-      <div class="client-public-message-manual-actions d-flex gap-2">
-        <button class="btn btn-sm btn-outline-primary" type="button" id="clientPublicMessageIslandSelectLinkBtn">Seleccionar enlace</button>
-        <button class="btn btn-sm btn-primary" type="button" id="clientPublicMessageIslandRetryCopyBtn">Copiar de nuevo</button>
-        <button class="btn btn-sm btn-outline-secondary" type="button" id="clientPublicMessageIslandCloseManualBtn">Cerrar</button>
-      </div>
+      {% endif %}
     </div>
   </div>
   {% endif %}
@@ -798,6 +851,9 @@
   {% if _client_public_message_island_enabled %}
   <script src="{{ url_for('static', filename='js/core/client_public_form_message.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/client_public_message_island.js') }}" defer></script>
+  {% endif %}
+  {% if _has_admin_floating_islands %}
+  <script src="{{ url_for('static', filename='js/core/admin_floating_islands.js') }}" defer></script>
   {% endif %}
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>

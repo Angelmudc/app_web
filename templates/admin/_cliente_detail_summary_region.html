@@ -1,68 +1,433 @@
-  <!-- ===== Encabezado ===== -->
-  <div class="d-flex flex-wrap justify-content-between align-items-start align-items-md-center gap-3 mb-4">
-    <div class="d-flex align-items-start gap-3">
-      <div class="cliente-avatar">
-        {{ (cliente.nombre_completo or 'C').strip()[0]|upper }}
+  {% set _viewer_role = (current_user.role|default('')|lower) %}
+  {% set _can_generate_public_link = _viewer_role in ['owner', 'admin'] %}
+  <style>
+    .cliente-detail-hero {
+      background:
+        radial-gradient(circle at top left, rgba(34, 211, 238, 0.18), transparent 38%),
+        linear-gradient(145deg, rgba(7, 19, 36, 0.96), rgba(10, 32, 54, 0.92));
+      border: 1px solid rgba(103, 232, 249, 0.18);
+      border-radius: 1.25rem;
+      padding: 1.25rem;
+      overflow: hidden;
+      box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28), inset 0 1px 0 rgba(148, 163, 184, 0.08);
+    }
+    .cliente-detail-hero .cliente-avatar {
+      width: 3.5rem;
+      height: 3.5rem;
+      border-radius: 1rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #ecfeff;
+      background: linear-gradient(145deg, rgba(8, 47, 73, 0.92), rgba(14, 116, 144, 0.85));
+      box-shadow: inset 0 0 0 1px rgba(103, 232, 249, 0.22);
+    }
+    .cliente-detail-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 999px;
+      background: linear-gradient(145deg, rgba(15, 23, 42, 0.72), rgba(16, 42, 67, 0.86));
+      border: 1px solid rgba(103, 232, 249, 0.14);
+      color: #e6f4ff;
+      font-size: 0.9rem;
+      line-height: 1.2;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+    .cliente-detail-stat {
+      border-radius: 1rem;
+      background: linear-gradient(160deg, rgba(15, 23, 42, 0.82), rgba(12, 74, 110, 0.58));
+      border: 1px solid rgba(96, 165, 250, 0.18);
+      padding: 0.9rem 1rem;
+      height: 100%;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(2, 6, 23, 0.14);
+    }
+    .cliente-detail-stat-label {
+      display: block;
+      color: rgba(186, 230, 253, 0.86);
+      font-size: 0.8rem;
+      margin-bottom: 0.2rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 600;
+    }
+    .cliente-detail-stat-value {
+      display: block;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #f8fbff;
+    }
+    .cliente-detail-hero-top {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+    }
+    .cliente-detail-identity {
+      display: flex;
+      align-items: flex-start;
+      gap: 1rem;
+      min-width: 0;
+      flex: 1 1 20rem;
+    }
+    .cliente-detail-heading {
+      min-width: 0;
+    }
+    .cliente-detail-badges {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .cliente-detail-title {
+      margin-bottom: 0.25rem;
+      line-height: 1.1;
+      word-break: break-word;
+    }
+    .cliente-detail-meta {
+      color: rgba(226, 232, 240, 0.82);
+      margin-bottom: 0;
+      font-size: 0.95rem;
+    }
+    .cliente-detail-role-badge,
+    .cliente-detail-code-badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 2rem;
+      border-radius: 999px;
+      border: 1px solid transparent;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      padding: 0.42rem 0.78rem;
+    }
+    .cliente-detail-role-badge {
+      background: rgba(34, 211, 238, 0.16);
+      border-color: rgba(103, 232, 249, 0.35);
+      color: #ecfeff;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
+    .cliente-detail-code-badge {
+      background: rgba(15, 23, 42, 0.72);
+      border-color: rgba(148, 163, 184, 0.24);
+      color: #dbeafe;
+    }
+    .cliente-detail-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      justify-content: flex-end;
+      flex: 0 1 34rem;
+    }
+    .cliente-detail-actions .btn,
+    .cliente-detail-actions form {
+      min-width: 0;
+    }
+    .cliente-detail-actions .btn {
+      white-space: normal;
+    }
+    .cliente-detail-contact-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .cliente-detail-contact-item {
+      min-width: 0;
+    }
+    .cliente-detail-contact-item .cliente-detail-chip {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      align-items: start;
+      width: 100%;
+      min-width: 0;
+    }
+    .cliente-detail-chip i {
+      margin-top: 0.1rem;
+      color: #67e8f9;
+    }
+    .cliente-detail-chip-text {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .cliente-detail-stat-value.fs-6 {
+      color: #eff6ff;
+      line-height: 1.35;
+    }
+    .cliente-detail-hero .btn-light {
+      background: rgba(255, 255, 255, 0.94);
+      border-color: rgba(255, 255, 255, 0.94);
+      color: #0f172a;
+    }
+    .cliente-detail-hero .btn-light:hover,
+    .cliente-detail-hero .btn-light:focus-visible {
+      background: #fff;
+      border-color: #fff;
+      color: #020617;
+    }
+    .cliente-detail-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .cliente-detail-info-grid dt,
+    .cliente-detail-info-grid dd {
+      margin-bottom: 0.5rem;
+    }
+    .cliente-detail-kpis-compact .h4 {
+      line-height: 1;
+    }
+    .cliente-detail-kpis-compact .row + .row,
+    .cliente-detail-kpis-compact .row + hr,
+    .cliente-detail-kpis-compact hr + .row {
+      margin-top: 0.75rem;
+    }
+    .cliente-detail-ops-panel .glass-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .cliente-detail-ops-panel .glass-header small {
+      color: rgba(226, 232, 240, 0.82);
+      font-weight: 500;
+    }
+    .cliente-detail-ops-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0.75rem;
+    }
+    .cliente-detail-ops-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.9rem;
+      padding-top: 0.9rem;
+      border-top: 1px solid rgba(148, 163, 184, 0.16);
+    }
+    .cliente-detail-ops-item {
+      min-width: 0;
+    }
+    .cliente-detail-ops-item small {
+      display: block;
+      color: var(--bs-secondary-color, #6c757d);
+      margin-bottom: 0.2rem;
+    }
+    .cliente-detail-ops-item strong,
+    .cliente-detail-ops-item span {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+    @media (max-width: 991.98px) {
+      .cliente-detail-contact-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .cliente-detail-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .cliente-detail-ops-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .cliente-detail-ops-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+    @media (max-width: 575.98px) {
+      .cliente-detail-hero {
+        padding: 0.9rem;
+        border-radius: 1rem;
+      }
+      .cliente-detail-hero .cliente-avatar {
+        width: 2.75rem;
+        height: 2.75rem;
+        border-radius: 0.8rem;
+        font-size: 1.1rem;
+      }
+      .cliente-detail-identity {
+        gap: 0.75rem;
+        flex-basis: 100%;
+      }
+      .cliente-detail-badges {
+        gap: 0.35rem;
+        margin-bottom: 0.4rem;
+      }
+      .cliente-detail-title {
+        font-size: 1.2rem;
+      }
+      .cliente-detail-meta {
+        font-size: 0.82rem;
+      }
+      .cliente-detail-actions {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+        width: 100%;
+        gap: 0.5rem;
+      }
+      .cliente-detail-actions .btn,
+      .cliente-detail-actions form,
+      .cliente-detail-actions form .btn {
+        width: 100%;
+      }
+      .cliente-detail-actions .btn {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.92rem;
+      }
+      .cliente-detail-contact-list {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.5rem;
+      }
+      .cliente-detail-chip {
+        padding: 0.4rem 0.65rem;
+        border-radius: 0.85rem;
+        font-size: 0.86rem;
+      }
+      .cliente-detail-stats-grid {
+        gap: 0.5rem;
+      }
+      .cliente-detail-stat {
+        padding: 0.7rem 0.75rem;
+        border-radius: 0.85rem;
+      }
+      .cliente-detail-stat-label {
+        font-size: 0.68rem;
+        margin-bottom: 0.15rem;
+      }
+      .cliente-detail-stat-value {
+        font-size: 0.98rem;
+      }
+      .cliente-detail-info-grid.card-body,
+      .cliente-detail-kpis-compact.card-body {
+        padding: 0.9rem;
+      }
+      .cliente-detail-info-grid dt,
+      .cliente-detail-info-grid dd {
+        font-size: 0.92rem;
+        margin-bottom: 0.35rem;
+      }
+      .cliente-detail-kpis-compact .row {
+        --bs-gutter-x: 0.75rem;
+      }
+      .cliente-detail-kpis-compact .h4 {
+        font-size: 1.1rem;
+      }
+      .cliente-detail-kpis-compact small,
+      .cliente-detail-kpis-compact span {
+        font-size: 0.86rem;
+      }
+      .cliente-detail-ops-grid,
+      .cliente-detail-ops-meta {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.5rem;
+      }
+      .cliente-detail-ops-panel .glass-header {
+        align-items: flex-start;
+      }
+    }
+    .cliente-detail-hidden-nav {
+      display: none;
+    }
+  </style>
+
+  <div class="cliente-detail-hidden-nav" aria-hidden="true">
+    <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja de solicitudes</a>
+  </div>
+
+  <section class="cliente-detail-hero mb-4 cliente-detail-section-order-hero" aria-label="Resumen del cliente">
+    <div class="d-flex flex-column gap-4">
+      <div class="cliente-detail-hero-top">
+        <div class="cliente-detail-identity">
+          <div class="cliente-avatar">
+            {{ (cliente.nombre_completo or 'C').strip()[0]|upper }}
+          </div>
+          <div class="cliente-detail-heading">
+            <div class="cliente-detail-badges">
+              <span class="badge cliente-detail-role-badge">Cliente</span>
+              <span class="badge cliente-detail-code-badge">Código {{ cliente.codigo | default('—') }}</span>
+            </div>
+            <h1 class="h3 cliente-detail-title">{{ cliente.nombre_completo | default('—') }}</h1>
+            <p class="cliente-detail-meta">
+              Registrado {{ cliente.fecha_registro and cliente.fecha_registro|rd_datetime('%Y-%m-%d') or '—' }}
+            </p>
+          </div>
+        </div>
+
+        <div class="cliente-detail-actions">
+          <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
+            <i class="bi bi-arrow-left-short me-1"></i> Volver a clientes
+          </a>
+          {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+          <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+            {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+            <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
+            <button type="submit" class="btn btn-success">
+              <i class="bi bi-chat-dots me-1"></i> Abrir chat
+            </button>
+          </form>
+          {% endif %}
+          {% if _can_generate_public_link %}
+          <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
+             class="btn btn-info">
+            <i class="bi bi-link-45deg me-1"></i> Generar link público
+          </a>
+          {% endif %}
+          <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
+            <i class="bi bi-pencil-fill me-1"></i> Editar cliente
+          </a>
+        </div>
       </div>
-      <div>
-        <h1 class="h3 mb-1">Cliente: {{ cliente.nombre_completo | default('—') }}</h1>
-        <div class="text-muted small">
-          <span class="me-2">
-            Código:
-            <span class="fw-semibold text-info">{{ cliente.codigo | default('—') }}</span>
-          </span>
-          <span class="me-2">
-            Registrado:
-            {{ cliente.fecha_registro and cliente.fecha_registro|rd_datetime('%Y-%m-%d') or '—' }}
-          </span>
-          <span>
-            Solicitudes:
-            <span class="fw-semibold text-body-emphasis">
-              {{ kpi_cliente.total_solicitudes or 0 }}
+
+      <div class="cliente-detail-contact-list" aria-label="Datos de contacto">
+        <span class="cliente-detail-contact-item cliente-detail-chip">
+          <i class="bi bi-telephone"></i>
+          <span class="cliente-detail-chip-text">{{ cliente.telefono | default('—') }}</span>
+        </span>
+        <span class="cliente-detail-contact-item cliente-detail-chip">
+          <i class="bi bi-envelope"></i>
+          <span class="cliente-detail-chip-text">{{ cliente.email | default('—') }}</span>
+        </span>
+        <span class="cliente-detail-contact-item cliente-detail-chip">
+          <i class="bi bi-geo-alt"></i>
+          <span class="cliente-detail-chip-text">{{ [cliente.ciudad, cliente.sector]|select|join(' / ') or '—' }}</span>
+        </span>
+      </div>
+
+      <div class="cliente-detail-stats-grid">
+        <div>
+          <div class="cliente-detail-stat">
+            <span class="cliente-detail-stat-label">Solicitudes totales</span>
+            <span class="cliente-detail-stat-value">{{ kpi_cliente.total_solicitudes or 0 }}</span>
+          </div>
+        </div>
+        <div>
+          <div class="cliente-detail-stat">
+            <span class="cliente-detail-stat-label">Pagadas</span>
+            <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.pagada or 0 }}</span>
+          </div>
+        </div>
+        <div>
+          <div class="cliente-detail-stat">
+            <span class="cliente-detail-stat-label">Activas</span>
+            <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.activa or 0 }}</span>
+          </div>
+        </div>
+        <div>
+          <div class="cliente-detail-stat">
+            <span class="cliente-detail-stat-label">Última actividad</span>
+            <span class="cliente-detail-stat-value fs-6">
+              {{ kpi_cliente.ultima_actividad and kpi_cliente.ultima_actividad|rd_datetime('%d/%m/%Y %H:%M') or '—' }}
             </span>
-          </span>
+          </div>
         </div>
       </div>
     </div>
-
-    <!-- ✅ ACCIONES HEADER (AQUÍ VA EL BOTÓN) -->
-    <div class="d-flex flex-wrap gap-2">
-      {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
-      <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
-        {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
-        <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
-        <button type="submit" class="btn btn-success">
-          <i class="bi bi-chat-dots me-1"></i> Abrir chat
-        </button>
-      </form>
-      {% endif %}
-      <!-- ✅ NUEVO: Link público del cliente (para crear solicitud sin login) -->
-      <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
-         class="btn btn-info">
-        <i class="bi bi-link-45deg me-1"></i> Generar link público
-      </a>
-
-      <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
-        <i class="bi bi-pencil-fill me-1"></i> Editar cliente
-      </a>
-      <a href="{{ url_for('admin.listar_solicitudes') }}"
-         class="btn btn-outline-primary"
-         data-admin-nav="true">
-        Bandeja de solicitudes
-      </a>
-      <a href="{{ url_for('admin.listar_solicitudes', q=(cliente.codigo or cliente.nombre_completo or '')) }}"
-         class="btn btn-outline-secondary"
-         data-admin-nav="true">
-        Ver solicitudes del cliente
-      </a>
-      <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-light">
-        <i class="bi bi-arrow-left-short me-1"></i> Volver a clientes
-      </a>
-    </div>
-  </div>
+  </section>
 
   {% if (current_user.role|default('')|lower) == 'owner' %}
-  <section class="alert alert-danger border-danger-subtle mb-4" aria-label="Zona de peligro cliente">
+  <section class="alert alert-danger border-danger-subtle mb-4 cliente-detail-section-order-danger" aria-label="Zona de peligro cliente">
     <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
       <div>
         <h2 class="h6 mb-1">Zona de peligro</h2>
@@ -171,112 +536,68 @@
   </script>
   {% endif %}
 
-  <!-- ===== Tarjetas de info ===== -->
-  <div class="row g-4">
-    <!-- Información general -->
-    <div class="col-lg-6">
-      <div class="glass-card h-100">
-        <div class="glass-header bg-primary">
-          <i class="bi bi-person-circle"></i>
-          Información General
-        </div>
-        <dl class="row card-body mb-0">
-          <dt class="col-sm-4">Email</dt>
-          <dd class="col-sm-8">{{ cliente.email | default('—') }}</dd>
-
-          <dt class="col-sm-4">Teléfono</dt>
-          <dd class="col-sm-8">{{ cliente.telefono | default('—') }}</dd>
-
-          <dt class="col-sm-4">Ciudad</dt>
-          <dd class="col-sm-8">{{ cliente.ciudad | default('—') }}</dd>
-
-          <dt class="col-sm-4">Sector</dt>
-          <dd class="col-sm-8">{{ cliente.sector | default('—') }}</dd>
-        </dl>
-      </div>
+  <section class="glass-card cliente-detail-ops-panel mb-4 cliente-detail-section-order-summary" aria-label="Resumen operativo del cliente">
+    <div class="glass-header bg-info">
+      <span><i class="bi bi-bar-chart-fill"></i> Resumen operativo</span>
+      <small>Estado operativo y financiero del cliente sin repetir datos del encabezado.</small>
     </div>
-
-    <!-- Métricas / KPIs -->
-    <div class="col-lg-6">
-      <div class="glass-card h-100">
-        <div class="glass-header bg-info">
-          <i class="bi bi-bar-chart-fill"></i>
-          Métricas
+    <div class="card-body cliente-detail-kpis-compact">
+      <div class="cliente-detail-ops-grid">
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Solicitudes</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.total_solicitudes or 0 }}</span>
         </div>
-        <div class="card-body">
-          <div class="row text-center mb-3">
-            <div class="col-4">
-              <div class="h4 mb-0">{{ kpi_cliente.total_solicitudes or 0 }}</div>
-              <small class="text-muted">Solicitudes</small>
-            </div>
-            <div class="col-4">
-              <div class="h4 mb-0">
-                {% set pagadas = kpi_cliente.estados.pagada or 0 %}
-                {{ pagadas }}
-              </div>
-              <small class="text-muted">Pagadas</small>
-            </div>
-            <div class="col-4">
-              <div class="h4 mb-0">
-                {% set activas = kpi_cliente.estados.activa or 0 %}
-                {{ activas }}
-              </div>
-              <small class="text-muted">Activas</small>
-            </div>
-          </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Pagadas</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.pagada or 0 }}</span>
+        </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Activas</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.activa or 0 }}</span>
+        </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">En proceso</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.proceso or 0 }}</span>
+        </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Con reemplazo</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.reemplazo or 0 }}</span>
+        </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Canceladas</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.cancelada or 0 }}</span>
+        </div>
+        <div class="cliente-detail-stat text-center">
+          <span class="cliente-detail-stat-label">Otros estados</span>
+          <span class="cliente-detail-stat-value">{{ kpi_cliente.estados.otro or 0 }}</span>
+        </div>
+      </div>
 
-          <hr>
-
-          <div class="row mb-2">
-            <div class="col-6">
-              <small class="text-muted d-block">En proceso</small>
-              <span>{{ kpi_cliente.estados.proceso or 0 }}</span>
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Con reemplazo</small>
-              <span>{{ kpi_cliente.estados.reemplazo or 0 }}</span>
-            </div>
-          </div>
-
-          <div class="row mb-2">
-            <div class="col-6">
-              <small class="text-muted d-block">Canceladas</small>
-              <span>{{ kpi_cliente.estados.cancelada or 0 }}</span>
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Otros estados</small>
-              <span>{{ kpi_cliente.estados.otro or 0 }}</span>
-            </div>
-          </div>
-
-          <hr>
-
-          <div class="mb-2">
-            <small class="text-muted d-block" title="Suma histórica de pagos registrados del cliente.">Monto total pagado</small>
-            <span class="fw-bold">
-              {{ kpi_cliente.monto_total_pagado_str }}
-            </span>
-          </div>
-
-          <div class="row">
-            <div class="col-6">
-              <small class="text-muted d-block">Primera solicitud</small>
-              {% if kpi_cliente.primera_solicitud %}
-                <span>{{ kpi_cliente.primera_solicitud|rd_datetime('%d/%m/%Y') }}</span>
-              {% else %}
-                <span>—</span>
-              {% endif %}
-            </div>
-            <div class="col-6">
-              <small class="text-muted d-block">Última actividad</small>
-              {% if kpi_cliente.ultima_actividad %}
-                <span>{{ kpi_cliente.ultima_actividad|rd_datetime('%d/%m/%Y %H:%M') }}</span>
-              {% else %}
-                <span>—</span>
-              {% endif %}
-            </div>
-          </div>
+      <div class="cliente-detail-ops-meta">
+        <div class="cliente-detail-ops-item">
+          <small title="Suma histórica de pagos registrados del cliente.">Monto total pagado</small>
+          <strong>{{ kpi_cliente.monto_total_pagado_str }}</strong>
+        </div>
+        <div class="cliente-detail-ops-item">
+          <small>Primera solicitud</small>
+          <span>
+            {% if kpi_cliente.primera_solicitud %}
+              {{ kpi_cliente.primera_solicitud|rd_datetime('%d/%m/%Y') }}
+            {% else %}
+              —
+            {% endif %}
+          </span>
+        </div>
+        <div class="cliente-detail-ops-item">
+          <small>Última actividad</small>
+          <span>
+            {% if kpi_cliente.ultima_actividad %}
+              {{ kpi_cliente.ultima_actividad|rd_datetime('%d/%m/%Y %H:%M') }}
+            {% else %}
+              —
+            {% endif %}
+          </span>
         </div>
       </div>
     </div>
-  </div>
+  </section>

@@ -127,6 +127,13 @@
           </div>
         </div>
 
+        {% if tipo_plan %}
+        <div class="public-success-block">
+          <div class="public-success-label">Plan elegido</div>
+          <div class="public-success-value">{{ 'VIP' if tipo_plan == 'vip' else tipo_plan|capitalize }}</div>
+        </div>
+        {% endif %}
+
         <div class="public-success-block">
           <div class="public-success-value">Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario.</div>
         </div>

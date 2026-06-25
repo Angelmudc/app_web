@@ -1,0 +1,8 @@
+{% extends "clientes/base.html" %}
+{% block title %}Elegir plan | Doméstica del Cibao A&D{% endblock %}
+{% block content %}
+{% set form_action = url_for('clientes.solicitud_elegir_plan', id=solicitud.id) %}
+{% set back_url = url_for('clientes.detalle_solicitud', id=solicitud.id) %}
+{% include 'clientes/_solicitud_plan_styles.html' %}
+{% include 'clientes/_solicitud_plan_selection_content.html' %}
+{% endblock %}

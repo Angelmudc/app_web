@@ -29,6 +29,25 @@
         </button>
       </form>
       {% endif %}
+      {% set _wa = whatsapp_activation if whatsapp_activation is defined else {} %}
+      {% if _wa.enabled %}
+      <a href="{{ _wa.href }}"
+         target="_blank"
+         rel="noopener"
+         class="btn btn-outline-success"
+         title="{{ _wa.title }}"
+         data-testid="solicitud-whatsapp-activation-link">
+        <i class="bi bi-whatsapp me-1"></i> Cobro 50%
+      </a>
+      {% else %}
+      <button type="button"
+              class="btn btn-outline-secondary"
+              title="{{ _wa.title or 'No disponible.' }}"
+              data-testid="solicitud-whatsapp-activation-disabled"
+              disabled>
+        <i class="bi bi-whatsapp me-1"></i> Cobro 50%
+      </button>
+      {% endif %}
       <a href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=solicitud.id) }}" class="btn btn-outline-primary">
         <i class="bi bi-lightbulb me-1"></i> Ver sugerencias
       </a>

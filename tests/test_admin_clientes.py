@@ -166,5 +166,7 @@ def test_7_detalle_cliente_summary_renderiza_total_historico_correcto():
     resp = client.get(f"/admin/clientes/{cliente_id}/_summary", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
+    assert "Resumen operativo" in html
+    assert "Información General" not in html
     assert "Monto total pagado" in html
     assert "RD$ 6,750.00" in html

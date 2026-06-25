@@ -2,7 +2,7 @@
 {% block title %}Detalle Cliente{% endblock %}
 
 {% block content %}
-<div class="container py-4 py-md-5"
+<div class="container py-3 py-md-5"
      style="max-width: 1200px;"
      data-admin-focus-anchor
      data-live-invalidation-scope="1"
@@ -13,143 +13,146 @@
      data-live-region-summary-url="{{ url_for('admin.cliente_detail_summary_fragment', cliente_id=cliente.id) }}"
      data-live-region-solicitudes-url="{{ url_for('admin.cliente_detail_solicitudes_fragment', cliente_id=cliente.id) }}"
      data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}">
-  <div id="clienteSummaryAsyncScope" data-admin-async-scope>
-    <div id="clienteSummaryAsyncRegion" data-async-preserve-scroll="true">
-      {% include 'admin/_cliente_detail_summary_region.html' %}
-    </div>
+  <style>
+    .cliente-detail-page-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+    #clienteSummaryAsyncScope,
+    #clienteSummaryAsyncRegion {
+      display: contents;
+    }
+    .cliente-detail-section-order-hero {
+      order: 10;
+    }
+    .cliente-detail-section-order-danger {
+      order: 15;
+    }
+    .cliente-detail-section-order-solicitudes {
+      order: 20;
+    }
+    .cliente-detail-section-order-summary {
+      order: 30;
+      margin-top: 2rem;
+    }
+    .cliente-detail-section-order-notes {
+      order: 40;
+    }
+    .cliente-detail-section-order-tasks {
+      order: 50;
+    }
+    .cliente-detail-section-order-history {
+      order: 60;
+    }
+    @media (max-width: 575.98px) {
+      .cliente-detail-section-order-summary {
+        margin-top: 1.5rem;
+      }
+    }
+  </style>
+  <div class="d-none" aria-hidden="true">
+    <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja operativa</a>
   </div>
-
-  <!-- ===== BOTONES NUEVOS — ACCESOS A TAREAS ===== -->
-  <div class="d-flex flex-wrap gap-2 mb-4">
-    <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary" data-admin-nav="true">
-      Bandeja operativa
-    </a>
-
-    <a href="{{ url_for('admin.tareas_pendientes') }}" class="btn btn-primary">
-      📋 Tareas pendientes
-    </a>
-
-    <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-info">
-      📅 Tareas de hoy
-    </a>
-
-    <a href="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}" class="btn btn-warning">
-      📝 Crear tarea completa
-    </a>
-
-    <form method="post"
-          action="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}"
-          class="d-inline">
-      {% if csrf_token %}
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      {% endif %}
-      <button type="submit" class="btn btn-success">
-        ⚡ Crear tarea rápida
-      </button>
-    </form>
-  </div>
-  <!-- ===== FIN BOTONES NUEVOS ===== -->
-
-  <!-- ===== Notas ===== -->
-  <div class="glass-card mt-4">
-    <div class="glass-header bg-secondary">
-      <i class="bi bi-sticky-fill"></i>
-      Notas Administrativas
+  <div class="cliente-detail-page-flow">
+    <div id="clienteSummaryAsyncScope" data-admin-async-scope>
+      <div id="clienteSummaryAsyncRegion" data-async-preserve-scroll="true">
+        {% include 'admin/_cliente_detail_summary_region.html' %}
+      </div>
     </div>
-    <div class="card-body">
-      {% if cliente.notas_admin %}
-        <p class="mb-0" style="white-space: pre-wrap;">{{ cliente.notas_admin }}</p>
-      {% else %}
-        <p class="text-muted mb-0">No hay notas registradas.</p>
-      {% endif %}
-    </div>
-  </div>
 
-  <!-- ===== Tareas de seguimiento ===== -->
-  <div class="glass-card mt-4">
-    <div class="glass-header bg-warning">
-      <i class="bi bi-flag-fill"></i>
-      Tareas de seguimiento
+    <div id="clienteSolicitudesAsyncScope" class="cliente-detail-section-order-solicitudes mt-4" data-admin-async-scope>
+      <div id="clienteSolicitudesAsyncRegion" data-async-preserve-scroll="true">
+        {% include 'admin/_cliente_detail_solicitudes_region.html' %}
+      </div>
     </div>
-    <div class="card-body">
-      <form method="post"
-            action="{{ url_for('admin.crear_tarea_rapida', cliente_id=cliente.id) }}"
-            class="d-inline">
-        {% if csrf_token %}
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ===== Notas ===== -->
+    <div class="glass-card mt-4 cliente-detail-section-order-notes">
+      <div class="glass-header bg-secondary">
+        <i class="bi bi-sticky-fill"></i>
+        Notas Administrativas
+      </div>
+      <div class="card-body py-3">
+        {% if cliente.notas_admin %}
+          <p class="mb-0 small" style="white-space: pre-wrap;">{{ cliente.notas_admin }}</p>
+        {% else %}
+          <p class="text-muted small mb-0">No hay notas registradas.</p>
         {% endif %}
-        <button type="submit" class="btn btn-sm btn-warning">
-          ➕ Crear tarea rápida para hoy
-        </button>
-      </form>
-
-      {% if tareas %}
-        <h3 class="mt-4 h5">Tareas de seguimiento</h3>
-        <ul class="list-group mb-4 mt-2">
-          {% for t in tareas %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong>{{ t.titulo }}</strong>
-                {% if t.fecha_vencimiento %}
-                  <small class="text-muted">
-                    — vence {{ t.fecha_vencimiento|rd_datetime('%d/%m/%Y') }}
-                  </small>
-                {% endif %}
-                {% if t.descripcion %}
-                  <div class="small text-muted">{{ t.descripcion }}</div>
-                {% endif %}
-              </div>
-              <span class="badge bg-{% if t.estado == 'completada' %}success{% elif t.estado == 'en_progreso' %}info{% else %}warning{% endif %}">
-                {{ t.estado|capitalize }}
-              </span>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-muted mt-3 mb-0">
-          No hay tareas creadas para este cliente todavía.
-        </p>
-      {% endif %}
+      </div>
     </div>
-  </div>
 
-  <div id="clienteSolicitudesAsyncScope" data-admin-async-scope>
-    <div id="clienteSolicitudesAsyncRegion" data-async-preserve-scroll="true">
-      {% include 'admin/_cliente_detail_solicitudes_region.html' %}
-    </div>
-  </div>
-
-  <!-- ===== Historial de actividad (Timeline) ===== -->
-  <div class="glass-card mt-4">
-    <div class="glass-header bg-dark">
-      <i class="bi bi-clock-history"></i>
-      Historial de actividad
-    </div>
-    <div class="card-body">
-      {% if timeline %}
-        <ul class="list-unstyled mb-0 timeline">
-          {% for e in timeline %}
-            <li class="timeline-item">
-              <span class="timeline-dot"></span>
-              <div class="timeline-content">
-                <div class="d-flex justify-content-between align-items-baseline">
-                  <strong>{{ e.tipo }}</strong>
-                  {% if e.fecha %}
-                    <small>{{ e.fecha|rd_datetime('%d/%m/%Y %H:%M') }}</small>
+    <!-- ===== Tareas de seguimiento ===== -->
+    <details class="glass-card mt-4 cliente-detail-section-order-tasks">
+      <summary class="glass-header bg-warning d-flex align-items-center justify-content-between" style="cursor: pointer; list-style: none;">
+        <span>
+          <i class="bi bi-flag-fill"></i>
+          Tareas de seguimiento
+        </span>
+        <span class="badge text-bg-light">{{ tareas|length if tareas else 0 }}</span>
+      </summary>
+      <div class="card-body">
+        {% if tareas %}
+          <ul class="list-group list-group-flush mt-1">
+            {% for t in tareas %}
+              <li class="list-group-item px-0 d-flex justify-content-between align-items-start gap-3">
+                <div>
+                  <strong>{{ t.titulo }}</strong>
+                  {% if t.fecha_vencimiento %}
+                    <div class="small text-muted">
+                      Vence {{ t.fecha_vencimiento|rd_datetime('%d/%m/%Y') }}
+                    </div>
+                  {% endif %}
+                  {% if t.descripcion %}
+                    <div class="small text-muted mt-1">{{ t.descripcion }}</div>
                   {% endif %}
                 </div>
-                {% if e.detalle %}
-                  <div>{{ e.detalle }}</div>
-                {% endif %}
-              </div>
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="text-muted mb-0">
-          Aún no hay eventos registrados en el historial de este cliente.
-        </p>
-      {% endif %}
+                <span class="badge bg-{% if t.estado == 'completada' %}success{% elif t.estado == 'en_progreso' %}info{% else %}warning{% endif %}">
+                  {{ t.estado|capitalize }}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted small mb-0">
+            Sin tareas registradas para este cliente.
+          </p>
+        {% endif %}
+      </div>
+    </details>
+
+    <!-- ===== Historial de actividad (Timeline) ===== -->
+    <div class="glass-card mt-4 cliente-detail-section-order-history">
+      <div class="glass-header bg-dark">
+        <i class="bi bi-clock-history"></i>
+        Historial de actividad
+      </div>
+      <div class="card-body">
+        {% if timeline %}
+          <ul class="list-unstyled mb-0 timeline">
+            {% for e in timeline %}
+              <li class="timeline-item">
+                <span class="timeline-dot"></span>
+                <div class="timeline-content">
+                  <div class="d-flex justify-content-between align-items-baseline">
+                    <strong>{{ e.tipo }}</strong>
+                    {% if e.fecha %}
+                      <small>{{ e.fecha|rd_datetime('%d/%m/%Y %H:%M') }}</small>
+                    {% endif %}
+                  </div>
+                  {% if e.detalle %}
+                    <div>{{ e.detalle }}</div>
+                  {% endif %}
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted mb-0">
+            Aún no hay eventos registrados en el historial de este cliente.
+          </p>
+        {% endif %}
+      </div>
     </div>
   </div>
 </div>

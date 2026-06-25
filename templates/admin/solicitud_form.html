@@ -124,10 +124,19 @@
   }
 
   .admin-solicitud-form .public-choice-item,
+  .admin-solicitud-form .public-plan-card-body,
   .admin-solicitud-form .public-segmented-item span {
     background: var(--asf-chip-bg);
     border-color: var(--asf-chip-border);
     color: #d5e4f5;
+  }
+
+  .admin-solicitud-form .public-plan-card-title {
+    color: #f4f9ff;
+  }
+
+  .admin-solicitud-form .public-plan-card-meta {
+    color: #bcd1e6;
   }
 
   .admin-solicitud-form .public-segmented-item span {
@@ -135,12 +144,14 @@
   }
 
   .admin-solicitud-form .public-choice-item:hover,
+  .admin-solicitud-form .public-plan-card:hover .public-plan-card-body,
   .admin-solicitud-form .public-segmented-item span:hover {
     border-color: #78a9d0;
     background: #294158;
   }
 
   .admin-solicitud-form .public-choice-item.is-selected,
+  .admin-solicitud-form .public-plan-card input[type="radio"]:checked + .public-plan-card-body,
   .admin-solicitud-form .public-segmented-item input[type="radio"]:checked + span {
     border-color: var(--asf-chip-selected-border);
     background: var(--asf-chip-selected-bg);

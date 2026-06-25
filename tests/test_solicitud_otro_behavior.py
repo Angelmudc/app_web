@@ -227,6 +227,53 @@ def test_client_edit_post_preserva_modalidad_guiada_en_re_render_invalido():
     assert ctx["public_modalidad_other"] == "lunes a viernes"
 
 
+def test_client_edit_post_ignora_cambio_de_tipo_plan_en_edicion_general():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    target = clientes_routes.editar_solicitud
+    for _ in range(3):
+        target = target.__wrapped__
+
+    s = _cliente_solicitud_dummy()
+    s.tipo_plan = "basico"
+    fake_user = SimpleNamespace(id=7)
+
+    with flask_app.test_request_context(
+        "/clientes/solicitudes/1/editar",
+        method="POST",
+        data={
+            "ciudad_sector": "Santiago / Centro",
+            "modalidad_trabajo": "Dormida",
+            "modalidad_grupo": "con_dormida",
+            "modalidad_especifica": "Con dormida 💤 quincenal",
+            "experiencia": "Experiencia comprobada",
+            "horario": "L-V",
+            "funciones": ["limpieza"],
+            "edad_requerida": ["26-35"],
+            "tipo_lugar": "casa",
+            "habitaciones": "2",
+            "banos": "1",
+            "areas_comunes": ["sala"],
+            "adultos": "2",
+            "ninos": "1",
+            "edades_ninos": "5",
+            "sueldo": "18000",
+            "tipo_plan": "vip",
+        },
+    ):
+        with patch.object(clientes_routes, "current_user", fake_user), \
+             patch.object(clientes_routes, "Solicitud", SimpleNamespace(query=SimpleNamespace(filter_by=lambda **_k: SimpleNamespace(first_or_404=lambda: s)))), \
+             patch.object(clientes_routes, "_cache_ok", return_value=False), \
+             patch.object(clientes_routes, "_emit_cliente_outbox_event"), \
+             patch.object(clientes_routes.db.session, "flush"), \
+             patch.object(clientes_routes.db.session, "commit"):
+            resp = target(1)
+
+    assert getattr(resp, "status_code", None) in (302, 303)
+    assert s.tipo_plan == "basico"
+
+
 def test_shared_partial_has_independent_otro_wrappers_and_name_based_sync():
     path = "clientes/_solicitud_form_fields.html"
     content = flask_app.jinja_env.loader.get_source(flask_app.jinja_env, path)[0]

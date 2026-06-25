@@ -614,8 +614,8 @@
         });
         reportClipboardDiagnosis("copy-failed-after-link-generation", lastCopyDiagnosis);
         setButtonVisualState("error");
-        setButtonLabel("Enlace listo para copiar manualmente");
-        showFeedback("Enlace listo para copiar manualmente");
+        setButtonLabel("Enlace generado, pero no se pudo copiar automáticamente");
+        showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
         showManualPanel(
           lastGeneratedLink,
           lastGeneratedMessage,
@@ -651,8 +651,8 @@
       cooldownUntilMs = Date.now() + 1400;
     } catch (err) {
       setButtonVisualState("error");
-      setButtonLabel("Enlace listo para copiar manualmente");
-      showFeedback("Enlace listo para copiar manualmente");
+      setButtonLabel("Enlace generado, pero no se pudo copiar automáticamente");
+      showFeedback("Enlace generado, pero no se pudo copiar automáticamente");
       showManualPanel(
         lastGeneratedLink,
         lastGeneratedMessage,

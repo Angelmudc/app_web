@@ -10,6 +10,12 @@ PLAN_PRICES = {
     "vip": Decimal("8000.00"),
 }
 
+PLAN_LABELS = {
+    "basico": "Básico",
+    "premium": "Premium",
+    "vip": "VIP",
+}
+
 DEFAULT_PLAN_PRICE = Decimal("3500.00")
 
 
@@ -38,6 +44,15 @@ def get_plan_price(plan: str | None) -> Decimal:
 
 def get_required_deposit(plan: str | None) -> Decimal:
     return (get_plan_price(plan) * Decimal("0.50")).quantize(Decimal("0.01"))
+
+
+def get_plan_label(plan: str | None) -> str:
+    code = normalize_plan(plan)
+    return PLAN_LABELS.get(code, str(plan or "").strip())
+
+
+def get_plan_choices() -> list[tuple[str, str]]:
+    return [(code, PLAN_LABELS[code]) for code in PLAN_PRICES]
 
 
 def format_money(value: Decimal | str | int | float | None) -> str:

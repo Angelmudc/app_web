@@ -4,6 +4,25 @@
   {% set is_login_page = (request.endpoint == 'clientes.login') %}
   {% set is_authed = (current_user.is_authenticated if current_user is defined else false) %}
   {% set show_shell = (is_authed and (not is_login_page)) %}
+  {% set _client_path = request.path or '' %}
+  {% set _client_endpoint = request.endpoint or '' %}
+  {% set _client_live_default = show_shell and (
+    _client_endpoint == 'clientes.dashboard'
+    or _client_endpoint == 'clientes.listar_solicitudes'
+    or _client_endpoint == 'clientes.chat_cliente'
+    or _client_path == '/clientes/solicitudes'
+    or _client_path.startswith('/clientes/solicitudes/')
+  ) %}
+  {% set _requires_notifications = (requires_notifications if requires_notifications is defined else show_shell) %}
+  {% set _requires_live_updates = (requires_live_updates if requires_live_updates is defined else _client_live_default) %}
+  {% set _requires_presence_tracking = (requires_presence_tracking if requires_presence_tracking is defined else _requires_live_updates) %}
+  {% set _requires_chat_badge = (requires_chat_badge if requires_chat_badge is defined else _requires_live_updates) %}
+  {% set _requires_partial_nav = (requires_partial_nav if requires_partial_nav is defined else client_partial_nav_enabled) %}
+  {% set _client_notifications_enabled = show_shell and _requires_notifications %}
+  {% set _client_live_enabled = show_shell and _requires_live_updates %}
+  {% set _client_presence_enabled = show_shell and _requires_presence_tracking and _client_live_enabled %}
+  {% set _client_chat_badge_enabled = show_shell and _requires_chat_badge and _client_live_enabled %}
+  {% set _client_partial_nav_enabled = show_shell and _requires_partial_nav %}
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Doméstica del Cibao A&D{% endblock %}</title>
@@ -31,7 +50,7 @@
   <link href="{{ url_for('static', filename='clientes/css/clientes.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='clientes/css/clientes_components.css') }}" rel="stylesheet">
   <link href="{{ url_for('static', filename='clientes/css/clientes_pages.css') }}" rel="stylesheet">
-  {% if show_shell %}
+  {% if _client_notifications_enabled %}
   <link href="{{ url_for('static', filename='css/client_notifications.css') }}" rel="stylesheet">
   {% endif %}
 
@@ -39,16 +58,16 @@
 </head>
 <body class="clientes d-flex flex-column min-vh-100"
       data-portal="clientes"
-      data-live-presence-enabled="{% if show_shell %}1{% else %}0{% endif %}"
-      data-live-presence-url="{% if show_shell %}{{ url_for('clientes.clientes_live_ping') }}{% endif %}"
-      data-client-live-enabled="{% if show_shell %}1{% else %}0{% endif %}"
-      data-client-live-stream-url="{% if show_shell %}{{ url_for('clientes.clientes_live_invalidation_stream') }}{% endif %}"
-      data-client-live-poll-url="{% if show_shell %}{{ url_for('clientes.clientes_live_invalidation_poll') }}{% endif %}"
-      data-client-live-notifications-url="{% if show_shell %}{{ url_for('clientes.notificaciones_json') }}{% endif %}"
-      data-client-chat-conversations-url="{% if show_shell %}{{ url_for('clientes.chat_cliente_conversations_json') }}{% endif %}"
-      data-client-live-after-id="{% if show_shell %}{{ client_live_after_id or 0 }}{% endif %}"
-      data-client-partial-nav-enabled="{% if show_shell and client_partial_nav_enabled %}1{% else %}0{% endif %}"
-      data-client-partial-nav-global="{% if show_shell and client_partial_nav_feature and client_partial_nav_feature.enabled_global %}1{% else %}0{% endif %}">
+      data-live-presence-enabled="{% if _client_presence_enabled %}1{% else %}0{% endif %}"
+      data-live-presence-url="{% if _client_presence_enabled %}{{ url_for('clientes.clientes_live_ping') }}{% endif %}"
+      data-client-live-enabled="{% if _client_live_enabled %}1{% else %}0{% endif %}"
+      data-client-live-stream-url="{% if _client_live_enabled %}{{ url_for('clientes.clientes_live_invalidation_stream') }}{% endif %}"
+      data-client-live-poll-url="{% if _client_live_enabled %}{{ url_for('clientes.clientes_live_invalidation_poll') }}{% endif %}"
+      data-client-live-notifications-url="{% if _client_live_enabled %}{{ url_for('clientes.notificaciones_json') }}{% endif %}"
+      data-client-chat-conversations-url="{% if _client_chat_badge_enabled %}{{ url_for('clientes.chat_cliente_conversations_json') }}{% endif %}"
+      data-client-live-after-id="{% if _client_live_enabled %}{{ client_live_after_id or 0 }}{% endif %}"
+      data-client-partial-nav-enabled="{% if _client_partial_nav_enabled %}1{% else %}0{% endif %}"
+      data-client-partial-nav-global="{% if _client_partial_nav_enabled and client_partial_nav_feature and client_partial_nav_feature.enabled_global %}1{% else %}0{% endif %}">
 
   {% if show_shell %}
   <!-- NAVBAR -->
@@ -299,11 +318,15 @@
   <script src="{{ url_for('static', filename='clientes/js/clientes.js') }}"></script>
   {% block vendor_scripts %}{% endblock %}
   {% if show_shell %}
-  {% if client_partial_nav_enabled %}
+  {% if _client_partial_nav_enabled %}
   <script src="{{ url_for('static', filename='js/core/client_nav.js') }}" defer></script>
   {% endif %}
+  {% if _client_notifications_enabled %}
   <script src="{{ url_for('static', filename='js/client_notifications.js') }}" defer></script>
+  {% endif %}
+  {% if _client_live_enabled %}
   <script src="{{ url_for('static', filename='js/core/client_live_invalidation.js') }}" defer></script>
+  {% endif %}
   {% endif %}
 
   {% if show_shell %}

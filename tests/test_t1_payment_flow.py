@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import os
 import secrets
+from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import patch
 
 import admin.routes as admin_routes
 from app import app as flask_app
@@ -22,12 +24,17 @@ from models import (
     StaffAuditLog,
     StaffUser,
 )
+import services.payment_ledger as payment_ledger
+from sqlalchemy import event
 from services.payment_ledger import (
     calcular_saldo_pendiente,
     calcular_total_pagado,
+    ensure_current_payment_cycle,
     ensure_reactivation_cycle,
     get_current_payment_cycle,
+    get_current_payment_cycle_readonly,
     get_payment_summary,
+    get_payment_summary_readonly,
 )
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
@@ -95,6 +102,29 @@ def _seed_payment_fixture(*, tipo_plan: str = "basico", abono: str = "1750.00") 
     db.session.add(solicitud)
     db.session.commit()
     return int(cliente.id), int(candidata.fila), int(solicitud.id)
+
+
+@contextmanager
+def _capture_sql_statements():
+    statements: list[str] = []
+
+    def _before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
+        statements.append(" ".join(str(statement or "").split()))
+
+    event.listen(db.engine, "before_cursor_execute", _before_cursor_execute)
+    try:
+        yield statements
+    finally:
+        event.remove(db.engine, "before_cursor_execute", _before_cursor_execute)
+
+
+def _payment_cycle_update_count(statements) -> int:
+    total = 0
+    for statement in (statements or []):
+        normalized = " ".join(str(statement or "").split()).lower()
+        if normalized.startswith("update solicitudes set") and "payment_cycle_" in normalized:
+            total += 1
+    return total
 
 
 def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
@@ -713,6 +743,186 @@ def test_t1_payment_summary_usa_abono_legacy_si_no_hay_ledger():
         assert str(summary["abono_pagado"]) == "2500.00"
         assert str(summary["saldo_pendiente"]) == "2500.00"
         assert summary["legacy_abono_fallback"] is True
+
+
+def test_t1_get_current_payment_cycle_readonly_deriva_defaults_sin_mutar_ni_emitir_update():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud_seed = Solicitud.query.get(solicitud_id)
+        assert solicitud_seed is not None
+        solicitud_seed.payment_cycle_current = 0
+        solicitud_seed.payment_cycle_plan = None
+        solicitud_seed.payment_cycle_precio_total = None
+        solicitud_seed.payment_cycle_abono_requerido = None
+        solicitud_seed.payment_cycle_estado = None
+        solicitud_seed.payment_cycle_opened_at = None
+        solicitud_seed.payment_cycle_closed_at = None
+        solicitud_seed.payment_cycle_motivo_apertura = None
+        db.session.commit()
+
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        cycle_readonly = get_current_payment_cycle_readonly(solicitud)
+
+        assert int(cycle_readonly["numero_ciclo"]) == 1
+        assert cycle_readonly["plan"] == "premium"
+        assert str(cycle_readonly["precio_total_requerido"]) == "5000.00"
+        assert str(cycle_readonly["abono_requerido"]) == "2500.00"
+        assert cycle_readonly["estado_pago"] == "pendiente"
+        assert solicitud not in db.session.dirty
+        assert db.session.is_modified(solicitud, include_collections=False) is False
+
+        with _capture_sql_statements() as statements:
+            _ = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id, cliente_id=cliente_id).all()
+
+        assert _payment_cycle_update_count(statements) == 0
+
+        db.session.expire_all()
+        solicitud_persist = Solicitud.query.get(solicitud_id)
+        assert solicitud_persist is not None
+        cycle_persist = get_current_payment_cycle(solicitud_persist)
+
+        for key in ("numero_ciclo", "plan", "precio_total_requerido", "abono_requerido", "estado_pago"):
+            assert cycle_readonly[key] == cycle_persist[key]
+
+
+def test_t1_ensure_current_payment_cycle_arranca_desde_tipo_plan_si_el_ciclo_no_esta_inicializado():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="vip", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.payment_cycle_current = 0
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        solicitud.payment_cycle_opened_at = None
+        solicitud.payment_cycle_closed_at = None
+        solicitud.payment_cycle_motivo_apertura = None
+        db.session.commit()
+
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        cycle_num = ensure_current_payment_cycle(solicitud, motivo="plan_init")
+
+        assert cycle_num == 1
+        assert solicitud.payment_cycle_plan == "vip"
+        assert str(solicitud.payment_cycle_precio_total) == "8000.00"
+        assert str(solicitud.payment_cycle_abono_requerido) == "4000.00"
+        assert solicitud.payment_cycle_estado == "pendiente"
+
+
+def test_t1_payment_summary_readonly_equivale_a_persistente_en_casos_clave():
+    scenarios = ("incompleto", "legacy", "parcial", "completo", "devolucion")
+    for scenario in scenarios:
+        with flask_app.app_context():
+            _ensure_core_tables()
+            abono = "1750.00" if scenario == "legacy" else "0.00"
+            cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono=abono)
+            solicitud_seed = Solicitud.query.get(solicitud_id)
+            assert solicitud_seed is not None
+            solicitud_seed.payment_cycle_plan = None
+            solicitud_seed.payment_cycle_precio_total = None
+            solicitud_seed.payment_cycle_abono_requerido = None
+            solicitud_seed.payment_cycle_estado = None
+            if scenario == "parcial":
+                db.session.add(
+                    PagoSolicitud(
+                        solicitud_id=solicitud_id,
+                        cliente_id=cliente_id,
+                        monto="2500.00",
+                        tipo_pago="abono",
+                        ciclo_numero=1,
+                        origen_id=f"readonly-partial:{solicitud_id}",
+                    )
+                )
+            elif scenario == "completo":
+                db.session.add(
+                    PagoSolicitud(
+                        solicitud_id=solicitud_id,
+                        cliente_id=cliente_id,
+                        monto="5000.00",
+                        tipo_pago="pago",
+                        ciclo_numero=1,
+                        origen_id=f"readonly-full:{solicitud_id}",
+                    )
+                )
+            elif scenario == "devolucion":
+                db.session.add_all(
+                    [
+                        PagoSolicitud(
+                            solicitud_id=solicitud_id,
+                            cliente_id=cliente_id,
+                            monto="2500.00",
+                            tipo_pago="abono",
+                            ciclo_numero=1,
+                            origen_id=f"readonly-refund-abono:{solicitud_id}",
+                        ),
+                        PagoSolicitud(
+                            solicitud_id=solicitud_id,
+                            cliente_id=cliente_id,
+                            monto="500.00",
+                            tipo_pago="devolucion",
+                            ciclo_numero=1,
+                            origen_id=f"readonly-refund:{solicitud_id}",
+                        ),
+                    ]
+                )
+            db.session.commit()
+
+            solicitud_readonly = Solicitud.query.get(solicitud_id)
+            assert solicitud_readonly is not None
+            summary_readonly = get_payment_summary_readonly(solicitud_readonly)
+            assert solicitud_readonly not in db.session.dirty
+            assert db.session.is_modified(solicitud_readonly, include_collections=False) is False
+
+            db.session.expire_all()
+            solicitud_persist = Solicitud.query.get(solicitud_id)
+            assert solicitud_persist is not None
+            summary_persist = get_payment_summary(solicitud_persist)
+
+            assert summary_readonly == summary_persist
+
+
+def test_t1_payment_summary_lee_movimientos_activos_una_sola_vez():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        db.session.add_all(
+            [
+                PagoSolicitud(
+                    solicitud_id=solicitud_id,
+                    cliente_id=cliente_id,
+                    monto="2500.00",
+                    tipo_pago="abono",
+                    ciclo_numero=1,
+                    origen_id=f"summary-abono:{solicitud_id}",
+                ),
+                PagoSolicitud(
+                    solicitud_id=solicitud_id,
+                    cliente_id=cliente_id,
+                    monto="500.00",
+                    tipo_pago="devolucion",
+                    ciclo_numero=1,
+                    origen_id=f"summary-devolucion:{solicitud_id}",
+                ),
+            ]
+        )
+        db.session.commit()
+
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+
+        with patch("services.payment_ledger._iter_active_movimientos", wraps=payment_ledger._iter_active_movimientos) as movs_mock:
+            summary = get_payment_summary(solicitud)
+
+        assert movs_mock.call_count == 1
+        assert str(summary["total_pagado"]) == "2000.00"
+        assert str(summary["total_abonado"]) == "2500.00"
+        assert str(summary["abono_pagado"]) == "2500.00"
+        assert str(summary["saldo_pendiente"]) == "3000.00"
 
 
 def test_t1_ui_basico_con_abono_legacy_muestra_solo_pago_restante():
@@ -1723,6 +1933,50 @@ def test_t1_solicitud_espera_pago_muestra_boton_pago_habilitado_en_cliente_detai
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
 
 
+def test_t1_solicitud_puede_registrar_pago_equivale_en_estados_clave():
+    with flask_app.app_context():
+        _ensure_core_tables()
+        _cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+
+        escenarios = [
+            ("proceso", "pendiente", None, True),
+            ("activa", "pendiente", None, True),
+            ("pagada", "pagado", "5000.00", False),
+            ("espera_pago", "pendiente", None, True),
+            ("pendiente_servicio", "pendiente", None, False),
+            ("reemplazo", "pendiente", None, False),
+            ("cancelada", "pendiente", None, False),
+        ]
+
+        for estado, cycle_estado, pago_total, expected in escenarios:
+            solicitud.estado = estado
+            solicitud.payment_cycle_current = 1
+            solicitud.payment_cycle_plan = "premium"
+            solicitud.payment_cycle_precio_total = "5000.00"
+            solicitud.payment_cycle_abono_requerido = "2500.00"
+            solicitud.payment_cycle_estado = cycle_estado
+            solicitud.payment_cycle_closed_at = None
+            PagoSolicitud.query.filter_by(solicitud_id=solicitud_id).delete()
+            if pago_total is not None:
+                db.session.add(
+                    PagoSolicitud(
+                        solicitud_id=solicitud_id,
+                        cliente_id=int(solicitud.cliente_id),
+                        monto=pago_total,
+                        tipo_pago="pago",
+                        ciclo_numero=1,
+                        origen_id=f"cta-state:{estado}:{solicitud_id}",
+                    )
+                )
+            db.session.commit()
+            db.session.expire_all()
+            solicitud = Solicitud.query.get(solicitud_id)
+            assert solicitud is not None
+            assert admin_routes.solicitud_puede_registrar_pago(solicitud) is expected
+
+
 def test_t1_pago_completo_desde_espera_pago_deja_solicitud_pagada():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -1804,6 +2058,154 @@ def test_t1_solicitud_puede_registrar_pago_devuelve_false_en_cancelada():
         solicitud.estado = "cancelada"
         db.session.commit()
         assert admin_routes.solicitud_puede_registrar_pago(solicitud) is False
+
+
+def test_t1_get_cliente_detail_no_emite_update_payment_cycle_y_conserva_cta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        db.session.commit()
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert _payment_cycle_update_count(statements) == 0
+
+
+def test_t1_gestionar_plan_guardado_expone_cta_whatsapp_sin_pago_extra_ni_estado_inesperado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "proceso"
+        db.session.commit()
+    _login_admin(client)
+
+    resp = client.post(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/plan",
+        data={"tipo_plan": "premium", "abono": "2500"},
+        headers=_async_headers(),
+        follow_redirects=False,
+    )
+    assert resp.status_code == 200
+    payload = resp.get_json() or {}
+    html = payload.get("replace_html") or ""
+    assert payload.get("success") is True
+    assert payload.get("redirect_url") in (None, "")
+    assert "Enviar mensaje WhatsApp al cliente" in html
+    assert "https://wa.me/1" in html
+
+    with flask_app.app_context():
+        solicitud_end = Solicitud.query.get(solicitud_id)
+        assert solicitud_end is not None
+        assert solicitud_end.estado == "activa"
+        summary_end = get_payment_summary(solicitud_end)
+        assert str(summary_end["precio_plan"]) == "5000.00"
+        assert str(summary_end["abono_requerido"]) == "2500.00"
+        assert str(summary_end["saldo_pendiente"]) == "2500.00"
+        movs = PagoSolicitud.query.filter_by(solicitud_id=solicitud_id, anulado_at=None).order_by(PagoSolicitud.id.asc()).all()
+        assert len(movs) == 1
+        assert movs[0].tipo_pago == "abono"
+
+
+def test_t1_get_cliente_detail_solicitudes_fragment_no_emite_update_payment_cycle_y_conserva_cta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        db.session.commit()
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}/_solicitudes", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert _payment_cycle_update_count(statements) == 0
+
+
+def test_t1_get_detalle_solicitud_no_emite_update_payment_cycle_y_conserva_cta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        db.session.commit()
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Registrar pago" in html
+    assert _payment_cycle_update_count(statements) == 0
+
+
+def test_t1_get_operativa_core_no_emite_update_payment_cycle_y_conserva_cta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        db.session.commit()
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(
+                f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/_operativa_core",
+                follow_redirects=False,
+            )
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Registrar pago" in html
+    assert _payment_cycle_update_count(statements) == 0
 
 
 def test_t1_cliente_detail_reactivada_con_ciclo_nuevo_pendiente_habilita_boton_pago():

@@ -127,6 +127,46 @@
       </button>
     </div>
   </form>
+
+  {% set _wa_post = post_save_whatsapp_activation if post_save_whatsapp_activation is defined else None %}
+  {% if _wa_post %}
+    <div class="mt-4 p-3 border rounded plan-whatsapp-cta {% if _wa_post.enabled %}plan-whatsapp-cta--enabled bg-light{% else %}plan-whatsapp-cta--disabled{% endif %}" data-testid="gestionar-plan-whatsapp-cta">
+      <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
+        <div class="plan-whatsapp-cta__content">
+          <div class="fw-semibold plan-whatsapp-cta__title">Mensaje WhatsApp del cliente</div>
+          <div class="small plan-whatsapp-cta__body">
+            {% if _wa_post.enabled %}
+              El plan fue guardado y el mensaje quedó listo con los montos finales guardados.
+            {% else %}
+              El plan fue guardado, pero no se pudo preparar el enlace de WhatsApp.
+            {% endif %}
+          </div>
+          {% if not _wa_post.enabled and _wa_post.missing_reasons %}
+            <div class="small mt-2 plan-whatsapp-cta__warning">
+              <i class="bi bi-exclamation-triangle-fill me-1" aria-hidden="true"></i>{{ _wa_post.missing_reasons|join(' ') }}
+            </div>
+          {% endif %}
+        </div>
+        {% if _wa_post.enabled %}
+          <a href="{{ _wa_post.href }}"
+             target="_blank"
+             rel="noopener"
+             class="btn btn-success"
+             data-testid="gestionar-plan-whatsapp-link">
+            <i class="bi bi-whatsapp me-1"></i> Enviar mensaje WhatsApp al cliente
+          </a>
+        {% else %}
+          <button type="button"
+                  class="btn plan-whatsapp-cta__button plan-whatsapp-cta__button--disabled"
+                  title="{{ _wa_post.title }}"
+                  data-testid="gestionar-plan-whatsapp-link-disabled"
+                  disabled>
+            <i class="bi bi-whatsapp me-1"></i> WhatsApp no disponible
+          </button>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
 </div>
 <script>
   (function () {

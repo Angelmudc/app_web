@@ -1,0 +1,51 @@
+<section class="plan-flow-page">
+  <div class="plan-flow-shell plan-flow-shell--summary">
+    <div class="plan-summary-card">
+      <div class="plan-summary-check"><i class="bi bi-check-lg"></i></div>
+      <div class="plan-flow-eyebrow">Flujo completado</div>
+      <h1>Solicitud recibida correctamente</h1>
+      <p class="plan-summary-lead">Nuestro equipo revisará la solicitud y le contactará para continuar con el proceso.</p>
+
+      <div class="plan-summary-grid">
+        <div class="plan-summary-item">
+          <div class="plan-summary-label">Codigo de solicitud</div>
+          <div class="plan-summary-value">{{ solicitud.codigo_solicitud }}</div>
+        </div>
+        <div class="plan-summary-item">
+          <div class="plan-summary-label">Plan elegido</div>
+          <div class="plan-summary-value">{{ plan_summary.plan_label }}</div>
+        </div>
+        <div class="plan-summary-item">
+          <div class="plan-summary-label">Precio total</div>
+          <div class="plan-summary-value">{{ plan_summary.price_display }}</div>
+        </div>
+        <div class="plan-summary-item">
+          <div class="plan-summary-label">50% requerido</div>
+          <div class="plan-summary-value">{{ plan_summary.deposit_display }}</div>
+        </div>
+        <div class="plan-summary-item">
+          <div class="plan-summary-label">Saldo restante</div>
+          <div class="plan-summary-value">{{ plan_summary.balance_display }}</div>
+        </div>
+      </div>
+
+      <div class="plan-summary-next">
+        <div class="plan-summary-next-title">Proximos pasos</div>
+        <ol>
+          <li>Tu solicitud ya quedo creada con plan seleccionado.</li>
+          <li>El equipo validara la informacion enviada.</li>
+          <li>Te contactaremos para continuar con el proceso.</li>
+        </ol>
+      </div>
+
+      <div class="plan-summary-actions">
+        {% if detail_url %}
+        <a href="{{ detail_url }}" class="btn btn-primary">Ver solicitud</a>
+        {% endif %}
+        {% if secondary_url %}
+        <a href="{{ secondary_url }}" class="btn btn-outline-secondary">Continuar</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>

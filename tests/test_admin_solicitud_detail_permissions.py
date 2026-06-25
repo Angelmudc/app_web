@@ -50,6 +50,8 @@ class SolicitudDetailPermissionTest(unittest.TestCase):
         fake_query = _FakeQuery()
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", fake_query), \
+                 patch("admin.routes._build_payment_summary_ctx", return_value={"plan_price": 0, "required_deposit": 0}), \
+                 patch("admin.routes.solicitud_puede_registrar_pago", return_value=False), \
                  patch("admin.routes.render_template", return_value="OK"):
                 resp = self.client.get("/admin/clientes/1/solicitudes/1")
 

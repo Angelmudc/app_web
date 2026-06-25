@@ -40,6 +40,7 @@ from wtforms.widgets import ListWidget, CheckboxInput
 from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
+from services.payment_rules import get_plan_choices, is_valid_plan, normalize_plan
 
 
 
@@ -311,6 +312,7 @@ class AdminClienteForm(FlaskForm):
 # =============================================================================
 class AdminSolicitudForm(FlaskForm):
     HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
+    PLAN_CHOICES = get_plan_choices()
     # ─────────────────────────────────────────────
     # TIPO DE SOLICITUD
     # ─────────────────────────────────────────────
@@ -659,6 +661,13 @@ class AdminSolicitudForm(FlaskForm):
         validators=[InputRequired("Indica si se aporta pasaje.")],
         coerce=lambda v: v == '1'
     )
+    tipo_plan = RadioField(
+        'Plan',
+        choices=PLAN_CHOICES,
+        validators=[DataRequired("Selecciona un plan para continuar.")],
+        coerce=str,
+        validate_choice=False,
+    )
 
     # Nota
     nota_cliente = TextAreaField(
@@ -792,6 +801,17 @@ class AdminSolicitudForm(FlaskForm):
                     "Para encamado debes marcar responsabilidades o seleccionar solo acompanamiento/supervision."
                 )
                 rv = False
+
+        raw_plan = (self.tipo_plan.data or "").strip()
+        if not raw_plan:
+            if "Selecciona un plan para continuar." not in (self.tipo_plan.errors or []):
+                self.tipo_plan.errors = ["Selecciona un plan para continuar."]
+            rv = False
+        elif not is_valid_plan(raw_plan):
+            self.tipo_plan.errors = ["Selecciona un plan válido: Básico, Premium o VIP."]
+            rv = False
+        else:
+            self.tipo_plan.data = normalize_plan(raw_plan)
 
         return rv
 

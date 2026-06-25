@@ -10,7 +10,7 @@ from app import app as flask_app
 from config_app import db
 from utils.robust_save import RobustSaveResult
 import clientes.routes as clientes_routes
-from models import PublicSolicitudClienteNuevoTokenUso, PublicSolicitudShareAlias
+from models import Cliente, PublicSolicitudClienteNuevoTokenUso, PublicSolicitudShareAlias, Solicitud
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -64,6 +64,7 @@ class _FakeNewPublicForm:
         self.mascota = _FakeField("")
         self.sueldo = _FakeField("18000")
         self.pasaje_aporte = _FakeField(False)
+        self.tipo_plan = _FakeField("premium")
         self.nota_cliente = _FakeField("")
 
     def validate_on_submit(self):
@@ -73,6 +74,9 @@ class _FakeNewPublicForm:
         return ""
 
     def populate_obj(self, obj):
+        for name, field in self.__dict__.items():
+            if isinstance(field, _FakeField):
+                setattr(obj, name, field.data)
         return obj
 
     def __iter__(self):
@@ -351,15 +355,13 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
         second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/nueva-publica/tok123" in (resp.location or "")
+    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
-    assert second.status_code == 410
-    second_html = second.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in second_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
+    assert second.status_code in (302, 303)
+    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (second.location or "")
 
 
-def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once():
+def test_new_public_used_token_reanuda_plan_selection():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -372,30 +374,15 @@ def test_new_public_success_page_shows_cliente_and_solicitud_confirmation_once()
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
-    with client.session_transaction() as sess:
-        sess["public_new_solicitud_success"] = {
-            "token_hash": clientes_routes._public_link_token_hash_storage(token),
-            "cliente_nombre": "Cliente Nuevo",
-            "cliente_codigo": "2,154",
-            "solicitud_codigo": "2,154-A",
-            "solicitud_id": 88,
-        }
-
     with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
-        success = client.get(f"/clientes/solicitudes/nueva-publica/{token}?estado=enviado")
+        success = client.get(f"/clientes/solicitudes/nueva-publica/{token}")
         later = client.get(f"/clientes/solicitudes/nueva-publica/{token}")
 
-    assert success.status_code == 200
-    success_html = success.get_data(as_text=True)
-    assert "Solicitud recibida correctamente" in success_html
-    assert "2,154-A" in success_html
-    assert "envíanos tu nombre por WhatsApp" in success_html
-    assert "/clientes/login" not in success_html
-    assert later.status_code == 410
-    later_html = later.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in later_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
+    assert success.status_code in (302, 303)
+    assert f"/clientes/solicitudes/nueva-publica/{token}/plan" in (success.location or "")
+    assert later.status_code in (302, 303)
+    assert f"/clientes/solicitudes/nueva-publica/{token}/plan" in (later.location or "")
 
 
 def test_new_public_form_token_save_fail_keeps_token_valid():
@@ -691,31 +678,15 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
-    with client.session_transaction() as sess:
-        sess["public_new_solicitud_success"] = {
-            "token_hash": clientes_routes._public_link_token_hash_storage(token),
-            "cliente_nombre": "Cliente Nuevo",
-            "cliente_codigo": "2,154",
-            "solicitud_codigo": "2,154-A",
-            "solicitud_id": 88,
-        }
-
     with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
          patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
-        success = client.get("/solicitud/WXYZ5678JK/continuar?estado=enviado")
+        success = client.get("/solicitud/WXYZ5678JK/continuar")
         later = client.get("/solicitud/WXYZ5678JK/continuar")
 
-    assert success.status_code == 200
-    success_html = success.get_data(as_text=True)
-    assert "Solicitud recibida correctamente" in success_html
-    assert "2,154-A" in success_html
-    assert "Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario." in success_html
-    assert "/clientes/login" not in success_html
-    assert later.status_code == 410
-    later_html = later.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in later_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (success.location or "")
+    assert later.status_code in (302, 303)
 
 
 def test_share_continue_new_used_alias_blocks_repost_with_clear_used_message():
@@ -736,12 +707,8 @@ def test_share_continue_new_used_alias_blocks_repost_with_clear_used_message():
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
         resp = client.post("/solicitud/WXYZ5678JK/continuar", data={"dummy": "1"})
 
-    assert resp.status_code == 410
-    html = resp.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in html
-    assert "Traceback" not in html
-    assert "invalid_signature" not in html
+    assert resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (resp.location or "")
 
 
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
@@ -892,5 +859,89 @@ def test_new_public_double_post_same_token_blocks_second_submit_without_new_save
         )
 
     assert first.status_code in (302, 303)
-    assert second.status_code == 410
+    assert second.status_code in (302, 303)
     assert save_calls["count"] == 1
+
+
+def test_new_public_post_guarda_tipo_plan_y_no_toca_payment_cycle_fields():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    fake_form = _FakeNewPublicForm()
+
+    created = {"solicitud": None}
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables(
+            [Cliente, Solicitud, PublicSolicitudClienteNuevoTokenUso, PublicSolicitudShareAlias],
+            reset=True,
+        )
+
+    def _save_once(**kwargs):
+        kwargs["persist_fn"](1)
+        return RobustSaveResult(ok=True, attempts=1)
+
+    original_add = db.session.add
+
+    def _capture_add(obj):
+        if isinstance(obj, Solicitud):
+            created["solicitud"] = obj
+        return original_add(obj)
+
+    with patch("clientes.routes.SolicitudClienteNuevoPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+         patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_once), \
+         patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None), \
+         patch.object(db.session, "add", side_effect=_capture_add), \
+         patch.object(db.session, "flush", return_value=None):
+        resp = client.post(
+            "/clientes/solicitudes/nueva-publica/tok-plan",
+            data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    solicitud = created["solicitud"]
+    assert solicitud is not None
+    assert solicitud.tipo_plan is None
+    assert solicitud.payment_cycle_plan is None
+    assert solicitud.payment_cycle_precio_total is None
+    assert solicitud.payment_cycle_abono_requerido is None
+    assert solicitud.payment_cycle_opened_at is None
+    assert solicitud.payment_cycle_closed_at is None
+    assert solicitud.payment_cycle_motivo_apertura is None
+    assert "/clientes/solicitudes/nueva-publica/tok-plan/plan" in (resp.location or "")
+
+
+def test_new_public_used_without_joined_solicitud_relation_still_redirects_to_plan_selection():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    used_row = SimpleNamespace(cliente_id=91, solicitud_id=11, used_at=datetime.utcnow(), solicitud=None)
+    pending_solicitud = SimpleNamespace(id=11, cliente_id=91, codigo_solicitud="SOL-001", tipo_plan=None)
+    with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+         patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row), \
+         patch("clientes.routes._public_new_pending_plan_solicitud", return_value=(used_row, pending_solicitud)):
+        resp = client.get("/clientes/solicitudes/nueva-publica/tok-plan")
+
+    assert resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/nueva-publica/tok-plan/plan" in (resp.location or "")
+
+
+def test_new_public_plan_summary_shows_selected_plan_when_available():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    solicitud = SimpleNamespace(codigo_solicitud="SOL-001", tipo_plan="vip")
+    used_row = SimpleNamespace(used_at=datetime.utcnow(), solicitud=solicitud, solicitud_id=11)
+    with patch("clientes.routes._public_new_pending_plan_solicitud", return_value=(used_row, solicitud)):
+        resp = client.get("/clientes/solicitudes/nueva-publica/tok-plan/plan/resumen")
+
+    assert resp.status_code == 200
+    assert "Plan elegido" in resp.get_data(as_text=True)
+    assert "VIP" in resp.get_data(as_text=True)

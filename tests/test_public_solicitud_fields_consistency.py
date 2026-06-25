@@ -42,6 +42,7 @@ class _FakeSolicitudForm:
         self.mascota = _Field("perro")
         self.sueldo = _Field("18,500")
         self.pasaje_aporte = _Field(False)
+        self.tipo_plan = _Field("premium")
         self.nota_cliente = _Field("Necesito apoyo adicional")
         self.detalles_servicio = _Field(None)
 
@@ -138,6 +139,7 @@ def test_public_solicitud_field_mapping_is_consistent_for_both_flows():
         "mascota",
         "sueldo",
         "pasaje_aporte",
+        "tipo_plan",
         "nota_cliente",
     ]
 

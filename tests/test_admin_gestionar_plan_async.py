@@ -2,6 +2,7 @@
 
 import unittest
 from datetime import datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -44,6 +45,7 @@ def _solicitud_stub(*, sol_id=101, cliente_id=7, estado="proceso"):
         fecha_inicio_seguimiento=now,
         fecha_ultima_actividad=now,
         fecha_ultima_modificacion=now,
+        cliente=SimpleNamespace(nombre_completo="Laura Gomez", telefono="8095551212"),
     )
 
 
@@ -83,6 +85,14 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                  patch("admin.routes.ensure_reactivation_cycle", return_value=None), \
                  patch("admin.routes.sync_cycle_plan_if_no_payments", return_value=self._sync_cycle_plan_result), \
                  patch("admin.routes.get_payment_summary", return_value=self._payment_summary), \
+                 patch("admin.routes.solicitud_puede_registrar_pago", return_value=True), \
+                 patch(
+                     "admin.routes._build_payment_summary_ctx",
+                     return_value={
+                         "plan_price": Decimal(str(self._payment_summary["precio_plan"])),
+                         "required_deposit": Decimal(str(self._payment_summary["abono_requerido"])),
+                     },
+                 ), \
                  patch("admin.routes.has_recorded_payments", return_value=self._has_recorded_payments), \
                  patch("admin.routes.crear_pago_solicitud"), \
                  patch("admin.routes.apply_payment_state_from_summary", return_value="espera_pago"):
@@ -100,7 +110,7 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             "X-Admin-Async": "1",
         }
 
-    def test_guardado_async_exitoso_reemplaza_region_local(self):
+    def test_guardado_async_exitoso_reemplaza_region_local_y_expone_cta_whatsapp(self):
         solicitud = _solicitud_stub()
 
         with flask_app.app_context():
@@ -115,8 +125,9 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(data["update_target"], "#gestionarPlanAsyncRegion")
-        self.assertEqual(data["redirect_url"], "/admin/clientes/7")
-        self.assertIsNone(data.get("replace_html"))
+        self.assertIsNone(data.get("redirect_url"))
+        self.assertIn("Enviar mensaje WhatsApp al cliente", data.get("replace_html") or "")
+        self.assertIn("https://wa.me/18095551212?text=", data.get("replace_html") or "")
         commit_mock.assert_called_once()
 
     def test_validacion_async_re_renderiza_formulario_con_error_en_campo(self):
@@ -150,7 +161,8 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                 )
 
         self.assertIn(resp.status_code, (302, 303))
-        self.assertIn("/admin/clientes/7", resp.location)
+        self.assertIn("/admin/clientes/7/solicitudes/101/plan", resp.location)
+        self.assertIn("show_whatsapp_cta=1", resp.location)
         commit_mock.assert_called_once()
 
     def test_fallback_clasico_post_valido_respeta_next_url(self):
@@ -166,7 +178,47 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
                 )
 
         self.assertIn(resp.status_code, (302, 303))
-        self.assertIn("/admin/solicitudes/copiar?page=2", resp.location)
+        self.assertIn("/admin/clientes/7/solicitudes/101/plan", resp.location)
+        self.assertIn("next=/admin/solicitudes/copiar", resp.location)
+        self.assertIn("page%3D2", resp.location)
+        self.assertIn("show_whatsapp_cta=1", resp.location)
+        commit_mock.assert_called_once()
+
+    def test_guardado_async_telefono_internacional_genera_link_correcto(self):
+        solicitud = _solicitud_stub()
+        solicitud.cliente = SimpleNamespace(nombre_completo="Cliente Espana", telefono="+34 612 345 678")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.db.session.commit"):
+                resp = self._invoke(
+                    data={"tipo_plan": "premium", "abono": "2500"},
+                    headers=self._async_headers(),
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertIn("https://wa.me/34612345678?text=", data.get("replace_html") or "")
+
+    def test_guardado_async_telefono_invalido_no_rompe_y_muestra_aviso(self):
+        solicitud = _solicitud_stub()
+        solicitud.cliente = SimpleNamespace(nombre_completo="Cliente Sin Telefono", telefono="abc")
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self._invoke(
+                    data={"tipo_plan": "premium", "abono": "2500"},
+                    headers=self._async_headers(),
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        html = data.get("replace_html") or ""
+        self.assertIn("WhatsApp no disponible", html)
+        self.assertIn("teléfono válido", html)
         commit_mock.assert_called_once()
 
     def test_error_async_controlado_devuelve_500_json_limpio(self):

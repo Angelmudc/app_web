@@ -10,7 +10,7 @@ from unittest.mock import patch
 from app import app as flask_app
 from config_app import db
 import clientes.routes as clientes_routes
-from models import Cliente, PublicSolicitudShareAlias, PublicSolicitudTokenUso
+from models import Cliente, PublicSolicitudShareAlias, PublicSolicitudTokenUso, Solicitud
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.robust_save import RobustSaveResult
 from utils.timezone import utc_now_naive
@@ -61,6 +61,7 @@ class _FakePublicForm:
         self.mascota = _FakeField("")
         self.sueldo = _FakeField("18000")
         self.pasaje_aporte = _FakeField(False)
+        self.tipo_plan = _FakeField("basico")
         self.envejeciente_tipo_cuidado = _FakeField("")
         self.envejeciente_responsabilidades = _FakeField([])
         self.envejeciente_solo_acompanamiento = _FakeField(False)
@@ -74,6 +75,9 @@ class _FakePublicForm:
         return ""
 
     def populate_obj(self, obj):
+        for name, field in self.__dict__.items():
+            if isinstance(field, _FakeField):
+                setattr(obj, name, field.data)
         return obj
 
     def __iter__(self):
@@ -558,12 +562,10 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
         second = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
-    assert second.status_code == 410
-    second_html = second.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in second_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in second_html
+    assert second.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (second.location or "")
 
 
 def test_public_link_short_route_keeps_same_validation_and_security_behavior():
@@ -631,7 +633,7 @@ def test_generated_existing_public_link_persists_active_alias_and_public_routes_
     assert "Nueva solicitud" in continue_resp.get_data(as_text=True)
 
 
-def test_public_link_successful_save_shows_professional_success_page_once():
+def test_public_link_successful_save_redirects_to_plan_selection():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -660,21 +662,13 @@ def test_public_link_successful_save_shows_professional_success_page_once():
          patch("clientes.routes._public_link_usage_by_hash", side_effect=_usage_side_effect), \
          patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
          patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
-        success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=True)
+        success = client.post("/clientes/solicitudes/publica/tok123", data={"token": "tok123", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         later = client.get("/clientes/solicitudes/publica/tok123")
 
-    assert success.status_code == 200
-    assert "Nueva solicitud registrada correctamente" in success.get_data(as_text=True)
-    success_html = success.get_data(as_text=True)
-    assert "CL-001-C" in success_html
-    assert "Gracias por seguir confiando en Doméstica del Cibao A&amp;D." in success_html
-    assert "te contactará por WhatsApp para continuar con el proceso." in success_html
-    assert "envíanos tu nombre por WhatsApp" not in success_html
-    assert "/clientes/login" not in success_html
-    assert later.status_code == 410
-    later_html = later.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in later_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (success.location or "")
+    assert later.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (later.location or "")
 
 
 def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
@@ -700,23 +694,13 @@ def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
     with patch("clientes.routes._resolve_public_link_token", return_value=(None, "expired", {})):
         invalid_resp = client.get("/clientes/solicitudes/publica/tok123")
 
-    with client.session_transaction() as sess:
-        sess["public_solicitud_success"] = {
-            "token_hash": clientes_routes._public_link_token_hash_storage("tok123"),
-            "solicitud_id": 91,
-        }
     with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
-        success_resp = client.get("/clientes/solicitudes/publica/tok123?estado=enviado")
+        success_resp = client.get("/clientes/solicitudes/publica/tok123")
 
-    assert success_resp.status_code == 200
-    success_html = success_resp.get_data(as_text=True)
-    assert "Nueva solicitud registrada correctamente" in success_html
-    assert "Gracias por seguir confiando en Doméstica del Cibao A&amp;D." in success_html
-    assert "Cuando termines, envíanos tu nombre y dinos que ya completaste el formulario." not in success_html
-    assert "/clientes/login" not in success_html
+    assert success_resp.status_code in (302, 303, 410)
 
     for resp in (form_resp, used_resp, invalid_resp):
-        assert resp.status_code in (200, 410)
+        assert resp.status_code in (200, 302, 410)
         html = resp.get_data(as_text=True)
         assert "/clientes/live/ping" not in html
         assert "Mis Solicitudes" not in html
@@ -734,7 +718,7 @@ def test_public_link_tampered_token_is_rejected():
     assert "Este enlace no es valido o ha expirado" in resp.get_data(as_text=True)
 
 
-def test_public_link_used_is_blocked_with_controlled_response():
+def test_public_link_used_without_plan_redirects_to_plan_selection():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -748,13 +732,28 @@ def test_public_link_used_is_blocked_with_controlled_response():
     with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
         resp = client.get("/clientes/solicitudes/publica/tok123")
 
-    assert resp.status_code == 410
-    html = resp.get_data(as_text=True)
-    assert "Enlace ya utilizado" in html
-    assert "CL-001-B" in html
-    assert "https://wa.me/18094296892" in html
-    assert "+1 809 429 6892" in html
-    assert "/clientes/live/ping" not in html
+    assert resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
+
+
+def test_public_link_used_without_joined_solicitud_relation_still_redirects_to_plan_selection():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    used_row = SimpleNamespace(
+        cliente_id=7,
+        solicitud_id=91,
+        used_at=datetime.utcnow(),
+        solicitud=None,
+    )
+    pending_solicitud = SimpleNamespace(id=91, cliente_id=7, codigo_solicitud="CL-001-B", tipo_plan=None)
+    with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row), \
+         patch("clientes.routes._public_existing_pending_plan_solicitud", return_value=(used_row, pending_solicitud)):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
 
 
 def test_share_landing_route_is_corporate_and_does_not_expose_long_token():
@@ -862,10 +861,8 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
     with patch("clientes.routes.resolve_public_share_alias", return_value=None):
         invalid_resp = client.get("/solicitud/ZZZZ")
 
-    assert used_resp.status_code == 410
-    used_html = used_resp.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in used_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in used_html
+    assert used_resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (used_resp.location or "")
     assert invalid_resp.status_code == 404
 
 
@@ -886,12 +883,8 @@ def test_share_continue_existing_used_alias_blocks_repost_with_clear_used_messag
          patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
         resp = client.post("/solicitud/ABCD2345EF/continuar", data={"dummy": "1"})
 
-    assert resp.status_code == 410
-    html = resp.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in html
-    assert "Traceback" not in html
-    assert "invalid_signature" not in html
+    assert resp.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
 
 
 def test_share_continue_route_shows_success_once_after_submit_then_used_for_existing_flow():
@@ -908,28 +901,14 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
-    with client.session_transaction() as sess:
-        sess["public_solicitud_success"] = {
-            "token_hash": clientes_routes._public_link_token_hash_storage(token),
-            "cliente_nombre": "Cliente Uno",
-            "solicitud_codigo": "CL-001-B",
-            "solicitud_id": 91,
-        }
-
     with patch("clientes.routes.resolve_public_share_alias", return_value=alias), \
          patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
-        success = client.get("/solicitud/ABCD2345EF/continuar?estado=enviado")
+        success = client.get("/solicitud/ABCD2345EF/continuar")
         later = client.get("/solicitud/ABCD2345EF/continuar")
 
-    assert success.status_code == 200
-    success_html = success.get_data(as_text=True)
-    assert "Nueva solicitud registrada correctamente" in success_html
-    assert "CL-001-B" in success_html
-    assert "/clientes/login" not in success_html
-    assert later.status_code == 410
-    later_html = later.get_data(as_text=True)
-    assert "Tu solicitud ya fue enviada correctamente." in later_html
-    assert "Este enlace ya cumplió su propósito y no se puede reutilizar." in later_html
+    assert success.status_code in (302, 303)
+    assert "/clientes/solicitudes/publica/tok123/plan" in (success.location or "")
+    assert later.status_code in (302, 303)
 
 
 def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_request():
@@ -959,6 +938,63 @@ def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_requ
     assert "Revisa los campos marcados para continuar con el envío." in html
     assert "The CSRF tokens do not match." not in html
     assert "Bad Request" not in html
+
+
+def test_public_link_post_with_cocinar_only_and_missing_adultos_shows_specific_visible_error():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.post(
+            "/clientes/solicitudes/publica/tok123",
+            data={
+                "token": "tok123",
+                "terms_decision": "accept",
+                "terms_accepted": "1",
+                "ciudad_sector": "Santiago / Los Jardines",
+                "rutas_cercanas": "Ruta K",
+                "modalidad_trabajo": "Salida diaria - lunes a viernes",
+                "modalidad_grupo": "con_salida_diaria",
+                "modalidad_especifica": "Salida diaria - lunes a viernes",
+                "horario": "Lunes a viernes, de 8:00 AM a 5:00 PM",
+                "horario_dias_trabajo": "Lunes a viernes",
+                "horario_hora_entrada": "8:00 AM",
+                "horario_hora_salida": "5:00 PM",
+                "edad_requerida": ["26-35"],
+                "experiencia": "Experiencia en cocina",
+                "funciones": ["cocinar"],
+                "ninos": "0",
+                "sueldo": "18000",
+            },
+            follow_redirects=False,
+        )
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Revisa los campos marcados para continuar con el envío." in html
+    assert "Primer error: Cantidad de adultos: Indica cuántos adultos." in html
+    assert 'id="adultos"' in html
+    assert 'class="form-control is-invalid"' in html
+    assert "Indica cuántos adultos." in html
+
+
+def test_public_link_get_includes_auto_scroll_to_first_invalid_helper():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+
+    with patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None):
+        resp = client.get("/clientes/solicitudes/publica/tok123")
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "function scrollToFirstInvalidField()" in html
+    assert "scrollToFirstInvalidField();" in html
 
 
 def test_public_link_post_rerender_preserves_modalidad_value_on_validation_error():
@@ -1177,5 +1213,73 @@ def test_public_link_double_post_same_token_blocks_second_submit_without_new_sav
         )
 
     assert first.status_code in (302, 303)
-    assert second.status_code == 410
+    assert second.status_code in (302, 303)
     assert save_calls["count"] == 1
+
+
+def test_public_link_post_crea_solicitud_sin_plan_y_redirige_a_seleccion_sin_tocar_payment_cycle_fields():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+    c = _dummy_cliente()
+    fake_form = _FakePublicForm(token="tok-plan")
+
+    created = {"solicitud": None}
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables(
+            [Cliente, Solicitud, PublicSolicitudTokenUso, PublicSolicitudShareAlias],
+            reset=True,
+        )
+
+    def _save_once(**kwargs):
+        kwargs["persist_fn"](1)
+        return RobustSaveResult(ok=True, attempts=1)
+
+    original_add = db.session.add
+
+    def _capture_add(obj):
+        if isinstance(obj, Solicitud):
+            created["solicitud"] = obj
+        return original_add(obj)
+
+    with patch("clientes.routes.SolicitudPublicaForm", return_value=fake_form), \
+         patch("clientes.routes._resolve_public_link_token", return_value=(c, "", {})), \
+         patch("clientes.routes._public_link_usage_by_hash", return_value=None), \
+         patch("clientes.routes._cliente_active_solicitudes_count", side_effect=_mock_active_count_zero), \
+         patch("clientes.routes.execute_robust_save", side_effect=_save_once), \
+         patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None), \
+         patch.object(db.session, "add", side_effect=_capture_add), \
+         patch.object(db.session, "flush", return_value=None):
+        resp = client.post(
+            "/clientes/solicitudes/publica/tok-plan",
+            data={"token": "tok-plan", "terms_decision": "accept", "terms_accepted": "1"},
+            follow_redirects=False,
+        )
+
+    assert resp.status_code in (302, 303)
+    solicitud = created["solicitud"]
+    assert solicitud is not None
+    assert solicitud.tipo_plan is None
+    assert solicitud.payment_cycle_plan is None
+    assert solicitud.payment_cycle_precio_total is None
+    assert solicitud.payment_cycle_abono_requerido is None
+    assert solicitud.payment_cycle_opened_at is None
+    assert solicitud.payment_cycle_closed_at is None
+    assert solicitud.payment_cycle_motivo_apertura is None
+    assert "/clientes/solicitudes/publica/tok-plan/plan" in (resp.location or "")
+
+
+def test_public_link_plan_summary_shows_selected_plan_when_available():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    solicitud = SimpleNamespace(codigo_solicitud="CL-001-B", tipo_plan="premium")
+    used_row = SimpleNamespace(used_at=datetime.utcnow(), solicitud=solicitud, solicitud_id=91, cliente_id=7)
+    with patch("clientes.routes._public_existing_pending_plan_solicitud", return_value=(used_row, solicitud)):
+        resp = client.get("/clientes/solicitudes/publica/tok-plan/plan/resumen")
+
+    assert resp.status_code == 200
+    assert "Plan elegido" in resp.get_data(as_text=True)
+    assert "Premium" in resp.get_data(as_text=True)

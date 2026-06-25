@@ -46,6 +46,7 @@
             {% set contract_state = contract_info.effective_state if contract_info else 'sin_contrato' %}
             {% set contract_is_expired = contract_info.is_expired if contract_info else False %}
             {% set contract_link = contract_links_by_solicitud.get(s.id) if contract_links_by_solicitud is defined else '' %}
+            {% set wa_activation = solicitud_whatsapp_activation.get(s.id) if solicitud_whatsapp_activation is defined else None %}
             <tr id="sol-{{ s.id }}">
               <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
               <td>
@@ -226,6 +227,30 @@
                       💬 <i class="bi bi-chat-dots-fill ms-1"></i><span class="sr-only">Chat</span>
                     </button>
                   </form>
+                  {% endif %}
+
+                  {% if wa_activation and wa_activation.enabled %}
+                    <a href="{{ wa_activation.href }}"
+                       target="_blank"
+                       rel="noopener"
+                       class="btn btn-sm btn-outline-success"
+                       data-testid="cliente-solicitud-whatsapp-activation-{{ s.id }}"
+                       data-bs-toggle="tooltip"
+                       title="{{ wa_activation.title }}"
+                       aria-label="Cobro 50% por WhatsApp">
+                      <i class="bi bi-whatsapp"></i><span class="sr-only">Cobro 50%</span>
+                    </a>
+                  {% else %}
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      data-testid="cliente-solicitud-whatsapp-activation-disabled-{{ s.id }}"
+                      data-bs-toggle="tooltip"
+                      title="{{ wa_activation.title if wa_activation else 'No disponible.' }}"
+                      aria-label="Cobro 50% por WhatsApp deshabilitado"
+                      disabled>
+                      <i class="bi bi-whatsapp"></i><span class="sr-only">Cobro 50% deshabilitado</span>
+                    </button>
                   {% endif %}
 
                   <!-- ✅ NUEVO: Link público por solicitud (abre el generador y te devuelve el link del cliente) -->

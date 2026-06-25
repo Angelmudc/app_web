@@ -490,6 +490,9 @@ def test_isla_seguimiento_contrato_html_y_carga_condicional_js():
     flask_app.config["WTF_CSRF_ENABLED"] = False
     html = _render_base_as("/admin/solicitudes", role="secretaria", authenticated=True)
 
+    assert 'id="adminFloatingIslandsShell"' in html
+    assert 'id="adminFloatingIslandsToggle"' in html
+    assert 'id="adminFloatingIslands"' in html
     assert 'class="seg-candidatas-island' in html
     assert 'id="segCandidatasDrawer"' in html
     assert 'id="segCandidatasBackdrop"' in html
@@ -497,9 +500,11 @@ def test_isla_seguimiento_contrato_html_y_carga_condicional_js():
     assert 'role="dialog"' in html
     assert 'href="/admin/seguimiento-candidatas/cola"' in html
     assert "js/core/seguimiento_candidatas_island.js" in html
+    assert "js/core/admin_floating_islands.js" in html
 
     html_home_staff = _render_base_as("/home", role="secretaria", authenticated=True)
     assert "js/core/seguimiento_candidatas_island.js" in html_home_staff
+    assert "js/core/admin_floating_islands.js" in html_home_staff
 
 
 def test_js_isla_seguimiento_maneja_error_y_no_navega_en_click_isla():
@@ -539,9 +544,19 @@ def test_js_isla_copiar_formulario_cliente_tiene_bloqueo_anti_doble_click():
     assert "if (Date.now() < cooldownUntilMs) return;" in js
     assert "Generando enlace..." in js
     assert "Mensaje copiado" in js
-    assert "No se pudo copiar" in js
+    assert "No se pudo generar el enlace" in js
+    assert "Enlace generado, pero no se pudo copiar automáticamente" in js
     helper_js = Path("static/js/core/client_public_form_message.js").read_text(encoding="utf-8", errors="ignore")
     assert "Este es el formulario de Doméstica del Cibao A&D para registrar tu solicitud." in helper_js
     assert "Ahí puedes colocar tus datos y lo que necesitas, para poder ayudarte mejor." in helper_js
     assert "Cuando lo completes, envíame tu nombre y dime que ya terminaste." in helper_js
     assert "Hola, gracias por comunicarte con Doméstica del Cibao A&D." not in helper_js
+
+
+def test_js_toggle_islas_flotantes_persiste_estado_y_cierra_drawer_abierto():
+    js = Path("static/js/core/admin_floating_islands.js").read_text(encoding="utf-8", errors="ignore")
+    assert 'var STORAGE_KEY = "adminFloatingIslandsHidden";' in js
+    assert 'body.classList.toggle("is-floating-islands-hidden", hidden);' in js
+    assert 'window.localStorage.setItem(STORAGE_KEY, hidden ? "1" : "0");' in js
+    assert 'var closeBtn = document.getElementById("segCandidatasCloseBtn");' in js
+    assert 'closeBtn.click();' in js

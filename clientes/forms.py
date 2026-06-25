@@ -10,6 +10,7 @@ from wtforms.validators import (
     DataRequired, Length, NumberRange, Optional, ValidationError, Email
 )
 from wtforms.widgets import ListWidget, CheckboxInput
+from services.payment_rules import get_plan_choices, is_valid_plan, normalize_plan
 # ─────────────────────────────────────────────────────────────
 # Validaciones estrictas de seguridad (anti símbolos raros)
 # ─────────────────────────────────────────────────────────────
@@ -138,6 +139,7 @@ class ClienteSolicitudForm(FlaskForm):
 # ─────────────────────────────────────────────────────────────
 class SolicitudForm(FlaskForm):
     HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
+    PLAN_CHOICES = get_plan_choices()
     # Ubicación
     ciudad_sector = StringField(
         "Ciudad / Sector",
@@ -321,6 +323,13 @@ class SolicitudForm(FlaskForm):
         },
     )
     pasaje_aporte = BooleanField("Pasaje aporta")
+    tipo_plan = RadioField(
+        "Plan",
+        choices=PLAN_CHOICES,
+        validators=[Optional()],
+        coerce=str,
+        validate_choice=False,
+    )
 
     # Nota
     nota_cliente = TextAreaField(
@@ -487,6 +496,13 @@ class SolicitudForm(FlaskForm):
             if "Indica cuántos adultos." not in (self.adultos.errors or []):
                 self.adultos.errors.append("Indica cuántos adultos.")
             ok = False
+
+        raw_plan = (self.tipo_plan.data or "").strip()
+        if raw_plan and not is_valid_plan(raw_plan):
+            self.tipo_plan.errors = ["Selecciona un plan válido: Básico, Premium o VIP."]
+            ok = False
+        elif raw_plan:
+            self.tipo_plan.data = normalize_plan(raw_plan)
 
         return ok
 

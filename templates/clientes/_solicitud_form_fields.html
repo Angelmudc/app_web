@@ -51,6 +51,8 @@
 {% set _ciudad_sector_raw = request.form.get(form.ciudad_sector.name, (form.ciudad_sector.data if form.ciudad_sector is defined and form.ciudad_sector.data else '')) %}
 {% set _ciudad_sector_city = (_ciudad_sector_raw or '').strip() %}
 {% set _ciudad_sector_sector = '' %}
+{% set _plan_catalog = plan_catalog if plan_catalog is defined else [] %}
+{% set _selected_plan = request.form.get(form.tipo_plan.name, (form.tipo_plan.data if form.tipo_plan is defined and form.tipo_plan.data else '')) if form.tipo_plan is defined else '' %}
 {% if _ciudad_sector_raw and ' (' in _ciudad_sector_raw and _ciudad_sector_raw.endswith(')') %}
   {% set _ciudad_sector_city = _ciudad_sector_raw.rsplit(' (', 1)[0].strip() %}
   {% set _ciudad_sector_sector = _ciudad_sector_raw.rsplit(' (', 1)[1][:-1].strip() %}
@@ -238,6 +240,63 @@
     box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
   }
 
+  .public-plan-selector {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .public-plan-card {
+    position: relative;
+    display: block;
+    cursor: pointer;
+  }
+
+  .public-plan-card input[type="radio"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .public-plan-card-body {
+    height: 100%;
+    border: 1px solid #d3deec;
+    border-radius: 14px;
+    background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+    padding: 12px;
+    transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease, background-color .16s ease;
+  }
+
+  .public-plan-card:hover .public-plan-card-body {
+    border-color: #95b2cf;
+    transform: translateY(-1px);
+  }
+
+  .public-plan-card input[type="radio"]:focus + .public-plan-card-body {
+    border-color: #58aee6;
+    box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+  }
+
+  .public-plan-card input[type="radio"]:checked + .public-plan-card-body {
+    border-color: #2a8fd4;
+    background: #e7f2fb;
+    box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
+  }
+
+  .public-plan-card-title {
+    font-size: .95rem;
+    font-weight: 800;
+    color: #1e3a5a;
+  }
+
+  .public-plan-card-meta {
+    margin-top: 8px;
+    display: grid;
+    gap: 4px;
+    font-size: .84rem;
+    color: #48627f;
+  }
+
   .public-switch-wrap {
     padding: 10px;
     border-radius: 12px;
@@ -262,6 +321,12 @@
     background: linear-gradient(180deg, #f6fbff 0%, #eef7ff 100%);
     padding: 9px 11px;
     margin-top: 8px;
+  }
+
+  @media (max-width: 991.98px) {
+    .public-plan-selector {
+      grid-template-columns: 1fr;
+    }
   }
 
   .public-santiago-warning p {
@@ -2186,6 +2251,34 @@
       }
     }
 
+    function scrollToFirstInvalidField() {
+      var firstInvalid = hostForm.querySelector(
+        '.public-choice-grid.is-invalid, .form-control.is-invalid, .form-select.is-invalid, .form-check-input.is-invalid, .invalid-feedback'
+      );
+      if (!firstInvalid) return;
+      var fieldBlock = firstInvalid.closest('.public-field, .public-input-block, .public-terms-wrap, .public-validation-banner') || firstInvalid;
+      try {
+        fieldBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (_err) {
+        fieldBlock.scrollIntoView();
+      }
+      var focusTarget = null;
+      if (firstInvalid.matches('input, select, textarea, button')) {
+        focusTarget = firstInvalid;
+      } else {
+        focusTarget = fieldBlock.querySelector(
+          'input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])'
+        );
+      }
+      if (focusTarget && typeof focusTarget.focus === 'function') {
+        try {
+          focusTarget.focus({ preventScroll: true });
+        } catch (_err) {
+          focusTarget.focus();
+        }
+      }
+    }
+
     function extractMarker(noteText, prefix) {
       if (!noteText || !prefix) return '';
       var lines = noteText.split('\n');
@@ -2724,6 +2817,7 @@
     initCiudadSectorComposite();
     setupCharCounters();
     syncTipoLugarVisualState();
+    scrollToFirstInvalidField();
 
     hostForm.addEventListener('change', function (ev) {
       var name = (ev.target && ev.target.name) || '';

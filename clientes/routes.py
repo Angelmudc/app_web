@@ -71,6 +71,14 @@ from utils.audit_logger import log_action, log_auth_event
 from utils.business_guard import enforce_business_limit, enforce_min_human_interval
 from utils.distributed_backplane import bp_add, bp_delete, bp_get, bp_healthcheck, bp_set
 from utils.robust_save import execute_robust_save
+from services.payment_rules import (
+    PLAN_PRICES,
+    get_plan_label,
+    get_plan_price,
+    get_required_deposit,
+    is_valid_plan,
+    normalize_plan,
+)
 from services.candidata_invariants import (
     InvariantConflictError,
     release_solicitud_candidatas_on_cancel as invariant_release_solicitud_candidatas_on_cancel,
@@ -146,6 +154,88 @@ from utils.compat_engine import (
     normalize_horarios_tokens,
     persist_result_to_solicitud,
 )
+
+
+def _format_rd_money(value) -> str:
+    try:
+        return f"RD$ {Decimal(str(value or 0)) :,.2f}"
+    except Exception:
+        return "RD$ 0.00"
+
+
+def _build_plan_catalog() -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for code in PLAN_PRICES:
+        price = get_plan_price(code)
+        deposit = get_required_deposit(code)
+        items.append(
+            {
+                "code": code,
+                "label": get_plan_label(code),
+                "price_display": _format_rd_money(price),
+                "deposit_display": _format_rd_money(deposit),
+            }
+        )
+    return items
+
+
+PLAN_SELECTION_FEATURES = {
+    "basico": [
+        "Contratacion de domestica",
+        "Depuracion policial y laboral",
+        "15 dias de garantia",
+        "1 reemplazo",
+        "Entrevista virtual o presencial",
+    ],
+    "premium": [
+        "Contratacion de domestica",
+        "Depuracion policial y laboral",
+        "30 dias de garantia",
+        "2 reemplazos",
+        "Entrevista virtual o presencial",
+        "Guia personalizada",
+    ],
+    "vip": [
+        "Contratacion de domestica",
+        "Depuracion policial y laboral",
+        "60 dias de garantia",
+        "4 reemplazos",
+        "Entrevista virtual o presencial",
+        "Guia personalizada",
+    ],
+}
+
+PLAN_SELECTION_SHARED_FEATURES = [
+    "Orientacion personalizada para las domesticas",
+]
+
+
+def _build_plan_selection_catalog() -> list[dict[str, object]]:
+    items: list[dict[str, object]] = []
+    for code in PLAN_PRICES:
+        price = get_plan_price(code)
+        deposit = get_required_deposit(code)
+        balance = (price - deposit).quantize(Decimal("0.01"))
+        items.append(
+            {
+                "code": code,
+                "label": get_plan_label(code),
+                "price": price,
+                "price_display": _format_rd_money(price),
+                "deposit": deposit,
+                "deposit_display": _format_rd_money(deposit),
+                "balance_display": _format_rd_money(balance),
+                "features": list(PLAN_SELECTION_FEATURES.get(code) or []),
+                "shared_features": list(PLAN_SELECTION_SHARED_FEATURES),
+                "recommended": code == "premium",
+            }
+        )
+    return items
+
+
+@clientes_bp.app_context_processor
+def _inject_plan_catalog():
+    return {"plan_catalog": _build_plan_catalog()}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -459,6 +549,51 @@ def _get_plan_solicitud(s: 'Solicitud') -> str:
     return ''
 
 
+def _solicitud_has_selected_plan(solicitud: Optional[Solicitud]) -> bool:
+    return is_valid_plan(getattr(solicitud, "tipo_plan", None) if solicitud is not None else None)
+
+
+def _build_plan_choice_summary(solicitud: Solicitud) -> dict[str, object]:
+    plan_code = normalize_plan(getattr(solicitud, "tipo_plan", None))
+    price = get_plan_price(plan_code)
+    deposit = get_required_deposit(plan_code)
+    balance = (price - deposit).quantize(Decimal("0.01"))
+    return {
+        "plan_code": plan_code,
+        "plan_label": get_plan_label(plan_code),
+        "price": price,
+        "deposit": deposit,
+        "balance": balance,
+        "price_display": _format_rd_money(price),
+        "deposit_display": _format_rd_money(deposit),
+        "balance_display": _format_rd_money(balance),
+    }
+
+
+def _submitted_tipo_plan() -> str:
+    submitted_values = request.form.getlist("tipo_plan")
+    if submitted_values:
+        return normalize_plan(submitted_values[-1])
+    return normalize_plan(request.form.get("tipo_plan"))
+
+
+def _mark_public_usage_plan_state(usage_row, *, reason: str) -> None:
+    if usage_row is None or not hasattr(usage_row, "consumption_reason"):
+        return
+    usage_row.consumption_reason = str(reason or "submitted")[:40]
+
+
+def _public_usage_resume_target(token_hash_storage: str, *, link_type: str):
+    if str(link_type or "").strip().lower() == "nuevo":
+        return _public_new_pending_plan_solicitud(token_hash_storage)
+    return _public_existing_pending_plan_solicitud(token_hash_storage)
+
+
+def _public_usage_has_pending_plan(token_hash_storage: str, *, link_type: str) -> bool:
+    usage_row, solicitud = _public_usage_resume_target(token_hash_storage, link_type=link_type)
+    return usage_row is not None and solicitud is not None and not _solicitud_has_selected_plan(solicitud)
+
+
 def _cliente_active_solicitudes_count(cliente_id: int) -> Optional[int]:
     cid = 0
     try:
@@ -569,9 +704,16 @@ def _clientes_force_login_view():
         'clientes.reset_password',
         'clientes.solicitud_publica',
         'clientes.solicitud_publica_short',
+        'clientes.solicitud_publica_plan',
+        'clientes.solicitud_publica_short_plan',
+        'clientes.solicitud_publica_plan_resumen',
+        'clientes.solicitud_publica_short_plan_resumen',
         'clientes.solicitud_publica_nueva',
         'clientes.solicitud_publica_nueva_token',
         'clientes.solicitud_publica_nueva_short',
+        'clientes.solicitud_publica_nueva_plan',
+        'clientes.solicitud_publica_nueva_short_plan',
+        'clientes.solicitud_publica_nueva_plan_resumen',
         'clientes.api_sueldo_sugerido',
         'clientes.politicas',
         'clientes.aceptar_politicas',
@@ -1421,6 +1563,34 @@ def _resolve_public_new_link_token(token: str):
     return True, "", metadata
 
 
+def _public_existing_pending_plan_solicitud(token_hash_storage: str):
+    usage_row = _public_link_usage_by_hash(token_hash_storage)
+    if usage_row is None:
+        return None, None
+    if getattr(usage_row, "solicitud", None) is not None:
+        return usage_row, getattr(usage_row, "solicitud", None)
+    solicitud_id = int(getattr(usage_row, "solicitud_id", 0) or 0)
+    cliente_id = int(getattr(usage_row, "cliente_id", 0) or 0)
+    if solicitud_id <= 0 or cliente_id <= 0:
+        return usage_row, None
+    solicitud = Solicitud.query.filter_by(id=solicitud_id, cliente_id=cliente_id).first()
+    return usage_row, solicitud
+
+
+def _public_new_pending_plan_solicitud(token_hash_storage: str):
+    usage_row = _public_new_link_usage_by_hash(token_hash_storage)
+    if usage_row is None:
+        return None, None
+    if getattr(usage_row, "solicitud", None) is not None:
+        return usage_row, getattr(usage_row, "solicitud", None)
+    solicitud_id = int(getattr(usage_row, "solicitud_id", 0) or 0)
+    cliente_id = int(getattr(usage_row, "cliente_id", 0) or 0)
+    if solicitud_id <= 0 or cliente_id <= 0:
+        return usage_row, None
+    solicitud = Solicitud.query.filter_by(id=solicitud_id, cliente_id=cliente_id).first()
+    return usage_row, solicitud
+
+
 def _log_public_new_link_event(
     action_type: str,
     token: str,
@@ -2120,6 +2290,51 @@ def informacion():
 @cliente_required
 def planes():
     return render_template('clientes/planes.html')
+
+
+@clientes_bp.route('/solicitudes/<int:id>/plan', methods=['GET', 'POST'])
+@login_required
+@cliente_required
+def solicitud_elegir_plan(id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
+    selected_plan = _submitted_tipo_plan() or normalize_plan(getattr(s, "tipo_plan", None))
+
+    if request.method == "POST":
+        if not is_valid_plan(selected_plan):
+            flash("Selecciona un plan válido: Básico, Premium o VIP.", "danger")
+        else:
+            s.tipo_plan = selected_plan
+            if hasattr(s, "fecha_ultima_modificacion"):
+                s.fecha_ultima_modificacion = utc_now_naive()
+            db.session.commit()
+            flash("Plan elegido correctamente.", "success")
+            return redirect(url_for("clientes.solicitud_plan_resumen", id=int(s.id)))
+
+    if _solicitud_has_selected_plan(s):
+        return redirect(url_for("clientes.solicitud_plan_resumen", id=int(s.id)))
+
+    return render_template(
+        "clientes/solicitud_plan_select.html",
+        solicitud=s,
+        plan_catalog=_build_plan_selection_catalog(),
+        selected_plan=selected_plan,
+    )
+
+
+@clientes_bp.route('/solicitudes/<int:id>/plan/resumen', methods=['GET'])
+@login_required
+@cliente_required
+def solicitud_plan_resumen(id):
+    s = Solicitud.query.filter_by(id=id, cliente_id=current_user.id).first_or_404()
+    if not _solicitud_has_selected_plan(s):
+        flash("Primero debes elegir un plan para completar la solicitud.", "warning")
+        return redirect(url_for("clientes.solicitud_elegir_plan", id=int(s.id)))
+
+    return render_template(
+        "clientes/solicitud_plan_summary.html",
+        solicitud=s,
+        plan_summary=_build_plan_choice_summary(s),
+    )
 
 
 @clientes_bp.route('/ayuda')
@@ -3230,6 +3445,8 @@ def _apply_public_solicitud_fields(
 ) -> None:
     """Aplica de forma consistente los campos de solicitud pública en ambos flujos."""
     form.populate_obj(solicitud_obj)
+    if hasattr(solicitud_obj, "tipo_plan"):
+        solicitud_obj.tipo_plan = None
     _apply_banos_from_request(solicitud_obj, form)
     _normalize_modalidad_on_solicitud(solicitud_obj)
     apply_horario_to_solicitud(
@@ -4044,8 +4261,8 @@ def nueva_solicitud():
                 requested_by=f"cliente:{int(getattr(current_user, 'id', 0) or 0)}",
             )
             _clear_cliente_solicitud_draft(cliente_id=cliente_id)
-            flash(f'Solicitud {codigo} creada correctamente.', 'success')
-            return redirect(url_for('clientes.solicitud_recomendaciones', id=int(getattr(s, "id", 0) or 0)))
+            flash(f'Solicitud {codigo} creada correctamente. Falta elegir el plan.', 'success')
+            return redirect(url_for('clientes.solicitud_elegir_plan', id=int(getattr(s, "id", 0) or 0)))
 
         except SQLAlchemyError as e:
             db.session.rollback()
@@ -4232,7 +4449,9 @@ def editar_solicitud(id):
             lock_acquired = False
         try:
             prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
+            prev_tipo_plan = getattr(s, "tipo_plan", None)
             form.populate_obj(s)
+            s.tipo_plan = prev_tipo_plan
             _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
             submitted_modalidad = (
@@ -7500,6 +7719,80 @@ def solicitud_publica_nueva():
     ), 404
 
 
+@clientes_bp.route('/solicitudes/nueva-publica/<token>/plan', methods=['GET', 'POST'])
+@clientes_bp.route('/n/<token>/plan', methods=['GET', 'POST'], endpoint='solicitud_publica_nueva_short_plan')
+def solicitud_publica_nueva_plan(token):
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    short_share_url = share_url_override or _public_new_short_external_url(token)
+    token_hash_storage = _public_link_token_hash_storage(token)
+    usage_row, solicitud = _public_new_pending_plan_solicitud(token_hash_storage)
+
+    if usage_row is None or solicitud is None:
+        token_ok, fail_reason, _token_meta = _resolve_public_new_link_token(token)
+        if token_ok:
+            return redirect(url_for("clientes.solicitud_publica_nueva_token", token=token))
+        reason_key = "expired" if fail_reason == "expired" else "invalid"
+        status_code = 410 if fail_reason == "expired" else 404
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key=reason_key,
+            status_code=status_code,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
+        ), status_code
+
+    if request.method == "POST":
+        selected_plan = _submitted_tipo_plan()
+        if not is_valid_plan(selected_plan):
+            flash("Selecciona un plan válido: Básico, Premium o VIP.", "danger")
+        else:
+            solicitud.tipo_plan = selected_plan
+            _mark_public_usage_plan_state(usage_row, reason="plan_selected")
+            if hasattr(solicitud, "fecha_ultima_modificacion"):
+                solicitud.fecha_ultima_modificacion = utc_now_naive()
+            db.session.commit()
+            return redirect(url_for("clientes.solicitud_publica_nueva_plan_resumen", token=token))
+
+    if _solicitud_has_selected_plan(solicitud):
+        return redirect(url_for("clientes.solicitud_publica_nueva_plan_resumen", token=token))
+
+    return render_template(
+        "clientes/solicitud_plan_select_public.html",
+        solicitud=solicitud,
+        plan_catalog=_build_plan_selection_catalog(),
+        selected_plan=_submitted_tipo_plan() or normalize_plan(getattr(solicitud, "tipo_plan", None)),
+        og_url=short_share_url,
+        canonical_url=short_share_url,
+        form_action=url_for(request.endpoint, token=token),
+        back_url=None,
+    )
+
+
+@clientes_bp.route('/solicitudes/nueva-publica/<token>/plan/resumen', methods=['GET'])
+def solicitud_publica_nueva_plan_resumen(token):
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    short_share_url = share_url_override or _public_new_short_external_url(token)
+    token_hash_storage = _public_link_token_hash_storage(token)
+    usage_row, solicitud = _public_new_pending_plan_solicitud(token_hash_storage)
+    if usage_row is None or solicitud is None:
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=404,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
+        ), 404
+    if not _solicitud_has_selected_plan(solicitud):
+        return redirect(url_for("clientes.solicitud_publica_nueva_plan", token=token))
+    return render_template(
+        "clientes/solicitud_plan_summary_public.html",
+        solicitud=solicitud,
+        plan_summary=_build_plan_choice_summary(solicitud),
+        og_url=short_share_url,
+        canonical_url=short_share_url,
+    )
+
+
 @clientes_bp.route('/solicitudes/nueva-publica/<token>', methods=['GET', 'POST'])
 @clientes_bp.route('/n/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_nueva_short')
 def solicitud_publica_nueva_token(token):
@@ -7526,30 +7819,8 @@ def solicitud_publica_nueva_token(token):
     token_hash_storage = _public_link_token_hash_storage(token)
     used_row = _public_new_link_usage_by_hash(token_hash_storage)
     if used_row is not None:
-        success_state = session.get("public_new_solicitud_success") or {}
-        show_success = (
-            request.method == "GET"
-            and (request.args.get("estado") or "").strip().lower() == "enviado"
-            and bool(success_state)
-            and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
-        )
-        if show_success:
-            _log_public_new_link_event(
-                "PUBLIC_NEW_LINK_VIEW_OK",
-                token,
-                success=True,
-                metadata_extra={"method": request.method, "action": "success_once_after_submit", "status_code": 200},
-            )
-            session.pop("public_new_solicitud_success", None)
-            return render_template(
-                'clientes/public_new_success.html',
-                cliente_nombre=str(success_state.get("cliente_nombre") or ""),
-                cliente_codigo=str(success_state.get("cliente_codigo") or ""),
-                solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
-                solicitud_id=int(success_state.get("solicitud_id") or 0) or None,
-                og_url=short_share_url,
-                canonical_url=short_share_url,
-            ), 200
+        if _public_usage_has_pending_plan(token_hash_storage, link_type="nuevo"):
+            return redirect(url_for("clientes.solicitud_publica_nueva_plan", token=token))
         _log_public_new_link_event(
             "PUBLIC_NEW_LINK_VIEW_FAIL",
             token,
@@ -7795,6 +8066,7 @@ def solicitud_publica_nueva_token(token):
                 "cliente_nombre": "",
                 "solicitud_id": 0,
                 "solicitud_codigo": "",
+                "tipo_plan": "",
             }
 
             def _persist_public_new(_attempt: int) -> None:
@@ -7802,7 +8074,7 @@ def solicitud_publica_nueva_token(token):
                     token_hash=token_hash_storage,
                     cliente_id=None,
                     solicitud_id=None,
-                    consumption_reason="submitted",
+                    consumption_reason="plan_pending",
                     public_form_source="cliente_nuevo",
                     request_ip=str(terms_evidence_ip or "")[:64] or None,
                     request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
@@ -7882,6 +8154,7 @@ def solicitud_publica_nueva_token(token):
                 db.session.add(s)
                 db.session.flush()
                 state["solicitud_id"] = int(getattr(s, "id", 0) or 0)
+                state["tipo_plan"] = normalize_plan(getattr(s, "tipo_plan", None))
 
                 provisional_usage.cliente_id = int(getattr(c, "id", 0) or 0) or None
                 provisional_usage.solicitud_id = int(getattr(s, "id", 0) or 0) or None
@@ -7939,18 +8212,11 @@ def solicitud_publica_nueva_token(token):
                     trigger_source="public_link_new_cliente_create",
                     requested_by=f"public_new_cliente:{int(state.get('cliente_id') or 0)}",
                 )
-                session["public_new_solicitud_success"] = {
-                    "token_hash": token_hash_storage,
-                    "cliente_nombre": str(state.get("cliente_nombre") or ""),
-                    "cliente_codigo": str(state.get("cliente_codigo") or ""),
-                    "solicitud_codigo": str(state.get("solicitud_codigo") or ""),
-                    "solicitud_id": solicitud_id,
-                }
                 if share_code:
-                    return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
+                    return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token))
                 if request.endpoint == "clientes.solicitud_publica_nueva_short":
-                    return redirect(url_for('clientes.solicitud_publica_nueva_short', token=token, estado="enviado"))
-                return redirect(url_for('clientes.solicitud_publica_nueva_token', token=token, estado="enviado"))
+                    return redirect(url_for('clientes.solicitud_publica_nueva_short_plan', token=token))
+                return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token))
 
             usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
             if usage_after_fail is not None:
@@ -8006,6 +8272,81 @@ def solicitud_publica_nueva_token(token):
     ), response_status
 
 
+@clientes_bp.route('/solicitudes/publica/<token>/plan', methods=['GET', 'POST'])
+@clientes_bp.route('/f/<token>/plan', methods=['GET', 'POST'], endpoint='solicitud_publica_short_plan')
+def solicitud_publica_plan(token):
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    short_share_url = share_url_override or _public_existing_short_external_url(token)
+    token_hash_storage = _public_link_token_hash_storage(token)
+    usage_row, solicitud = _public_existing_pending_plan_solicitud(token_hash_storage)
+
+    if usage_row is None or solicitud is None:
+        cliente, fail_reason, _token_meta = _resolve_public_link_token(token)
+        if cliente:
+            return redirect(url_for("clientes.solicitud_publica", token=token))
+        reason_key = "expired" if fail_reason == "expired" else "invalid"
+        status_code = 410 if fail_reason == "expired" else 404
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key=reason_key,
+            status_code=status_code,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
+        ), status_code
+
+    if request.method == "POST":
+        selected_plan = _submitted_tipo_plan()
+        if not is_valid_plan(selected_plan):
+            flash("Selecciona un plan válido: Básico, Premium o VIP.", "danger")
+        else:
+            solicitud.tipo_plan = selected_plan
+            _mark_public_usage_plan_state(usage_row, reason="plan_selected")
+            if hasattr(solicitud, "fecha_ultima_modificacion"):
+                solicitud.fecha_ultima_modificacion = utc_now_naive()
+            db.session.commit()
+            return redirect(url_for("clientes.solicitud_publica_plan_resumen", token=token))
+
+    if _solicitud_has_selected_plan(solicitud):
+        return redirect(url_for("clientes.solicitud_publica_plan_resumen", token=token))
+
+    return render_template(
+        "clientes/solicitud_plan_select_public.html",
+        solicitud=solicitud,
+        plan_catalog=_build_plan_selection_catalog(),
+        selected_plan=_submitted_tipo_plan() or normalize_plan(getattr(solicitud, "tipo_plan", None)),
+        og_url=short_share_url,
+        canonical_url=short_share_url,
+        form_action=url_for(request.endpoint, token=token),
+        back_url=None,
+    )
+
+
+@clientes_bp.route('/solicitudes/publica/<token>/plan/resumen', methods=['GET'])
+@clientes_bp.route('/f/<token>/plan/resumen', methods=['GET'], endpoint='solicitud_publica_short_plan_resumen')
+def solicitud_publica_plan_resumen(token):
+    share_url_override = (getattr(g, "public_share_url_override", "") or "").strip()
+    short_share_url = share_url_override or _public_existing_short_external_url(token)
+    token_hash_storage = _public_link_token_hash_storage(token)
+    usage_row, solicitud = _public_existing_pending_plan_solicitud(token_hash_storage)
+    if usage_row is None or solicitud is None:
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=404,
+            og_url=short_share_url,
+            canonical_url=short_share_url,
+        ), 404
+    if not _solicitud_has_selected_plan(solicitud):
+        return redirect(url_for("clientes.solicitud_publica_plan", token=token))
+    return render_template(
+        "clientes/solicitud_plan_summary_public.html",
+        solicitud=solicitud,
+        plan_summary=_build_plan_choice_summary(solicitud),
+        og_url=short_share_url,
+        canonical_url=short_share_url,
+    )
+
+
 @clientes_bp.route('/solicitudes/publica/<token>', methods=['GET', 'POST'])
 @clientes_bp.route('/f/<token>', methods=['GET', 'POST'], endpoint='solicitud_publica_short')
 def solicitud_publica(token):
@@ -8025,26 +8366,8 @@ def solicitud_publica(token):
     token_hash_storage = _public_link_token_hash_storage(token)
     used_row = _public_link_usage_by_hash(token_hash_storage)
     if used_row is not None:
-        success_state = session.get("public_solicitud_success") or {}
-        show_success = (
-            request.method == "GET"
-            and (request.args.get("estado") or "").strip().lower() == "enviado"
-            and bool(success_state)
-            and hmac.compare_digest(str(success_state.get("token_hash") or ""), token_hash_storage)
-        )
-        if show_success:
-            session.pop("public_solicitud_success", None)
-            return render_template(
-                'clientes/public_link_success.html',
-                cliente_nombre=str(success_state.get("cliente_nombre") or ""),
-                solicitud_codigo=str(success_state.get("solicitud_codigo") or ""),
-                used_at=getattr(used_row, "used_at", None),
-                solicitud=getattr(used_row, "solicitud", None),
-                solicitud_id=getattr(used_row, "solicitud_id", None),
-                status_code=200,
-                og_url=short_share_url,
-                canonical_url=short_share_url,
-            ), 200
+        if _public_usage_has_pending_plan(token_hash_storage, link_type="existente"):
+            return redirect(url_for("clientes.solicitud_publica_plan", token=token))
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
             token,
@@ -8374,6 +8697,7 @@ def solicitud_publica(token):
 
         codigo_holder: dict[str, str] = {"value": ""}
         solicitud_id_holder: dict[str, int] = {"value": 0}
+        tipo_plan_holder: dict[str, str] = {"value": ""}
         now_ref = utc_now_naive()
 
         def _persist_public_solicitud(_attempt: int) -> None:
@@ -8381,7 +8705,7 @@ def solicitud_publica(token):
                 token_hash=token_hash_storage,
                 cliente_id=int(c.id),
                 solicitud_id=None,
-                consumption_reason="submitted",
+                consumption_reason="plan_pending",
                 public_form_source="cliente_existente",
                 request_ip=str(terms_evidence_ip or "")[:64] or None,
                 request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
@@ -8437,6 +8761,7 @@ def solicitud_publica(token):
             db.session.add(s)
             db.session.flush()
             solicitud_id_holder["value"] = int(getattr(s, "id", 0) or 0)
+            tipo_plan_holder["value"] = normalize_plan(getattr(s, "tipo_plan", None))
 
             provisional_usage.solicitud_id = int(getattr(s, "id", 0) or 0) or None
 
@@ -8487,18 +8812,12 @@ def solicitud_publica(token):
                     "attempts": int(result.attempts),
                 },
             )
-            flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
-            session["public_solicitud_success"] = {
-                "token_hash": token_hash_storage,
-                "cliente_nombre": str(getattr(c, "nombre_completo", "") or ""),
-                "solicitud_codigo": str(codigo_holder.get("value") or ""),
-                "solicitud_id": solicitud_id,
-            }
+            flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente. Falta elegir el plan.", "success")
             if share_code:
-                return redirect(url_for("public.solicitud_share_continue", code=share_code, estado="enviado"))
+                return redirect(url_for('clientes.solicitud_publica_plan', token=token))
             if request.endpoint == "clientes.solicitud_publica_short":
-                return redirect(url_for('clientes.solicitud_publica_short', token=token, estado="enviado"))
-            return redirect(url_for('clientes.solicitud_publica', token=token, estado="enviado"))
+                return redirect(url_for('clientes.solicitud_publica_short_plan', token=token))
+            return redirect(url_for('clientes.solicitud_publica_plan', token=token))
         usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
         if usage_after_fail is not None:
             return render_template(

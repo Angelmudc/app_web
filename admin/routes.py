@@ -6,6 +6,7 @@ import os
 import time
 import json
 import math
+import traceback
 import hashlib
 import secrets
 import ipaddress
@@ -15,7 +16,7 @@ from urllib.parse import parse_qs, urlparse, quote_plus
 from datetime import datetime, date, timedelta
 from decimal import Decimal, InvalidOperation
 
-from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app, Response, stream_with_context, make_response, has_request_context
+from flask import render_template, redirect, url_for, flash, request, jsonify, abort, session, current_app, Response, stream_with_context, make_response, has_request_context, g
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash
 
@@ -23,7 +24,7 @@ from sqlalchemy import and_, or_, func, cast, desc, case, inspect as sa_inspect,
 from sqlalchemy.sql import table as sa_table, column as sa_column
 from sqlalchemy.engine import Engine
 from sqlalchemy.types import Numeric
-from sqlalchemy.orm import joinedload, load_only, selectinload, aliased  # ➜ para evitar N+1 en copiar_solicitudes
+from sqlalchemy.orm import Session, joinedload, load_only, selectinload, aliased  # ➜ para evitar N+1 en copiar_solicitudes
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.orm.exc import StaleDataError
 
@@ -200,7 +201,16 @@ from services.solicitud_estado import (
 )
 from services.solicitud_recommendation_service import SolicitudRecommendationService
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
-from services.payment_rules import get_required_deposit, get_plan_price, format_money as format_money_payment, normalize_plan, is_valid_plan
+from services.payment_rules import (
+    PLAN_PRICES,
+    format_money as format_money_payment,
+    get_plan_label,
+    get_plan_price,
+    get_required_deposit,
+    is_valid_plan,
+    normalize_plan,
+)
+from services.phone_identity_service import normalize_phone_to_e164
 from services.payment_ledger import (
     apply_payment_state_from_summary,
     open_new_payment_cycle,
@@ -212,6 +222,7 @@ from services.payment_ledger import (
     ensure_current_payment_cycle,
     ensure_reactivation_cycle,
     get_payment_summary,
+    get_payment_summary_readonly,
     get_current_payment_cycle,
     has_recorded_payments,
     recalcular_estado_pago_solicitud,
@@ -311,6 +322,34 @@ from clientes.routes import (
     generar_link_publico_compartible_cliente,
     generar_link_publico_compartible_cliente_nuevo,
 )
+
+
+def _format_rd_money(value) -> str:
+    try:
+        return f"RD$ {Decimal(str(value or 0)) :,.2f}"
+    except Exception:
+        return "RD$ 0.00"
+
+
+def _build_plan_catalog() -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for code in PLAN_PRICES:
+        price = get_plan_price(code)
+        deposit = get_required_deposit(code)
+        items.append(
+            {
+                "code": code,
+                "label": get_plan_label(code),
+                "price_display": _format_rd_money(price),
+                "deposit_display": _format_rd_money(deposit),
+            }
+        )
+    return items
+
+
+@admin_bp.app_context_processor
+def _inject_plan_catalog():
+    return {"plan_catalog": _build_plan_catalog()}
 
 def _is_true_env(value: str, default: bool = False) -> bool:
     raw = (value or "").strip().lower()
@@ -1140,6 +1179,375 @@ def _safe_int(value, default: int = 0) -> int:
 
 
 _P1C1_PERF_HEADER_PREFIX = "X-P1C1-Perf-"
+_ADMIN_SOLICITUDES_MEASURE_HEADER = "X-Admin-Solicitudes-Measure"
+_ADMIN_SOLICITUDES_METRICS_HEADER = "X-Admin-Solicitudes-Metrics"
+_ADMIN_CLIENTE_DETAIL_MEASURE_HEADER = "X-Admin-Cliente-Detail-Measure"
+_ADMIN_CLIENTE_DETAIL_METRICS_HEADER = "X-Admin-Cliente-Detail-Metrics"
+_ADMIN_CLIENTE_DETAIL_MEASURE_TABLES = (
+    "solicitudes",
+    "pagos_solicitud",
+    "solicitudes_candidatas",
+    "reemplazos",
+    "contratos_digitales",
+    "tareas_clientes",
+    "clientes",
+)
+_REQUEST_CACHE_MISSING = object()
+
+
+def _request_local_cache() -> dict | None:
+    if not has_request_context():
+        return None
+    try:
+        cache_obj = getattr(g, "_admin_request_local_cache", None)
+        if cache_obj is None or not isinstance(cache_obj, dict):
+            cache_obj = {}
+            g._admin_request_local_cache = cache_obj
+        return cache_obj
+    except Exception:
+        return None
+
+
+def _request_local_cache_get(key: str):
+    cache_obj = _request_local_cache()
+    if not cache_obj:
+        return _REQUEST_CACHE_MISSING
+    return cache_obj.get(str(key), _REQUEST_CACHE_MISSING)
+
+
+def _request_local_cache_set(key: str, value) -> None:
+    cache_obj = _request_local_cache()
+    if cache_obj is None:
+        return
+    cache_obj[str(key)] = value
+
+
+def _admin_solicitudes_measure_sql_sample(statement: str) -> str:
+    sql = " ".join(str(statement or "").split())
+    return sql[:220]
+
+
+def _admin_solicitudes_measure_stack_key() -> str:
+    repo_root = os.path.dirname(current_app.root_path or os.getcwd())
+    relevant: list[str] = []
+    frames = traceback.extract_stack(limit=40)
+    for frame in frames:
+        filename = str(frame.filename or "")
+        if not filename:
+            continue
+        if filename == __file__ and str(frame.name or "").startswith("_admin_solicitudes_measure"):
+            continue
+        if "/site-packages/" in filename or "/lib/python" in filename:
+            continue
+        rel = filename
+        if filename.startswith(repo_root):
+            rel = os.path.relpath(filename, repo_root)
+        elif "/templates/" in filename:
+            rel = filename.split("/templates/", 1)[1]
+            rel = f"templates/{rel}"
+        elif filename == "<template>":
+            rel = "<template>"
+        else:
+            continue
+        relevant.append(f"{rel}:{int(frame.lineno or 0)}:{str(frame.name or '?')}")
+    if not relevant:
+        return "unknown"
+    return " <- ".join(relevant[-4:])
+
+
+def _admin_cliente_detail_measure_sql_sample(statement: str) -> str:
+    sql = " ".join(str(statement or "").split())
+    return sql[:220]
+
+
+def _admin_cliente_detail_measure_sql_fingerprint(statement: str) -> str:
+    sql = " ".join(str(statement or "").split()).lower()
+    if not sql:
+        return ""
+    sql = re.sub(r"\b\d+\b", "?", sql)
+    sql = re.sub(r"'(?:''|[^'])*'", "'?'", sql)
+    sql = re.sub(r"\bin\s*\((?:\s*\?\s*,?)+\)", "in (?)", sql)
+    return sql[:320]
+
+
+def _admin_cliente_detail_measure_tables(statement: str) -> list[str]:
+    sql = " ".join(str(statement or "").split()).lower()
+    if not sql:
+        return ["other"]
+    matched = [
+        table_name
+        for table_name in _ADMIN_CLIENTE_DETAIL_MEASURE_TABLES
+        if re.search(rf"\b{re.escape(table_name.lower())}\b", sql)
+    ]
+    return matched or ["other"]
+
+
+def _admin_cliente_detail_measurement_enabled() -> bool:
+    if not has_request_context():
+        return False
+    app_env = str(os.getenv("APP_ENV", "") or "").strip().lower()
+    if app_env not in {"local", "test"}:
+        return False
+    raw = (
+        request.headers.get(_ADMIN_CLIENTE_DETAIL_MEASURE_HEADER)
+        or request.args.get("__admin_cliente_detail_measure")
+        or ""
+    )
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _admin_cliente_detail_measurement_init() -> None:
+    if not has_request_context():
+        return
+    env = request.environ
+    if bool(env.get("_admin_cliente_detail_measure_enabled")):
+        return
+    env["_admin_cliente_detail_measure_enabled"] = True
+    env["_admin_cliente_detail_measure_active_block"] = ""
+    env["_admin_cliente_detail_measure_blocks"] = {}
+    env["_admin_cliente_detail_measure_tables"] = {}
+    env["_admin_cliente_detail_measure_fingerprints"] = {}
+    env["_admin_cliente_detail_measure_lazy_callsites"] = {}
+    env["_admin_cliente_detail_measure_lazy_accesses"] = {}
+    env["_admin_cliente_detail_measure_lazy_context_stack"] = []
+    env["_admin_cliente_detail_measure_lazy_query_count"] = 0
+    env["_admin_cliente_detail_measure_lazy_db_ms"] = 0.0
+
+
+def _admin_cliente_detail_measure_template_frame(stack_key: str) -> tuple[str, int]:
+    parts = [str(part or "").strip() for part in str(stack_key or "").split(" <- ") if str(part or "").strip()]
+    for part in reversed(parts):
+        normalized = part
+        if "/templates/" in normalized:
+            normalized = normalized.split("/templates/", 1)[1]
+            normalized = f"templates/{normalized}"
+        if not normalized.startswith("templates/"):
+            continue
+        try:
+            filename, lineno, _func = normalized.rsplit(":", 2)
+            return str(filename or ""), int(lineno or 0)
+        except Exception:
+            continue
+    return "", 0
+
+
+def _admin_cliente_detail_measure_lazy_attr(orm_execute_state) -> str:
+    loader_path = str(getattr(orm_execute_state, "loader_strategy_path", "") or "").strip()
+    path_matches = re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)", loader_path)
+    if path_matches:
+        owner, attr = path_matches[-1]
+        return f"{owner}.{attr}"
+
+    statement_obj = getattr(orm_execute_state, "statement", None)
+    statement_sql = " ".join(str(statement_obj).split()) if statement_obj is not None else ""
+    if statement_sql:
+        from_match = re.search(r"\bfrom\s+([A-Za-z_][A-Za-z0-9_]*)\b", statement_sql, re.IGNORECASE)
+        table_name = str(from_match.group(1) or "") if from_match else ""
+        selected_cols = []
+        for match in re.finditer(
+            r"\b(?:select|,\s*)([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\b",
+            statement_sql,
+            re.IGNORECASE,
+        ):
+            selected_cols.append((str(match.group(1) or ""), str(match.group(2) or "")))
+        if selected_cols:
+            picked = [col for table, col in selected_cols if table_name and table == table_name]
+            if not picked:
+                picked = [col for _table, col in selected_cols]
+            if picked:
+                cols = ",".join(dict.fromkeys(picked))
+                return f"{table_name or 'column_load'}.{cols}"
+
+    lazy_from = getattr(orm_execute_state, "lazy_loaded_from", None)
+    mapper = getattr(lazy_from, "mapper", None) if lazy_from is not None else None
+    class_name = getattr(getattr(mapper, "class_", None), "__name__", "")
+    if class_name:
+        return f"{class_name}.<deferred>"
+    return "unknown"
+
+
+def _admin_cliente_detail_measure_lazy_context(orm_execute_state) -> dict[str, str]:
+    lazy_from = getattr(orm_execute_state, "lazy_loaded_from", None)
+    mapper = getattr(lazy_from, "mapper", None) if lazy_from is not None else None
+    class_name = str(getattr(getattr(mapper, "class_", None), "__name__", "") or "")
+    identity = getattr(lazy_from, "identity", None) if lazy_from is not None else None
+    identity_text = ""
+    if isinstance(identity, tuple) and identity:
+        identity_text = ",".join(str(part) for part in identity)
+    elif identity is not None:
+        identity_text = str(identity)
+    return {
+        "kind": "relationship" if bool(getattr(orm_execute_state, "is_relationship_load", False)) else "column",
+        "path": str(getattr(orm_execute_state, "loader_strategy_path", "") or ""),
+        "attr": _admin_cliente_detail_measure_lazy_attr(orm_execute_state),
+        "entity": class_name,
+        "identity": identity_text,
+    }
+
+
+@contextmanager
+def _admin_cliente_detail_measure_block(block_name: str, *, enabled: bool):
+    if not enabled or not has_request_context():
+        yield
+        return
+    env = request.environ
+    _admin_cliente_detail_measurement_init()
+    blocks = env.setdefault("_admin_cliente_detail_measure_blocks", {})
+    block = blocks.setdefault(str(block_name or ""), {"calls": 0, "wall_ms": 0.0, "db_ms": 0.0, "db_queries": 0})
+    prev_block = str(env.get("_admin_cliente_detail_measure_active_block", "") or "")
+    env["_admin_cliente_detail_measure_active_block"] = str(block_name or "")
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        block["calls"] = int(block.get("calls", 0) or 0) + 1
+        block["wall_ms"] = float(block.get("wall_ms", 0.0) or 0.0) + elapsed_ms
+        env["_admin_cliente_detail_measure_active_block"] = prev_block
+
+
+def _admin_cliente_detail_measurement_payload() -> dict | None:
+    if not has_request_context():
+        return None
+    env = request.environ
+    if not bool(env.get("_admin_cliente_detail_measure_enabled")):
+        return None
+
+    raw_blocks = dict(env.get("_admin_cliente_detail_measure_blocks") or {})
+    raw_tables = dict(env.get("_admin_cliente_detail_measure_tables") or {})
+    raw_fingerprints = dict(env.get("_admin_cliente_detail_measure_fingerprints") or {})
+    raw_lazy_callsites = dict(env.get("_admin_cliente_detail_measure_lazy_callsites") or {})
+    raw_lazy_accesses = dict(env.get("_admin_cliente_detail_measure_lazy_accesses") or {})
+
+    blocks = {
+        str(name): {
+            "calls": int((data or {}).get("calls", 0) or 0),
+            "wall_ms": round(float((data or {}).get("wall_ms", 0.0) or 0.0), 2),
+            "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+            "db_queries": int((data or {}).get("db_queries", 0) or 0),
+        }
+        for name, data in raw_blocks.items()
+        if str(name or "").strip()
+    }
+
+    tables = {
+        str(name): {
+            "queries": int((data or {}).get("queries", 0) or 0),
+            "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+            "sample_sql": str((data or {}).get("sample_sql", "") or ""),
+        }
+        for name, data in sorted(
+            raw_tables.items(),
+            key=lambda row: (-int((row[1] or {}).get("queries", 0) or 0), -float((row[1] or {}).get("db_ms", 0.0) or 0.0), str(row[0])),
+        )
+    }
+
+    top_fingerprints = []
+    for fingerprint, data in sorted(
+        raw_fingerprints.items(),
+        key=lambda row: (
+            -int((row[1] or {}).get("queries", 0) or 0),
+            -float((row[1] or {}).get("db_ms", 0.0) or 0.0),
+            str(row[0]),
+        ),
+    )[:15]:
+        top_fingerprints.append(
+            {
+                "fingerprint": str(fingerprint),
+                "queries": int((data or {}).get("queries", 0) or 0),
+                "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+                "tables": list((data or {}).get("tables") or []),
+                "sample_sql": str((data or {}).get("sample_sql", "") or ""),
+                "template_render_queries": int((data or {}).get("template_render_queries", 0) or 0),
+            }
+        )
+
+    lazy_callsites = []
+    for stack_key, data in sorted(
+        raw_lazy_callsites.items(),
+        key=lambda row: (
+            -int((row[1] or {}).get("queries", 0) or 0),
+            -float((row[1] or {}).get("db_ms", 0.0) or 0.0),
+            str(row[0]),
+        ),
+    )[:12]:
+        lazy_callsites.append(
+            {
+                "stack": str(stack_key),
+                "queries": int((data or {}).get("queries", 0) or 0),
+                "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+                "tables": list((data or {}).get("tables") or []),
+                "sample_sql": str((data or {}).get("sample_sql", "") or ""),
+            }
+        )
+
+    lazy_accesses = []
+    for _group_key, data in sorted(
+        raw_lazy_accesses.items(),
+        key=lambda row: (
+            -int((row[1] or {}).get("queries", 0) or 0),
+            -float((row[1] or {}).get("db_ms", 0.0) or 0.0),
+            str(row[0]),
+        ),
+    )[:20]:
+        lazy_accesses.append(
+            {
+                "template": str((data or {}).get("template", "") or ""),
+                "line": int((data or {}).get("line", 0) or 0),
+                "attr": str((data or {}).get("attr", "") or ""),
+                "kind": str((data or {}).get("kind", "") or ""),
+                "entity": str((data or {}).get("entity", "") or ""),
+                "fingerprint": str((data or {}).get("fingerprint", "") or ""),
+                "queries": int((data or {}).get("queries", 0) or 0),
+                "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+                "sample_sql": str((data or {}).get("sample_sql", "") or ""),
+                "path": str((data or {}).get("path", "") or ""),
+            }
+        )
+
+    lazy_top_fingerprints = [
+        item
+        for item in top_fingerprints
+        if int(item.get("template_render_queries", 0) or 0) > 0
+    ][:10]
+
+    return {
+        "blocks": blocks,
+        "tables": tables,
+        "top_fingerprints": top_fingerprints,
+        "lazy_loads": {
+            "query_count": int(env.get("_admin_cliente_detail_measure_lazy_query_count", 0) or 0),
+            "db_ms": round(float(env.get("_admin_cliente_detail_measure_lazy_db_ms", 0.0) or 0.0), 2),
+            "top_callsites": lazy_callsites,
+            "top_accesses": lazy_accesses,
+            "top_fingerprints": lazy_top_fingerprints,
+        },
+    }
+
+
+@event.listens_for(Session, "do_orm_execute", retval=True)
+def _admin_cliente_detail_measure_do_orm_execute(orm_execute_state):
+    if not has_request_context():
+        return orm_execute_state.invoke_statement()
+    try:
+        env = request.environ
+    except Exception:
+        return orm_execute_state.invoke_statement()
+    if not bool(env.get("_admin_cliente_detail_measure_enabled")):
+        return orm_execute_state.invoke_statement()
+    if not (
+        bool(getattr(orm_execute_state, "is_relationship_load", False))
+        or bool(getattr(orm_execute_state, "is_column_load", False))
+    ):
+        return orm_execute_state.invoke_statement()
+
+    stack = env.setdefault("_admin_cliente_detail_measure_lazy_context_stack", [])
+    stack.append(_admin_cliente_detail_measure_lazy_context(orm_execute_state))
+    try:
+        return orm_execute_state.invoke_statement()
+    finally:
+        if stack:
+            stack.pop()
 
 
 @event.listens_for(Engine, "before_cursor_execute")
@@ -1173,20 +1581,215 @@ def _p1c1_perf_after_cursor_execute(conn, _cursor, _statement, _parameters, _con
     elapsed_ms = max(0.0, (time.perf_counter() - float(started)) * 1000.0)
     env["_p1c1_perf_db_ms"] = float(env.get("_p1c1_perf_db_ms", 0.0)) + elapsed_ms
     env["_p1c1_perf_db_queries"] = int(env.get("_p1c1_perf_db_queries", 0)) + 1
+    if bool(env.get("_admin_solicitudes_measure_enabled")):
+        block_name = str(env.get("_admin_solicitudes_measure_active_block", "") or "").strip()
+        if block_name:
+            blocks = env.setdefault("_admin_solicitudes_measure_blocks", {})
+            block = blocks.setdefault(block_name, {"calls": 0, "wall_ms": 0.0, "db_ms": 0.0, "db_queries": 0})
+            block["db_ms"] = float(block.get("db_ms", 0.0)) + elapsed_ms
+            block["db_queries"] = int(block.get("db_queries", 0)) + 1
+            callsites_by_block = env.setdefault("_admin_solicitudes_measure_callsites", {})
+            block_callsites = callsites_by_block.setdefault(block_name, {})
+            stack_key = _admin_solicitudes_measure_stack_key()
+            callsite = block_callsites.setdefault(
+                stack_key,
+                {"db_ms": 0.0, "db_queries": 0, "sample_sql": _admin_solicitudes_measure_sql_sample(_statement)},
+            )
+            callsite["db_ms"] = float(callsite.get("db_ms", 0.0)) + elapsed_ms
+            callsite["db_queries"] = int(callsite.get("db_queries", 0)) + 1
+    if bool(env.get("_admin_cliente_detail_measure_enabled")):
+        stack_key = _admin_solicitudes_measure_stack_key()
+        block_name = str(env.get("_admin_cliente_detail_measure_active_block", "") or "").strip()
+        sample_sql = _admin_cliente_detail_measure_sql_sample(_statement)
+        fingerprint = _admin_cliente_detail_measure_sql_fingerprint(_statement)
+        tables = _admin_cliente_detail_measure_tables(_statement)
+        is_template_lazy = bool(
+            block_name == "template_render"
+            or stack_key == "<template>"
+            or "templates/" in stack_key
+        )
+
+        if block_name:
+            blocks = env.setdefault("_admin_cliente_detail_measure_blocks", {})
+            block = blocks.setdefault(block_name, {"calls": 0, "wall_ms": 0.0, "db_ms": 0.0, "db_queries": 0})
+            block["db_ms"] = float(block.get("db_ms", 0.0) or 0.0) + elapsed_ms
+            block["db_queries"] = int(block.get("db_queries", 0) or 0) + 1
+
+        table_rows = env.setdefault("_admin_cliente_detail_measure_tables", {})
+        for table_name in tables:
+            row = table_rows.setdefault(table_name, {"queries": 0, "db_ms": 0.0, "sample_sql": sample_sql})
+            row["queries"] = int(row.get("queries", 0) or 0) + 1
+            row["db_ms"] = float(row.get("db_ms", 0.0) or 0.0) + elapsed_ms
+            if not row.get("sample_sql"):
+                row["sample_sql"] = sample_sql
+
+        if fingerprint:
+            fingerprints = env.setdefault("_admin_cliente_detail_measure_fingerprints", {})
+            fp_row = fingerprints.setdefault(
+                fingerprint,
+                {
+                    "queries": 0,
+                    "db_ms": 0.0,
+                    "sample_sql": sample_sql,
+                    "tables": list(tables),
+                    "template_render_queries": 0,
+                },
+            )
+            fp_row["queries"] = int(fp_row.get("queries", 0) or 0) + 1
+            fp_row["db_ms"] = float(fp_row.get("db_ms", 0.0) or 0.0) + elapsed_ms
+            fp_row["template_render_queries"] = int(fp_row.get("template_render_queries", 0) or 0) + (1 if is_template_lazy else 0)
+            if not fp_row.get("sample_sql"):
+                fp_row["sample_sql"] = sample_sql
+
+        if is_template_lazy:
+            env["_admin_cliente_detail_measure_lazy_query_count"] = int(env.get("_admin_cliente_detail_measure_lazy_query_count", 0) or 0) + 1
+            env["_admin_cliente_detail_measure_lazy_db_ms"] = float(env.get("_admin_cliente_detail_measure_lazy_db_ms", 0.0) or 0.0) + elapsed_ms
+            lazy_callsites = env.setdefault("_admin_cliente_detail_measure_lazy_callsites", {})
+            lazy_row = lazy_callsites.setdefault(
+                stack_key,
+                {"queries": 0, "db_ms": 0.0, "tables": list(tables), "sample_sql": sample_sql},
+            )
+            lazy_row["queries"] = int(lazy_row.get("queries", 0) or 0) + 1
+            lazy_row["db_ms"] = float(lazy_row.get("db_ms", 0.0) or 0.0) + elapsed_ms
+            if not lazy_row.get("sample_sql"):
+                lazy_row["sample_sql"] = sample_sql
+            lazy_context_stack = env.get("_admin_cliente_detail_measure_lazy_context_stack") or []
+            lazy_context = lazy_context_stack[-1] if lazy_context_stack else {}
+            template_file, template_line = _admin_cliente_detail_measure_template_frame(stack_key)
+            lazy_attr = str((lazy_context or {}).get("attr", "") or "")
+            lazy_kind = str((lazy_context or {}).get("kind", "") or "")
+            lazy_entity = str((lazy_context or {}).get("entity", "") or "")
+            lazy_path = str((lazy_context or {}).get("path", "") or "")
+            access_key = "|".join(
+                [
+                    template_file,
+                    str(template_line),
+                    lazy_attr,
+                    fingerprint,
+                ]
+            )
+            lazy_accesses = env.setdefault("_admin_cliente_detail_measure_lazy_accesses", {})
+            access_row = lazy_accesses.setdefault(
+                access_key,
+                {
+                    "template": template_file,
+                    "line": template_line,
+                    "attr": lazy_attr,
+                    "kind": lazy_kind,
+                    "entity": lazy_entity,
+                    "path": lazy_path,
+                    "fingerprint": fingerprint,
+                    "queries": 0,
+                    "db_ms": 0.0,
+                    "sample_sql": sample_sql,
+                },
+            )
+            access_row["queries"] = int(access_row.get("queries", 0) or 0) + 1
+            access_row["db_ms"] = float(access_row.get("db_ms", 0.0) or 0.0) + elapsed_ms
+            if not access_row.get("sample_sql"):
+                access_row["sample_sql"] = sample_sql
+
+
+def _admin_solicitudes_measurement_enabled() -> bool:
+    if not has_request_context():
+        return False
+    app_env = str(os.getenv("APP_ENV", "") or "").strip().lower()
+    if app_env not in {"local", "test"}:
+        return False
+    raw = (
+        request.headers.get(_ADMIN_SOLICITUDES_MEASURE_HEADER)
+        or request.args.get("__admin_solicitudes_measure")
+        or ""
+    )
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _admin_solicitudes_measurement_init() -> None:
+    if not has_request_context():
+        return
+    env = request.environ
+    if bool(env.get("_admin_solicitudes_measure_enabled")):
+        return
+    env["_admin_solicitudes_measure_enabled"] = True
+    env["_admin_solicitudes_measure_blocks"] = {}
+    env["_admin_solicitudes_measure_active_block"] = ""
+    env["_admin_solicitudes_measure_callsites"] = {}
+
+
+@contextmanager
+def _admin_solicitudes_measure_block(block_name: str, *, enabled: bool):
+    if not enabled or not has_request_context():
+        yield
+        return
+    env = request.environ
+    _admin_solicitudes_measurement_init()
+    blocks = env.setdefault("_admin_solicitudes_measure_blocks", {})
+    block = blocks.setdefault(str(block_name or ""), {"calls": 0, "wall_ms": 0.0, "db_ms": 0.0, "db_queries": 0})
+    prev_block = str(env.get("_admin_solicitudes_measure_active_block", "") or "")
+    env["_admin_solicitudes_measure_active_block"] = str(block_name or "")
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
+        block["calls"] = int(block.get("calls", 0)) + 1
+        block["wall_ms"] = float(block.get("wall_ms", 0.0)) + elapsed_ms
+        env["_admin_solicitudes_measure_active_block"] = prev_block
+
+
+def _admin_solicitudes_measurement_payload() -> dict | None:
+    if not has_request_context():
+        return None
+    env = request.environ
+    if not bool(env.get("_admin_solicitudes_measure_enabled")):
+        return None
+    blocks = dict(env.get("_admin_solicitudes_measure_blocks") or {})
+    block_callsites = dict(env.get("_admin_solicitudes_measure_callsites") or {})
+    out_blocks = {}
+    for name, data in blocks.items():
+        if not name:
+            continue
+        callsites = []
+        for stack_key, item in sorted(
+            (block_callsites.get(name) or {}).items(),
+            key=lambda row: (
+                -int((row[1] or {}).get("db_queries", 0) or 0),
+                -float((row[1] or {}).get("db_ms", 0.0) or 0.0),
+                str(row[0]),
+            ),
+        )[:12]:
+            callsites.append(
+                {
+                    "stack": str(stack_key),
+                    "db_queries": int((item or {}).get("db_queries", 0) or 0),
+                    "db_ms": round(float((item or {}).get("db_ms", 0.0) or 0.0), 2),
+                    "sample_sql": str((item or {}).get("sample_sql", "") or ""),
+                }
+            )
+        out_blocks[str(name)] = {
+            "calls": int((data or {}).get("calls", 0) or 0),
+            "wall_ms": round(float((data or {}).get("wall_ms", 0.0) or 0.0), 2),
+            "db_ms": round(float((data or {}).get("db_ms", 0.0) or 0.0), 2),
+            "db_queries": int((data or {}).get("db_queries", 0) or 0),
+            "callsites": callsites,
+        }
+    return {"blocks": out_blocks}
 
 
 @contextmanager
 def _p1c1_perf_scope(scope_name: str, *, enabled: bool = True):
     started = time.perf_counter()
     env = request.environ if has_request_context() else {}
-    if enabled:
+    app_env = str(os.getenv("APP_ENV", os.getenv("FLASK_ENV", "")) or "").strip().lower()
+    perf_runtime_enabled = bool(enabled) and app_env in {"local", "test"}
+    if perf_runtime_enabled:
         env["_p1c1_perf_enabled"] = True
         env["_p1c1_perf_db_ms"] = 0.0
         env["_p1c1_perf_db_queries"] = 0
 
     def _finalize(response_like, *, html_bytes: int | None = None, extra: dict | None = None):
         response = make_response(response_like)
-        if not enabled:
+        if not perf_runtime_enabled:
             return response
         elapsed_ms = max(0.0, (time.perf_counter() - started) * 1000.0)
         db_ms = float(env.get("_p1c1_perf_db_ms", 0.0))
@@ -1197,6 +1800,16 @@ def _p1c1_perf_scope(scope_name: str, *, enabled: bool = True):
         response.headers[f"{_P1C1_PERF_HEADER_PREFIX}DB-Time-Ms"] = f"{db_ms:.2f}"
         if html_bytes is not None and int(html_bytes) >= 0:
             response.headers[f"{_P1C1_PERF_HEADER_PREFIX}HTML-Bytes"] = str(int(html_bytes))
+        detailed_payload = _admin_solicitudes_measurement_payload()
+        if detailed_payload:
+            response.headers[_ADMIN_SOLICITUDES_METRICS_HEADER] = json.dumps(detailed_payload, ensure_ascii=True, sort_keys=True)
+        cliente_detail_payload = _admin_cliente_detail_measurement_payload()
+        if cliente_detail_payload:
+            response.headers[_ADMIN_CLIENTE_DETAIL_METRICS_HEADER] = json.dumps(
+                cliente_detail_payload,
+                ensure_ascii=True,
+                sort_keys=True,
+            )
 
         payload = {
             "scope": str(scope_name or ""),
@@ -1217,10 +1830,24 @@ def _p1c1_perf_scope(scope_name: str, *, enabled: bool = True):
     try:
         yield _finalize
     finally:
-        if enabled:
+        if perf_runtime_enabled:
             env.pop("_p1c1_perf_enabled", None)
             env.pop("_p1c1_perf_db_ms", None)
             env.pop("_p1c1_perf_db_queries", None)
+        env.pop("_admin_solicitudes_measure_enabled", None)
+        env.pop("_admin_solicitudes_measure_blocks", None)
+        env.pop("_admin_solicitudes_measure_active_block", None)
+        env.pop("_admin_solicitudes_measure_callsites", None)
+        env.pop("_admin_cliente_detail_measure_enabled", None)
+        env.pop("_admin_cliente_detail_measure_active_block", None)
+        env.pop("_admin_cliente_detail_measure_blocks", None)
+        env.pop("_admin_cliente_detail_measure_tables", None)
+        env.pop("_admin_cliente_detail_measure_fingerprints", None)
+        env.pop("_admin_cliente_detail_measure_lazy_callsites", None)
+        env.pop("_admin_cliente_detail_measure_lazy_accesses", None)
+        env.pop("_admin_cliente_detail_measure_lazy_context_stack", None)
+        env.pop("_admin_cliente_detail_measure_lazy_query_count", None)
+        env.pop("_admin_cliente_detail_measure_lazy_db_ms", None)
 
 
 def _normalize_live_invalidation_event(event: dict, *, stream_id: str | None = None) -> dict | None:
@@ -9478,7 +10105,7 @@ def solicitud_puede_registrar_pago(solicitud) -> bool:
     if estado == "espera_pago":
         # En espera de pago debe permitirse gestionar cobro, aunque exista desalineación temporal de resumen.
         return True
-    summary = get_payment_summary(solicitud)
+    summary = get_payment_summary_readonly(solicitud)
     saldo_pendiente = Decimal(summary["saldo_pendiente"])
     estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
     if saldo_pendiente <= Decimal("0.00") or estado_pago == "pagado":
@@ -9506,7 +10133,18 @@ def _cliente_detail_regions_context(
         "tipo_plan",
         "estado",
         "row_version",
+        "abono",
         "monto_pagado",
+        "payment_cycle_current",
+        "payment_cycle_plan",
+        "payment_cycle_precio_total",
+        "payment_cycle_abono_requerido",
+        "payment_cycle_estado",
+        "payment_cycle_opened_at",
+        "payment_cycle_closed_at",
+        "payment_cycle_motivo_apertura",
+        "public_form_source",
+        "lead_source",
         "last_copiado_at",
         "fecha_ultima_modificacion",
         "fecha_cancelacion",
@@ -9520,6 +10158,8 @@ def _cliente_detail_regions_context(
         "id",
         "solicitud_id",
         "candidata_new_id",
+        "fase",
+        "resultado_final",
         "fecha_inicio_reemplazo",
         "fecha_fin_reemplazo",
         "created_at",
@@ -9555,11 +10195,18 @@ def _cliente_detail_regions_context(
         .all()
     )
     solicitud_pago_habilitado: dict[int, bool] = {}
+    solicitud_whatsapp_activation: dict[int, dict] = {}
     for s in (solicitudes or []):
         sid = int(getattr(s, "id", 0) or 0)
         if sid <= 0:
             continue
         solicitud_pago_habilitado[sid] = solicitud_puede_registrar_pago(s)
+        payment_ctx = _build_payment_summary_ctx(s, readonly=True)
+        solicitud_whatsapp_activation[sid] = _build_whatsapp_activation_ctx(
+            s,
+            cliente=cliente,
+            payment_ctx=payment_ctx,
+        )
     kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes) if include_kpi else None
     reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
     role = (
@@ -9622,6 +10269,7 @@ def _cliente_detail_regions_context(
         "cliente": cliente,
         "solicitudes": solicitudes,
         "solicitud_pago_habilitado": solicitud_pago_habilitado,
+        "solicitud_whatsapp_activation": solicitud_whatsapp_activation,
         "kpi_cliente": kpi_cliente,
         "reemplazos_activos": reemplazos_activos,
         "is_admin_role": is_admin_role,
@@ -9655,6 +10303,26 @@ def _cliente_detail_summary_context(cliente_id: int) -> dict:
     }
 
 
+def _cliente_detail_solicitudes_render_rows(solicitudes: list[Solicitud]) -> list[SimpleNamespace]:
+    rows: list[SimpleNamespace] = []
+    for s in (solicitudes or []):
+        rows.append(
+            SimpleNamespace(
+                id=getattr(s, "id", None),
+                codigo_solicitud=getattr(s, "codigo_solicitud", None),
+                fecha_solicitud=getattr(s, "fecha_solicitud", None),
+                ciudad_sector=getattr(s, "ciudad_sector", None),
+                tipo_servicio=getattr(s, "tipo_servicio", None),
+                modalidad_trabajo=getattr(s, "modalidad_trabajo", None),
+                tipo_plan=getattr(s, "tipo_plan", None),
+                estado=getattr(s, "estado", None),
+                candidata_id=getattr(s, "candidata_id", None),
+                row_version=getattr(s, "row_version", None),
+            )
+        )
+    return rows
+
+
 @admin_bp.route('/clientes/<int:cliente_id>')
 @login_required
 @staff_required
@@ -9668,102 +10336,111 @@ def detalle_cliente(cliente_id):
     - Tareas de seguimiento del cliente
     """
 
-    region_ctx = _cliente_detail_regions_context(cliente_id)
-    cliente = region_ctx["cliente"]
-    solicitudes = region_ctx["solicitudes"]
+    measure_enabled = _admin_cliente_detail_measurement_enabled()
+    with _p1c1_perf_scope("cliente_detail") as perf_done:
+        with _admin_cliente_detail_measure_block("region_context", enabled=measure_enabled):
+            region_ctx = _cliente_detail_regions_context(cliente_id)
+        cliente = region_ctx["cliente"]
+        solicitudes = region_ctx["solicitudes"]
 
-    # ------------------------------
-    # TIMELINE SIMPLE (HUMANO)
-    # ------------------------------
-    timeline = []
+        # ------------------------------
+        # TIMELINE SIMPLE (HUMANO)
+        # ------------------------------
+        timeline = []
+        with _admin_cliente_detail_measure_block("timeline_build", enabled=measure_enabled):
+            for s in solicitudes:
+                codigo = s.codigo_solicitud or s.id
 
-    for s in solicitudes:
-        codigo = s.codigo_solicitud or s.id
+                # 1) Creación de la solicitud
+                if s.fecha_solicitud:
+                    timeline.append({
+                        'fecha': s.fecha_solicitud,
+                        'tipo': 'Solicitud creada',
+                        'detalle': f"Se creó la solicitud {codigo} para este cliente."
+                    })
 
-        # 1) Creación de la solicitud
-        if s.fecha_solicitud:
-            timeline.append({
-                'fecha': s.fecha_solicitud,
-                'tipo': 'Solicitud creada',
-                'detalle': f"Se creó la solicitud {codigo} para este cliente."
-            })
+                # 2) Solicitud activada / en búsqueda (lo más parecido a 'publicada')
+                #    Usamos fecha_ultima_modificacion como referencia.
+                if s.estado == 'activa' and getattr(s, 'fecha_ultima_modificacion', None):
+                    timeline.append({
+                        'fecha': s.fecha_ultima_modificacion,
+                        'tipo': 'Solicitud activada',
+                        'detalle': f"La solicitud {codigo} está activa y en búsqueda de candidata."
+                    })
 
-        # 2) Solicitud activada / en búsqueda (lo más parecido a 'publicada')
-        #    Usamos fecha_ultima_modificacion como referencia.
-        if s.estado == 'activa' and getattr(s, 'fecha_ultima_modificacion', None):
-            timeline.append({
-                'fecha': s.fecha_ultima_modificacion,
-                'tipo': 'Solicitud activada',
-                'detalle': f"La solicitud {codigo} está activa y en búsqueda de candidata."
-            })
+                # 3) Solicitud copiada para publicar (texto que se copia para redes / grupos)
+                if getattr(s, 'last_copiado_at', None):
+                    timeline.append({
+                        'fecha': s.last_copiado_at,
+                        'tipo': 'Solicitud copiada para publicar',
+                        'detalle': f"Se copió el texto de la solicitud {codigo} para publicarla en redes o grupos."
+                    })
 
-        # 3) Solicitud copiada para publicar (texto que se copia para redes / grupos)
-        if getattr(s, 'last_copiado_at', None):
-            timeline.append({
-                'fecha': s.last_copiado_at,
-                'tipo': 'Solicitud copiada para publicar',
-                'detalle': f"Se copió el texto de la solicitud {codigo} para publicarla en redes o grupos."
-            })
+                # 4) Pago registrado
+                if s.estado == 'pagada' and getattr(s, 'fecha_ultima_modificacion', None):
+                    timeline.append({
+                        'fecha': s.fecha_ultima_modificacion,
+                        'tipo': 'Pago registrado',
+                        'detalle': f"La solicitud {codigo} fue marcada como pagada."
+                    })
 
-        # 4) Pago registrado
-        if s.estado == 'pagada' and getattr(s, 'fecha_ultima_modificacion', None):
-            timeline.append({
-                'fecha': s.fecha_ultima_modificacion,
-                'tipo': 'Pago registrado',
-                'detalle': f"La solicitud {codigo} fue marcada como pagada."
-            })
+                # 5) Solicitud cancelada
+                if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
+                    motivo = (s.motivo_cancelacion or '').strip()
+                    texto_motivo = motivo or 'Sin motivo especificado por el cliente.'
+                    timeline.append({
+                        'fecha': s.fecha_cancelacion,
+                        'tipo': 'Solicitud cancelada',
+                        'detalle': f"La solicitud {codigo} fue cancelada. Motivo: {texto_motivo}"
+                    })
 
-        # 5) Solicitud cancelada
-        if s.estado == 'cancelada' and getattr(s, 'fecha_cancelacion', None):
-            motivo = (s.motivo_cancelacion or '').strip()
-            texto_motivo = motivo or 'Sin motivo especificado por el cliente.'
-            timeline.append({
-                'fecha': s.fecha_cancelacion,
-                'tipo': 'Solicitud cancelada',
-                'detalle': f"La solicitud {codigo} fue cancelada. Motivo: {texto_motivo}"
-            })
+                # 6) Reemplazos activados
+                for r in (s.reemplazos or []):
+                    fecha_r = getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None)
+                    if not fecha_r:
+                        continue
 
-        # 6) Reemplazos activados
-        for r in (s.reemplazos or []):
-            fecha_r = getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None)
-            if not fecha_r:
-                continue
+                    nombre_new = getattr(getattr(r, 'candidata_new', None), 'nombre_completo', None)
+                    if nombre_new:
+                        detalle_r = f"Se activó un reemplazo en la solicitud {codigo} con la candidata {nombre_new}."
+                    else:
+                        detalle_r = f"Se activó un reemplazo en la solicitud {codigo}."
 
-            nombre_new = getattr(getattr(r, 'candidata_new', None), 'nombre_completo', None)
-            if nombre_new:
-                detalle_r = f"Se activó un reemplazo en la solicitud {codigo} con la candidata {nombre_new}."
-            else:
-                detalle_r = f"Se activó un reemplazo en la solicitud {codigo}."
+                    timeline.append({
+                        'fecha': fecha_r,
+                        'tipo': 'Reemplazo activado',
+                        'detalle': detalle_r
+                    })
 
-            timeline.append({
-                'fecha': fecha_r,
-                'tipo': 'Reemplazo activado',
-                'detalle': detalle_r
-            })
+            # Ordenar timeline de más reciente a más viejo
+            timeline = sorted(timeline, key=lambda e: e['fecha'], reverse=True)
 
-    # Ordenar timeline de más reciente a más viejo
-    timeline = sorted(timeline, key=lambda e: e['fecha'], reverse=True)
-
-    # ------------------------------
-    # TAREAS DEL CLIENTE
-    # ------------------------------
-    tareas = (
-        TareaCliente.query
-        .filter_by(cliente_id=cliente_id)
-        .order_by(
-            TareaCliente.estado != 'pendiente',             # primero pendientes
-            TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
-            TareaCliente.fecha_vencimiento.asc(),           # las que vencen antes van arriba
-            TareaCliente.fecha_creacion.desc()              # últimas creadas al final dentro del mismo grupo
-        )
-        .all()
-    )
-    return render_template(
-        'admin/cliente_detail.html',
-        timeline=timeline,
-        tareas=tareas,
-        **region_ctx,
-    )
+        # ------------------------------
+        # TAREAS DEL CLIENTE
+        # ------------------------------
+        with _admin_cliente_detail_measure_block("tareas_query", enabled=measure_enabled):
+            tareas = (
+                TareaCliente.query
+                .filter_by(cliente_id=cliente_id)
+                .order_by(
+                    TareaCliente.estado != 'pendiente',             # primero pendientes
+                    TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
+                    TareaCliente.fecha_vencimiento.asc(),           # las que vencen antes van arriba
+                    TareaCliente.fecha_creacion.desc()              # últimas creadas al final dentro del mismo grupo
+                )
+                .all()
+            )
+        with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
+            solicitudes_render = _cliente_detail_solicitudes_render_rows(solicitudes)
+            render_ctx = dict(region_ctx)
+            render_ctx["solicitudes"] = solicitudes_render
+            html = render_template(
+                'admin/cliente_detail.html',
+                timeline=timeline,
+                tareas=tareas,
+                **render_ctx,
+            )
+        return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
 
 
 @admin_bp.route('/clientes/<int:cliente_id>/_summary')
@@ -9771,13 +10448,16 @@ def detalle_cliente(cliente_id):
 @staff_required
 def cliente_detail_summary_fragment(cliente_id):
     with _p1c1_perf_scope("cliente_detail_summary_fragment") as perf_done:
-        region_ctx = _cliente_detail_summary_context(cliente_id)
-        html = render_template(
-            'admin/_cliente_detail_summary_region.html',
-            cliente=region_ctx["cliente"],
-            kpi_cliente=region_ctx["kpi_cliente"],
-            chat_feature_enabled=region_ctx["chat_feature_enabled"],
-        )
+        measure_enabled = _admin_cliente_detail_measurement_enabled()
+        with _admin_cliente_detail_measure_block("summary_context", enabled=measure_enabled):
+            region_ctx = _cliente_detail_summary_context(cliente_id)
+        with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
+            html = render_template(
+                'admin/_cliente_detail_summary_region.html',
+                cliente=region_ctx["cliente"],
+                kpi_cliente=region_ctx["kpi_cliente"],
+                chat_feature_enabled=region_ctx["chat_feature_enabled"],
+            )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["X-Async-Fragment-Region"] = "clienteSummaryAsyncRegion"
@@ -9789,23 +10469,26 @@ def cliente_detail_summary_fragment(cliente_id):
 @staff_required
 def cliente_detail_solicitudes_fragment(cliente_id):
     with _p1c1_perf_scope("cliente_detail_solicitudes_fragment") as perf_done:
-        region_ctx = _cliente_detail_regions_context(
-            cliente_id,
-            include_kpi=False,
-            include_timeline=False,
-        )
-        html = render_template(
-            'admin/_cliente_detail_solicitudes_region.html',
-            cliente=region_ctx["cliente"],
-            solicitudes=region_ctx["solicitudes"],
-            solicitud_pago_habilitado=region_ctx["solicitud_pago_habilitado"],
-            reemplazos_activos=region_ctx["reemplazos_activos"],
-            is_admin_role=region_ctx["is_admin_role"],
-            contracts_schema_ready=region_ctx["contracts_schema_ready"],
-            latest_contracts_by_solicitud=region_ctx["latest_contracts_by_solicitud"],
-            contract_links_by_solicitud=region_ctx["contract_links_by_solicitud"],
-            chat_feature_enabled=region_ctx["chat_feature_enabled"],
-        )
+        measure_enabled = _admin_cliente_detail_measurement_enabled()
+        with _admin_cliente_detail_measure_block("region_context", enabled=measure_enabled):
+            region_ctx = _cliente_detail_regions_context(
+                cliente_id,
+                include_kpi=False,
+                include_timeline=False,
+            )
+        with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
+            html = render_template(
+                'admin/_cliente_detail_solicitudes_region.html',
+                cliente=region_ctx["cliente"],
+                solicitudes=region_ctx["solicitudes"],
+                solicitud_pago_habilitado=region_ctx["solicitud_pago_habilitado"],
+                reemplazos_activos=region_ctx["reemplazos_activos"],
+                is_admin_role=region_ctx["is_admin_role"],
+                contracts_schema_ready=region_ctx["contracts_schema_ready"],
+                latest_contracts_by_solicitud=region_ctx["latest_contracts_by_solicitud"],
+                contract_links_by_solicitud=region_ctx["contract_links_by_solicitud"],
+                chat_feature_enabled=region_ctx["chat_feature_enabled"],
+            )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["X-Async-Fragment-Region"] = "clienteSolicitudesAsyncRegion"
@@ -10918,6 +11601,7 @@ def editar_solicitud_admin(cliente_id, id):
             cliente_id=cliente_id,
             solicitud=s,
             nuevo=False,
+            editar=True,
             public_pasaje_mode=public_pasaje_mode,
             public_pasaje_otro=public_pasaje_otro,
             public_pisos_value=public_pisos_value,
@@ -10958,8 +11642,10 @@ def editar_solicitud_admin(cliente_id, id):
     if form.validate_on_submit():
         try:
             prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
+            prev_tipo_plan = getattr(s, "tipo_plan", None)
             def _persist_solicitud_update(_attempt: int):
                 form.populate_obj(s)
+                s.tipo_plan = prev_tipo_plan
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
                 apply_horario_to_solicitud(
@@ -11158,6 +11844,7 @@ def editar_solicitud_admin(cliente_id, id):
         cliente_id=cliente_id,
         solicitud=s,
         nuevo=False,
+        editar=True,
         public_pasaje_mode=public_pasaje_mode,
         public_pasaje_otro=public_pasaje_otro,
         public_pisos_value=public_pisos_value,
@@ -11994,6 +12681,15 @@ def gestionar_plan(cliente_id, id):
     next_url = (request.args.get('next') or request.form.get('next') or request.referrer or '').strip()
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
+    show_whatsapp_cta = str(request.args.get("show_whatsapp_cta") or "").strip() == "1"
+
+    def _build_gestionar_plan_whatsapp_cta():
+        payment_ctx = _build_payment_summary_ctx(s, readonly=True)
+        return _build_whatsapp_activation_ctx(
+            s,
+            payment_ctx=payment_ctx,
+            allowed_states={"proceso", "activa", "espera_pago", "pagada"},
+        )
 
     def _flatten_form_errors() -> list[str]:
         out = []
@@ -12030,6 +12726,7 @@ def gestionar_plan(cliente_id, id):
             has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
+            post_save_whatsapp_activation=_build_gestionar_plan_whatsapp_cta() if show_whatsapp_cta else None,
         )
 
     def _render_plan_page(async_feedback=None):
@@ -12055,6 +12752,7 @@ def gestionar_plan(cliente_id, id):
             has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
+            post_save_whatsapp_activation=_build_gestionar_plan_whatsapp_cta() if show_whatsapp_cta else None,
         )
 
     def _async_plan_response(
@@ -12212,16 +12910,18 @@ def gestionar_plan(cliente_id, id):
                     success_message = 'Nuevo ciclo de pago creado correctamente. Abono inicial registrado.'
                 if _admin_async_wants_json():
                     form = AdminGestionPlanForm(formdata=None, obj=s)
+                    show_whatsapp_cta = True
                     return _async_plan_response(
                         ok=True,
                         message=success_message,
                         category='success',
-                        redirect_url=safe_next,
+                        redirect_url=None,
                         http_status=200,
-                        include_region=False,
+                        include_region=True,
+                        async_feedback={"message": success_message, "category": "success"},
                     )
                 flash(success_message, 'success')
-                return redirect(safe_next)
+                return redirect(url_for('admin.gestionar_plan', cliente_id=cliente_id, id=id, next=safe_next, show_whatsapp_cta=1))
 
             if manual_override:
                 manual_reason = (request.form.get("manual_reason") or "").strip()
@@ -12348,16 +13048,18 @@ def gestionar_plan(cliente_id, id):
             success_message = 'Plan guardado y abono inicial registrado correctamente.'
             if _admin_async_wants_json():
                 form = AdminGestionPlanForm(formdata=None, obj=s)
+                show_whatsapp_cta = True
                 return _async_plan_response(
                     ok=True,
                     message=success_message,
                     category='success',
-                    redirect_url=safe_next,
+                    redirect_url=None,
                     http_status=200,
-                    include_region=False,
+                    include_region=True,
+                    async_feedback={"message": success_message, "category": "success"},
                 )
             flash('Plan guardado y abono inicial registrado correctamente.', 'success')
-            return redirect(safe_next)
+            return redirect(url_for('admin.gestionar_plan', cliente_id=cliente_id, id=id, next=safe_next, show_whatsapp_cta=1))
 
         except IntegrityError:
             db.session.rollback()
@@ -14749,15 +15451,18 @@ def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
     return out
 
 
-def _build_payment_summary_ctx(solicitud) -> dict:
+def _build_payment_summary_ctx(solicitud, *, readonly: bool = False) -> dict:
     solicitud_id = int(getattr(solicitud, "id", 0) or 0)
-    cycle = get_current_payment_cycle(solicitud)
-    cycle_num = int(cycle["numero_ciclo"])
-    total_pagado = calcular_total_pagado(solicitud_id, ciclo_numero=cycle_num)
-    total_abonado = calcular_total_abonado(solicitud_id, ciclo_numero=cycle_num)
-    precio_plan = Decimal(cycle["precio_total_requerido"])
-    abono_requerido = Decimal(cycle["abono_requerido"])
-    saldo_pendiente = calcular_saldo_pendiente(solicitud)
+    if readonly:
+        summary = get_payment_summary_readonly(solicitud)
+    else:
+        summary = get_payment_summary(solicitud)
+    cycle_num = int(summary["numero_ciclo"])
+    total_pagado = Decimal(summary["total_pagado"])
+    total_abonado = Decimal(summary["total_abonado"])
+    precio_plan = Decimal(summary["precio_plan"])
+    abono_requerido = Decimal(summary["abono_requerido"])
+    saldo_pendiente = Decimal(summary["saldo_pendiente"])
     total_historico = calcular_total_pagado(solicitud_id)
     estado_pago = "Sin pago"
     if total_pagado >= precio_plan and precio_plan > Decimal("0.00"):
@@ -14799,6 +15504,89 @@ def _build_payment_summary_ctx(solicitud) -> dict:
     }
 
 
+def _human_plan_label(plan_value: str | None) -> str:
+    code = normalize_plan(plan_value)
+    if code == "basico":
+        return "Básico"
+    if code == "premium":
+        return "Premium"
+    if code == "vip":
+        return "VIP"
+    raw = str(plan_value or "").strip()
+    return raw or "plan seleccionado"
+
+
+def _build_whatsapp_activation_ctx(
+    solicitud,
+    *,
+    cliente=None,
+    payment_ctx: dict | None = None,
+    allowed_states: set[str] | None = None,
+) -> dict:
+    cliente_obj = cliente or getattr(solicitud, "cliente", None)
+    telefono_raw = str(getattr(cliente_obj, "telefono", "") or "").strip()
+    telefono_e164 = normalize_phone_to_e164(telefono_raw, default_country="DO")
+    telefono_digits = telefono_e164.lstrip("+") if telefono_e164 else ""
+    telefono_valido = bool(telefono_digits)
+
+    estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
+    allowed_state_values = {str(x or "").strip().lower() for x in (allowed_states or {"proceso"}) if str(x or "").strip()}
+    allowed_state = estado in allowed_state_values
+    can_charge_cycle = bool(solicitud_puede_registrar_pago(solicitud))
+
+    payment_data = payment_ctx or _build_payment_summary_ctx(solicitud, readonly=True)
+    plan_source = getattr(solicitud, "payment_cycle_plan", None) or getattr(solicitud, "tipo_plan", None)
+    plan_known = bool(is_valid_plan(plan_source))
+    plan_price = Decimal(payment_data.get("plan_price", 0) or 0)
+    required_deposit = Decimal(payment_data.get("required_deposit", 0) or 0)
+    has_amounts = plan_price > Decimal("0.00") and required_deposit > Decimal("0.00")
+    ready_for_activation = bool(allowed_state and can_charge_cycle and plan_known and has_amounts)
+
+    missing_reasons: list[str] = []
+    if not allowed_state:
+        estados_txt = ", ".join(sorted(allowed_state_values)) or "proceso"
+        missing_reasons.append(f"Disponible solo para solicitudes en {estados_txt}.")
+    if not telefono_valido:
+        missing_reasons.append("El cliente no tiene un teléfono válido para WhatsApp.")
+    if not plan_known:
+        missing_reasons.append("La solicitud no tiene un plan válido configurado.")
+    if not has_amounts:
+        missing_reasons.append("No hay monto total o abono inicial disponible.")
+    if allowed_state and not can_charge_cycle:
+        missing_reasons.append("La solicitud no está lista para gestionar el cobro del 50% en el ciclo activo.")
+
+    nombre_cliente = str(getattr(cliente_obj, "nombre_completo", "") or "").strip() or "cliente"
+    codigo_solicitud = str(getattr(solicitud, "codigo_solicitud", "") or "").strip() or f"SOL-{int(getattr(solicitud, 'id', 0) or 0)}"
+    plan_label = _human_plan_label(plan_source)
+    monto_50_txt = format_money_payment(required_deposit)
+    mensaje = (
+        "Su solicitud ya está lista para iniciar la gestión.\n\n"
+        f"En este momento corresponde el pago del 50% del plan, equivalente a RD${monto_50_txt}.\n\n"
+        "Luego de recibirlo, comenzaremos con la gestión de su solicitud.\n\n"
+        "¿Le envío los datos para el pago?"
+    )
+    wa_link = ""
+    if telefono_valido and ready_for_activation:
+        wa_link = f"https://wa.me/{telefono_digits}?text={quote_plus(mensaje)}"
+
+    return {
+        "enabled": bool(wa_link),
+        "href": wa_link,
+        "title": "Abrir WhatsApp con mensaje para cobro inicial del 50%" if wa_link else " ".join(missing_reasons),
+        "message": mensaje,
+        "phone_digits": telefono_digits,
+        "phone_e164": telefono_e164,
+        "client_name": nombre_cliente,
+        "request_code": codigo_solicitud,
+        "plan_label": plan_label,
+        "plan_price": plan_price,
+        "required_deposit": required_deposit,
+        "estado": estado,
+        "ready": ready_for_activation,
+        "missing_reasons": missing_reasons,
+    }
+
+
 @admin_bp.route('/clientes/<int:cliente_id>/solicitudes/<int:id>')
 @login_required
 @staff_required
@@ -14826,7 +15614,8 @@ def detalle_solicitud(cliente_id, id):
         )
         is_admin_role = role in ("owner", "admin")
         solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=s.cliente_id, id=s.id)
-        payment_ctx = _build_payment_summary_ctx(s)
+        payment_ctx = _build_payment_summary_ctx(s, readonly=True)
+        whatsapp_activation = _build_whatsapp_activation_ctx(s, payment_ctx=payment_ctx)
 
         html = render_template(
             'admin/solicitud_detail.html',
@@ -14838,6 +15627,7 @@ def detalle_solicitud(cliente_id, id):
             is_admin_role=is_admin_role,
             solicitud_detail_url=solicitud_detail_url,
             chat_feature_enabled=_chat_enabled(),
+            whatsapp_activation=whatsapp_activation,
             **payment_ctx,
         )
         return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
@@ -14927,10 +15717,13 @@ def solicitud_detail_summary_fragment(cliente_id, id):
             .filter_by(id=id, cliente_id=cliente_id)
             .first_or_404()
         )
+        payment_ctx = _build_payment_summary_ctx(solicitud, readonly=True)
+        whatsapp_activation = _build_whatsapp_activation_ctx(solicitud, payment_ctx=payment_ctx)
         html = render_template(
             'admin/_solicitud_detail_summary_region.html',
             solicitud=solicitud,
             chat_feature_enabled=_chat_enabled(),
+            whatsapp_activation=whatsapp_activation,
         )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -14956,7 +15749,7 @@ def solicitud_detail_operativa_core_fragment(cliente_id, id):
             today_rd=rd_today(),
         )
         solicitud_detail_url = url_for("admin.detalle_solicitud", cliente_id=solicitud.cliente_id, id=solicitud.id)
-        payment_ctx = _build_payment_summary_ctx(solicitud)
+        payment_ctx = _build_payment_summary_ctx(solicitud, readonly=True)
         html = render_template(
             'admin/_solicitud_operativa_core_region.html',
             solicitud=solicitud,
@@ -15682,6 +16475,15 @@ class _SolicitudPrioridadVM:
 class _SolicitudOperativaListVM:
     __slots__ = (
         "_s",
+        "id",
+        "cliente_id",
+        "candidata_id",
+        "cliente",
+        "cliente_nombre",
+        "estado",
+        "codigo_solicitud",
+        "ciudad_sector",
+        "row_version",
         "reemplazo_cancelado_no_resuelta",
         "priority_label",
         "is_stagnant",
@@ -15712,8 +16514,26 @@ class _SolicitudOperativaListVM:
         "quick_summary",
     )
 
-    def __init__(self, s, *, now_dt: datetime, today_rd, last_actor_label: str, has_active_reemplazo: bool):
+    def __init__(
+        self,
+        s,
+        *,
+        now_dt: datetime,
+        today_rd,
+        last_actor_label: str,
+        has_active_reemplazo: bool,
+        include_quick_summary: bool = True,
+    ):
         self._s = s
+        self.id = int(getattr(s, "id", 0) or 0)
+        self.cliente_id = int(getattr(s, "cliente_id", 0) or 0) or None
+        self.candidata_id = int(getattr(s, "candidata_id", 0) or 0) or None
+        self.cliente = getattr(s, "cliente", None)
+        self.cliente_nombre = str(getattr(getattr(s, "cliente", None), "nombre_completo", "") or "")
+        self.estado = getattr(s, "estado", None)
+        self.codigo_solicitud = getattr(s, "codigo_solicitud", None)
+        self.ciudad_sector = getattr(s, "ciudad_sector", None)
+        self.row_version = getattr(s, "row_version", None)
         self.reemplazo_cancelado_no_resuelta = bool(
             _solicitud_reemplazo_cancelado_no_resuelta(s)
         )
@@ -15777,7 +16597,7 @@ class _SolicitudOperativaListVM:
         self.operational_signal_badge_class = str(signal.get("badge_class", "text-bg-success"))
         self.operational_signal_hint = str(signal.get("hint", ""))
         self.operational_signal_rank = int(signal.get("rank", 0) or 0)
-        self.quick_summary = _solicitud_quick_summary(s)
+        self.quick_summary = _solicitud_quick_summary(s) if include_quick_summary else ""
 
     def __getattr__(self, name):
         return getattr(self._s, name)
@@ -16419,6 +17239,9 @@ def api_candidatas():
 @staff_required
 def listar_solicitudes():
     with _p1c1_perf_scope("solicitudes_list") as perf_done:
+        measure_enabled = _admin_solicitudes_measurement_enabled()
+        if measure_enabled:
+            _admin_solicitudes_measurement_init()
         is_async = _admin_async_wants_json()
         q = (request.args.get('q') or '').strip()
         estado = (request.args.get('estado') or '').strip().lower()
@@ -16527,6 +17350,8 @@ def listar_solicitudes():
             triage_detail_options.append(
                 selectinload(Solicitud.reemplazos).load_only(
                     Reemplazo.id,
+                    Reemplazo.fase,
+                    Reemplazo.resultado_final,
                     Reemplazo.fecha_inicio_reemplazo,
                     Reemplazo.fecha_fin_reemplazo,
                     Reemplazo.created_at,
@@ -16537,12 +17362,13 @@ def listar_solicitudes():
                 try:
                     triage_parts = _solicitudes_triage_sql_parts(now_dt=now_utc, today_rd=today_rd)
                     triage_clause = triage_parts["clauses"].get(triage)
-                    triage_options = _solicitudes_triage_options_sql(
-                        base_query=base_query,
-                        selected=triage,
-                        now_dt=now_utc,
-                        today_rd=today_rd,
-                    )
+                    with _admin_solicitudes_measure_block("triage_options", enabled=measure_enabled):
+                        triage_options = _solicitudes_triage_options_sql(
+                            base_query=base_query,
+                            selected=triage,
+                            now_dt=now_utc,
+                            today_rd=today_rd,
+                        )
                     triage_query = base_query
                     if triage_clause is not None:
                         triage_query = triage_query.filter(triage_clause)
@@ -16557,58 +17383,63 @@ def listar_solicitudes():
                             selected_total = None
                         break
                     if selected_total is None:
-                        total = _query_count_distinct_solicitudes(triage_query)
+                        with _admin_solicitudes_measure_block("count_query", enabled=measure_enabled):
+                            total = _query_count_distinct_solicitudes(triage_query)
                     else:
                         total = int(selected_total)
                     end = start + per_page
                     has_more = end < total
-                    triage_query = (
-                        triage_query
-                        .options(*triage_scan_options, *triage_detail_options)
-                        .order_by(
-                            triage_parts["signal_rank"].desc(),
-                            func.coalesce(triage_parts["state_anchor"], now_utc).asc(),
-                            Solicitud.id.asc(),
+                    with _admin_solicitudes_measure_block("page_query", enabled=measure_enabled):
+                        triage_query = (
+                            triage_query
+                            .options(*triage_scan_options, *triage_detail_options)
+                            .order_by(
+                                triage_parts["signal_rank"].desc(),
+                                func.coalesce(triage_parts["state_anchor"], now_utc).asc(),
+                                Solicitud.id.asc(),
+                            )
+                            .offset(start)
+                            .limit(per_page)
                         )
-                        .offset(start)
-                        .limit(per_page)
-                    )
-                    triage_rows = triage_query.all()
+                        triage_rows = triage_query.all()
                     triage_ids = [
                         int(getattr(s, "id", 0) or 0)
                         for s in (triage_rows or [])
                         if int(getattr(s, "id", 0) or 0) > 0
                     ]
-                    last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                    with _admin_solicitudes_measure_block("staff_audit_log", enabled=measure_enabled):
+                        last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
                     actor_ids = sorted({
                         int(uid) for uid in (last_actor_by_solicitud.values() or [])
                         if uid is not None and int(uid or 0) > 0
                     })
-                    username_by_actor = _staff_username_map(actor_ids)
-                    for s in (triage_rows or []):
-                        sid = int(getattr(s, "id", 0) or 0)
-                        actor_user_id = last_actor_by_solicitud.get(sid)
-                        actor_label = "Sin responsable"
-                        if actor_user_id is not None:
-                            try:
-                                actor_user_id = int(actor_user_id)
-                            except Exception:
-                                actor_user_id = None
-                        if actor_user_id is not None and actor_user_id > 0:
-                            actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-                        repl = _active_reemplazo_for_solicitud(s)
-                        if repl:
-                            reemplazos_activos[sid] = repl
-                        item = _SolicitudOperativaListVM(
-                            s,
-                            now_dt=now_utc,
-                            today_rd=today_rd,
-                            last_actor_label=actor_label,
-                            has_active_reemplazo=bool(repl),
-                        )
-                        setattr(item, "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(s))
-                        if _solicitud_matches_triage(item, triage):
-                            solicitudes_operativas.append(item)
+                    with _admin_solicitudes_measure_block("staff_user", enabled=measure_enabled):
+                        username_by_actor = _staff_username_map(actor_ids)
+                    with _admin_solicitudes_measure_block("vm_rows", enabled=measure_enabled):
+                        for s in (triage_rows or []):
+                            sid = int(getattr(s, "id", 0) or 0)
+                            actor_user_id = last_actor_by_solicitud.get(sid)
+                            actor_label = "Sin responsable"
+                            if actor_user_id is not None:
+                                try:
+                                    actor_user_id = int(actor_user_id)
+                                except Exception:
+                                    actor_user_id = None
+                            if actor_user_id is not None and actor_user_id > 0:
+                                actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                            repl = _active_reemplazo_for_solicitud(s)
+                            if repl:
+                                reemplazos_activos[sid] = repl
+                            item = _SolicitudOperativaListVM(
+                                s,
+                                now_dt=now_utc,
+                                today_rd=today_rd,
+                                last_actor_label=actor_label,
+                                has_active_reemplazo=bool(repl),
+                                include_quick_summary=False,
+                            )
+                            if _solicitud_matches_triage(item, triage):
+                                solicitudes_operativas.append(item)
                 except Exception as exc:
                     rollback_done = False
                     try:
@@ -16628,15 +17459,17 @@ def listar_solicitudes():
                     )
                     use_in_memory_triage = True
             if use_in_memory_triage:
-                triage_query = base_query.options(*triage_scan_options).order_by(*row_order)
-                triage_rows = triage_query.all()
+                with _admin_solicitudes_measure_block("triage_scan_query", enabled=measure_enabled):
+                    triage_query = base_query.options(*triage_scan_options).order_by(*row_order)
+                    triage_rows = triage_query.all()
 
                 triage_ids = [
                     int(getattr(s, "id", 0) or 0)
                     for s in (triage_rows or [])
                     if int(getattr(s, "id", 0) or 0) > 0
                 ]
-                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
+                with _admin_solicitudes_measure_block("staff_audit_log", enabled=measure_enabled):
+                    last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(triage_ids)
                 triage_reemplazo_ids = [
                     int(getattr(s, "id", 0) or 0)
                     for s in (triage_rows or [])
@@ -16677,7 +17510,8 @@ def listar_solicitudes():
                         int(getattr(item, "id", 0) or 0),
                     )
                 )
-                triage_options = _solicitudes_triage_options(rows=triage_rows_scan, selected=triage)
+                with _admin_solicitudes_measure_block("triage_options", enabled=measure_enabled):
+                    triage_options = _solicitudes_triage_options(rows=triage_rows_scan, selected=triage)
                 filtered_scan_rows = [item for item in triage_rows_scan if _solicitud_matches_triage(item, triage)]
                 total = len(filtered_scan_rows)
                 end = start + per_page
@@ -16688,55 +17522,59 @@ def listar_solicitudes():
                     for item in (page_scan_rows or [])
                     if int(getattr(item, "last_actor_user_id", 0) or 0) > 0
                 })
-                username_by_actor = _staff_username_map(page_actor_ids)
+                with _admin_solicitudes_measure_block("staff_user", enabled=measure_enabled):
+                    username_by_actor = _staff_username_map(page_actor_ids)
                 page_ids = [int(getattr(item, "id", 0) or 0) for item in (page_scan_rows or []) if int(getattr(item, "id", 0) or 0) > 0]
                 page_detail_by_id: dict[int, Solicitud] = {}
                 if page_ids:
-                    page_detail_rows = (
-                        Solicitud.query
-                        .options(*triage_detail_options)
-                        .filter(Solicitud.id.in_(page_ids))
-                        .all()
-                    )
+                    with _admin_solicitudes_measure_block("page_query", enabled=measure_enabled):
+                        page_detail_rows = (
+                            Solicitud.query
+                            .options(*triage_detail_options)
+                            .filter(Solicitud.id.in_(page_ids))
+                            .all()
+                        )
                     page_detail_by_id = {
                         int(getattr(row, "id", 0) or 0): row
                         for row in (page_detail_rows or [])
                         if int(getattr(row, "id", 0) or 0) > 0
                     }
                 solicitudes_operativas = []
-                for item in (page_scan_rows or []):
-                    sid = int(getattr(item, "id", 0) or 0)
-                    actor_user_id = getattr(item, "last_actor_user_id", None)
-                    actor_label = "Sin responsable"
-                    if actor_user_id is not None and int(actor_user_id or 0) > 0:
-                        actor_label = username_by_actor.get(int(actor_user_id), f"Staff #{int(actor_user_id)}")
-                    page_solicitud = page_detail_by_id.get(sid) or item._s
-                    repl = getattr(item, "active_reemplazo", None)
-                    if sid in page_detail_by_id:
-                        repl = _active_reemplazo_for_solicitud(page_solicitud) or repl
-                    if repl is not None:
-                        reemplazos_activos[sid] = repl
-                    solicitudes_operativas.append(
-                        _SolicitudOperativaListVM(
-                            page_solicitud,
-                            now_dt=now_utc,
-                            today_rd=today_rd,
-                            last_actor_label=actor_label,
-                            has_active_reemplazo=bool(repl),
+                with _admin_solicitudes_measure_block("vm_rows", enabled=measure_enabled):
+                    for item in (page_scan_rows or []):
+                        sid = int(getattr(item, "id", 0) or 0)
+                        actor_user_id = getattr(item, "last_actor_user_id", None)
+                        actor_label = "Sin responsable"
+                        if actor_user_id is not None and int(actor_user_id or 0) > 0:
+                            actor_label = username_by_actor.get(int(actor_user_id), f"Staff #{int(actor_user_id)}")
+                        page_solicitud = page_detail_by_id.get(sid) or item._s
+                        repl = getattr(item, "active_reemplazo", None)
+                        if sid in page_detail_by_id:
+                            repl = _active_reemplazo_for_solicitud(page_solicitud) or repl
+                        if repl is not None:
+                            reemplazos_activos[sid] = repl
+                        solicitudes_operativas.append(
+                            _SolicitudOperativaListVM(
+                                page_solicitud,
+                                now_dt=now_utc,
+                                today_rd=today_rd,
+                                last_actor_label=actor_label,
+                                has_active_reemplazo=bool(repl),
+                                include_quick_summary=False,
+                            )
                         )
-                    )
-                    setattr(solicitudes_operativas[-1], "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(page_solicitud))
         else:
-            try:
-                total = int(
-                    base_query
-                    .with_entities(func.count(func.distinct(Solicitud.id)))
-                    .scalar()
-                    or 0
-                )
-            except Exception:
-                # Compatibilidad con stubs/unit tests que no implementan with_entities/scalar.
-                total = int(base_query.order_by(None).count() or 0)
+            with _admin_solicitudes_measure_block("count_query", enabled=measure_enabled):
+                try:
+                    total = int(
+                        base_query
+                        .with_entities(func.count(func.distinct(Solicitud.id)))
+                        .scalar()
+                        or 0
+                    )
+                except Exception:
+                    # Compatibilidad con stubs/unit tests que no implementan with_entities/scalar.
+                    total = int(base_query.order_by(None).count() or 0)
             has_more = (start + per_page) < total
             detail_query = base_query
             detail_options = []
@@ -16747,55 +17585,61 @@ def listar_solicitudes():
                 joinedload(Solicitud.candidata),
                 selectinload(Solicitud.reemplazos).load_only(
                     Reemplazo.id,
+                    Reemplazo.fase,
+                    Reemplazo.resultado_final,
                     Reemplazo.fecha_inicio_reemplazo,
                     Reemplazo.fecha_fin_reemplazo,
                     Reemplazo.created_at,
                 ),
             ])
-            detail_query = (
-                detail_query
-                .options(*detail_options)
-                .order_by(*row_order)
-                .offset(start)
-                .limit(per_page)
-            )
-            page_rows = detail_query.all()
+            with _admin_solicitudes_measure_block("page_query", enabled=measure_enabled):
+                detail_query = (
+                    detail_query
+                    .options(*detail_options)
+                    .order_by(*row_order)
+                    .offset(start)
+                    .limit(per_page)
+                )
+                page_rows = detail_query.all()
 
             page_ids = [
                 int(getattr(s, "id", 0) or 0)
                 for s in (page_rows or [])
                 if int(getattr(s, "id", 0) or 0) > 0
             ]
-            last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(page_ids)
+            with _admin_solicitudes_measure_block("staff_audit_log", enabled=measure_enabled):
+                last_actor_by_solicitud = _resolve_solicitud_last_actor_user_ids(page_ids)
             actor_ids = sorted({
                 int(uid) for uid in (last_actor_by_solicitud.values() or [])
                 if uid is not None and int(uid or 0) > 0
             })
-            username_by_actor = _staff_username_map(actor_ids)
-            for s in (page_rows or []):
-                sid = int(getattr(s, "id", 0) or 0)
-                actor_user_id = last_actor_by_solicitud.get(sid)
-                actor_label = "Sin responsable"
-                if actor_user_id is not None:
-                    try:
-                        actor_user_id = int(actor_user_id)
-                    except Exception:
-                        actor_user_id = None
-                if actor_user_id is not None and actor_user_id > 0:
-                    actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
-                repl = _active_reemplazo_for_solicitud(s)
-                if repl:
-                    reemplazos_activos[sid] = repl
-                solicitudes_operativas.append(
-                    _SolicitudOperativaListVM(
-                        s,
-                        now_dt=now_utc,
-                        today_rd=today_rd,
-                        last_actor_label=actor_label,
-                        has_active_reemplazo=bool(repl),
+            with _admin_solicitudes_measure_block("staff_user", enabled=measure_enabled):
+                username_by_actor = _staff_username_map(actor_ids)
+            with _admin_solicitudes_measure_block("vm_rows", enabled=measure_enabled):
+                for s in (page_rows or []):
+                    sid = int(getattr(s, "id", 0) or 0)
+                    actor_user_id = last_actor_by_solicitud.get(sid)
+                    actor_label = "Sin responsable"
+                    if actor_user_id is not None:
+                        try:
+                            actor_user_id = int(actor_user_id)
+                        except Exception:
+                            actor_user_id = None
+                    if actor_user_id is not None and actor_user_id > 0:
+                        actor_label = username_by_actor.get(actor_user_id, f"Staff #{actor_user_id}")
+                    repl = _active_reemplazo_for_solicitud(s)
+                    if repl:
+                        reemplazos_activos[sid] = repl
+                    solicitudes_operativas.append(
+                        _SolicitudOperativaListVM(
+                            s,
+                            now_dt=now_utc,
+                            today_rd=today_rd,
+                            last_actor_label=actor_label,
+                            has_active_reemplazo=bool(repl),
+                            include_quick_summary=False,
+                        )
                     )
-                )
-                setattr(solicitudes_operativas[-1], "reemplazo_cancelado_no_resuelta", _solicitud_reemplazo_cancelado_no_resuelta(s))
 
             solicitudes_operativas.sort(
                 key=lambda item: (
@@ -16804,14 +17648,16 @@ def listar_solicitudes():
                     int(getattr(item, "id", 0) or 0),
                 )
             )
-            triage_options = _solicitudes_triage_options(rows=solicitudes_operativas, selected=triage)
+            with _admin_solicitudes_measure_block("triage_options", enabled=measure_enabled):
+                triage_options = _solicitudes_triage_options(rows=solicitudes_operativas, selected=triage)
             if triage_options:
                 triage_options[0]["count"] = int(total)
 
         proc_count = 0
         copiable_count = 0
         if not is_async:
-            proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
+            with _admin_solicitudes_measure_block("summary_counts", enabled=measure_enabled):
+                proc_count, copiable_count, copiable_warning = _solicitudes_summary_counts()
             if copiable_warning:
                 flash(copiable_warning, "warning")
 
@@ -16838,7 +17684,8 @@ def listar_solicitudes():
         )
 
         if is_async:
-            html = render_template('admin/_solicitudes_list_results.html', **list_ctx)
+            with _admin_solicitudes_measure_block("template_render", enabled=measure_enabled):
+                html = render_template('admin/_solicitudes_list_results.html', **list_ctx)
             payload = _admin_async_payload(
                 success=True,
                 message='Listado actualizado.',
@@ -16858,13 +17705,14 @@ def listar_solicitudes():
             response.status_code = 200
             return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "async_list"})
 
-        html = render_template(
-            'admin/solicitudes_list.html',
-            proc_count=proc_count,
-            copiable_count=copiable_count,
-            allowed_states=allowed_states,
-            **list_ctx,
-        )
+        with _admin_solicitudes_measure_block("template_render", enabled=measure_enabled):
+            html = render_template(
+                'admin/solicitudes_list.html',
+                proc_count=proc_count,
+                copiable_count=copiable_count,
+                allowed_states=allowed_states,
+                **list_ctx,
+            )
         return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
 
 
@@ -16934,6 +17782,7 @@ def solicitud_quick_view_fragment(id: int):
             today_rd=today_rd,
             last_actor_label=actor_label,
             has_active_reemplazo=False,
+            include_quick_summary=True,
         )
         detail_url = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
         cliente_url = url_for('admin.detalle_cliente', cliente_id=s.cliente_id) if s.cliente_id else ''
@@ -16989,7 +17838,7 @@ def _normalize_public_intake_review_status(value: str) -> str:
     return status if status in _PUBLIC_INTAKE_REVIEW_ALLOWED else "nuevo"
 
 
-def _public_intake_badge_count() -> int:
+def _public_intake_badge_count_uncached() -> int:
     if not hasattr(Solicitud, "review_status"):
         return 0
     try:
@@ -17009,7 +17858,16 @@ def _public_intake_badge_count() -> int:
         return 0
 
 
-def _tienda_intereses_badge_count(*, cliente_id: int | None = None) -> int:
+def _public_intake_badge_count() -> int:
+    cached = _request_local_cache_get("public_intake_badge_count")
+    if cached is not _REQUEST_CACHE_MISSING:
+        return max(0, int(cached or 0))
+    value = _public_intake_badge_count_uncached()
+    _request_local_cache_set("public_intake_badge_count", max(0, int(value or 0)))
+    return max(0, int(value or 0))
+
+
+def _tienda_intereses_badge_count_uncached(*, cliente_id: int | None = None) -> int:
     if not hasattr(TiendaInteres, "estado"):
         return 0
     try:
@@ -17025,6 +17883,16 @@ def _tienda_intereses_badge_count(*, cliente_id: int | None = None) -> int:
         return 0
     except Exception:
         return 0
+
+
+def _tienda_intereses_badge_count(*, cliente_id: int | None = None) -> int:
+    cache_key = f"tienda_intereses_badge_count:{int(cliente_id or 0) if cliente_id is not None else 0}"
+    cached = _request_local_cache_get(cache_key)
+    if cached is not _REQUEST_CACHE_MISSING:
+        return max(0, int(cached or 0))
+    value = _tienda_intereses_badge_count_uncached(cliente_id=cliente_id)
+    _request_local_cache_set(cache_key, max(0, int(value or 0)))
+    return max(0, int(value or 0))
 
 
 def _tienda_intereses_counts_by_cliente(cliente_ids: list[int], *, solo_nuevos: bool = False) -> dict[int, int]:
@@ -17050,26 +17918,34 @@ def _tienda_intereses_counts_by_cliente(cliente_ids: list[int], *, solo_nuevos: 
         return {}
 
 
+def _staff_session_role() -> str:
+    role = str(session.get("role", "") or "").strip().lower()
+    if role in {"secretary", "secre", "secretaría"}:
+        return "secretaria"
+    return role
+
+
+def _staff_session_allows(*roles: str) -> bool:
+    if not has_request_context():
+        return False
+    if bool(session.get("is_admin_session")):
+        return _staff_session_role() in {str(role or "").strip().lower() for role in roles}
+    if not bool(getattr(current_user, "is_authenticated", False)):
+        return False
+    role = str(role_for_user(current_user) or "").strip().lower()
+    return role in {str(item or "").strip().lower() for item in roles}
+
+
 @admin_bp.app_template_global("tienda_intereses_badge_count")
 def tienda_intereses_badge_count() -> int:
-    if not has_request_context():
-        return 0
-    if not bool(getattr(current_user, "is_authenticated", False)):
-        return 0
-    role = str(role_for_user(current_user) or "").strip().lower()
-    if role not in {"owner", "admin", "secretaria"}:
+    if not _staff_session_allows("owner", "admin", "secretaria"):
         return 0
     return _tienda_intereses_badge_count()
 
 
 @admin_bp.app_template_global("public_intake_badge_count")
 def public_intake_badge_count() -> int:
-    if not has_request_context():
-        return 0
-    if not bool(getattr(current_user, "is_authenticated", False)):
-        return 0
-    role = str(role_for_user(current_user) or "").strip().lower()
-    if role not in {"owner", "admin"}:
+    if not _staff_session_allows("owner", "admin"):
         return 0
     return _public_intake_badge_count()
 
@@ -20573,9 +21449,14 @@ def _build_candidatas_por_finalizar_rows(q: str = "", *, count_only: bool = Fals
 
 
 def _candidatas_por_finalizar_badge_count() -> int:
+    request_cached = _request_local_cache_get("candidatas_por_finalizar_badge_count")
+    if request_cached is not _REQUEST_CACHE_MISSING:
+        return max(0, int(request_cached or 0))
     cached = _candidatas_finalizar_badge_cache_get()
     if cached is not None:
-        return max(0, int(cached))
+        value = max(0, int(cached))
+        _request_local_cache_set("candidatas_por_finalizar_badge_count", value)
+        return value
     try:
         value = int(_build_candidatas_por_finalizar_rows(q="", count_only=True))
     except SQLAlchemyError:
@@ -20595,20 +21476,14 @@ def _candidatas_por_finalizar_badge_count() -> int:
             pass
         value = 0
     _candidatas_finalizar_badge_cache_set(value)
-    return max(0, int(value))
+    value = max(0, int(value))
+    _request_local_cache_set("candidatas_por_finalizar_badge_count", value)
+    return value
 
 
 @admin_bp.app_template_global("candidatas_por_finalizar_badge_count")
 def candidatas_por_finalizar_badge_count() -> int:
-    if not has_request_context():
-        return 0
-    if not bool(getattr(current_user, "is_authenticated", False)):
-        return 0
-    role = (
-        str(getattr(current_user, "role", "") or "").strip().lower()
-        or str(session.get("role", "") or "").strip().lower()
-    )
-    if role not in {"owner", "admin", "secretaria"}:
+    if not _staff_session_allows("owner", "admin", "secretaria"):
         return 0
     return _candidatas_por_finalizar_badge_count()
 
@@ -26660,9 +27535,10 @@ _SEG_CASO_ESTADOS = {
 _SEG_CASO_PRIORIDADES = {"baja", "normal", "alta", "urgente"}
 _SEG_CASO_CANALES = {"llamada", "whatsapp", "chat", "presencial", "referida", "otro"}
 _SEG_CASO_WAITING_STATES = {"esperando_candidata", "esperando_staff"}
+_SEG_TABLES_READY_PROCESS_CACHE: bool | None = None
 
 
-def _seg_tables_ready() -> bool:
+def _seg_tables_ready_uncached() -> bool:
     names = {
         "seguimiento_candidatas_casos",
         "seguimiento_candidatas_contactos",
@@ -26683,6 +27559,20 @@ def _seg_tables_ready() -> bool:
         return False
     except Exception:
         return False
+
+
+def _seg_tables_ready() -> bool:
+    global _SEG_TABLES_READY_PROCESS_CACHE
+    if _SEG_TABLES_READY_PROCESS_CACHE is True:
+        return True
+    cached = _request_local_cache_get("seg_tables_ready")
+    if cached is not _REQUEST_CACHE_MISSING:
+        return bool(cached)
+    value = bool(_seg_tables_ready_uncached())
+    if value and not bool(current_app.config.get("TESTING")):
+        _SEG_TABLES_READY_PROCESS_CACHE = True
+    _request_local_cache_set("seg_tables_ready", value)
+    return value
 
 
 def _seg_staff_user_id() -> int:
@@ -26763,35 +27653,40 @@ def _seg_serialize_case(caso: SeguimientoCandidataCaso) -> dict:
     }
 
 
+def _seguimiento_candidatas_badge_count_uncached() -> int:
+    now = _seg_now()
+    # Limpia transacción fallida previa del mismo request para evitar cascadas en /home.
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
+    return int(
+        db.session.query(func.count(SeguimientoCandidataCaso.id))
+        .filter(
+            SeguimientoCandidataCaso.closed_at.is_(None),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+            SeguimientoCandidataCaso.due_at.isnot(None),
+            SeguimientoCandidataCaso.due_at < now,
+        )
+        .scalar()
+        or 0
+    )
+
+
 @admin_bp.app_template_global("seguimiento_candidatas_badge_count")
 def seguimiento_candidatas_badge_count() -> int:
     try:
+        if not _staff_session_allows("owner", "admin", "secretaria"):
+            return 0
+        cached = _request_local_cache_get("seguimiento_candidatas_badge_count")
+        if cached is not _REQUEST_CACHE_MISSING:
+            return max(0, int(cached or 0))
         if not _seg_tables_ready():
+            _request_local_cache_set("seguimiento_candidatas_badge_count", 0)
             return 0
-        if not has_request_context():
-            return 0
-        if not bool(getattr(current_user, "is_authenticated", False)):
-            return 0
-        role = str(role_for_user(current_user) or "").strip().lower()
-        if role not in {"owner", "admin", "secretaria"}:
-            return 0
-        now = _seg_now()
-        # Limpia transacción fallida previa del mismo request para evitar cascadas en /home.
-        try:
-            db.session.rollback()
-        except Exception:
-            pass
-        return int(
-            db.session.query(func.count(SeguimientoCandidataCaso.id))
-            .filter(
-                SeguimientoCandidataCaso.closed_at.is_(None),
-                SeguimientoCandidataCaso.is_merged.is_(False),
-                SeguimientoCandidataCaso.due_at.isnot(None),
-                SeguimientoCandidataCaso.due_at < now,
-            )
-            .scalar()
-            or 0
-        )
+        value = int(_seguimiento_candidatas_badge_count_uncached() or 0)
+        _request_local_cache_set("seguimiento_candidatas_badge_count", max(0, int(value)))
+        return max(0, int(value))
     except SQLAlchemyError:
         try:
             db.session.rollback()

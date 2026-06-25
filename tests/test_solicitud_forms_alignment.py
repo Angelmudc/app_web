@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+from admin.forms import AdminSolicitudForm
+from clientes.forms import SolicitudForm
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -84,6 +87,40 @@ def test_shared_partial_renders_pasaje_three_options_and_otro_field():
     assert "name=\"pasaje_mode\" value=\"aparte\"" in partial
     assert "name=\"pasaje_mode\" value=\"otro\"" in partial
     assert "name=\"pasaje_otro_text\"" in partial
+
+
+def test_plan_selection_flow_keeps_form_partial_and_plan_screen_separate():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    plan_selection = _read("templates/clientes/_solicitud_plan_selection_content.html")
+    plan_screen = _read("templates/clientes/solicitud_plan_select.html")
+    public_plan_screen = _read("templates/clientes/solicitud_plan_select_public.html")
+
+    assert "id=\"wrap_tipo_plan\"" not in partial
+    assert "name=\"tipo_plan\"" not in partial
+    assert "type=\"radio\" name=\"tipo_plan\"" not in partial
+    assert "{{ plan.label }}" not in partial
+    assert "Total: {{ plan.price_display }}" not in partial
+    assert "50% requerido: {{ plan.deposit_display }}" not in partial
+
+    assert "{% for plan in plan_catalog %}" in plan_selection
+    assert "name=\"tipo_plan\"" in plan_selection
+    assert "{{ plan.label }}" in plan_selection
+    assert "{{ plan.price_display }}" in plan_selection
+    assert "{{ plan.deposit_display }}" in plan_selection
+    assert "{% for feature in plan.features %}" in plan_selection
+    assert "{% for feature in plan.shared_features %}" in plan_selection
+    assert "Total: <strong>{{ plan.price_display }}</strong>" in plan_selection
+    assert "50% requerido: <strong>{{ plan.deposit_display }}</strong>" in plan_selection
+    assert "Saldo restante: <strong>{{ plan.balance_display }}</strong>" in plan_selection
+    assert "{% include 'clientes/_solicitud_plan_selection_content.html' %}" in plan_screen
+    assert "{% include 'clientes/_solicitud_plan_selection_content.html' %}" in public_plan_screen
+    assert SolicitudForm.PLAN_CHOICES == [("basico", "Básico"), ("premium", "Premium"), ("vip", "VIP")]
+
+
+def test_cliente_y_admin_forms_share_canonical_plan_choices():
+    expected = [("basico", "Básico"), ("premium", "Premium"), ("vip", "VIP")]
+    assert SolicitudForm.PLAN_CHOICES == expected
+    assert AdminSolicitudForm.PLAN_CHOICES == expected
 
 
 def test_shared_partial_renders_guided_modalidad_groups_and_dynamic_hooks():

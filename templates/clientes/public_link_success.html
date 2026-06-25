@@ -135,6 +135,13 @@
           </div>
         </div>
 
+        {% if tipo_plan %}
+        <div class="public-success-block">
+          <div class="public-success-label">Plan elegido</div>
+          <div class="public-success-value">{{ 'VIP' if tipo_plan == 'vip' else tipo_plan|capitalize }}</div>
+        </div>
+        {% endif %}
+
         <p class="public-success-muted"><strong>Confirmación:</strong> Tu nueva solicitud fue registrada correctamente con el código mostrado arriba.</p>
         <p class="public-success-muted">Nuestro equipo revisará la información y te contactará por WhatsApp para continuar con el proceso.</p>
 

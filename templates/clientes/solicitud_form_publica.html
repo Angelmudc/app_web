@@ -300,8 +300,19 @@
           </div>
 
           {% if form.errors %}
-            <div class="public-validation-banner" role="alert">
-              Revisa los campos marcados para continuar con el envío.
+            {% set error_summary = namespace(items=[]) %}
+            {% for field_name, errors in form.errors.items() %}
+              {% if errors and field_name != 'csrf_token' %}
+                {% set field = form[field_name] if form[field_name] is defined else none %}
+                {% set field_label = (field.label.text if field and field.label is defined and field.label.text else field_name|replace('_', ' ')|title) %}
+                {% set error_summary.items = error_summary.items + [field_label ~ ': ' ~ errors[0]] %}
+              {% endif %}
+            {% endfor %}
+            <div class="public-validation-banner" role="alert" aria-live="assertive">
+              <strong>Revisa los campos marcados para continuar con el envío.</strong>
+              {% if error_summary.items %}
+                <div class="mt-1">Primer error: {{ error_summary.items[0] }}</div>
+              {% endif %}
             </div>
           {% endif %}
 
