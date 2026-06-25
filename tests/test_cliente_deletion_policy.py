@@ -5,8 +5,21 @@ from unittest.mock import MagicMock, patch
 
 from app import app as flask_app
 from config_app import db
-from models import Cliente, StaffUser
+from models import (
+    BotContactIdentity,
+    CatalogoPrivado,
+    CatalogoPrivadoItem,
+    Cliente,
+    ContratoDigital,
+    PagoSolicitud,
+    Solicitud,
+    SolicitudCandidata,
+    StaffUser,
+    TiendaInteres,
+    TiendaInteresItem,
+)
 from sqlalchemy.exc import SQLAlchemyError
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def _login(client, usuario: str, clave: str):
@@ -50,6 +63,13 @@ def _login_secretaria(client):
 
 def _ensure_cliente_table():
     Cliente.__table__.create(bind=db.engine, checkfirst=True)
+
+
+def _reset_sqlite_models(*models):
+    ensure_sqlite_compat_tables(list(models), reset=True)
+    from admin import routes as admin_routes
+
+    admin_routes._TABLE_EXISTS_CACHE.clear()
 
 
 def _new_cliente(*, prefix: str = "cli_del") -> Cliente:
@@ -189,11 +209,13 @@ def test_owner_delete_is_blocked_when_critical_dependencies_exist():
         resp = client.post(
             f"/admin/clientes/{target_id}/eliminar",
             data={"confirm_delete": "ELIMINAR"},
-            follow_redirects=True,
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            follow_redirects=False,
         )
 
-    assert resp.status_code == 200
-    assert "no puede eliminarse".encode("utf-8") in resp.data
+    assert resp.status_code == 409
+    payload = resp.get_json() or {}
+    assert "limpieza completa" in str(payload.get("message") or "").lower()
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is not None
@@ -313,11 +335,13 @@ def test_owner_delete_cliente_blocked_when_has_critical_solicitudes():
         resp = client.post(
             f"/admin/clientes/{target_id}/eliminar",
             data={"confirm_delete": "ELIMINAR"},
-            follow_redirects=True,
+            headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+            follow_redirects=False,
         )
 
-    assert resp.status_code == 200
-    assert "no puede eliminarse".encode("utf-8") in resp.data
+    assert resp.status_code == 409
+    payload = resp.get_json() or {}
+    assert "limpieza completa" in str(payload.get("message") or "").lower()
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is not None
@@ -430,6 +454,266 @@ def test_owner_delete_accepts_cliente_code_as_confirmation():
 
     with flask_app.app_context():
         assert Cliente.query.get(target_id) is None
+
+
+def test_owner_delete_real_cliente_with_pago_requires_full_cleanup_confirmation():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _reset_sqlite_models(Cliente, Solicitud, PagoSolicitud)
+        target = Cliente(
+            codigo="CL-REAL-PAGO-1",
+            nombre_completo="Cliente Real Pago",
+            email="real_pago@gmail.com",
+            telefono="8095550001",
+        )
+        db.session.add(target)
+        db.session.flush()
+
+        solicitud = Solicitud(cliente_id=int(target.id), codigo_solicitud="SOL-REAL-PAGO-1", estado="pagada")
+        db.session.add(solicitud)
+        db.session.flush()
+
+        pago = PagoSolicitud(
+            solicitud_id=int(solicitud.id),
+            cliente_id=int(target.id),
+            monto=1500,
+            tipo_pago="deposito",
+            metodo_pago="transferencia",
+        )
+        db.session.add(pago)
+        db.session.commit()
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "ELIMINAR"},
+        headers={"Accept": "application/json", "X-Requested-With": "XMLHttpRequest"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 409
+    payload = resp.get_json() or {}
+    assert "pagos_solicitud" not in str(payload)
+    assert "limpieza completa" in str(payload.get("message") or "").lower()
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is not None
+        assert Solicitud.query.filter_by(cliente_id=target_id).count() == 1
+        assert PagoSolicitud.query.filter_by(cliente_id=target_id).count() == 1
+
+
+def test_owner_full_cleanup_deletes_test_cliente_with_pago_and_related_records():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _reset_sqlite_models(
+            Cliente,
+            Solicitud,
+            PagoSolicitud,
+            ContratoDigital,
+            CatalogoPrivado,
+            CatalogoPrivadoItem,
+            TiendaInteres,
+            TiendaInteresItem,
+            BotContactIdentity,
+        )
+        target = Cliente(
+            codigo="CL-E2E-CLEAN-1",
+            nombre_completo="Cliente Test Cleanup",
+            email="cleanup@example.com",
+            telefono="8095550002",
+        )
+        db.session.add(target)
+        db.session.flush()
+
+        solicitud = Solicitud(cliente_id=int(target.id), codigo_solicitud="SOL-E2E-CLEAN-1", estado="pagada")
+        db.session.add(solicitud)
+        db.session.flush()
+
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=int(solicitud.id),
+                cliente_id=int(target.id),
+                monto=2500,
+                tipo_pago="pago",
+                metodo_pago="efectivo",
+            )
+        )
+        db.session.add(
+            ContratoDigital(
+                id=1,
+                solicitud_id=int(solicitud.id),
+                cliente_id=int(target.id),
+                contenido_snapshot_json={"ok": True},
+            )
+        )
+        catalogo = CatalogoPrivado(
+            nombre="Catalogo Cleanup",
+            cliente_id=int(target.id),
+            solicitud_id=int(solicitud.id),
+            token_hash="a" * 64,
+        )
+        db.session.add(catalogo)
+        db.session.flush()
+        db.session.add(CatalogoPrivadoItem(catalogo_id=int(catalogo.id), candidata_id=1))
+
+        interes = TiendaInteres(
+            catalogo_id=int(catalogo.id),
+            cliente_id=int(target.id),
+            solicitud_id=int(solicitud.id),
+            nombre_contacto="Cliente Test Cleanup",
+            telefono_contacto="8095550002",
+        )
+        db.session.add(interes)
+        db.session.flush()
+        db.session.add(TiendaInteresItem(interes_id=int(interes.id), candidata_id=1))
+        db.session.add(BotContactIdentity(phone_e164="+18095550002", is_client=True, client_id=int(target.id)))
+        db.session.commit()
+        target_id = int(target.id)
+        target_code = str(target.codigo)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": target_code, "full_cleanup": "1"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is None
+        assert Solicitud.query.filter_by(cliente_id=target_id).count() == 0
+        assert PagoSolicitud.query.filter_by(cliente_id=target_id).count() == 0
+        assert ContratoDigital.query.filter_by(cliente_id=target_id).count() == 0
+        assert CatalogoPrivado.query.filter_by(cliente_id=target_id).count() == 0
+        assert TiendaInteres.query.filter_by(cliente_id=target_id).count() == 0
+        assert BotContactIdentity.query.filter_by(client_id=target_id).count() == 0
+
+
+def test_owner_full_cleanup_allows_strong_owner_override_for_realish_cliente():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _reset_sqlite_models(Cliente, Solicitud, PagoSolicitud)
+        target = Cliente(
+            codigo="2276",
+            nombre_completo="Juan Perez",
+            email="anfek@gmail.com",
+            telefono="8296719912",
+        )
+        db.session.add(target)
+        db.session.flush()
+        solicitud = Solicitud(cliente_id=int(target.id), codigo_solicitud="SOL-OWNER-OVERRIDE-1", estado="pagada")
+        db.session.add(solicitud)
+        db.session.flush()
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=int(solicitud.id),
+                cliente_id=int(target.id),
+                monto=999,
+                tipo_pago="pago",
+                metodo_pago="transferencia",
+            )
+        )
+        db.session.commit()
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": "2276", "full_cleanup": "1"},
+        follow_redirects=False,
+    )
+
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is None
+        assert Solicitud.query.filter_by(cliente_id=target_id).count() == 0
+        assert PagoSolicitud.query.filter_by(cliente_id=target_id).count() == 0
+
+
+def test_admin_cannot_use_full_cleanup_even_with_direct_request():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _reset_sqlite_models(Cliente, Solicitud, PagoSolicitud)
+        target = Cliente(
+            codigo="CL-ADM-CLEANUP-1",
+            nombre_completo="Cliente Admin Cleanup",
+            email="cleanup_admin@example.com",
+            telefono="8095550003",
+        )
+        db.session.add(target)
+        db.session.flush()
+        solicitud = Solicitud(cliente_id=int(target.id), codigo_solicitud="SOL-ADM-CLEANUP-1", estado="pagada")
+        db.session.add(solicitud)
+        db.session.flush()
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=int(solicitud.id),
+                cliente_id=int(target.id),
+                monto=1200,
+                tipo_pago="pago",
+                metodo_pago="efectivo",
+            )
+        )
+        db.session.commit()
+        target_id = int(target.id)
+        target_code = str(target.codigo)
+
+    client = flask_app.test_client()
+    assert _login_admin(client).status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={"confirm_delete": target_code, "full_cleanup": "1"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 403
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is not None
+
+
+def test_user_message_hides_technical_dependency_name():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_cliente_table()
+        target = _new_cliente(prefix="owner_hidden_msg")
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+    with patch(
+        "admin.routes._collect_cliente_delete_plan",
+        return_value={
+            "solicitud_ids": [1],
+            "summary": {"solicitudes": 1, "pagos": 1},
+            "warnings": [],
+            "blocked_issues": ["Dependencia no gestionada detectada en tabla 'pagos_solicitud'."],
+        },
+    ):
+        resp = client.post(
+            f"/admin/clientes/{target_id}/eliminar",
+            data={"confirm_delete": "ELIMINAR"},
+            follow_redirects=True,
+        )
+
+    assert resp.status_code == 200
+    assert b"pagos_solicitud" not in resp.data
+    assert "usa la opción de limpieza completa para datos de prueba".encode("utf-8") in resp.data
 
 
 def test_cliente_detail_template_places_delete_in_owner_only_danger_zone():

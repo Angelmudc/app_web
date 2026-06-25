@@ -432,7 +432,7 @@
       <div>
         <h2 class="h6 mb-1">Zona de peligro</h2>
         <p class="mb-0">
-          Acción irreversible para clientes de prueba. Verifica que el cliente no tenga información asociada.
+          Acción irreversible. La limpieza completa solo debe usarse para clientes de prueba y requiere confirmación fuerte.
         </p>
       </div>
       <button
@@ -460,7 +460,8 @@
             </p>
             <p class="small text-muted mb-3">
               Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente:
-              <strong>{{ cliente.codigo or cliente.id }}</strong>
+              <strong>{{ cliente.codigo or cliente.id }}</strong><br>
+              Si el cliente tiene información asociada y es un cliente de prueba, marca la limpieza completa y escribe el código exacto.
             </p>
             {% if csrf_token %}
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -475,6 +476,12 @@
               autocomplete="off"
               required
             >
+            <div class="form-check mt-3">
+              <input class="form-check-input" type="checkbox" value="1" id="delete_cliente_full_cleanup_input" name="full_cleanup">
+              <label class="form-check-label small" for="delete_cliente_full_cleanup_input">
+                Confirmo que es un cliente de prueba y autorizo la limpieza completa de datos asociados.
+              </label>
+            </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -496,12 +503,14 @@
       }
 
       var input = document.getElementById("delete_cliente_confirm_input");
+      var cleanupInput = document.getElementById("delete_cliente_full_cleanup_input");
       var segBackdrop = document.getElementById("segCandidatasBackdrop");
       var segDrawer = document.getElementById("segCandidatasDrawer");
       var segBodyOpenClass = "seg-drawer-open";
 
       modal.addEventListener("show.bs.modal", function () {
         if (input) input.value = "";
+        if (cleanupInput) cleanupInput.checked = false;
 
         if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;
         if (segDrawer && segDrawer.hidden === false) segDrawer.hidden = true;

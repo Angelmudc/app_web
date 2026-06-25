@@ -194,7 +194,8 @@
           <p class="small text-muted mb-3">
             Cliente: <strong id="deleteClienteFromListSharedNombre">—</strong><br>
             Código: <strong id="deleteClienteFromListSharedCodigo">—</strong><br>
-            Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente.
+            Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente.<br>
+            Si el cliente tiene información asociada y es un cliente de prueba, marca la limpieza completa y escribe el código exacto.
           </p>
           {% if csrf_token %}
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -209,6 +210,12 @@
             autocomplete="off"
             required
           >
+          <div class="form-check mt-3">
+            <input class="form-check-input" type="checkbox" value="1" id="delete_cliente_list_full_cleanup_shared" name="full_cleanup">
+            <label class="form-check-label small" for="delete_cliente_list_full_cleanup_shared">
+              Confirmo que es un cliente de prueba y autorizo la limpieza completa de datos asociados.
+            </label>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -230,6 +237,7 @@
     }
     var form = document.getElementById("deleteClienteFromListSharedForm");
     var input = document.getElementById("delete_cliente_list_confirm_input_shared");
+    var cleanupInput = document.getElementById("delete_cliente_list_full_cleanup_shared");
     var nextInput = document.getElementById("deleteClienteFromListSharedNext");
     var nameNode = document.getElementById("deleteClienteFromListSharedNombre");
     var codeNode = document.getElementById("deleteClienteFromListSharedCodigo");
@@ -251,6 +259,7 @@
       if (nameNode) nameNode.textContent = clienteNombre;
       if (codeNode) codeNode.textContent = clienteCodigo;
       if (input) input.value = "";
+      if (cleanupInput) cleanupInput.checked = false;
 
       // Evita que overlays flotantes de seguimiento queden capturando clics sobre el modal.
       if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;

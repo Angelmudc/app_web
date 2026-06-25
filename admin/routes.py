@@ -68,6 +68,30 @@ except Exception:
     # Mantiene el arranque aunque el modelo de chat no esté disponible en el build actual.
     ChatConversation = None
     ChatMessage = None
+try:
+    from models import (
+        BotContactIdentity,
+        BotConversation,
+        BotMessage,
+        BotDecisionLog,
+        BotEscalation,
+        BotSandboxOutbound,
+        BotSandboxReviewQueue,
+        BotCandidateDraft,
+        BotCandidateIntake,
+        ContratoEvento,
+    )
+except Exception:
+    BotContactIdentity = None
+    BotConversation = None
+    BotMessage = None
+    BotDecisionLog = None
+    BotEscalation = None
+    BotSandboxOutbound = None
+    BotSandboxReviewQueue = None
+    BotCandidateDraft = None
+    BotCandidateIntake = None
+    ContratoEvento = None
 from admin.forms import (
     StaffUserCreateForm,
     StaffUserEditForm,
@@ -9294,26 +9318,134 @@ def _safe_count(query) -> int:
         return -1
 
 
+_CLIENTE_DELETE_TEST_DOMAIN_MARKERS = (
+    "local.test",
+    "example.com",
+)
+_CLIENTE_DELETE_TEST_TEXT_MARKERS = (
+    "test",
+    "qa",
+    "e2e",
+    "demo",
+    "seed",
+    "runner",
+    "fake",
+    "pytest",
+)
+_CLIENTE_DELETE_LOCAL_ENVS = {"local", "development", "test", "testing"}
+
+
+def _cliente_delete_runtime_env() -> str:
+    return str(os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")) or "").strip().lower()
+
+
+def _cliente_delete_is_truthy(raw: object) -> bool:
+    return str(raw or "").strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
+
+
+def _cliente_delete_test_signals(cliente: Cliente | None) -> list[str]:
+    if cliente is None:
+        return []
+
+    signals: list[str] = []
+    email = str(getattr(cliente, "email", "") or "").strip().lower()
+    nombre = str(getattr(cliente, "nombre_completo", "") or "").strip().lower()
+    codigo = str(getattr(cliente, "codigo", "") or "").strip().lower()
+    notas = str(getattr(cliente, "notas_admin", "") or "").strip().lower()
+
+    if email:
+        for marker in _CLIENTE_DELETE_TEST_DOMAIN_MARKERS:
+            if marker in email:
+                signals.append(f"email:{marker}")
+        if "@test" in email or ".test" in email or email.endswith("test"):
+            signals.append("email:test-pattern")
+
+    text_blob = " ".join(part for part in (nombre, codigo, notas) if part)
+    for marker in _CLIENTE_DELETE_TEST_TEXT_MARKERS:
+        if marker and marker in text_blob:
+            signals.append(f"marker:{marker}")
+
+    if hasattr(cliente, "is_active") and getattr(cliente, "is_active", None) is False:
+        if "marker:demo" in signals or "marker:test" in signals:
+            signals.append("inactive-testish")
+
+    deduped: list[str] = []
+    for item in signals:
+        if item not in deduped:
+            deduped.append(item)
+    return deduped
+
+
+def _cliente_delete_can_use_full_cleanup(cliente: Cliente | None) -> tuple[bool, list[str]]:
+    signals = _cliente_delete_test_signals(cliente)
+    if signals:
+        return True, signals
+    if (getattr(current_user, "role", "") or "").strip().lower() == "owner":
+        run_env = _cliente_delete_runtime_env()
+        if run_env in _CLIENTE_DELETE_LOCAL_ENVS:
+            return True, [f"owner-env:{run_env}"]
+        return True, ["owner-override"]
+    return False, []
+
+
+def _cliente_delete_cleanup_blocked_issues(blocked_issues: list[str]) -> list[str]:
+    ignored_prefixes = (
+        "El cliente tiene solicitudes activas/pagadas/reemplazo/espera de pago/servicio pendiente",
+    )
+    remaining: list[str] = []
+    for issue in blocked_issues or []:
+        text = str(issue or "").strip()
+        if not text:
+            continue
+        if any(text.startswith(prefix) for prefix in ignored_prefixes):
+            continue
+        remaining.append(text)
+    return remaining
+
+
 def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
     cid = int(cliente_id or 0)
     solicitud_ids: list[int] = []
     chat_conv_ids: list[int] = []
+    contrato_ids: list[int] = []
+    catalogo_ids: list[int] = []
+    tienda_interes_ids: list[int] = []
+    bot_identity_ids: list[int] = []
+    bot_conversation_ids: list[int] = []
+    bot_message_ids: list[int] = []
+    bot_draft_ids: list[int] = []
     summary: dict[str, int] = {
         "solicitudes": 0,
         "solicitudes_criticas": 0,
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
+        "pagos": 0,
+        "contratos": 0,
+        "contrato_eventos": 0,
         "notificaciones_cliente": 0,
         "notificaciones_solicitud": 0,
         "tokens_publicos_cliente": 0,
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_cliente": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "catalogos_privados": 0,
+        "catalogos_privados_items": 0,
+        "tienda_intereses": 0,
+        "tienda_intereses_items": 0,
         "recommendation_runs": 0,
         "recommendation_items": 0,
         "recommendation_selections": 0,
         "chat_conversations": 0,
         "chat_messages": 0,
+        "bot_contact_identities": 0,
+        "bot_conversations": 0,
+        "bot_messages": 0,
+        "bot_decision_logs": 0,
+        "bot_escalations": 0,
+        "bot_sandbox_outbox": 0,
+        "bot_sandbox_review_queue": 0,
+        "bot_candidate_drafts": 0,
+        "bot_candidate_intakes": 0,
         "tareas": 0,
     }
     warnings: list[str] = []
@@ -9352,6 +9484,37 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
             .filter(Reemplazo.solicitud_id.in_(solicitud_ids))
         )
 
+    if _table_exists("pagos_solicitud"):
+        pago_filters = [PagoSolicitud.cliente_id == cid]
+        if solicitud_ids:
+            pago_filters.append(PagoSolicitud.solicitud_id.in_(solicitud_ids))
+        summary["pagos"] = _safe_count(
+            db.session.query(func.count(PagoSolicitud.id))
+            .filter(or_(*pago_filters))
+        )
+
+    if _table_exists("contratos_digitales"):
+        contrato_filters = [ContratoDigital.cliente_id == cid]
+        if solicitud_ids:
+            contrato_filters.append(ContratoDigital.solicitud_id.in_(solicitud_ids))
+        summary["contratos"] = _safe_count(
+            db.session.query(func.count(ContratoDigital.id))
+            .filter(or_(*contrato_filters))
+        )
+        if summary["contratos"] >= 0:
+            contrato_rows = (
+                db.session.query(ContratoDigital.id)
+                .filter(or_(*contrato_filters))
+                .all()
+            )
+            contrato_ids = [int(r[0]) for r in (contrato_rows or []) if int(r[0] or 0) > 0]
+
+    if ContratoEvento is not None and _table_exists("contratos_eventos") and contrato_ids:
+        summary["contrato_eventos"] = _safe_count(
+            db.session.query(func.count(ContratoEvento.id))
+            .filter(ContratoEvento.contrato_id.in_(contrato_ids))
+        )
+
     if _table_exists("clientes_notificaciones"):
         summary["notificaciones_cliente"] = _safe_count(
             db.session.query(func.count(ClienteNotificacion.id))
@@ -9384,6 +9547,50 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
                 db.session.query(func.count(PublicSolicitudClienteNuevoTokenUso.id))
                 .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id.in_(solicitud_ids))
             )
+
+    if _table_exists("catalogos_privados"):
+        catalogo_filters = [CatalogoPrivado.cliente_id == cid]
+        if solicitud_ids:
+            catalogo_filters.append(CatalogoPrivado.solicitud_id.in_(solicitud_ids))
+        summary["catalogos_privados"] = _safe_count(
+            db.session.query(func.count(CatalogoPrivado.id))
+            .filter(or_(*catalogo_filters))
+        )
+        if summary["catalogos_privados"] >= 0:
+            catalogo_rows = (
+                db.session.query(CatalogoPrivado.id)
+                .filter(or_(*catalogo_filters))
+                .all()
+            )
+            catalogo_ids = [int(r[0]) for r in (catalogo_rows or []) if int(r[0] or 0) > 0]
+
+    if _table_exists("catalogos_privados_items") and catalogo_ids:
+        summary["catalogos_privados_items"] = _safe_count(
+            db.session.query(func.count(CatalogoPrivadoItem.id))
+            .filter(CatalogoPrivadoItem.catalogo_id.in_(catalogo_ids))
+        )
+
+    if _table_exists("tienda_intereses"):
+        tienda_filters = [TiendaInteres.cliente_id == cid]
+        if solicitud_ids:
+            tienda_filters.append(TiendaInteres.solicitud_id.in_(solicitud_ids))
+        summary["tienda_intereses"] = _safe_count(
+            db.session.query(func.count(TiendaInteres.id))
+            .filter(or_(*tienda_filters))
+        )
+        if summary["tienda_intereses"] >= 0:
+            tienda_rows = (
+                db.session.query(TiendaInteres.id)
+                .filter(or_(*tienda_filters))
+                .all()
+            )
+            tienda_interes_ids = [int(r[0]) for r in (tienda_rows or []) if int(r[0] or 0) > 0]
+
+    if _table_exists("tienda_intereses_items") and tienda_interes_ids:
+        summary["tienda_intereses_items"] = _safe_count(
+            db.session.query(func.count(TiendaInteresItem.id))
+            .filter(TiendaInteresItem.interes_id.in_(tienda_interes_ids))
+        )
 
     if _table_exists("tareas_clientes"):
         summary["tareas"] = _safe_count(
@@ -9429,6 +9636,91 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         summary["chat_messages"] = _safe_count(
             db.session.query(func.count(ChatMessage.id))
             .filter(or_(*msg_filters))
+        )
+
+    if BotContactIdentity is not None and _table_exists("bot_contact_identities"):
+        summary["bot_contact_identities"] = _safe_count(
+            db.session.query(func.count(BotContactIdentity.id))
+            .filter(BotContactIdentity.client_id == cid)
+        )
+        if summary["bot_contact_identities"] >= 0:
+            bot_identity_rows = (
+                db.session.query(BotContactIdentity.id)
+                .filter(BotContactIdentity.client_id == cid)
+                .all()
+            )
+            bot_identity_ids = [int(r[0]) for r in (bot_identity_rows or []) if int(r[0] or 0) > 0]
+
+    if BotConversation is not None and _table_exists("bot_conversations") and bot_identity_ids:
+        summary["bot_conversations"] = _safe_count(
+            db.session.query(func.count(BotConversation.id))
+            .filter(BotConversation.identity_id.in_(bot_identity_ids))
+        )
+        if summary["bot_conversations"] >= 0:
+            bot_conv_rows = (
+                db.session.query(BotConversation.id)
+                .filter(BotConversation.identity_id.in_(bot_identity_ids))
+                .all()
+            )
+            bot_conversation_ids = [int(r[0]) for r in (bot_conv_rows or []) if int(r[0] or 0) > 0]
+
+    if BotMessage is not None and _table_exists("bot_messages") and bot_conversation_ids:
+        summary["bot_messages"] = _safe_count(
+            db.session.query(func.count(BotMessage.id))
+            .filter(BotMessage.conversation_id.in_(bot_conversation_ids))
+        )
+        if summary["bot_messages"] >= 0:
+            bot_message_rows = (
+                db.session.query(BotMessage.id)
+                .filter(BotMessage.conversation_id.in_(bot_conversation_ids))
+                .all()
+            )
+            bot_message_ids = [int(r[0]) for r in (bot_message_rows or []) if int(r[0] or 0) > 0]
+
+    if BotDecisionLog is not None and _table_exists("bot_decision_logs") and bot_conversation_ids:
+        summary["bot_decision_logs"] = _safe_count(
+            db.session.query(func.count(BotDecisionLog.id))
+            .filter(BotDecisionLog.conversation_id.in_(bot_conversation_ids))
+        )
+
+    if BotEscalation is not None and _table_exists("bot_escalations") and bot_conversation_ids:
+        summary["bot_escalations"] = _safe_count(
+            db.session.query(func.count(BotEscalation.id))
+            .filter(BotEscalation.conversation_id.in_(bot_conversation_ids))
+        )
+
+    if BotSandboxOutbound is not None and _table_exists("bot_sandbox_outbox") and bot_conversation_ids:
+        summary["bot_sandbox_outbox"] = _safe_count(
+            db.session.query(func.count(BotSandboxOutbound.id))
+            .filter(BotSandboxOutbound.conversation_id.in_(bot_conversation_ids))
+        )
+
+    if BotSandboxReviewQueue is not None and _table_exists("bot_sandbox_review_queue") and bot_conversation_ids:
+        summary["bot_sandbox_review_queue"] = _safe_count(
+            db.session.query(func.count(BotSandboxReviewQueue.id))
+            .filter(BotSandboxReviewQueue.conversation_id.in_(bot_conversation_ids))
+        )
+
+    if BotCandidateDraft is not None and _table_exists("bot_candidate_drafts") and bot_conversation_ids:
+        summary["bot_candidate_drafts"] = _safe_count(
+            db.session.query(func.count(BotCandidateDraft.id))
+            .filter(BotCandidateDraft.conversation_id.in_(bot_conversation_ids))
+        )
+        if summary["bot_candidate_drafts"] >= 0:
+            bot_draft_rows = (
+                db.session.query(BotCandidateDraft.id)
+                .filter(BotCandidateDraft.conversation_id.in_(bot_conversation_ids))
+                .all()
+            )
+            bot_draft_ids = [int(r[0]) for r in (bot_draft_rows or []) if int(r[0] or 0) > 0]
+
+    if BotCandidateIntake is not None and _table_exists("bot_candidate_intakes") and bot_conversation_ids:
+        intake_filters = [BotCandidateIntake.conversation_id.in_(bot_conversation_ids)]
+        if bot_draft_ids:
+            intake_filters.append(BotCandidateIntake.draft_id.in_(bot_draft_ids))
+        summary["bot_candidate_intakes"] = _safe_count(
+            db.session.query(func.count(BotCandidateIntake.id))
+            .filter(or_(*intake_filters))
         )
 
     blocked_issues: list[str] = []
@@ -9483,14 +9775,29 @@ def _collect_cliente_delete_plan(cliente_id: int) -> dict[str, object]:
         "solicitudes",
         "solicitudes_candidatas",
         "reemplazos",
+        "pagos_solicitud",
+        "contratos_digitales",
+        "contratos_eventos",
         "clientes_notificaciones",
         "public_solicitud_tokens_usados",
         "public_solicitud_cliente_nuevo_tokens_usados",
+        "catalogos_privados",
+        "catalogos_privados_items",
+        "tienda_intereses",
+        "tienda_intereses_items",
         "solicitud_recommendation_runs",
         "solicitud_recommendation_items",
         "solicitud_recommendation_selections",
         "chat_conversations",
         "chat_messages",
+        "bot_contact_identities",
+        "bot_conversations",
+        "bot_messages",
+        "bot_decision_logs",
+        "bot_escalations",
+        "bot_sandbox_outbox",
+        "bot_sandbox_review_queue",
+        "bot_candidate_intakes",
         "tareas_clientes",
     }
     try:
@@ -9580,15 +9887,47 @@ def _plan_has_critical_cliente_data(summary: dict[str, object]) -> bool:
         return True
     if _summary_positive(summary, "solicitudes_criticas") > 0:
         return True
+    if _summary_positive(summary, "pagos") > 0:
+        return True
+    if _summary_positive(summary, "contratos") > 0:
+        return True
+    if _summary_positive(summary, "contrato_eventos") > 0:
+        return True
     if _summary_positive(summary, "notificaciones_cliente") > 0:
         return True
     if _summary_positive(summary, "notificaciones_solicitud") > 0:
+        return True
+    if _summary_positive(summary, "catalogos_privados") > 0:
+        return True
+    if _summary_positive(summary, "catalogos_privados_items") > 0:
+        return True
+    if _summary_positive(summary, "tienda_intereses") > 0:
+        return True
+    if _summary_positive(summary, "tienda_intereses_items") > 0:
         return True
     if _summary_positive(summary, "reemplazos") > 0:
         return True
     if _summary_positive(summary, "chat_conversations") > 0:
         return True
     if _summary_positive(summary, "chat_messages") > 0:
+        return True
+    if _summary_positive(summary, "bot_contact_identities") > 0:
+        return True
+    if _summary_positive(summary, "bot_conversations") > 0:
+        return True
+    if _summary_positive(summary, "bot_messages") > 0:
+        return True
+    if _summary_positive(summary, "bot_decision_logs") > 0:
+        return True
+    if _summary_positive(summary, "bot_escalations") > 0:
+        return True
+    if _summary_positive(summary, "bot_sandbox_outbox") > 0:
+        return True
+    if _summary_positive(summary, "bot_sandbox_review_queue") > 0:
+        return True
+    if _summary_positive(summary, "bot_candidate_drafts") > 0:
+        return True
+    if _summary_positive(summary, "bot_candidate_intakes") > 0:
         return True
     if _summary_positive(summary, "tareas") > 0:
         return True
@@ -9613,17 +9952,40 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
     cid = int(cliente_id or 0)
     sid_list = [int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0]
     chat_conv_ids: list[int] = []
+    contrato_ids: list[int] = []
+    catalogo_ids: list[int] = []
+    tienda_interes_ids: list[int] = []
+    bot_identity_ids: list[int] = []
+    bot_conversation_ids: list[int] = []
+    bot_message_ids: list[int] = []
+    bot_draft_ids: list[int] = []
     deleted: dict[str, int] = {
         "solicitudes_candidatas": 0,
         "reemplazos": 0,
+        "pagos": 0,
+        "contratos": 0,
+        "contrato_eventos": 0,
         "notificaciones_solicitud": 0,
         "tokens_publicos_solicitud": 0,
         "tokens_cliente_nuevo_solicitud": 0,
+        "catalogos_privados_items": 0,
+        "catalogos_privados": 0,
+        "tienda_intereses_items": 0,
+        "tienda_intereses": 0,
         "recommendation_selections": 0,
         "recommendation_items": 0,
         "recommendation_runs": 0,
         "chat_messages": 0,
         "chat_conversations": 0,
+        "bot_decision_logs": 0,
+        "bot_escalations": 0,
+        "bot_sandbox_outbox": 0,
+        "bot_sandbox_review_queue": 0,
+        "bot_candidate_intakes": 0,
+        "bot_candidate_drafts": 0,
+        "bot_messages": 0,
+        "bot_conversations": 0,
+        "bot_contact_identities": 0,
         "solicitudes": 0,
         "tareas": 0,
         "notificaciones_cliente": 0,
@@ -9646,6 +10008,47 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
         deleted["reemplazos"] = int(
             Reemplazo.query
             .filter(Reemplazo.solicitud_id.in_(sid_list))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("pagos_solicitud"):
+        pago_filters = [PagoSolicitud.cliente_id == cid]
+        if sid_list:
+            pago_filters.append(PagoSolicitud.solicitud_id.in_(sid_list))
+        deleted["pagos"] = int(
+            PagoSolicitud.query
+            .filter(or_(*pago_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("contratos_digitales"):
+        contrato_filters = [ContratoDigital.cliente_id == cid]
+        if sid_list:
+            contrato_filters.append(ContratoDigital.solicitud_id.in_(sid_list))
+        contrato_rows = (
+            db.session.query(ContratoDigital.id)
+            .filter(or_(*contrato_filters))
+            .all()
+        )
+        contrato_ids = [int(r[0]) for r in (contrato_rows or []) if int(r[0] or 0) > 0]
+
+    if ContratoEvento is not None and _table_exists("contratos_eventos") and contrato_ids:
+        deleted["contrato_eventos"] = int(
+            ContratoEvento.query
+            .filter(ContratoEvento.contrato_id.in_(contrato_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("contratos_digitales"):
+        contrato_filters = [ContratoDigital.cliente_id == cid]
+        if sid_list:
+            contrato_filters.append(ContratoDigital.solicitud_id.in_(sid_list))
+        deleted["contratos"] = int(
+            ContratoDigital.query
+            .filter(or_(*contrato_filters))
             .delete(synchronize_session=False)
             or 0
         )
@@ -9682,6 +10085,66 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
                     | (PublicSolicitudClienteNuevoTokenUso.cliente_id.is_(None))
                 ),
             )
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("catalogos_privados"):
+        catalogo_filters = [CatalogoPrivado.cliente_id == cid]
+        if sid_list:
+            catalogo_filters.append(CatalogoPrivado.solicitud_id.in_(sid_list))
+        catalogo_rows = (
+            db.session.query(CatalogoPrivado.id)
+            .filter(or_(*catalogo_filters))
+            .all()
+        )
+        catalogo_ids = [int(r[0]) for r in (catalogo_rows or []) if int(r[0] or 0) > 0]
+
+    if _table_exists("catalogos_privados_items") and catalogo_ids:
+        deleted["catalogos_privados_items"] = int(
+            CatalogoPrivadoItem.query
+            .filter(CatalogoPrivadoItem.catalogo_id.in_(catalogo_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("catalogos_privados"):
+        catalogo_filters = [CatalogoPrivado.cliente_id == cid]
+        if sid_list:
+            catalogo_filters.append(CatalogoPrivado.solicitud_id.in_(sid_list))
+        deleted["catalogos_privados"] = int(
+            CatalogoPrivado.query
+            .filter(or_(*catalogo_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("tienda_intereses"):
+        tienda_filters = [TiendaInteres.cliente_id == cid]
+        if sid_list:
+            tienda_filters.append(TiendaInteres.solicitud_id.in_(sid_list))
+        tienda_rows = (
+            db.session.query(TiendaInteres.id)
+            .filter(or_(*tienda_filters))
+            .all()
+        )
+        tienda_interes_ids = [int(r[0]) for r in (tienda_rows or []) if int(r[0] or 0) > 0]
+
+    if _table_exists("tienda_intereses_items") and tienda_interes_ids:
+        deleted["tienda_intereses_items"] = int(
+            TiendaInteresItem.query
+            .filter(TiendaInteresItem.interes_id.in_(tienda_interes_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if _table_exists("tienda_intereses"):
+        tienda_filters = [TiendaInteres.cliente_id == cid]
+        if sid_list:
+            tienda_filters.append(TiendaInteres.solicitud_id.in_(sid_list))
+        deleted["tienda_intereses"] = int(
+            TiendaInteres.query
+            .filter(or_(*tienda_filters))
             .delete(synchronize_session=False)
             or 0
         )
@@ -9760,6 +10223,113 @@ def _delete_cliente_tree(cliente_id: int, solicitud_ids: list[int]) -> dict[str,
         deleted["chat_conversations"] = int(
             ChatConversation.query
             .filter(ChatConversation.cliente_id == cid)
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotContactIdentity is not None and _table_exists("bot_contact_identities"):
+        bot_identity_rows = (
+            db.session.query(BotContactIdentity.id)
+            .filter(BotContactIdentity.client_id == cid)
+            .all()
+        )
+        bot_identity_ids = [int(r[0]) for r in (bot_identity_rows or []) if int(r[0] or 0) > 0]
+
+    if BotConversation is not None and _table_exists("bot_conversations") and bot_identity_ids:
+        bot_conv_rows = (
+            db.session.query(BotConversation.id)
+            .filter(BotConversation.identity_id.in_(bot_identity_ids))
+            .all()
+        )
+        bot_conversation_ids = [int(r[0]) for r in (bot_conv_rows or []) if int(r[0] or 0) > 0]
+
+    if BotMessage is not None and _table_exists("bot_messages") and bot_conversation_ids:
+        bot_msg_rows = (
+            db.session.query(BotMessage.id)
+            .filter(BotMessage.conversation_id.in_(bot_conversation_ids))
+            .all()
+        )
+        bot_message_ids = [int(r[0]) for r in (bot_msg_rows or []) if int(r[0] or 0) > 0]
+
+    if BotCandidateDraft is not None and _table_exists("bot_candidate_drafts") and bot_conversation_ids:
+        bot_draft_rows = (
+            db.session.query(BotCandidateDraft.id)
+            .filter(BotCandidateDraft.conversation_id.in_(bot_conversation_ids))
+            .all()
+        )
+        bot_draft_ids = [int(r[0]) for r in (bot_draft_rows or []) if int(r[0] or 0) > 0]
+
+    if BotDecisionLog is not None and _table_exists("bot_decision_logs") and bot_conversation_ids:
+        deleted["bot_decision_logs"] = int(
+            BotDecisionLog.query
+            .filter(BotDecisionLog.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotEscalation is not None and _table_exists("bot_escalations") and bot_conversation_ids:
+        deleted["bot_escalations"] = int(
+            BotEscalation.query
+            .filter(BotEscalation.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotSandboxOutbound is not None and _table_exists("bot_sandbox_outbox") and bot_conversation_ids:
+        deleted["bot_sandbox_outbox"] = int(
+            BotSandboxOutbound.query
+            .filter(BotSandboxOutbound.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotSandboxReviewQueue is not None and _table_exists("bot_sandbox_review_queue") and bot_conversation_ids:
+        deleted["bot_sandbox_review_queue"] = int(
+            BotSandboxReviewQueue.query
+            .filter(BotSandboxReviewQueue.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotCandidateIntake is not None and _table_exists("bot_candidate_intakes") and bot_conversation_ids:
+        intake_filters = [BotCandidateIntake.conversation_id.in_(bot_conversation_ids)]
+        if bot_draft_ids:
+            intake_filters.append(BotCandidateIntake.draft_id.in_(bot_draft_ids))
+        deleted["bot_candidate_intakes"] = int(
+            BotCandidateIntake.query
+            .filter(or_(*intake_filters))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotCandidateDraft is not None and _table_exists("bot_candidate_drafts") and bot_conversation_ids:
+        deleted["bot_candidate_drafts"] = int(
+            BotCandidateDraft.query
+            .filter(BotCandidateDraft.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotMessage is not None and _table_exists("bot_messages") and bot_conversation_ids:
+        deleted["bot_messages"] = int(
+            BotMessage.query
+            .filter(BotMessage.conversation_id.in_(bot_conversation_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotConversation is not None and _table_exists("bot_conversations") and bot_identity_ids:
+        deleted["bot_conversations"] = int(
+            BotConversation.query
+            .filter(BotConversation.identity_id.in_(bot_identity_ids))
+            .delete(synchronize_session=False)
+            or 0
+        )
+
+    if BotContactIdentity is not None and _table_exists("bot_contact_identities"):
+        deleted["bot_contact_identities"] = int(
+            BotContactIdentity.query
+            .filter(BotContactIdentity.client_id == cid)
             .delete(synchronize_session=False)
             or 0
         )
@@ -9862,6 +10432,7 @@ def eliminar_cliente(cliente_id):
     confirmation_upper = confirmation_raw.upper()
     valid_by_keyword = confirmation_upper == "ELIMINAR"
     valid_by_code = confirmation_raw.casefold() == cliente_code.casefold()
+    full_cleanup_requested = _cliente_delete_is_truthy(request.form.get("full_cleanup"))
     if not (valid_by_keyword or valid_by_code):
         msg = "Confirmación inválida. Escribe ELIMINAR o el código del cliente para continuar."
         _audit_log(
@@ -9882,6 +10453,51 @@ def eliminar_cliente(cliente_id):
             http_status=400,
             error_code="invalid_confirmation",
         )
+
+    cleanup_allowed = False
+    cleanup_signals: list[str] = []
+    if full_cleanup_requested:
+        cleanup_allowed, cleanup_signals = _cliente_delete_can_use_full_cleanup(c)
+        if not valid_by_code:
+            msg = "Para la limpieza completa escribe exactamente el código del cliente y confirma que es un cliente de prueba."
+            _audit_log(
+                action_type="CLIENTE_DELETE_BLOCKED",
+                entity_type="Cliente",
+                entity_id=str(cliente_pk),
+                summary=f"Limpieza completa bloqueada por confirmación insuficiente para cliente {cliente_code}",
+                metadata={"cleanup_requested": True},
+                success=False,
+                error=msg,
+            )
+            return _clientes_list_action_response(
+                ok=False,
+                message=msg,
+                category="warning",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=400,
+                error_code="invalid_confirmation",
+            )
+        if not cleanup_allowed:
+            msg = "La limpieza completa solo está disponible para clientes de prueba y requiere permiso owner."
+            _audit_log(
+                action_type="CLIENTE_DELETE_BLOCKED",
+                entity_type="Cliente",
+                entity_id=str(cliente_pk),
+                summary=f"Limpieza completa no permitida para cliente {cliente_code}",
+                metadata={"cleanup_requested": True},
+                success=False,
+                error=msg,
+            )
+            return _clientes_list_action_response(
+                ok=False,
+                message=msg,
+                category="warning",
+                next_url=next_url,
+                fallback=fallback,
+                http_status=403,
+                error_code="forbidden",
+            )
 
     idem_row, duplicate = _claim_idempotency(
         scope="admin_cliente_delete",
@@ -9925,9 +10541,14 @@ def eliminar_cliente(cliente_id):
     summary = dict(plan.get("summary") or {})
     solicitud_ids = list(plan.get("solicitud_ids") or [])
     inspection_uncertain = _delete_plan_has_uncertain_inspection(plan)
+    cleanup_blocked_issues = _cliente_delete_cleanup_blocked_issues(blocked_issues)
+    blocked_msg = (
+        "No se puede eliminar este cliente porque tiene información asociada. "
+        "Si es un cliente de prueba, usa la opción de limpieza completa para datos de prueba."
+    )
 
-    if blocked_issues:
-        msg = "Este cliente tiene información asociada y no puede eliminarse."
+    if blocked_issues and not full_cleanup_requested:
+        msg = blocked_msg
         _audit_log(
             action_type="CLIENTE_DELETE_BLOCKED",
             entity_type="Cliente",
@@ -9937,6 +10558,35 @@ def eliminar_cliente(cliente_id):
                 "blocked_issues": blocked_issues,
                 "warnings": warnings,
                 "dependency_summary": summary,
+            },
+            success=False,
+            error=msg,
+        )
+        return _clientes_list_action_response(
+            ok=False,
+            message=msg,
+            category="warning",
+            next_url=next_url,
+            fallback=fallback,
+            http_status=409,
+            error_code="conflict",
+        )
+
+    if full_cleanup_requested and cleanup_blocked_issues:
+        msg = (
+            "No se pudo ejecutar la limpieza completa porque existen dependencias asociadas "
+            "que requieren revisión manual. No se aplicaron cambios."
+        )
+        _audit_log(
+            action_type="CLIENTE_TEST_CLEANUP_BLOCKED",
+            entity_type="Cliente",
+            entity_id=str(cliente_pk),
+            summary=f"Limpieza completa bloqueada para cliente {cliente_code}",
+            metadata={
+                "blocked_issues": cleanup_blocked_issues,
+                "warnings": warnings,
+                "dependency_summary": summary,
+                "cleanup_signals": cleanup_signals,
             },
             success=False,
             error=msg,
@@ -9978,8 +10628,8 @@ def eliminar_cliente(cliente_id):
             error_code="dependency_inspection_failed",
         )
 
-    if _plan_has_critical_cliente_data(summary):
-        msg = "Este cliente tiene información asociada y no puede eliminarse."
+    if _plan_has_critical_cliente_data(summary) and not full_cleanup_requested:
+        msg = blocked_msg
         _audit_log(
             action_type="CLIENTE_DELETE_BLOCKED",
             entity_type="Cliente",
@@ -10012,20 +10662,30 @@ def eliminar_cliente(cliente_id):
             _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
-            action_type="CLIENTE_DELETE_OK",
+            action_type="CLIENTE_TEST_CLEANUP_OK" if full_cleanup_requested else "CLIENTE_DELETE_OK",
             entity_type="Cliente",
             entity_id=str(cliente_pk),
-            summary=f"Cliente eliminado {cliente_code}",
+            summary=(
+                f"Cliente eliminado con limpieza completa {cliente_code}"
+                if full_cleanup_requested
+                else f"Cliente eliminado {cliente_code}"
+            ),
             metadata={
                 "deleted_rows": deleted_rows,
                 "dependency_summary": summary,
                 "warnings": warnings,
+                "cleanup_requested": full_cleanup_requested,
+                "cleanup_signals": cleanup_signals,
             },
             success=True,
         )
         return _clientes_list_action_response(
             ok=True,
-            message='Cliente eliminado correctamente.',
+            message=(
+                'Cliente de prueba eliminado completamente junto con sus datos asociados.'
+                if full_cleanup_requested
+                else 'Cliente eliminado correctamente.'
+            ),
             category='success',
             next_url=next_url,
             fallback=fallback,
@@ -10033,17 +10693,23 @@ def eliminar_cliente(cliente_id):
     except IntegrityError:
         db.session.rollback()
         msg = (
-            "No se pudo eliminar el cliente por restricciones de integridad. "
+            "No se pudo completar la eliminación por restricciones de integridad. "
             "No se aplicaron cambios."
         )
         _audit_log(
-            action_type="CLIENTE_DELETE_FAIL",
+            action_type="CLIENTE_TEST_CLEANUP_FAIL" if full_cleanup_requested else "CLIENTE_DELETE_FAIL",
             entity_type="Cliente",
             entity_id=str(cliente_pk),
-            summary=f"Error de integridad al eliminar cliente {cliente_code}",
+            summary=(
+                f"Error de integridad en limpieza completa de cliente {cliente_code}"
+                if full_cleanup_requested
+                else f"Error de integridad al eliminar cliente {cliente_code}"
+            ),
             metadata={
                 "dependency_summary": summary,
                 "warnings": warnings,
+                "cleanup_requested": full_cleanup_requested,
+                "cleanup_signals": cleanup_signals,
             },
             success=False,
             error=msg,
@@ -10059,15 +10725,25 @@ def eliminar_cliente(cliente_id):
         )
     except SQLAlchemyError:
         db.session.rollback()
-        msg = 'No se pudo eliminar el cliente de forma segura. No se aplicaron cambios.'
+        msg = (
+            'No se pudo completar la limpieza del cliente de forma segura. No se aplicaron cambios.'
+            if full_cleanup_requested
+            else 'No se pudo eliminar el cliente de forma segura. No se aplicaron cambios.'
+        )
         _audit_log(
-            action_type="CLIENTE_DELETE_FAIL",
+            action_type="CLIENTE_TEST_CLEANUP_FAIL" if full_cleanup_requested else "CLIENTE_DELETE_FAIL",
             entity_type="Cliente",
             entity_id=str(cliente_pk),
-            summary=f"Fallo técnico al eliminar cliente {cliente_code}",
+            summary=(
+                f"Fallo técnico en limpieza completa de cliente {cliente_code}"
+                if full_cleanup_requested
+                else f"Fallo técnico al eliminar cliente {cliente_code}"
+            ),
             metadata={
                 "dependency_summary": summary,
                 "warnings": warnings,
+                "cleanup_requested": full_cleanup_requested,
+                "cleanup_signals": cleanup_signals,
             },
             success=False,
             error=msg,
