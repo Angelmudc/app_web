@@ -455,13 +455,16 @@
         </div>
         <form method="post" action="{{ url_for('admin.eliminar_cliente', cliente_id=cliente.id) }}">
           <div class="modal-body">
+            {% set delete_code_raw = ((cliente.codigo|string) if cliente.codigo else (cliente.id|string)) %}
+            {% set delete_code_compact = delete_code_raw|replace(',', '')|replace('.', '')|replace(' ', '') %}
+            {% set delete_code_visible = ('{:,}'.format(delete_code_compact|int) if delete_code_compact.isdigit() else delete_code_raw) %}
             <p class="mb-2 fw-semibold">
               Esta acción eliminará el cliente permanentemente. ¿Estás seguro?
             </p>
             <p class="small text-muted mb-3">
               Para confirmar, escribe <strong>ELIMINAR</strong> o el código del cliente:
-              <strong>{{ cliente.codigo or cliente.id }}</strong><br>
-              Si el cliente tiene información asociada y es un cliente de prueba, marca la limpieza completa y escribe el código exacto.
+              <strong>{{ delete_code_raw }}</strong><br>
+              Si el cliente tiene información asociada y es un cliente de prueba, usa la limpieza completa con confirmación fuerte.
             </p>
             {% if csrf_token %}
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -477,15 +480,29 @@
               required
             >
             <div class="form-check mt-3">
-              <input class="form-check-input" type="checkbox" value="1" id="delete_cliente_full_cleanup_input" name="full_cleanup">
+              <input class="form-check-input" type="checkbox" value="1" id="delete_cliente_full_cleanup_input" name="confirm_full_cleanup">
               <label class="form-check-label small" for="delete_cliente_full_cleanup_input">
-                Confirmo que es un cliente de prueba y autorizo la limpieza completa de datos asociados.
+                Confirmo que este es un cliente de prueba y deseo eliminarlo completamente.
               </label>
+            </div>
+            <div class="mt-3">
+              <label class="form-label" for="delete_cliente_cleanup_code_input">Escribe el código del cliente para confirmar</label>
+              <input
+                type="text"
+                class="form-control"
+                id="delete_cliente_cleanup_code_input"
+                name="cleanup_confirmation_code"
+                autocomplete="off"
+                inputmode="text"
+              >
+              <div class="form-text">
+                Código requerido: {{ delete_code_visible }} o el código exacto visible. También se acepta {{ delete_code_compact }} si el código es numérico.
+              </div>
             </div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="submit" class="btn btn-danger">Eliminar cliente</button>
+            <button type="submit" class="btn btn-danger">Eliminar cliente de prueba completamente</button>
           </div>
         </form>
       </div>
@@ -504,6 +521,7 @@
 
       var input = document.getElementById("delete_cliente_confirm_input");
       var cleanupInput = document.getElementById("delete_cliente_full_cleanup_input");
+      var cleanupCodeInput = document.getElementById("delete_cliente_cleanup_code_input");
       var segBackdrop = document.getElementById("segCandidatasBackdrop");
       var segDrawer = document.getElementById("segCandidatasDrawer");
       var segBodyOpenClass = "seg-drawer-open";
@@ -511,6 +529,7 @@
       modal.addEventListener("show.bs.modal", function () {
         if (input) input.value = "";
         if (cleanupInput) cleanupInput.checked = false;
+        if (cleanupCodeInput) cleanupCodeInput.value = "";
 
         if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;
         if (segDrawer && segDrawer.hidden === false) segDrawer.hidden = true;

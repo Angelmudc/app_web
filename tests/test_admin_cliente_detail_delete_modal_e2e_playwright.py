@@ -126,6 +126,10 @@ def test_cliente_detail_delete_modal_is_interactive_and_reopenable(cliente_detai
         page.wait_for_selector('[data-bs-target="#deleteClienteModal"]', timeout=12000)
         page.click('[data-bs-target="#deleteClienteModal"]')
         page.wait_for_selector("#deleteClienteModal.show", timeout=12000)
+        page.wait_for_selector('#deleteClienteModal input[name="confirm_full_cleanup"]', timeout=12000)
+        page.wait_for_selector('#deleteClienteModal input[name="cleanup_confirmation_code"]', timeout=12000)
+        helper_text = page.locator("#deleteClienteModal .form-text").inner_text()
+        assert "Codigo requerido" in helper_text or "Código requerido" in helper_text
 
         diag = page.evaluate(
             """() => {

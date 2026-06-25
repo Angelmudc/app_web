@@ -9343,6 +9343,33 @@ def _cliente_delete_is_truthy(raw: object) -> bool:
     return str(raw or "").strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
 
 
+def _cliente_delete_normalize_confirmation_code(raw: object) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+    compact = "".join(ch for ch in text if not ch.isspace())
+    numeric_candidate = compact.replace(",", "").replace(".", "")
+    if numeric_candidate.isdigit():
+        return numeric_candidate
+    return compact.casefold()
+
+
+def _cliente_delete_visible_code_variants(raw: object) -> list[str]:
+    base = str(raw or "").strip()
+    if not base:
+        return []
+    variants: list[str] = [base]
+    normalized = _cliente_delete_normalize_confirmation_code(base)
+    if normalized and normalized not in variants:
+        variants.append(normalized)
+    digits_only = normalized if normalized.isdigit() else ""
+    if digits_only:
+        formatted = f"{int(digits_only):,}"
+        if formatted not in variants:
+            variants.append(formatted)
+    return variants
+
+
 def _cliente_delete_test_signals(cliente: Cliente | None) -> list[str]:
     if cliente is None:
         return []
@@ -10428,11 +10455,33 @@ def eliminar_cliente(cliente_id):
             )
         return blocked_resp
 
-    confirmation_raw = (request.form.get("confirm_delete") or "").strip()
+    form_snapshot = {key: request.form.getlist(key) for key in request.form.keys()}
+    confirmation_raw = (
+        request.form.get("confirm_delete")
+        or request.form.get("cleanup_confirmation_code")
+        or ""
+    ).strip()
     confirmation_upper = confirmation_raw.upper()
+    cleanup_confirmation_raw = (
+        request.form.get("cleanup_confirmation_code")
+        or request.form.get("confirm_delete")
+        or ""
+    ).strip()
     valid_by_keyword = confirmation_upper == "ELIMINAR"
-    valid_by_code = confirmation_raw.casefold() == cliente_code.casefold()
-    full_cleanup_requested = _cliente_delete_is_truthy(request.form.get("full_cleanup"))
+    valid_by_code = (
+        _cliente_delete_normalize_confirmation_code(confirmation_raw)
+        == _cliente_delete_normalize_confirmation_code(cliente_code)
+    )
+    full_cleanup_requested = any(
+        _cliente_delete_is_truthy(request.form.get(field_name))
+        for field_name in ("full_cleanup", "confirm_full_cleanup")
+    )
+    cleanup_confirmation_valid = (
+        _cliente_delete_normalize_confirmation_code(cleanup_confirmation_raw)
+        == _cliente_delete_normalize_confirmation_code(cliente_code)
+    )
+    visible_code_variants = _cliente_delete_visible_code_variants(cliente_code)
+    cleanup_code_hint = " o ".join(visible_code_variants[:2]) if visible_code_variants else cliente_code
     if not (valid_by_keyword or valid_by_code):
         msg = "Confirmación inválida. Escribe ELIMINAR o el código del cliente para continuar."
         _audit_log(
@@ -10440,7 +10489,7 @@ def eliminar_cliente(cliente_id):
             entity_type="Cliente",
             entity_id=str(cliente_pk),
             summary=f"Borrado bloqueado por confirmación inválida para cliente {cliente_code}",
-            metadata={"confirmation_length": len(confirmation_raw)},
+            metadata={"confirmation_length": len(confirmation_raw), "form_fields": form_snapshot},
             success=False,
             error=msg,
         )
@@ -10458,14 +10507,17 @@ def eliminar_cliente(cliente_id):
     cleanup_signals: list[str] = []
     if full_cleanup_requested:
         cleanup_allowed, cleanup_signals = _cliente_delete_can_use_full_cleanup(c)
-        if not valid_by_code:
-            msg = "Para la limpieza completa escribe exactamente el código del cliente y confirma que es un cliente de prueba."
+        if not cleanup_confirmation_valid:
+            msg = (
+                "Para eliminar completamente este cliente de prueba, marca la confirmación "
+                f"y escribe el código del cliente. Código requerido: {cleanup_code_hint}."
+            )
             _audit_log(
                 action_type="CLIENTE_DELETE_BLOCKED",
                 entity_type="Cliente",
                 entity_id=str(cliente_pk),
                 summary=f"Limpieza completa bloqueada por confirmación insuficiente para cliente {cliente_code}",
-                metadata={"cleanup_requested": True},
+                metadata={"cleanup_requested": True, "form_fields": form_snapshot},
                 success=False,
                 error=msg,
             )

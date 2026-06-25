@@ -642,6 +642,55 @@ def test_owner_full_cleanup_allows_strong_owner_override_for_realish_cliente():
         assert PagoSolicitud.query.filter_by(cliente_id=target_id).count() == 0
 
 
+def test_owner_full_cleanup_accepts_visible_numeric_code_with_separator():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _reset_sqlite_models(Cliente, Solicitud, PagoSolicitud)
+        target = Cliente(
+            codigo="2276",
+            nombre_completo="Juan Perez",
+            email="anfek@gmail.com",
+            telefono="8296719912",
+        )
+        db.session.add(target)
+        db.session.flush()
+        solicitud = Solicitud(cliente_id=int(target.id), codigo_solicitud="SOL-OWNER-OVERRIDE-2", estado="pagada")
+        db.session.add(solicitud)
+        db.session.flush()
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=int(solicitud.id),
+                cliente_id=int(target.id),
+                monto=999,
+                tipo_pago="pago",
+                metodo_pago="transferencia",
+            )
+        )
+        db.session.commit()
+        target_id = int(target.id)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+    resp = client.post(
+        f"/admin/clientes/{target_id}/eliminar",
+        data={
+            "confirm_delete": "ELIMINAR",
+            "confirm_full_cleanup": "1",
+            "cleanup_confirmation_code": "2,276",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code in (302, 303)
+
+    with flask_app.app_context():
+        assert Cliente.query.get(target_id) is None
+        assert Solicitud.query.filter_by(cliente_id=target_id).count() == 0
+        assert PagoSolicitud.query.filter_by(cliente_id=target_id).count() == 0
+
+
 def test_admin_cannot_use_full_cleanup_even_with_direct_request():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -723,6 +772,17 @@ def test_cliente_detail_template_places_delete_in_owner_only_danger_zone():
     assert "Zona de peligro" in content
     assert "Eliminar cliente" in content
     assert "Esta acción eliminará el cliente permanentemente. ¿Estás seguro?" in content
+    assert 'name="confirm_full_cleanup"' in content
+    assert 'name="cleanup_confirmation_code"' in content
+    assert "Código requerido:" in content
+
+
+def test_clientes_list_template_sends_full_cleanup_fields():
+    tpl_path = "templates/admin/clientes_list.html"
+    content = open(tpl_path, "r", encoding="utf-8").read()
+    assert 'name="confirm_full_cleanup"' in content
+    assert 'name="cleanup_confirmation_code"' in content
+    assert "Código requerido:" in content
 
 
 def test_delete_cliente_tree_deletes_chat_and_recommendation_artifacts():
