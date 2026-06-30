@@ -1,100 +1,170 @@
 {% extends "public/base_public.html" %}
 
 {% block title %}Contacto - Doméstica del Cibao A&D{% endblock %}
+{% set meta_description = "Solicita orientación para contratar personal doméstico con una experiencia clara, profesional y atención rápida por WhatsApp." %}
+{% set og_title = "Solicita una doméstica en menos de 2 minutos" %}
+{% set og_description = meta_description %}
+{% block body_class %} page-contact{% endblock %}
 
 {% block content %}
-<section class="section">
+<section class="contact-hero">
+  <div class="container contact-hero__grid">
+    <div class="contact-hero__copy" data-reveal="up">
+      <span class="contact-hero__eyebrow">Solicitud de servicio</span>
+      <h1>Solicita una doméstica en menos de 2 minutos</h1>
+      <p class="contact-hero__lead">
+        Cuéntanos qué necesitas y nuestro equipo te orientará por WhatsApp según tu hogar, horario y presupuesto.
+      </p>
+
+      <div class="contact-hero__benefits" aria-label="Beneficios rápidos">
+        <span><i class="fa-solid fa-bolt" aria-hidden="true"></i> Respuesta rápida</span>
+        <span><i class="fa-solid fa-user-check" aria-hidden="true"></i> Candidatas filtradas</span>
+        <span><i class="fa-solid fa-comments" aria-hidden="true"></i> Atención personalizada</span>
+        <span><i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Proceso claro</span>
+      </div>
+    </div>
+
+    <aside class="contact-hero__signal card" data-reveal="up" aria-label="Resumen del proceso">
+      <span class="contact-hero__signal-badge">Orientación inicial</span>
+      <h2>Qué ocurre después de enviar tu solicitud</h2>
+      <ol class="contact-hero__steps">
+        <li>Revisamos tu necesidad y el tipo de apoyo que buscas.</li>
+        <li>Te orientamos por WhatsApp con el siguiente paso más adecuado.</li>
+        <li>Avanzamos contigo según disponibilidad, horario y presupuesto.</li>
+      </ol>
+      <p class="contact-hero__signal-note">
+        Sin formularios largos ni pasos innecesarios.
+      </p>
+    </aside>
+  </div>
+</section>
+
+<section class="section contact-section">
   <div class="container">
-    <h1 class="section-title">Contáctanos</h1>
-    <p class="section-subtitle">
-      Estamos listos para orientarte y ayudarte a encontrar el personal ideal según tu necesidad.
-    </p>
-
-    <div class="grid-2">
-
-      <!-- FORMULARIO -->
-      <form class="contact-form card" style="padding:24px;">
-        <h3 style="margin-bottom:10px;">Formulario de contacto</h3>
-        <p class="info-text" style="margin-bottom:16px;">
-          Completa este formulario y te atenderemos de forma rápida por WhatsApp.
-        </p>
-
-        <div class="form-group">
-          <label for="nombre">Nombre completo</label>
-          <input type="text" id="nombre" name="nombre" placeholder="Tu nombre completo" required>
+    <div class="contact-layout">
+      <form class="contact-shell contact-form card" data-reveal="up">
+        <div class="contact-shell__header">
+          <span class="contact-shell__kicker">Formulario</span>
+          <h2>Cuéntanos tu necesidad</h2>
+          <p>
+            Completa tus datos y te responderemos de forma rápida por WhatsApp con orientación clara sobre el servicio.
+          </p>
         </div>
 
-        <div class="form-group">
-          <label for="telefono">Teléfono / WhatsApp</label>
-          <input type="tel" id="telefono" name="telefono" placeholder="Ej. 809-000-0000" required>
+        <div class="contact-form__grid">
+          <div class="form-group">
+            <label for="nombre">Nombre completo</label>
+            <input type="text" id="nombre" name="nombre" placeholder="Tu nombre completo" required autocomplete="name">
+          </div>
+
+          <div class="form-group">
+            <label for="telefono">Teléfono / WhatsApp</label>
+            <input type="tel" id="telefono" name="telefono" placeholder="Ej. 809-000-0000" required autocomplete="tel">
+          </div>
+
+          <div class="form-group contact-form__grid-full">
+            <label for="ciudad">Ciudad o sector</label>
+            <input type="text" id="ciudad" name="ciudad" placeholder="Ej. Santiago, Moca, La Vega" autocomplete="address-level2">
+          </div>
+
+          <div class="form-group contact-form__grid-full">
+            <label for="servicio">Servicio que necesitas</label>
+            <select id="servicio" name="servicio">
+              <option value="">Selecciona una opción</option>
+              <option value="con-dormida">Doméstica con dormida</option>
+              <option value="sin-dormida">Doméstica sin dormida</option>
+              <option value="por-dias">Por días / por horas / temporal</option>
+              <option value="ninera">Niñera</option>
+              <option value="adulto-mayor">Cuidado de adulto mayor</option>
+              <option value="otro">Otro servicio</option>
+            </select>
+          </div>
+
+          <div class="form-group contact-form__grid-full">
+            <label for="mensaje">Cuéntanos tu necesidad</label>
+            <textarea id="mensaje" name="mensaje" rows="5" placeholder="Ej: Busco una doméstica con dormida para familia de 4 personas en Santiago..."></textarea>
+          </div>
         </div>
 
-        <div class="form-group">
-          <label for="ciudad">Ciudad o sector</label>
-          <input type="text" id="ciudad" name="ciudad" placeholder="Ej. Santiago, Moca, La Vega">
+        <div class="contact-shell__footer">
+          <button type="button" class="btn btn-primary contact-shell__submit" id="enviarContacto">
+            Enviar solicitud por WhatsApp
+          </button>
+
+          <p class="info-text contact-shell__note">
+            La información se envía directamente a nuestro WhatsApp para atención inmediata.
+          </p>
         </div>
-
-        <div class="form-group">
-          <label for="servicio">Servicio que necesitas</label>
-          <select id="servicio" name="servicio">
-            <option value="">Selecciona una opción</option>
-            <option value="con-dormida">Doméstica con dormida</option>
-            <option value="sin-dormida">Doméstica sin dormida</option>
-            <option value="por-dias">Por días / por horas / temporal</option>
-            <option value="ninera">Niñera</option>
-            <option value="adulto-mayor">Cuidado de adulto mayor</option>
-            <option value="otro">Otro servicio</option>
-          </select>
-        </div>
-
-        <div class="form-group">
-          <label for="mensaje">Cuéntanos tu necesidad</label>
-          <textarea id="mensaje" name="mensaje" rows="4" placeholder="Ej: Busco una doméstica con dormida para familia de 4 personas en Santiago..."></textarea>
-        </div>
-
-        <button type="button" class="btn btn-primary" id="enviarContacto">
-          Enviar solicitud por WhatsApp
-        </button>
-
-        <p class="info-text" style="margin-top:12px;">
-          *La información se envía directamente a nuestro WhatsApp para atención inmediata.
-        </p>
       </form>
 
-      <!-- INFO DE CONTACTO -->
-      <div class="card" style="padding:24px;">
-        <h3>Datos de contacto</h3>
+      <aside class="contact-aside" data-reveal="up" aria-label="Canales de contacto y confianza">
+        <div class="contact-panel card">
+          <div class="contact-panel__header">
+            <span class="contact-shell__kicker">Atención directa</span>
+            <h2>Habla con nuestro equipo</h2>
+            <p>
+              Si prefieres, también puedes escribirnos de inmediato por WhatsApp.
+            </p>
+          </div>
 
-        <div style="margin-top:14px; line-height:1.8;">
-          <p>📞 <strong>Teléfono:</strong><br>
-            <a href="tel:+18094296892">+1 (809) 429-6892</a>
-          </p>
+          <div class="contact-panel__list">
+            <article class="contact-point">
+              <div class="contact-point__icon" aria-hidden="true">
+                <i class="fa-brands fa-whatsapp"></i>
+              </div>
+              <div class="contact-point__body">
+                <span class="contact-point__label">WhatsApp / teléfono</span>
+                <a href="tel:+18094296892">+1 (809) 429-6892</a>
+              </div>
+            </article>
 
-          <p>📧 <strong>Correo:</strong><br>
-            <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a>
-          </p>
+            <article class="contact-point">
+              <div class="contact-point__icon" aria-hidden="true">
+                <i class="fa-regular fa-envelope"></i>
+              </div>
+              <div class="contact-point__body">
+                <span class="contact-point__label">Correo</span>
+                <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a>
+              </div>
+            </article>
 
-          <p>🕒 <strong>Horario de atención:</strong><br>
-            Lunes a viernes · 8:00 a.m. - 5:00 p.m.
-          </p>
+            <article class="contact-point">
+              <div class="contact-point__icon" aria-hidden="true">
+                <i class="fa-regular fa-clock"></i>
+              </div>
+              <div class="contact-point__body">
+                <span class="contact-point__label">Horario</span>
+                <p>Lunes a viernes · 8:00 a.m. - 5:00 p.m.</p>
+              </div>
+            </article>
 
-          <p>📍 <strong>Zona de cobertura:</strong><br>
-            Región del Cibao y zona norte de República Dominicana
-          </p>
+            <article class="contact-point">
+              <div class="contact-point__icon" aria-hidden="true">
+                <i class="fa-solid fa-location-dot"></i>
+              </div>
+              <div class="contact-point__body">
+                <span class="contact-point__label">Zona de cobertura</span>
+                <p>Región del Cibao y zona norte de República Dominicana</p>
+              </div>
+            </article>
+          </div>
+
+          <a href="https://wa.me/18094296892" target="_blank" rel="noopener noreferrer" class="btn btn-secondary contact-panel__cta">
+            <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+            Escribir por WhatsApp
+          </a>
+
+          <div class="contact-trust">
+            <div class="contact-trust__icon" aria-hidden="true">
+              <i class="fa-solid fa-shield-heart"></i>
+            </div>
+            <div>
+              <h3>Privacidad y orientación</h3>
+              <p>Tu información será usada únicamente para orientarte sobre el servicio solicitado.</p>
+            </div>
+          </div>
         </div>
-
-        <hr style="margin:20px 0; opacity:.12;">
-
-        <h4>Atención directa</h4>
-        <p class="info-text">
-          También puedes escribirnos directamente por WhatsApp para una atención más rápida.
-        </p>
-
-        <a href="https://wa.me/18094296892" target="_blank" class="btn btn-secondary" style="margin-top:10px;">
-          Escribir por WhatsApp
-        </a>
-      </div>
-
+      </aside>
     </div>
   </div>
 </section>

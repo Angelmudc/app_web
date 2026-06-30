@@ -1,94 +1,731 @@
 {% extends "public/base_public.html" %}
 
 {% block title %}Inicio - Doméstica del Cibao A&D{% endblock %}
+{% block body_class %} home-landing{% endblock %}
+{% block extra_head %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='public/css/landing_motion.css') }}">
+{% endblock %}
+{% set meta_description = "Encuentra ayuda doméstica confiable con un proceso claro de reclutamiento, entrevistas, verificación y seguimiento." %}
+{% set og_title = "Encuentra una doméstica confiable sin perder semanas buscando" %}
+{% set og_description = meta_description %}
 
 {% block content %}
 <section class="hero" id="inicio">
-  <div class="container hero-grid">
-    <div class="hero-text">
-      <h1>Domésticas confiables para tu hogar en República Dominicana</h1>
-      <p>Seleccionamos, filtramos y acompañamos el proceso para que tengas una doméstica responsable, estable y acorde a tu hogar.</p>
-      <div class="hero-actions">
-        <a href="#" class="btn btn-primary" data-solicitar-domestica>Solicitar una doméstica</a>
-        <a href="{{ url_for('public.servicios') }}" class="btn btn-outline">Ver servicios</a>
+  <div class="hero-ambient" aria-hidden="true">
+    <div class="hero-ambient__grid"></div>
+    <div class="hero-ambient__halo hero-ambient__halo--a"></div>
+    <div class="hero-ambient__halo hero-ambient__halo--b"></div>
+    <div class="hero-ambient__halo hero-ambient__halo--c"></div>
+    <div class="hero-ambient__beam hero-ambient__beam--a"></div>
+    <div class="hero-ambient__beam hero-ambient__beam--b"></div>
+    <canvas class="hero-ambient__canvas" data-hero-canvas></canvas>
+    <canvas class="hero-ambient__network" data-hero-network></canvas>
+  </div>
+  <div class="container hero-grid hero-grid--premium">
+    <div class="hero-copy" data-section-anchor>
+      <div class="hero-copy__intro" data-reveal="soft">
+        <span class="hero-eyebrow">Agencia de servicio doméstico premium</span>
+        <div class="hero-live-badge">
+          <span class="hero-live-badge__dot"></span>
+          <span>Proceso profesional, filtro previo y comunicación clara</span>
+        </div>
       </div>
-      <div class="hero-badges">
-        <span>✔ Filtro y selección</span>
-        <span>✔ Depuración policial</span>
-        <span>✔ Proceso claro</span>
-        <span>✔ Reemplazo según política</span>
+      <h1 data-reveal="soft" data-reveal-delay="40">
+        <span class="hero-title-base">Encuentra apoyo doméstico </span>
+        <span class="hero-title-focus">
+          <span class="hero-title-accent">con criterio, orden y confianza</span>
+        </span>
+        <span class="hero-title-base"> para tu hogar.</span>
+      </h1>
+      <p class="hero-lead" data-reveal="soft" data-reveal-delay="80">
+        Definimos el perfil, filtramos candidatas y acompañamos el proceso para que tomes una decisión seria, ordenada y bien orientada para tu hogar.
+      </p>
+
+      <div class="hero-actions" data-reveal="soft" data-reveal-delay="120">
+        <a href="{{ url_for('public.contacto') }}" class="btn btn-primary">Solicitar servicio</a>
+        <a href="#como-funciona" class="btn btn-secondary">Conocer el proceso</a>
+        <a href="#" class="hero-actions__link" data-solicitar-domestica>Hablar por WhatsApp</a>
+      </div>
+
+      <div class="hero-story-band" aria-label="Señales de proceso" data-reveal-group>
+        <article class="hero-story-band__item" data-reveal="soft">
+          <span class="hero-story-band__eyebrow">Diagnóstico</span>
+          <strong>Brief bien planteado</strong>
+          <p>Partimos de la dinámica real del hogar para recomendar una modalidad coherente, no una salida improvisada.</p>
+        </article>
+        <article class="hero-story-band__item" data-reveal="soft">
+          <span class="hero-story-band__eyebrow">Selección</span>
+          <strong>Filtro antes de presentar</strong>
+          <p>Entrevistamos y revisamos encaje, disponibilidad y contexto antes de mostrar opciones al cliente.</p>
+        </article>
+      </div>
+
+      <div class="hero-proof" aria-label="Señales de confianza" data-reveal-group>
+        <div class="hero-proof__item" data-reveal="soft">
+          <span class="hero-proof__label">Qué hacemos</span>
+          <strong>Qué hacemos</strong>
+          <span>Gestionamos búsqueda, filtro y orientación para hogares que necesitan apoyo doméstico serio.</span>
+        </div>
+        <div class="hero-proof__item" data-reveal="soft">
+          <span class="hero-proof__label">Por qué confiar</span>
+          <strong>Por qué confiar</strong>
+          <span>Proceso organizado, criterios visibles y acompañamiento durante el arranque.</span>
+        </div>
+        <div class="hero-proof__item" data-reveal="soft">
+          <span class="hero-proof__label">Cómo se siente</span>
+          <strong>Qué hace premium al servicio</strong>
+          <span>Menos improvisación, mejor comunicación y una experiencia más confiable para la familia.</span>
+        </div>
+      </div>
+
+      <div class="hero-benefits" aria-label="Beneficios rápidos" data-reveal-group>
+        <span data-reveal="soft"><i class="fa-solid fa-check"></i> Candidatas filtradas</span>
+        <span data-reveal="soft"><i class="fa-solid fa-check"></i> Comunicación clara</span>
+        <span data-reveal="soft"><i class="fa-solid fa-check"></i> Acompañamiento</span>
+        <span data-reveal="soft"><i class="fa-solid fa-check"></i> Reemplazo según política</span>
+      </div>
+
+      <div class="hero-metrics" aria-label="Métricas narrativas del proceso" data-reveal-group>
+        <div class="hero-metric" data-reveal="soft">
+          <strong>01</strong>
+          <span>Perfil definido con claridad</span>
+        </div>
+        <div class="hero-metric" data-reveal="soft">
+          <strong>02</strong>
+          <span>Filtro y entrevistas previas</span>
+        </div>
+        <div class="hero-metric" data-reveal="soft">
+          <strong>03</strong>
+          <span>Seguimiento cuando inicia</span>
+        </div>
       </div>
     </div>
-    <div class="hero-card">
-      <h2>¿Qué necesitas hoy?</h2>
-      <ul class="hero-list">
-        <li>Doméstica con dormida</li>
-        <li>Doméstica sin dormida</li>
-        <li>Por días / por horas / temporal</li>
-        <li>Niñera o cuidado de adulto mayor</li>
+
+    <aside class="hero-premium-panel" aria-label="Vista premium del proceso">
+      <div class="hero-premium-panel__frame" data-reveal="soft">
+        <span class="hero-premium-panel__eyebrow">Proceso premium</span>
+        <h2>Una búsqueda bien llevada transmite más confianza desde el principio.</h2>
+        <p>
+          Diseñamos la experiencia para que el cliente primero entienda el valor del servicio y luego solicite orientación con más claridad.
+        </p>
+      </div>
+
+      <div class="hero-premium-visual" aria-hidden="true" data-reveal="soft" data-reveal-delay="60">
+        <div class="hero-premium-visual__halo hero-premium-visual__halo--a"></div>
+        <div class="hero-premium-visual__halo hero-premium-visual__halo--b"></div>
+        <div class="hero-premium-visual__beam"></div>
+        <div class="hero-premium-visual__core">
+          <span>Tu hogar</span>
+        </div>
+        <div class="hero-premium-visual__node hero-premium-visual__node--a">
+          <strong>Brief</strong>
+          <span>Contexto claro</span>
+        </div>
+        <div class="hero-premium-visual__node hero-premium-visual__node--b">
+          <strong>Filtro</strong>
+          <span>Selección previa</span>
+        </div>
+        <div class="hero-premium-visual__node hero-premium-visual__node--c">
+          <strong>Seguimiento</strong>
+          <span>Inicio acompañado</span>
+        </div>
+      </div>
+
+      <div class="hero-premium-panel__grid" data-reveal-group>
+        <article class="hero-premium-panel__card" data-reveal="soft">
+          <span>Proceso profesional</span>
+          <strong>Filtramos antes de presentar</strong>
+        </article>
+        <article class="hero-premium-panel__card" data-reveal="soft">
+          <span>Comunicación clara</span>
+          <strong>Menos fricción y mejor contexto</strong>
+        </article>
+        <article class="hero-premium-panel__card" data-reveal="soft">
+          <span>Cobertura definida</span>
+          <strong>Reemplazo según política</strong>
+        </article>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="section" id="confianza">
+  <div class="container">
+    <div class="section-heading section-heading--center" data-reveal="soft" data-section-anchor>
+      <h2 class="section-title">¿Por qué familias nos eligen?</h2>
+      <p class="section-subtitle">
+        Proceso claro, mejor filtro y acompañamiento desde la solicitud hasta el seguimiento.
+      </p>
+    </div>
+
+    <div class="trust-network" aria-hidden="true">
+      <svg viewBox="0 0 1120 260" preserveAspectRatio="none">
+        <path d="M120 132C218 92 284 92 384 132C490 174 564 176 664 136C770 94 858 90 1000 124"></path>
+        <path d="M170 196C310 154 424 156 558 196C696 236 820 236 964 194"></path>
+      </svg>
+    </div>
+
+    <div class="grid-4 trust-grid" data-reveal-group>
+      <article class="card trust-card" data-reveal="up">
+        <div class="trust-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <rect x="5.5" y="5.5" width="9" height="7" rx="2.2"></rect>
+            <rect x="17.5" y="5.5" width="9" height="7" rx="2.2"></rect>
+            <rect x="11.5" y="19.5" width="9" height="7" rx="2.2"></rect>
+            <path d="M16 12.5V16.5"></path>
+            <path d="M10 16H22"></path>
+          </svg>
+        </div>
+        <h3>Reclutamiento organizado</h3>
+        <p>No enviamos candidatas al azar. Partimos del perfil real que necesita tu hogar.</p>
+        <span class="trust-card__tag">Brief claro</span>
+      </article>
+      <article class="card trust-card" data-reveal="up">
+        <div class="trust-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M16 17.5C19.3137 17.5 22 14.8137 22 11.5C22 8.18629 19.3137 5.5 16 5.5C12.6863 5.5 10 8.18629 10 11.5C10 14.8137 12.6863 17.5 16 17.5Z"></path>
+            <path d="M6.5 25.5C8.22084 22.2629 11.6298 20 16 20C20.3702 20 23.7792 22.2629 25.5 25.5"></path>
+            <path d="M22.5 18.5L24.5 20.5L28 17"></path>
+          </svg>
+        </div>
+        <h3>Entrevistas y filtro</h3>
+        <p>Revisamos perfil, experiencia y disponibilidad antes de presentarte opciones.</p>
+        <span class="trust-card__tag">Validación previa</span>
+      </article>
+      <article class="card trust-card" data-reveal="up">
+        <div class="trust-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M8 16C8 11.5817 11.5817 8 16 8C20.4183 8 24 11.5817 24 16"></path>
+            <path d="M8 17.5H9.5C10.6046 17.5 11.5 18.3954 11.5 19.5V22C11.5 23.1046 10.6046 24 9.5 24H8C6.89543 24 6 23.1046 6 22V19.5C6 18.3954 6.89543 17.5 8 17.5Z"></path>
+            <path d="M24 17.5H25.5C26.6046 17.5 27.5 18.3954 27.5 19.5V22C27.5 23.1046 26.6046 24 25.5 24H24C22.8954 24 22 23.1046 22 22V19.5C22 18.3954 22.8954 17.5 24 17.5Z"></path>
+            <path d="M11.5 24C12.8 25.3333 14.3 26 16 26H18.5"></path>
+          </svg>
+        </div>
+        <h3>Acompañamiento</h3>
+        <p>Te orientamos antes, durante y después del proceso para que tomes mejores decisiones.</p>
+        <span class="trust-card__tag">Seguimiento humano</span>
+      </article>
+      <article class="card trust-card" data-reveal="up">
+        <div class="trust-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M16 5.5L25 9V15.5C25 21.3 21.35 26.5318 16 28.5C10.65 26.5318 7 21.3 7 15.5V9L16 5.5Z"></path>
+            <path d="M16 20.5C14.0658 19.2065 12.5 17.6265 12.5 15.5C12.5 14.1193 13.6193 13 15 13C15.8244 13 16.5555 13.3975 17 14.0118C17.4445 13.3975 18.1756 13 19 13C20.3807 13 21.5 14.1193 21.5 15.5C21.5 17.6265 19.9342 19.2065 18 20.5L17 21.1667L16 20.5Z"></path>
+          </svg>
+        </div>
+        <h3>Reemplazo según política</h3>
+        <p>Si aplica, gestionamos reemplazo dentro de las condiciones del plan contratado.</p>
+        <span class="trust-card__tag">Cobertura definida</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="como-funciona">
+  <div class="container">
+    <div class="section-heading section-heading--center" data-reveal="soft" data-section-anchor>
+      <h2 class="section-title">Cómo funciona</h2>
+      <p class="section-subtitle">
+        Un proceso guiado, visible y ordenado de principio a fin.
+      </p>
+    </div>
+
+    <div class="process-shell" data-process-shell>
+      <div class="process-shell__ambient" aria-hidden="true"></div>
+      <div class="process-layout">
+        <div class="process-story" aria-label="Detalle completo del proceso" data-process-progress>
+          <article
+            class="process-story__step"
+            id="process-story-step-1"
+            tabindex="0"
+            role="button"
+            data-process-step
+            data-step-index="0"
+            aria-label="Paso 1: Brief inicial"
+          >
+            <span class="process-story__number">01</span>
+            <div class="process-story__body">
+              <span class="process-story__eyebrow">Nos cuentas qué necesitas</span>
+              <h3>Brief inicial</h3>
+              <p>Definimos modalidad, jornada, ciudad, tareas y el contexto real del hogar para arrancar con criterio.</p>
+            </div>
+          </article>
+
+          <article
+            class="process-story__step"
+            id="process-story-step-2"
+            tabindex="0"
+            role="button"
+            data-process-step
+            data-step-index="1"
+            aria-label="Paso 2: Filtro interno"
+          >
+            <span class="process-story__number">02</span>
+            <div class="process-story__body">
+              <span class="process-story__eyebrow">Buscamos candidatas compatibles</span>
+              <h3>Filtro interno</h3>
+              <p>Revisamos perfiles y disponibilidad antes de mover el proceso, con foco en encaje real y no en volumen.</p>
+            </div>
+          </article>
+
+          <article
+            class="process-story__step"
+            id="process-story-step-3"
+            tabindex="0"
+            role="button"
+            data-process-step
+            data-step-index="2"
+            aria-label="Paso 3: Opciones claras"
+          >
+            <span class="process-story__number">03</span>
+            <div class="process-story__body">
+              <span class="process-story__eyebrow">Te presentamos opciones</span>
+              <h3>Opciones claras</h3>
+              <p>Presentamos candidatas prefiltradas con contexto relevante para que la evaluación sea más rápida y más precisa.</p>
+            </div>
+          </article>
+
+          <article
+            class="process-story__step"
+            id="process-story-step-4"
+            tabindex="0"
+            role="button"
+            data-process-step
+            data-step-index="3"
+            aria-label="Paso 4: Decisión guiada"
+          >
+            <span class="process-story__number">04</span>
+            <div class="process-story__body">
+              <span class="process-story__eyebrow">Eliges la candidata</span>
+              <h3>Decisión guiada</h3>
+              <p>Coordinamos la entrevista y aterrizamos expectativas del servicio para ayudarte a cerrar con más seguridad.</p>
+            </div>
+          </article>
+
+          <article
+            class="process-story__step"
+            id="process-story-step-5"
+            tabindex="0"
+            role="button"
+            data-process-step
+            data-step-index="4"
+            aria-label="Paso 5: Seguimiento"
+          >
+            <span class="process-story__number">05</span>
+            <div class="process-story__body">
+              <span class="process-story__eyebrow">Damos seguimiento al proceso</span>
+              <h3>Seguimiento</h3>
+              <p>Seguimos el inicio del servicio para apoyar la adaptación y detectar ajustes temprano si hacen falta.</p>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="servicios">
+  <div class="container">
+    <div class="section-heading section-heading--center" data-reveal="soft" data-section-anchor>
+      <h2 class="section-title">Servicios</h2>
+      <p class="section-subtitle">
+        Modalidades fáciles de escanear según tu hogar y tu horario.
+      </p>
+    </div>
+
+    <div class="grid-5 service-grid" data-reveal-group>
+      <article class="card service-card" data-reveal="up">
+        <div class="service-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M7 12.5L16 6L25 12.5V24.5C25 25.6046 24.1046 26.5 23 26.5H9C7.89543 26.5 7 25.6046 7 24.5V12.5Z"></path>
+            <path d="M12.5 26.5V17H19.5V26.5"></path>
+          </svg>
+        </div>
+        <span class="service-card__eyebrow">Cobertura estable</span>
+        <h3>Doméstica con dormida</h3>
+        <p class="service-card__copy">Para familias que necesitan continuidad, presencia en casa y un esquema operativo más completo.</p>
+        <ul class="service-points">
+          <li>Presencia continua en el hogar</li>
+          <li>Funciones acordadas según rutina familiar</li>
+        </ul>
+        <a href="#" class="service-card__cta" data-service-cta data-service-message="Hola, me interesa solicitar una doméstica con dormida. Quiero recibir orientación sobre el proceso.">Solicitar esta modalidad</a>
+      </article>
+      <article class="card service-card" data-reveal="up">
+        <div class="service-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M8.5 9.5H23.5"></path>
+            <path d="M8.5 16H23.5"></path>
+            <path d="M8.5 22.5H18.5"></path>
+            <rect x="5.5" y="5.5" width="21" height="21" rx="4"></rect>
+          </svg>
+        </div>
+        <span class="service-card__eyebrow">Jornada definida</span>
+        <h3>Doméstica sin dormida</h3>
+        <p class="service-card__copy">Pensado para hogares con horarios claros que necesitan apoyo diario sin permanencia nocturna.</p>
+        <ul class="service-points">
+          <li>Entrada y salida diaria</li>
+          <li>Horario fijo según tu necesidad</li>
+        </ul>
+        <a href="#" class="service-card__cta" data-service-cta data-service-message="Hola, me interesa solicitar una doméstica sin dormida. Quiero recibir orientación sobre el proceso.">Solicitar esta modalidad</a>
+      </article>
+      <article class="card service-card" data-reveal="up">
+        <div class="service-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M10 21.5L12.5 24L22 14.5"></path>
+            <path d="M16 6.5V10.5"></path>
+            <path d="M8 10.5H24"></path>
+            <rect x="6" y="8.5" width="20" height="17" rx="4"></rect>
+          </svg>
+        </div>
+        <span class="service-card__eyebrow">Apoyo flexible</span>
+        <h3>Limpieza por días</h3>
+        <p class="service-card__copy">Ideal cuando necesitas orden recurrente o puntual sin una contratación fija de jornada completa.</p>
+        <ul class="service-points">
+          <li>Limpieza puntual o recurrente</li>
+          <li>Frecuencia flexible por días</li>
+        </ul>
+        <a href="#" class="service-card__cta" data-service-cta data-service-message="Hola, me interesa solicitar una persona para limpieza por días. Quiero recibir orientación sobre el proceso.">Solicitar esta modalidad</a>
+      </article>
+      <article class="card service-card" data-reveal="up">
+        <div class="service-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M10.5 26V22.5C10.5 19.7386 12.7386 17.5 15.5 17.5H16.5C19.2614 17.5 21.5 19.7386 21.5 22.5V26"></path>
+            <path d="M16 15C18.4853 15 20.5 12.9853 20.5 10.5C20.5 8.01472 18.4853 6 16 6C13.5147 6 11.5 8.01472 11.5 10.5C11.5 12.9853 13.5147 15 16 15Z"></path>
+            <path d="M22.5 12.5L24.5 14.5L28 11"></path>
+          </svg>
+        </div>
+        <span class="service-card__eyebrow">Rutina infantil</span>
+        <h3>Niñera</h3>
+        <p class="service-card__copy">Cuidado con foco en niños, coordinación diaria y expectativas alineadas desde el primer contacto.</p>
+        <ul class="service-points">
+          <li>Cuidado infantil con horario definido</li>
+          <li>Funciones acordadas desde el inicio</li>
+        </ul>
+        <a href="#" class="service-card__cta" data-service-cta data-service-message="Hola, me interesa solicitar una niñera. Quiero recibir orientación sobre el proceso.">Solicitar esta modalidad</a>
+      </article>
+      <article class="card service-card" data-reveal="up">
+        <div class="service-card__icon" aria-hidden="true">
+          <svg viewBox="0 0 32 32" fill="none">
+            <path d="M12 25.5V22C12 19.7909 13.7909 18 16 18C18.2091 18 20 19.7909 20 22V25.5"></path>
+            <path d="M16 16C18.4853 16 20.5 13.9853 20.5 11.5C20.5 9.01472 18.4853 7 16 7C13.5147 7 11.5 9.01472 11.5 11.5C11.5 13.9853 13.5147 16 16 16Z"></path>
+            <path d="M22.5 9.5H26"></path>
+            <path d="M24.25 7.75V11.25"></path>
+          </svg>
+        </div>
+        <span class="service-card__eyebrow">Acompañamiento</span>
+        <h3>Cuidado de adulto mayor</h3>
+        <p class="service-card__copy">Orientado a hogares que necesitan soporte diario, compañía y claridad sobre el alcance del acompañamiento.</p>
+        <ul class="service-points">
+          <li>Acompañamiento y apoyo diario</li>
+          <li>Orientación según el caso del hogar</li>
+        </ul>
+        <a href="#" class="service-card__cta" data-service-cta data-service-message="Hola, me interesa solicitar una persona para cuidado de adulto mayor. Quiero recibir orientación sobre el proceso.">Solicitar esta modalidad</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt section-orientation" id="orientacion" data-nav-group="servicios">
+  <div class="container orientation-layout">
+    <div class="orientation-copy" data-section-anchor>
+      <span class="section-kicker" data-reveal="soft">Orientación personalizada</span>
+      <h2 class="section-title" data-reveal="soft" data-reveal-delay="40">Solicita orientación personalizada</h2>
+      <p class="section-subtitle" data-reveal="soft" data-reveal-delay="80">
+        Cuéntanos tu caso y te orientamos según tu hogar, horario y presupuesto.
+      </p>
+      <div class="orientation-notes" data-reveal-group>
+        <div class="orientation-notes__item" data-reveal="soft">
+          <strong>Sin presión</strong>
+          <span>La orientación aparece aquí, después de explicar el valor, el proceso y las modalidades.</span>
+        </div>
+        <div class="orientation-notes__item" data-reveal="soft">
+          <strong>Con contexto</strong>
+          <span>El selector y WhatsApp siguen activos para conservar conversión, pero con una entrada más sobria.</span>
+        </div>
+      </div>
+    </div>
+
+    <aside class="hero-service-card guidance-card" aria-labelledby="hero-service-title" data-service-shell>
+      <div class="hero-service-card__badge" data-reveal="soft">Orientación inicial</div>
+      <h2 id="hero-service-title" data-reveal="soft" data-reveal-delay="40">¿Qué servicio necesitas?</h2>
+      <p class="hero-service-card__intro" data-reveal="soft" data-reveal-delay="80">
+        Selecciona una modalidad y activamos una salida directa por WhatsApp con el contexto correcto.
+      </p>
+
+      <div class="service-picker" role="list" aria-label="Opciones de servicio" data-reveal-group>
+        <button
+          type="button"
+          class="service-chip"
+          data-reveal="soft"
+          data-service-description="Cobertura completa con presencia en el hogar y rutina continua."
+          data-service-microcopy="Ideal para hogares que buscan estabilidad operativa y continuidad dentro de la casa."
+          data-service-context="Jornada extendida · Presencia en el hogar"
+          data-service-stat="Mejor para rutina integral"
+          data-service-tone="resident"
+          data-service-option="Doméstica con dormida"
+          data-service-message="Hola, me interesa solicitar una doméstica con dormida. Quiero recibir orientación sobre el proceso."
+          aria-pressed="false"
+        >
+          <span class="service-chip__title">Doméstica con dormida</span>
+          <span class="service-chip__meta">Cobertura estable · Hogares con jornada completa</span>
+        </button>
+        <button
+          type="button"
+          class="service-chip"
+          data-reveal="soft"
+          data-service-description="Apoyo diario con entrada y salida fija según el ritmo del hogar."
+          data-service-microcopy="Funciona bien cuando necesitas consistencia, pero sin permanencia nocturna."
+          data-service-context="Entrada y salida diaria · Horario definido"
+          data-service-stat="Ritmo claro para la familia"
+          data-service-tone="routine"
+          data-service-option="Doméstica sin dormida"
+          data-service-message="Hola, me interesa solicitar una doméstica sin dormida. Quiero recibir orientación sobre el proceso."
+          aria-pressed="false"
+        >
+          <span class="service-chip__title">Doméstica sin dormida</span>
+          <span class="service-chip__meta">Salida diaria · Horario definido</span>
+        </button>
+        <button
+          type="button"
+          class="service-chip"
+          data-reveal="soft"
+          data-service-description="Soporte puntual o recurrente cuando necesitas orden sin contratación fija."
+          data-service-microcopy="Útil para hogares que buscan refuerzo focalizado y flexibilidad de frecuencia."
+          data-service-context="Apoyo por bloques · Refuerzo puntual"
+          data-service-stat="Frecuencia adaptable"
+          data-service-tone="flex"
+          data-service-option="Limpieza por días"
+          data-service-message="Hola, me interesa solicitar una persona para limpieza por días. Quiero recibir orientación sobre el proceso."
+          aria-pressed="false"
+        >
+          <span class="service-chip__title">Limpieza por días</span>
+          <span class="service-chip__meta">Frecuencia flexible · Refuerzo puntual</span>
+        </button>
+        <button
+          type="button"
+          class="service-chip"
+          data-reveal="soft"
+          data-service-description="Acompañamiento infantil con funciones y horarios definidos desde el inicio."
+          data-service-microcopy="Ideal para familias que necesitan apoyo con niños y rutinas del hogar."
+          data-service-context="Cuidado infantil · Rutina acompañada"
+          data-service-stat="Cobertura enfocada en niños"
+          data-service-tone="care"
+          data-service-option="Niñera"
+          data-service-message="Hola, me interesa solicitar una niñera. Quiero recibir orientación sobre el proceso."
+          aria-pressed="false"
+        >
+          <span class="service-chip__title">Niñera</span>
+          <span class="service-chip__meta">Cuidado infantil · Rutina clara</span>
+        </button>
+        <button
+          type="button"
+          class="service-chip"
+          data-reveal="soft"
+          data-service-description="Apoyo humano y continuo para hogares que cuidan a un adulto mayor."
+          data-service-microcopy="Orientado a acompañamiento, asistencia básica y apoyo diario según el caso."
+          data-service-context="Acompañamiento diario · Soporte sensible"
+          data-service-stat="Seguimiento más humano"
+          data-service-tone="senior"
+          data-service-option="Cuidado de adulto mayor"
+          data-service-message="Hola, me interesa solicitar una persona para cuidado de adulto mayor. Quiero recibir orientación sobre el proceso."
+          aria-pressed="false"
+        >
+          <span class="service-chip__title">Cuidado de adulto mayor</span>
+          <span class="service-chip__meta">Acompañamiento diario · Seguimiento sensible</span>
+        </button>
+      </div>
+
+      <div class="service-preview" aria-live="polite" data-service-preview data-reveal="soft" data-reveal-delay="120">
+        <div class="service-preview__topline">
+          <span class="service-preview__eyebrow">Selección activa</span>
+          <span class="service-preview__status" data-service-preview-status>Listo para orientar</span>
+        </div>
+        <div class="service-preview__visual" aria-hidden="true">
+          <div class="service-preview__ring service-preview__ring--outer"></div>
+          <div class="service-preview__ring service-preview__ring--inner"></div>
+          <div class="service-preview__pulse"></div>
+          <div class="service-preview__core">
+            <span data-service-preview-label>Tu hogar</span>
+          </div>
+          <div class="service-preview__node service-preview__node--a"></div>
+          <div class="service-preview__node service-preview__node--b"></div>
+          <div class="service-preview__node service-preview__node--c"></div>
+        </div>
+        <strong class="service-preview__title" data-service-preview-title>Elige una modalidad</strong>
+        <p class="service-preview__text" data-service-preview-text>
+          Cuéntanos tu caso y te orientamos según tu hogar, horario y presupuesto.
+        </p>
+        <p class="service-preview__microcopy" data-service-preview-microcopy>
+          La recomendación visual cambia con cada selección para que la decisión se sienta más concreta.
+        </p>
+        <div class="service-preview__details">
+          <span class="service-preview__detail" data-service-preview-context>Rutina del hogar · Horario · Presupuesto</span>
+          <span class="service-preview__detail service-preview__detail--accent" data-service-preview-stat>Contexto inicial preparado</span>
+        </div>
+      </div>
+
+      <div class="hero-service-card__footer" data-reveal="soft" data-reveal-delay="160">
+        <p class="hero-service-card__text">
+          La conversación sale preparada para reducir ida y vuelta innecesaria.
+        </p>
+
+        <a
+          href="#"
+          class="btn btn-secondary full-width"
+          data-service-whatsapp
+        >
+          Hablar por WhatsApp
+        </a>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="section section-alt" id="nosotros">
+  <div class="container about-split">
+    <div class="about-copy" data-reveal="up" data-section-anchor>
+      <span class="section-kicker">Nosotros</span>
+      <h2 class="section-title">Menos improvisación. Más orden para encontrar apoyo doméstico.</h2>
+      <p class="section-subtitle">
+        Filtramos mejor, explicamos mejor y damos seguimiento para que el proceso se sienta más claro desde el inicio.
+      </p>
+      <div class="about-rail" data-reveal-group>
+        <div class="about-rail__item" data-reveal="soft">
+          <strong>Diagnóstico claro</strong>
+          <span>Partimos del caso real del hogar.</span>
+        </div>
+        <div class="about-rail__item" data-reveal="soft">
+          <strong>Presentación útil</strong>
+          <span>Opciones con mejor contexto, no al azar.</span>
+        </div>
+        <div class="about-rail__item" data-reveal="soft">
+          <strong>Seguimiento</strong>
+          <span>Acompañamiento cuando inicia el servicio.</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card benefits-card" data-reveal="up">
+      <h3>Beneficios del proceso</h3>
+      <ul class="benefits-list">
+        <li>Proceso organizado</li>
+        <li>Comunicación clara</li>
+        <li>Ahorro de tiempo</li>
+        <li>Candidatas filtradas</li>
+        <li>Seguimiento personalizado</li>
       </ul>
-      <p class="hero-card-text">Cuéntanos tu caso y te presentamos candidatas filtradas según tu hogar, horario y presupuesto.</p>
-      <a href="#" class="btn btn-secondary full-width" data-solicitar-domestica>Hablar por WhatsApp</a>
     </div>
   </div>
 </section>
 
-<section class="section" id="beneficios">
+<section class="section" id="historias" data-nav-group="nosotros">
   <div class="container">
-    <h2 class="section-title">¿Por qué Doméstica del Cibao A&D?</h2>
-    <p class="section-subtitle">No solo te conseguimos una doméstica, te acompañamos en todo el proceso.</p>
-    <div class="grid-3">
-      <div class="card">
-        <h3>Filtro, selección y depuración</h3>
-        <p>Entrevistas, verificación básica de referencias laborales y familiares, <strong>depuración policial completa</strong> antes de presentarlas a tu familia.</p>
-      </div>
-      <div class="card">
-        <h3>Proceso claro</h3>
-        <p>Te explicamos funciones, horario, modalidad y condiciones antes de cerrar el acuerdo.</p>
-      </div>
-      <div class="card">
-        <h3>Acompañamiento y reemplazo</h3>
-        <p>Damos seguimiento real durante el inicio y, si algo no sale como esperabas, te orientamos y aplicamos reemplazo según política.</p>
-      </div>
+    <div class="section-heading section-heading--center" data-reveal="soft" data-section-anchor>
+      <h2 class="section-title">¿Por qué confiar en nosotros?</h2>
+      <p class="section-subtitle">
+        Trabajamos con un proceso claro, acompañamiento cercano y comunicación constante para que cada familia se sienta orientada desde el primer contacto.
+      </p>
+    </div>
+
+    <div class="confidence-matrix" data-reveal-group>
+      <article class="card confidence-panel confidence-panel--wide" data-reveal="up">
+        <span class="confidence-panel__eyebrow">Acompañamiento</span>
+        <h3>Seguimiento durante el proceso</h3>
+        <p>
+          No desaparecemos después del primer contacto. Te acompañamos desde la solicitud hasta la colocación del personal.
+        </p>
+      </article>
+      <article class="card confidence-panel" data-reveal="up">
+        <span class="confidence-panel__eyebrow">Claridad</span>
+        <h3>Proceso claro y organizado</h3>
+        <p>Cada solicitud sigue un proceso definido para ofrecerte una experiencia ordenada, seria y transparente.</p>
+      </article>
+      <article class="card confidence-panel" data-reveal="up">
+        <span class="confidence-panel__eyebrow">Cercanía</span>
+        <h3>Atención personalizada</h3>
+        <p>Cada hogar tiene necesidades diferentes. Por eso primero entendemos tu caso antes de recomendar una candidata.</p>
+      </article>
     </div>
   </div>
 </section>
 
-<section class="section section-alt" id="proceso">
+<section class="section section-alt" id="preguntas">
   <div class="container">
-    <h2 class="section-title">¿Cómo funciona el proceso?</h2>
-    <div class="steps-grid">
-      <div class="step">
-        <span class="step-number">1</span>
-        <h3>Nos cuentas qué necesitas</h3>
-        <p>Ciudad, horario, funciones principales y sueldo aproximado.</p>
-      </div>
-      <div class="step">
-        <span class="step-number">2</span>
-        <h3>Te presentamos candidatas</h3>
-        <p>Te mostramos opciones filtradas según tu hogar y lo que buscas, de acuerdo a tu horario, funciones y necesidades.</p>
-      </div>
-      <div class="step">
-        <span class="step-number">3</span>
-        <h3>Entrevista y decisión</h3>
-        <p>Coordinamos entrevista, aclaramos dudas y definimos las condiciones.</p>
-      </div>
-      <div class="step">
-        <span class="step-number">4</span>
-        <h3>Contratación y seguimiento</h3>
-        <p>Formalizamos el acuerdo y damos seguimiento inicial al servicio.</p>
-      </div>
+    <div class="section-heading section-heading--center" data-reveal="soft" data-section-anchor>
+      <h2 class="section-title">Preguntas frecuentes</h2>
+      <p class="section-subtitle">
+        Respuestas cortas para resolver dudas antes de solicitar el servicio.
+      </p>
+    </div>
+
+    <div class="faq-grid" data-reveal-group>
+      <details class="faq-item" data-reveal="up" open>
+        <summary>
+          <span>¿Cómo solicito una doméstica?</span>
+        </summary>
+        <p>Puedes escribirnos por WhatsApp o usar la página de contacto para contarnos qué necesitas.</p>
+      </details>
+      <details class="faq-item" data-reveal="up">
+        <summary>
+          <span>¿Qué incluye el proceso?</span>
+        </summary>
+        <p>Orientación inicial, búsqueda de candidatas compatibles, presentación de opciones y seguimiento del inicio.</p>
+      </details>
+      <details class="faq-item" data-reveal="up">
+        <summary>
+          <span>¿Qué pasa si la candidata no funciona?</span>
+        </summary>
+        <p>Revisamos el caso contigo y, si aplica, gestionamos reemplazo según la política del servicio contratado.</p>
+      </details>
+      <details class="faq-item" data-reveal="up">
+        <summary>
+          <span>¿Trabajan con dormida y salida diaria?</span>
+        </summary>
+        <p>Sí. Manejamos modalidades con dormida, sin dormida y limpieza por días.</p>
+      </details>
+      <details class="faq-item" data-reveal="up">
+        <summary>
+          <span>¿Cómo se manejan los pagos?</span>
+        </summary>
+        <p>Las condiciones de pago se explican durante el proceso para que queden claras antes de cerrar el servicio.</p>
+      </details>
+      <details class="faq-item" data-reveal="up">
+        <summary>
+          <span>¿Puedo solicitar por WhatsApp?</span>
+        </summary>
+        <p>Sí. Es uno de los canales más rápidos para recibir orientación inicial.</p>
+      </details>
     </div>
   </div>
 </section>
 
-<section class="section cta-section">
-  <div class="container cta-inner">
-    <div>
-      <h2>¿Listo para encontrar tu próxima doméstica?</h2>
-      <p>Escríbenos por WhatsApp y cuéntanos qué tipo de ayuda necesitas en tu hogar.</p>
+<section class="section cta-section" id="contacto">
+  <div class="container cta-panel" data-reveal="up">
+    <div class="cta-panel__ambient" aria-hidden="true">
+      <span class="cta-panel__orb cta-panel__orb--a"></span>
+      <span class="cta-panel__orb cta-panel__orb--b"></span>
+      <span class="cta-panel__grid"></span>
     </div>
-    <a href="#" class="btn btn-primary" data-solicitar-domestica>Hablar ahora por WhatsApp</a>
+    <div class="cta-panel__content" data-reveal-group data-section-anchor>
+      <span class="cta-panel__eyebrow" data-reveal="soft">Siguiente paso</span>
+      <h2 data-reveal="soft">¿Listo para iniciar el proceso?</h2>
+      <p data-reveal="soft">Solicita el servicio o escríbenos por WhatsApp para empezar con una orientación clara y una búsqueda bien llevada.</p>
+    </div>
+
+    <div class="cta-panel__aside" data-reveal-group>
+      <ul class="cta-trust-list" aria-label="Señales de confianza" data-reveal="soft">
+        <li>Orientación clara</li>
+        <li>Proceso organizado</li>
+        <li>Atención por WhatsApp</li>
+      </ul>
+      <div class="cta-actions" data-reveal-group>
+        <a href="{{ url_for('public.contacto') }}" class="btn btn-primary" data-reveal="soft">Solicitar servicio</a>
+        <a href="#" class="btn btn-outline btn-outline-light" data-solicitar-domestica data-reveal="soft">Hablar por WhatsApp</a>
+      </div>
+    </div>
   </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='public/js/landing_motion.js') }}" defer></script>
 {% endblock %}
