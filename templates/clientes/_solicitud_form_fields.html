@@ -1129,6 +1129,20 @@
         </div>
       </div>
       {% endif %}
+      <div class="public-field public-full">
+        <div id="atractivoPreviewBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
+          <p class="public-smart-warning-title">Atractivo de la solicitud</p>
+          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+            <div class="fw-semibold" id="atractivoPreviewPercent">0%</div>
+            <div class="small text-muted" id="atractivoPreviewLabel">—</div>
+          </div>
+          <div class="progress mb-2" role="progressbar" aria-label="Score de atractivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+            <div id="atractivoPreviewBar" class="progress-bar bg-info" style="width: 0%;"></div>
+          </div>
+          <div class="small text-muted mb-2" id="atractivoPreviewStatus">Completa el formulario para ver el score.</div>
+          <ul class="salary-suggest-list mb-0" id="atractivoPreviewReasons"></ul>
+        </div>
+      </div>
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
@@ -2594,7 +2608,7 @@
         if (!n) return "0";
         return n.toLocaleString('en-US');
       }
-      function gatherData() {
+      function buildSolicitudSmartPayload() {
         var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
         var getVal = function (name) {
           var el = hostForm.querySelector('[name="' + name + '"]');
@@ -2689,7 +2703,7 @@
       function sync() {
         if (timer) clearTimeout(timer);
         timer = setTimeout(function () {
-          var d = gatherData();
+          var d = buildSolicitudSmartPayload();
           var q = new URLSearchParams();
           Object.keys(d).forEach(function (k) {
             var val = d[k];
@@ -2708,7 +2722,7 @@
       if (useBtn) useBtn.addEventListener('click', function () { sync(); });
       if (manualBtn) manualBtn.addEventListener('click', function () { sueldoInput.focus(); });
       if (useBtn) useBtn.addEventListener('click', function () {
-        var d = gatherData();
+        var d = buildSolicitudSmartPayload();
         var q = new URLSearchParams();
         Object.keys(d).forEach(function (k) {
           var val = d[k];
@@ -2721,9 +2735,113 @@
           .catch(function () {});
       });
       sync();
-      return { sync: sync };
+      return { sync: sync, buildPayload: buildSolicitudSmartPayload };
       {% endif %}
       return { sync: function () {} };
+    }
+
+    function setupAtractivoPreview(sharedPayloadBuilder) {
+      var box = byId('atractivoPreviewBox');
+      var percentNode = byId('atractivoPreviewPercent');
+      var labelNode = byId('atractivoPreviewLabel');
+      var barNode = byId('atractivoPreviewBar');
+      var statusNode = byId('atractivoPreviewStatus');
+      var reasonsNode = byId('atractivoPreviewReasons');
+      var payloadBuilder = sharedPayloadBuilder || function () {
+        var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
+        var sueldoNode = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
+        var getVal = function (name) {
+          var el = hostForm.querySelector('[name="' + name + '"]');
+          return el ? (el.value || '') : '';
+        };
+        var checkedValue = function (name) {
+          var el = hostForm.querySelector('input[name="' + name + '"]:checked');
+          return el ? (el.value || '') : '';
+        };
+        var getAll = function (name) {
+          var out = [];
+          var nodes = hostForm.querySelectorAll('input[name="' + name + '"]:checked');
+          for (var i = 0; i < nodes.length; i++) out.push(nodes[i].value || '');
+          return out;
+        };
+        return {
+          modalidad_trabajo: selectedModalidad ? (selectedModalidad.value || '') : '',
+          horario: getVal('horario'),
+          horario_hora_entrada: getVal('horario_hora_entrada'),
+          horario_hora_salida: getVal('horario_hora_salida'),
+          tipo_lugar: getVal('tipo_lugar'),
+          habitaciones: getVal('habitaciones'),
+          banos: getVal('banos'),
+          pisos: checkedValue('pisos_selector'),
+          dos_pisos: getVal('dos_pisos'),
+          ninos: getVal('ninos'),
+          edades_ninos: getVal('edades_ninos'),
+          adultos: getVal('adultos'),
+          sueldo: sueldoNode ? (sueldoNode.value || '') : '',
+          envejeciente_tipo_cuidado: checkedValue('envejeciente_tipo_cuidado'),
+          envejeciente_responsabilidades: getAll('envejeciente_responsabilidades'),
+          funciones: getAll('funciones'),
+          areas_comunes: getAll('areas_comunes')
+        };
+      };
+      if (!box || !percentNode || !labelNode || !barNode || !statusNode || !reasonsNode) {
+        return { sync: function () {} };
+      }
+
+      var timer = null;
+      function showBox() {
+        box.classList.remove('d-none');
+        box.setAttribute('aria-hidden', 'false');
+      }
+      function render(result) {
+        if (!result) return;
+        var score = parseInt(result.score || 0, 10);
+        var motivos = Array.isArray(result.motivos) ? result.motivos.slice(0, 4) : [];
+        showBox();
+        percentNode.textContent = String(score) + '%';
+        labelNode.textContent = result.label || '—';
+        barNode.style.width = String(score) + '%';
+        barNode.setAttribute('aria-valuenow', String(score));
+        barNode.className = 'progress-bar ' + (
+          score >= 85 ? 'bg-success' :
+          score >= 70 ? 'bg-info' :
+          score >= 55 ? 'bg-warning text-dark' :
+          score >= 35 ? 'bg-warning' : 'bg-danger'
+        );
+        statusNode.textContent = 'Score calculado por backend.';
+        reasonsNode.innerHTML = '';
+        for (var i = 0; i < motivos.length; i++) {
+          var txt = motivos[i] && motivos[i].label ? motivos[i].label : '';
+          if (!txt) continue;
+          var li = document.createElement('li');
+          li.textContent = txt;
+          reasonsNode.appendChild(li);
+        }
+      }
+      function sync() {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(function () {
+          var d = payloadBuilder();
+          var q = new URLSearchParams();
+          Object.keys(d).forEach(function (k) {
+            var val = d[k];
+            if (Array.isArray(val)) {
+              for (var i = 0; i < val.length; i++) q.append(k, val[i]);
+            } else {
+              q.append(k, val || '');
+            }
+          });
+          fetch('/clientes/api/solicitud-atractivo-preview?' + q.toString(), {
+            method: 'GET',
+            credentials: 'same-origin'
+          })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (json) { render(json); })
+            .catch(function () {});
+        }, 260);
+      }
+      sync();
+      return { sync: sync };
     }
 
     function setupEdadSingleChoice() {
@@ -2804,6 +2922,7 @@
     var mascotaGuidanceCtrl = setupMascotaGuidance();
     var homeStructureCtrl = setupHomeStructureVisibility();
     var salarySuggestionCtrl = setupSalarySuggestion();
+    var atractivoPreviewCtrl = setupAtractivoPreview(salarySuggestionCtrl.buildPayload);
     syncOtherFields(false);
     setupAreasTodas();
     syncFromExistingMarkers();
@@ -2864,6 +2983,7 @@
         syncSantiagoRutaNotice();
       }
       if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
+      if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
     });
 
     var modalidadOtroInput = byId('modalidad_otro_text');
@@ -2878,12 +2998,14 @@
       ninosInputNode.addEventListener('input', function () {
         syncNinosRules(true);
         if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
+        if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
       });
     }
     var edadesInputNode = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
     if (edadesInputNode && ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
       edadesInputNode.addEventListener('input', function () {
         ninosLimpiezaSmartAlertCtrl.sync();
+        if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
       });
     }
     var ciudadUiNode = byId('ciudad_input_ui');
@@ -2921,6 +3043,7 @@
       sueldoInputNode.addEventListener('input', function () {
         syncMoneyInput();
         if (salarySuggestionCtrl && salarySuggestionCtrl.sync) salarySuggestionCtrl.sync();
+        if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
       });
       sueldoInputNode.addEventListener('blur', syncMoneyInput);
     }
@@ -2934,6 +3057,7 @@
       node.addEventListener('input', function () {
         clearHorarioSuggestionSelection();
         syncHorarioInteligente(false);
+        if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
       });
     });
 

@@ -60,6 +60,9 @@
     </div>
   </div>
 
+  {% set atractivo = {'score': solicitud.atractivo_score, 'label': solicitud.atractivo_label, 'motivos': (solicitud.atractivo_motivos or [])} %}
+  {% include 'clientes/_solicitud_atractivo_block.html' %}
+
   <!-- Información general -->
   <div class="glass-card mb-4">
     <div class="glass-header">

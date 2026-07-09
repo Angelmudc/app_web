@@ -733,6 +733,8 @@ def _resolve_share_state(code: str):
     token_hash = clientes_routes._public_link_token_hash_storage(token)
 
     if link_type == "existente":
+        if clientes_routes._public_usage_has_pending_plan(token_hash, link_type="existente"):
+            return alias, "ready", link_type, token
         if clientes_routes._public_link_usage_by_hash(token_hash) is not None:
             return alias, "used", link_type, token
         cliente, fail_reason, _meta = clientes_routes._resolve_public_link_token(token)
@@ -743,6 +745,8 @@ def _resolve_share_state(code: str):
         return alias, "invalid", link_type, token
 
     if link_type == "nuevo":
+        if clientes_routes._public_usage_has_pending_plan(token_hash, link_type="nuevo"):
+            return alias, "ready", link_type, token
         if clientes_routes._public_new_link_usage_by_hash(token_hash) is not None:
             return alias, "used", link_type, token
         ok, fail_reason, _meta = clientes_routes._resolve_public_new_link_token(token)
@@ -799,9 +803,7 @@ def solicitud_share_continue(code: str):
         ), 404
 
     if share_state == "used":
-        # UX: tras envío exitoso por alias, mostrar primero confirmación de éxito
-        # (si existe estado de sesión válido), y "used" solo en reingresos posteriores.
-        if sent_state == "enviado" and token:
+        if token:
             g.public_share_code = code_clean
             g.public_share_url_override = og_url
             from clientes import routes as clientes_routes
@@ -1110,17 +1112,38 @@ def domesticas_store_list():
     selected_set = set(selected_ids)
     cards = []
     for cand, ficha in (items or []):
-        payload = _private_store_card_payload(cand, ficha_web=ficha, token=token)
+        payload = _domesticas_store_public_payload(cand, ficha_web=ficha)
         payload["is_selected"] = int(payload["id"]) in selected_set
         cards.append(payload)
 
-    base_options_q = (
-        db.session.query(CandidataWeb)
-        .filter(CandidataWeb.visible.is_(True))
-        .filter(CandidataWeb.estado_publico == "disponible")
-    )
-    ciudades = sorted({(row.ciudad_publica or "").strip() for row in base_options_q if (row.ciudad_publica or "").strip()})
-    modalidades = sorted({(row.modalidad_publica or "").strip() for row in base_options_q if (row.modalidad_publica or "").strip()})
+    ciudades = [
+        row.value
+        for row in (
+            db.session.query(db.func.trim(CandidataWeb.ciudad_publica).label("value"))
+            .filter(CandidataWeb.visible.is_(True))
+            .filter(CandidataWeb.estado_publico == "disponible")
+            .filter(CandidataWeb.ciudad_publica.isnot(None))
+            .filter(db.func.trim(CandidataWeb.ciudad_publica) != "")
+            .distinct()
+            .order_by("value")
+            .all()
+        )
+        if row.value
+    ]
+    modalidades = [
+        row.value
+        for row in (
+            db.session.query(db.func.trim(CandidataWeb.modalidad_publica).label("value"))
+            .filter(CandidataWeb.visible.is_(True))
+            .filter(CandidataWeb.estado_publico == "disponible")
+            .filter(CandidataWeb.modalidad_publica.isnot(None))
+            .filter(db.func.trim(CandidataWeb.modalidad_publica) != "")
+            .distinct()
+            .order_by("value")
+            .all()
+        )
+        if row.value
+    ]
 
     return render_template(
         "public/domesticas_store_list.html",
@@ -1186,7 +1209,7 @@ def mi_seleccion_list():
     valid_ids = [int(getattr(cand, "fila", 0) or 0) for cand, _ficha in rows]
     if valid_ids != selected_ids:
         _mi_seleccion_set_ids(valid_ids)
-    cards = [_private_store_card_payload(cand, ficha_web=ficha, token=token) for cand, ficha in rows]
+    cards = [_domesticas_store_public_payload(cand, ficha_web=ficha) for cand, ficha in rows]
     return render_template(
         "public/mi_seleccion.html",
         cards=cards,
@@ -1353,6 +1376,13 @@ def private_store_list(token: str):
     if modalidad:
         query = query.filter(CandidataWeb.modalidad_publica.ilike(f"%{modalidad}%"))
     if funciones:
+        query = query.filter(
+            db.or_(
+                CandidataWeb.experiencia_resumen.isnot(None),
+                CandidataWeb.experiencia_detallada.isnot(None),
+                CandidataWeb.entrevista_publica_resumen.isnot(None),
+            )
+        )
         for funcion in funciones:
             terms = _TIENDA_FUNCIONES_TERMS.get(funcion, [funcion])
             query = query.filter(
@@ -1384,6 +1414,11 @@ def private_store_list(token: str):
         payload = _private_store_card_payload(cand, ficha_web=ficha, token=token)
         payload["is_selected"] = int(payload["id"]) in selected_set
         cards.append(payload)
+    page_stats = {
+        "con_dormida": sum(1 for card in cards if (card.get("modalidad_publica") or "") == "Con dormida"),
+        "salida_diaria": sum(1 for card in cards if (card.get("modalidad_publica") or "") == "Salida diaria"),
+        "inmediatas": sum(1 for card in cards if bool(card.get("disponible_inmediato"))),
+    }
 
     return render_template(
         "private_store/store_list.html",
@@ -1409,6 +1444,7 @@ def private_store_list(token: str):
         scope_mode=scope_mode,
         selection_count=len(selected_ids),
         selected_ids=selected_ids,
+        page_stats=page_stats,
     )
 
 

@@ -53,12 +53,14 @@ def test_admin_form_guarda_tipo_plan_normalizado_y_no_toca_payment_cycle():
         assert solicitud.payment_cycle_motivo_apertura is None
 
 
-def test_admin_form_requiere_tipo_plan():
+def test_admin_form_permite_crear_sin_tipo_plan():
     flask_app.config["WTF_CSRF_ENABLED"] = False
     with flask_app.test_request_context("/admin/clientes/1/solicitudes/nueva", method="POST", data=_base_payload(None)):
         form = AdminSolicitudForm()
-        assert form.validate() is False
-        assert "Selecciona un plan para continuar." in form.tipo_plan.errors
+        assert form.validate() is True
+        solicitud = Solicitud()
+        form.populate_obj(solicitud)
+        assert solicitud.tipo_plan in (None, "")
 
 
 def test_admin_form_rechaza_tipo_plan_invalido():

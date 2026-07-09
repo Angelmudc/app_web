@@ -10,7 +10,7 @@ import hmac
 import secrets
 import time
 import urllib.parse
-from typing import Optional, Union  # ✅ PARA PYTHON 3.9
+from typing import Any, Optional, Union  # ✅ PARA PYTHON 3.9
 
 from flask import (
     render_template, redirect, url_for, flash,
@@ -85,6 +85,10 @@ from services.candidata_invariants import (
     transition_solicitud_candidata_status as invariant_transition_solicitud_candidata_status,
 )
 from services.solicitud_estado import set_solicitud_estado
+from services.solicitud_atractivo_service import (
+    apply_solicitud_atractivo_to_model,
+    evaluate_solicitud_atractivo,
+)
 from services.solicitud_recommendation_service import SolicitudRecommendationService
 from utils.pasaje_mode import (
     apply_pasaje_to_solicitud,
@@ -715,6 +719,7 @@ def _clientes_force_login_view():
         'clientes.solicitud_publica_nueva_short_plan',
         'clientes.solicitud_publica_nueva_plan_resumen',
         'clientes.api_sueldo_sugerido',
+        'clientes.api_solicitud_atractivo_preview',
         'clientes.politicas',
         'clientes.aceptar_politicas',
         'clientes.rechazar_politicas',
@@ -2859,26 +2864,18 @@ def clientes_ping():
 @clientes_bp.route('/api/sueldo-sugerido', methods=['GET'])
 def api_sueldo_sugerido():
     args = request.args
-    payload = {
-        "modalidad_trabajo": args.get("modalidad_trabajo", ""),
-        "horario": args.get("horario", ""),
-        "horario_hora_entrada": args.get("horario_hora_entrada", ""),
-        "horario_hora_salida": args.get("horario_hora_salida", ""),
-        "tipo_lugar": args.get("tipo_lugar", ""),
-        "habitaciones": args.get("habitaciones", ""),
-        "banos": args.get("banos", ""),
-        "pisos": args.get("pisos", ""),
-        "dos_pisos": args.get("dos_pisos", ""),
-        "ninos": args.get("ninos", ""),
-        "edades_ninos": args.get("edades_ninos", ""),
-        "adultos": args.get("adultos", ""),
-        "sueldo": args.get("sueldo", ""),
-        "envejeciente_tipo_cuidado": args.get("envejeciente_tipo_cuidado", ""),
-        "envejeciente_responsabilidades": args.getlist("envejeciente_responsabilidades"),
-        "funciones": args.getlist("funciones"),
-        "areas_comunes": args.getlist("areas_comunes"),
-    }
+    payload = _atractivo_preview_payload_from_source(args)
     return jsonify(analyze_salary_suggestion(payload))
+
+
+@clientes_bp.route('/api/solicitud-atractivo-preview', methods=['GET', 'POST'])
+def api_solicitud_atractivo_preview():
+    if request.method == "GET":
+        payload = _atractivo_preview_payload_from_source(request.args)
+    else:
+        raw = request.get_json(silent=True)
+        payload = _atractivo_preview_payload_from_source(raw or request.form)
+    return jsonify(evaluate_solicitud_atractivo(payload))
 
 
 @clientes_bp.route('/live/ping', methods=['POST'])
@@ -3533,6 +3530,29 @@ def _apply_public_solicitud_fields(
     solicitud_obj.ciudad_sector = (form.ciudad_sector.data or '').strip()
     if hasattr(solicitud_obj, 'fecha_ultima_modificacion'):
         solicitud_obj.fecha_ultima_modificacion = now_ref
+    apply_solicitud_atractivo_to_model(solicitud_obj, now=now_ref)
+
+
+def _atractivo_preview_payload_from_source(source: Any) -> dict[str, Any]:
+    return {
+        "modalidad_trabajo": source.get("modalidad_trabajo", ""),
+        "horario": source.get("horario", ""),
+        "horario_hora_entrada": source.get("horario_hora_entrada", ""),
+        "horario_hora_salida": source.get("horario_hora_salida", ""),
+        "tipo_lugar": source.get("tipo_lugar", ""),
+        "habitaciones": source.get("habitaciones", ""),
+        "banos": source.get("banos", ""),
+        "pisos": source.get("pisos", ""),
+        "dos_pisos": source.get("dos_pisos", ""),
+        "ninos": source.get("ninos", ""),
+        "edades_ninos": source.get("edades_ninos", ""),
+        "adultos": source.get("adultos", ""),
+        "sueldo": source.get("sueldo", ""),
+        "envejeciente_tipo_cuidado": source.get("envejeciente_tipo_cuidado", ""),
+        "envejeciente_responsabilidades": source.getlist("envejeciente_responsabilidades") if hasattr(source, "getlist") else (source.get("envejeciente_responsabilidades", []) or []),
+        "funciones": source.getlist("funciones") if hasattr(source, "getlist") else (source.get("funciones", []) or []),
+        "areas_comunes": source.getlist("areas_comunes") if hasattr(source, "getlist") else (source.get("areas_comunes", []) or []),
+    }
 
 
 def _resolve_modalidad_ui_context_from_request(form_obj, *, prefer_post: bool = False) -> tuple[str, str, str]:
@@ -4221,6 +4241,7 @@ def nueva_solicitud():
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = utc_now_naive()
+            apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
 
             db.session.add(s)
             try:
@@ -4533,6 +4554,7 @@ def editar_solicitud(id):
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = utc_now_naive()
+            apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
 
             db.session.flush()
             _emit_cliente_outbox_event(

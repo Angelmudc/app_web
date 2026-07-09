@@ -1181,6 +1181,31 @@ class Solicitud(db.Model):
     # Compensación
     sueldo                 = db.Column(db.String(100), nullable=True)
     pasaje_aporte          = db.Column(db.Boolean, nullable=True, default=False)
+    atractivo_score        = db.Column(
+                                db.Integer,
+                                nullable=True,
+                                comment="Score de atractivo operativo de la solicitud, entre 0 y 100."
+                             )
+    atractivo_label        = db.Column(
+                                db.String(32),
+                                nullable=True,
+                                comment="Etiqueta legible del score de atractivo."
+                             )
+    atractivo_motivos      = db.Column(
+                                JSONB,
+                                nullable=True,
+                                comment="Motivos principales usados para explicar el score de atractivo."
+                             )
+    atractivo_version      = db.Column(
+                                db.String(32),
+                                nullable=True,
+                                comment="Versión de la fórmula usada para calcular el atractivo."
+                             )
+    atractivo_calculated_at = db.Column(
+                                db.DateTime,
+                                nullable=True,
+                                comment="Fecha del último cálculo del score de atractivo."
+                             )
 
     # Nota adicional
     nota_cliente           = db.Column(db.Text, nullable=True)

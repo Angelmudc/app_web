@@ -200,6 +200,51 @@ def test_private_store_list_pagination_premium_and_query_params_preserved():
     assert 'per_page=12' in html
 
 
+def test_private_store_list_hero_stats_render_from_precomputed_page_stats():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_catalog('tok_store_stats', scope_mode='all_available_store')
+        base = 998900
+        payloads = [
+            ('Perfil Uno', 'Con dormida', True),
+            ('Perfil Dos', 'Salida diaria', False),
+            ('Perfil Tres', 'Salida diaria', True),
+        ]
+        for idx, (nombre, modalidad, inmediata) in enumerate(payloads, start=1):
+            cand = Candidata(
+                fila=base + idx,
+                nombre_completo=nombre,
+                cedula=f'{base + idx:011d}',
+                codigo=f'PTA-STAT-{idx}',
+            )
+            db.session.add(cand)
+            db.session.flush()
+            db.session.add(
+                CandidataWeb(
+                    candidata_id=cand.fila,
+                    visible=True,
+                    estado_publico='disponible',
+                    nombre_publico=nombre,
+                    ciudad_publica='Montecristi',
+                    modalidad_publica=modalidad,
+                    disponible_inmediato=inmediata,
+                )
+            )
+        db.session.commit()
+
+    resp = client.get('/tienda/tok_store_stats?ciudad=Montecristi&per_page=12', follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+
+    assert '<div class="ps-stat"><strong>1</strong><span>Con dormida</span></div>' in html
+    assert '<div class="ps-stat"><strong>2</strong><span>Salida diaria</span></div>' in html
+    assert '<div class="ps-stat"><strong>2</strong><span>Inmediatas</span></div>' in html
+
+
 def test_private_store_token_invalido_404():
     flask_app.config['TESTING'] = True
     client = flask_app.test_client()

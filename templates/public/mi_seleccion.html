@@ -1,0 +1,65 @@
+{% extends "public/base_public.html" %}
+{% block title %}Mi Selección{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/domesticas_store.css') }}">
+
+<section class="container ds-main ds-selection-page">
+  <div class="ds-selection-header">
+    <h1>Mi selección</h1>
+    <p>{{ selection_count or 0 }} candidata{% if (selection_count or 0) != 1 %}s{% endif %} seleccionada{% if (selection_count or 0) != 1 %}s{% endif %}</p>
+  </div>
+
+  {% if cards %}
+  <div class="ds-selection-actions-top">
+    <a class="ds-link-secondary" href="{{ url_for('public.domesticas_store_list') }}">Seguir explorando</a>
+    <form method="post" action="{{ url_for('public.mi_seleccion_limpiar') }}" class="ds-inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="return_to" value="{{ request.path }}">
+      <button type="submit" class="ds-btn-ghost">Limpiar selección</button>
+    </form>
+  </div>
+
+  <div class="ds-cards">
+    {% for c in cards %}
+    <article class="ds-card">
+      <div class="ds-photo-wrap">
+        {% if c.foto_publica_url %}
+        <img src="{{ c.foto_publica_url }}" alt="Foto de {{ c.nombre_publico }}" loading="lazy">
+        {% else %}
+        <div class="ds-photo-fallback">Perfil publicado</div>
+        {% endif %}
+      </div>
+
+      <div class="ds-body">
+        <h2>{{ c.nombre_publico }}</h2>
+        <p class="ds-meta">
+          {% if c.edad_publica %}{{ c.edad_publica }} · {% endif %}
+          {{ c.ciudad_publica or 'Ciudad no especificada' }}
+          {% if c.sector_publico %} · {{ c.sector_publico }}{% endif %}
+        </p>
+        {% if c.modalidad_publica %}<p class="ds-chip">{{ c.modalidad_publica }}</p>{% endif %}
+        {% if c.sueldo_texto_publico %}<p class="ds-salary">{{ c.sueldo_texto_publico }}</p>{% endif %}
+        {% if c.experiencia_resumen %}<p class="ds-summary">{{ c.experiencia_resumen }}</p>{% endif %}
+
+        <div class="ds-card-actions">
+          <a class="ds-link" href="{{ url_for('public.domesticas_store_detail', codigo_o_id=(c.codigo or c.id)) }}">Ver perfil</a>
+          <form method="post" action="{{ url_for('public.mi_seleccion_quitar') }}" class="ds-inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ c.id }}">
+            <input type="hidden" name="return_to" value="{{ request.path }}">
+            <button type="submit" class="ds-btn-remove">Quitar</button>
+          </form>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="ds-empty ds-empty-selection">
+    <p>Todavía no has seleccionado candidatas.</p>
+    <a class="ds-link" href="{{ url_for('public.domesticas_store_list') }}">Explorar domésticas</a>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,1020 +1,318 @@
-# Marketplace de Candidatas - Blueprint Maestro
+# Marketplace de Domésticas Disponibles - Blueprint Maestro
 
-## 1. Propósito del documento
+## 1. Decisión estratégica (vigente)
 
-Este documento es la guía maestra del módulo “Marketplace de Candidatas” para Agencia Doméstica del Cibao A&D.
+Visión principal del proyecto:
 
-Debe leerse antes de modificar cualquier archivo relacionado con candidatas, clientes, solicitudes, ofertas, perfiles, favoritos, filtros o vistas públicas/privadas del sistema.
+**Tienda pública/privada de domésticas disponibles tipo Amazon/Airbnb**, abierta sin login, donde el cliente puede explorar **todas** las candidatas públicas disponibles, filtrar, revisar perfiles y enviar una selección para coordinar entrevistas con la agencia.
 
-El objetivo es evitar improvisación, duplicación de lógica, rutas innecesarias, modelos mal pensados, migraciones peligrosas o cambios que rompan funcionalidades existentes.
+A partir de este documento:
 
-Este documento debe funcionar como contexto general en nuevos chats de Codex, porque el desarrollo se hará por fases y en conversaciones separadas.
+- El flujo principal **NO** es “catálogo privado manual por token”.
+- El módulo de `CatalogoPrivado` se mantiene como flujo **secundario/complementario** para casos especiales.
+- El desarrollo incremental debe priorizar tienda pública, selección del cliente y coordinación operativa.
 
-## 2. Visión general del módulo
+## 2. Qué ya existe y sí sirve
 
-El módulo “Marketplace de Candidatas” será una plataforma premium tipo Amazon / Airbnb / LinkedIn, pero enfocada en candidatas domésticas.
+### 2.1 Fuente pública de datos: `CandidataWeb`
 
-No debe sentirse como una página genérica de agencia.
+Existe modelo `CandidataWeb` con campos adecuados para publicación segura:
 
-El cliente debe sentir que está entrando a una plataforma seria, segura y organizada donde puede:
+- control de publicación: `visible`, `estado_publico`, `es_destacada`, `orden_lista`
+- identidad pública: `nombre_publico`, `edad_publica`
+- ubicación pública: `ciudad_publica`, `sector_publico`
+- contenido editorial: `experiencia_resumen`, `experiencia_detallada`, `entrevista_publica_resumen`, `tags_publicos`
+- compensación/disponibilidad: `sueldo_publico`, `sueldo_desde`, `sueldo_hasta`, `disponible_inmediato`, `disponible_inmediato_msg`
+- foto pública: `foto_url_publica` (con fallback actual a foto interna si aplica)
 
-- Buscar candidatas.
-- Filtrar candidatas según sus necesidades.
-- Ver perfiles claros y profesionales.
-- Guardar varias candidatas favoritas.
-- Comparar candidatas.
-- Solicitar entrevista.
-- Enviar ofertas.
-- Recibir apoyo de la agencia.
-- Sentir que tiene opciones reales antes de tomar una decisión.
+### 2.2 Panel editorial/admin de candidatas web
 
-La plataforma no vende “productos”.
-La plataforma ayuda al cliente a encontrar una persona confiable para trabajar dentro de su hogar.
+Ya existe gestión administrativa de contenido público:
 
-Por eso, la prioridad no es solo diseño bonito. La prioridad es transmitir:
+- rutas admin para listar/editar `CandidataWeb`
+- templates admin de detalle/listado
+- controles de `visible` y `estado_publico`
 
-- Seguridad.
-- Confianza.
-- Claridad.
-- Control.
-- Profesionalismo.
-- Verificación.
-- Acompañamiento humano de la agencia.
+Esto permite operar la tienda sin inventar un CMS nuevo.
 
-## 3. Nombre interno del módulo
+### 2.3 Base visual pública/utilizable
 
-Nombre correcto:
+Existe UI de listado/detalle en `templates/clientes/domesticas_list.html` (y su detalle asociado), que puede reutilizarse como base técnica de cards/filtros antes del rediseño premium final.
 
-Marketplace de Candidatas
+### 2.4 Cobertura de privacidad
 
-No usar nombres como:
+Hay tests de catálogo público/token y de editorial pública que verifican exposición controlada de datos sensibles. Deben extenderse a la nueva tienda, no descartarse.
 
-- Tienda de domésticas.
-- Tinder de domésticas.
-- Catálogo simple.
-- Marketplace genérico.
-- Shop de empleadas.
+## 3. Qué queda secundario
 
-El lenguaje debe ser profesional, humano y respetuoso.
+## `CatalogoPrivado`
 
-## 4. Principios principales
+`CatalogoPrivado` y `CatalogoPrivadoItem` permanecen como módulo complementario para:
 
-Toda decisión técnica y visual debe respetar estos principios:
+- envíos personalizados por asesor comercial
+- casos VIP o shortlist curada
+- seguimiento por enlace privado con vencimiento
 
-1. La confianza es más importante que la decoración.
-2. La información debe ser clara, verificable y fácil de comparar.
-3. El cliente debe sentir que tiene control.
-4. La agencia debe mantener autoridad y supervisión.
-5. No se deben mostrar datos sensibles innecesarios.
-6. No se debe inventar información de candidatas.
-7. Todo debe construirse por fases.
-8. No se deben romper funcionalidades existentes.
-9. No se deben mezclar datos locales con producción.
-10. Cada cambio debe ser pequeño, probado y reversible.
+Pero ya no define la arquitectura principal del marketplace.
 
-## 5. Experiencia deseada para el cliente
+## 4. Diagnóstico del estado actual frente a la nueva visión
 
-El cliente debe poder entrar, buscar y sentir:
+1. Ya hay consulta pública de candidatas desde `CandidataWeb`, pero hoy está en rutas de portal cliente (`/domesticas`) con `login_required` y `cliente_required`.
+2. El listado actual filtra por `visible=True` y `estado_publico='disponible'`, lo cual alinea con la visión.
+3. La búsqueda actual usa campos internos (`cedula`, `numero_telefono`) en la consulta; esto no debe mantenerse en tienda pública abierta.
+4. No existe todavía “Mi selección” (carrito/lista) en sesión pública.
+5. No existe flujo dedicado para enviar selección multi-candidata sin login.
+6. El blueprint anterior estaba desalineado porque declaraba principal al catálogo por token.
 
-“Puedo encontrar una candidata parecida a lo que necesito.”
+## 5. Rutas nuevas propuestas (flujo principal)
 
-La experiencia ideal:
+Nombres recomendados (ajustables al blueprint de blueprints existentes):
 
-1. El cliente entra al catálogo.
-2. Ve candidatas presentadas profesionalmente.
-3. Usa filtros.
-4. Abre perfiles.
-5. Guarda varias candidatas.
-6. Compara opciones.
-7. Solicita entrevista o envía oferta.
-8. La agencia gestiona el proceso.
+- `GET /domesticas` (listado tienda pública)
+- `GET /domesticas/<codigo_o_id>` (detalle público)
+- `GET /mi-seleccion` (vista de carrito/lista)
+- `POST /mi-seleccion/agregar` (agrega candidata)
+- `POST /mi-seleccion/quitar` (quita candidata)
+- `POST /mi-seleccion/enviar` (envía selección para coordinación)
 
-El cliente no debe sentirse abandonado con una lista fría.
-Debe sentir que la plataforma organiza las opciones y que la agencia lo acompaña.
+Alias opcional:
 
-## 6. Partes principales del módulo
+- `GET /tienda-domesticas` -> redirige a `/domesticas`
 
-El módulo tendrá estas partes:
+## 6. Templates nuevos propuestos
 
-1. Página de inicio o sección principal del marketplace.
-2. Catálogo de candidatas.
-3. Filtros avanzados.
-4. Tarjetas premium de candidatas.
-5. Perfil individual de candidata.
-6. Sistema de favoritas.
-7. Comparador de candidatas.
-8. Sistema de ofertas conectado a candidatas.
-9. Panel del cliente.
-10. Panel administrativo.
-11. Matching inteligente futuro.
-12. Métricas y seguimiento futuro.
+- `templates/public/domesticas_store_list.html`
+- `templates/public/domesticas_store_detail.html`
+- `templates/public/mi_seleccion.html`
+- `templates/public/components/domestica_card.html`
+- `templates/public/components/filters_panel.html`
+- `templates/public/components/selection_badge.html`
 
-## 6.1. Nueva dirección estratégica del proyecto
+Objetivo UX:
 
-El enfoque principal YA NO es un marketplace dentro del portal cliente.
+- look premium/confiable
+- navegación simple mobile-first
+- feedback claro de acciones “agregar/quitar”
+- separación visual limpia entre catálogo, detalle y selección
 
-La prioridad estratégica del proyecto es ahora:
+## 7. Reglas de datos visibles (privacidad)
 
-Catálogo Privado de Perfiles por Enlace.
+En tienda pública **solo** campos públicos/editoriales.
 
-El objetivo comercial principal es reducir fricción para el cliente.
+Nunca exponer:
 
-El cliente NO debe:
+- teléfono real
+- cédula
+- dirección exacta
+- referencias privadas
+- notas internas
+- cualquier campo de backoffice no editorial
 
-- Crear cuenta.
-- Iniciar sesión.
-- Aprender a usar un portal.
-- Navegar múltiples dashboards.
-- Entrar a una app compleja solo para ver candidatas.
+Regla de elegibilidad mínima para mostrar:
 
-La experiencia deseada es:
+- `CandidataWeb.visible == True`
+- `CandidataWeb.estado_publico in estados_permitidos`
+- candidata interna no descalificada (si aplica guard existente)
 
-1. El admin crea un catálogo privado.
-2. Selecciona candidatas específicas.
-3. El sistema genera un enlace privado.
-4. El enlace se envía por WhatsApp.
-5. El cliente entra directamente.
-6. Ve perfiles premium.
-7. Marca interés en una o varias candidatas.
-8. Luego continúa el proceso comercial con la agencia.
+`estados_permitidos` inicial sugerido:
 
-Objetivo principal documentado:
+- `disponible`
+- opcional posterior: `reservada` con badge/CTA distinto según negocio
 
-Resolver rápido y generar confianza con la menor fricción posible.
+## 8. Cómo funcionaría “Mi selección” (carrito en sesión)
 
-## 6.2. Diferencia entre módulos
+Fase inicial sin modelo nuevo:
 
-### Módulo secundario (pausado)
+- sesión Flask con clave `mi_seleccion_candidatas`
+- estructura sugerida: lista de `candidata_id` (sin duplicados, orden de agregado)
+- límites sugeridos:
+  - mínimo 1 para enviar
+  - máximo 20 para evitar abuso
 
-`/clientes/marketplace-candidatas`
+Comportamiento:
 
-Características:
+1. agregar desde card o detalle
+2. quitar desde badge/card/lista
+3. contador global visible
+4. al renderizar, revalidar que cada ID siga `visible/estado_permitido`
+5. si una candidata ya no califica, mostrar aviso y remover de sesión en caliente
 
-- Requiere login.
-- Vive dentro del portal cliente.
-- Puede reutilizarse después.
-- Actualmente NO es prioridad.
-- No debe expandirse por ahora.
-- No agregar favoritas/comparador todavía.
+## 9. Envío de solicitud de entrevista (multi-candidata)
 
-### Módulo principal nuevo
+Formulario público mínimo:
 
-Catálogo Privado de Perfiles
+- `nombre`
+- `telefono`
+- `comentario` (opcional)
+- candidatas seleccionadas (desde sesión)
+- metadata operativa (timestamp, user-agent, ip limitada/hasheada según política)
 
-Características:
+Resultado esperado:
 
-- Acceso por enlace.
-- Sin login.
-- Optimizado para WhatsApp.
-- Catálogos controlados por token.
-- Catálogos personalizados por cliente o solicitud.
-- Menor fricción.
-- Mayor conversión comercial.
-- Mejor experiencia móvil.
+- generar un registro operativo visible para admin
+- convertir esa selección en tarea accionable para coordinar entrevista
 
-## 6.3. Objetivo psicológico/comercial
+## 10. Modelos existentes que podrían reutilizarse
 
-El cliente debe sentir:
+Revisión inicial:
 
-- Simplicidad.
-- Confianza.
-- Privacidad.
-- Rapidez.
-- Organización.
-- Selección premium.
+- `Solicitud`: podría usarse si se define un subtipo/flujo claro de “interés tienda”, pero requiere cuidado para no contaminar intake actual.
+- `SolicitudCandidata`: puede mapear relación solicitud-candidatas cuando exista una `Solicitud` válida de destino.
+- `Cliente`/tokens públicos actuales: no encajan directo para tienda sin login, salvo si luego se decide vincular lead->cliente.
+- `CatalogoPrivado`: no es almacenamiento de carrito ni lead de tienda; mantener separado.
 
-No debe sentirse como:
+Conclusión técnica actual:
 
-- Un sistema corporativo complejo.
-- Una app difícil.
-- Un portal pesado.
-- Una plataforma que exige demasiados pasos.
+- para Fase 1 y 2 no hace falta modelo nuevo (listado + sesión).
+- para Fase 3 conviene evaluar primero si una `Solicitud` “ligera” puede representar interés de tienda sin romper reportes/negocio existente.
 
-## 6.4. Filosofía de UX del proyecto
+## 11. Si hace falta modelo nuevo (propuesta, no implementar aún)
 
-Menos fricción = más conversiones.
+Si reutilizar `Solicitud` genera deuda o ambigüedad, proponer modelo dedicado en fase posterior:
 
-El sistema debe priorizar:
-
-- Acceso rápido.
-- Claridad visual.
-- Navegación simple.
-- Experiencia móvil.
-- Decisiones rápidas.
-- Soporte humano de la agencia.
-
-Y NO priorizar:
-
-- Complejidad técnica innecesaria.
-- Exceso de dashboards.
-- Demasiados pasos.
-- Demasiadas pantallas.
-- Procesos largos antes de mostrar perfiles.
-
-## 7. Página principal del marketplace
-
-La página principal debe presentar el servicio con lenguaje claro y profesional.
-
-Debe contener:
-
-- Hero principal.
-- Buscador o botón para explorar candidatas.
-- Indicadores de confianza.
-- Categorías principales.
-- Explicación breve del proceso.
-- Llamado a la acción.
-
-Texto sugerido:
-
-“Encuentra la candidata ideal para tu hogar”
-
-Subtexto sugerido:
-
-“Domésticas, niñeras, cocineras y cuidadoras evaluadas por Agencia Doméstica del Cibao A&D.”
-
-Indicadores de confianza:
-
-- Identidad verificada.
-- Entrevista realizada.
-- Referencias revisadas.
-- Acompañamiento de la agencia.
-- Diferentes modalidades disponibles.
-
-Botones sugeridos:
-
-- Buscar candidatas.
-- Solicitar ayuda personalizada.
-
-Categorías sugeridas:
-
-- Domésticas generales.
-- Niñeras.
-- Cocineras.
-- Cuidadoras.
-- Enfermeras.
-- Con dormida.
-- Salida diaria.
-
-## 8. Catálogo de candidatas
-
-El catálogo debe funcionar como una vista organizada de candidatas disponibles.
-
-No debe ser una tabla fría.
-Debe ser una experiencia visual tipo marketplace premium.
-
-Cada candidata debe aparecer en una tarjeta clara.
-
-Datos sugeridos para la tarjeta:
-
-- Foto.
-- Nombre o nombre parcial.
-- Edad.
-- Ciudad.
-- Sector si aplica.
-- Modalidad.
-- Experiencia.
-- Especialidades.
-- Disponibilidad.
-- Nivel de verificación.
-- Botón Ver perfil.
-- Botón Guardar candidata.
-
-Ejemplo de tarjeta:
-
-Nombre:
-María R.
-
-Ubicación:
-Santiago
-
-Modalidad:
-Salida diaria
-
-Experiencia:
-5 años
-
-Especialidades:
-Limpieza general, cocina, niños
-
-Estado:
-Disponible
-
-Acciones:
-Ver perfil
-Guardar candidata
-
-## 9. Filtros del catálogo
-
-Los filtros son una parte central del sistema.
-
-Filtros iniciales:
-
-- Ciudad.
-- Sector.
-- Modalidad.
-- Con dormida.
-- Salida diaria.
-- Edad mínima.
-- Edad máxima.
-- Experiencia.
-- Cocina.
-- Limpieza.
-- Lavado.
-- Planchado.
-- Niños.
-- Envejecientes.
-- Disponibilidad inmediata.
-- Sueldo esperado.
-- Referencias verificadas.
-
-Filtros futuros:
-
-- Compatible con apartamento.
-- Compatible con casa grande.
-- Nivel de cocina.
-- Nivel de organización.
-- Personalidad laboral.
-- Disponibilidad por días.
-- Horario preferido.
-- Tipo de familia recomendada.
-- Distancia aproximada.
-- Historial de colocaciones.
-
-Regla:
-No crear todos los filtros de golpe si el modelo actual no tiene esos datos.
-Primero revisar qué datos existen.
-Luego proponer campos faltantes.
-Después implementar por fases.
-
-## 10. Perfil individual de candidata
-
-El perfil individual es la parte más importante del marketplace.
-
-Debe sentirse profesional, claro y seguro.
-
-Secciones del perfil:
-
-1. Encabezado principal.
-2. Resumen profesional.
-3. Especialidades.
-4. Experiencia.
-5. Compatibilidad.
-6. Verificación.
-7. Disponibilidad.
-8. Sueldo esperado si aplica.
-9. Notas importantes.
-10. Acciones del cliente.
-
-## 11. Encabezado del perfil
-
-Debe mostrar:
-
-- Foto.
-- Nombre.
-- Edad.
-- Ciudad.
-- Modalidad.
-- Estado de disponibilidad.
-- Nivel de verificación.
-
-Ejemplo:
-
-María R.
-38 años · Santiago
-Disponible para salida diaria
-Verificación completa
-
-## 12. Resumen profesional
-
-Debe explicar de forma clara para qué tipo de hogar puede funcionar la candidata.
-
-Ejemplo:
-
-“Candidata con experiencia en limpieza general, cocina dominicana y cuidado básico de niños. Recomendada para hogares familiares que buscan una persona organizada, tranquila y responsable.”
-
-Reglas:
-
-- No inventar cualidades.
-- No exagerar.
-- No prometer resultados imposibles.
-- No usar lenguaje discriminatorio.
-- No mostrar información privada innecesaria.
-
-## 13. Especialidades
-
-Especialidades posibles:
-
-- Limpieza general.
-- Cocina dominicana.
-- Lavado.
-- Planchado.
-- Organización del hogar.
-- Niños.
-- Envejecientes.
-- Enfermería.
-- Dormida.
-- Salida diaria.
-
-Deben mostrarse como etiquetas visuales.
-
-## 14. Compatibilidad
-
-La compatibilidad ayuda al cliente a imaginar si la candidata encaja en su hogar.
-
-Ejemplos:
-
-Recomendada para:
-
-- Apartamentos.
-- Casas familiares.
-- Hogares con niños.
-- Familias ocupadas.
-- Personas mayores.
-- Clientes que buscan apoyo estable.
-- Hogares donde se necesita cocina.
-- Hogares donde se requiere limpieza profunda.
-
-Regla:
-La compatibilidad debe basarse en datos reales de la entrevista, experiencia o información administrativa.
-
-## 15. Verificación
-
-La verificación debe mostrarse de forma visual y clara.
-
-Estados posibles:
-
-- Identidad verificada.
-- Entrevista realizada.
-- Referencias revisadas.
-- Experiencia validada.
-- Disponibilidad confirmada.
-
-Si algo no está verificado, debe mostrarse como pendiente o no mostrarse.
-
-Nunca inventar verificaciones.
-
-## 16. Acciones del perfil
-
-Acciones principales:
-
-- Guardar candidata.
-- Solicitar entrevista.
-- Enviar oferta.
-- Comparar con otras candidatas.
-- Contactar agencia.
-
-No todas las acciones deben implementarse en la primera fase.
-
-Fase 1:
-- Ver perfil.
-- Volver al catálogo.
-
-Fase 2:
-- Guardar candidata.
-
-Fase 3:
-- Comparar candidatas.
-
-Fase 4:
-- Enviar oferta.
-
-## 17. Sistema de favoritas
-
-El sistema de favoritas permite que el cliente guarde varias candidatas.
-
-Objetivo:
-Evitar que el cliente dependa de un solo perfil y permitirle crear una lista corta de opciones.
-
-Funciones:
-
-- Guardar candidata.
-- Eliminar candidata guardada.
-- Ver lista de favoritas.
-- Solicitar entrevista desde favoritas.
-- Comparar favoritas.
-- Enviar oferta desde favoritas.
-
-Reglas:
-
-- Las favoritas deben estar conectadas al cliente logueado.
-- Un cliente no debe ver favoritas de otro cliente.
-- No duplicar la misma favorita para el mismo cliente.
-- Si una candidata deja de estar disponible, debe mostrarse como no disponible, no desaparecer silenciosamente.
-
-## 18. Comparador de candidatas
-
-El comparador permitirá comparar entre 2 y 4 candidatas.
-
-Campos de comparación:
-
-- Nombre.
-- Edad.
-- Ciudad.
-- Modalidad.
-- Experiencia.
-- Cocina.
-- Niños.
-- Limpieza.
-- Lavado.
-- Planchado.
-- Envejecientes.
-- Disponibilidad.
-- Sueldo esperado.
-- Verificación.
-- Estado.
-- Compatibilidad.
-
-Objetivo:
-Ayudar al cliente a tomar una decisión ordenada y reducir confusión.
-
-Regla:
-No implementar comparador antes de tener perfiles y favoritas funcionando.
-
-## 19. Sistema de ofertas
-
-El sistema de ofertas permitirá al cliente enviar una oferta relacionada con una candidata.
-
-Campos sugeridos:
-
-- Candidata.
-- Cliente.
-- Solicitud relacionada.
-- Monto ofrecido.
-- Horario.
-- Modalidad.
-- Beneficios.
-- Comentario del cliente.
-- Estado de la oferta.
-- Oferta aceptada o rechazada.
-- Comentario administrativo.
-- Fecha de creación.
-- Fecha de actualización.
-
-Estados:
-
-- Abierta.
-- En negociación.
-- Aceptada.
-- Rechazada.
-- Cerrada.
-
-Regla:
-Ya existe lógica previa de ofertas en el sistema. Antes de crear algo nuevo, revisar lo existente para reutilizarlo o extenderlo sin romperlo.
-
-## 20. Panel del cliente
-
-El cliente debe poder ver:
-
-- Candidatas guardadas.
-- Ofertas enviadas.
-- Solicitudes activas.
-- Entrevistas pendientes.
-- Estado de cada proceso.
-- Recomendaciones de la agencia.
-
-Regla:
-No mezclar panel administrativo con panel del cliente.
-Mantener separación de sesiones, permisos y rutas.
-
-## 21. Panel administrativo
-
-El administrador debe poder:
-
-- Crear candidatas.
-- Editar candidatas.
-- Ocultar candidatas.
-- Marcar como disponible.
-- Marcar como no disponible.
-- Ver candidatas guardadas por clientes.
-- Ver ofertas recibidas.
-- Actualizar estado de ofertas.
-- Gestionar entrevistas.
-- Recomendar candidatas a clientes.
-- Revisar verificación.
-- Editar descripción pública.
-- Agregar notas internas.
-
-Regla:
-Las notas internas nunca deben mostrarse al cliente.
-
-## 22. Datos mínimos sugeridos para una candidata
-
-Antes de crear o modificar modelos, revisar si ya existe una tabla/modelo de candidatas.
-
-Datos sugeridos:
+`InteresTiendaDomestica` (nombre tentativo):
 
 - id
-- codigo
-- nombre
-- apellido
-- nombre_publico
-- edad
-- telefono
-- ciudad
-- sector
-- modalidad
-- experiencia
-- funciones
-- cocina
-- limpieza
-- lavado
-- planchado
-- ninos
-- envejecientes
-- sueldo_esperado
-- disponibilidad
-- estado
-- foto_url
-- descripcion_corta
-- descripcion_larga
-- fortalezas
-- compatibilidad
-- verificacion_identidad
-- verificacion_referencias
-- entrevista_realizada
-- disponibilidad_confirmada
-- referencias_revisadas
+- nombre_contacto
+- telefono_contacto
+- comentario
+- candidata_ids_snapshot (JSON)
+- estado (`nuevo`, `en_gestion`, `contactado`, `cerrado`)
+- created_at / updated_at
+- handled_by (staff)
 - notas_admin
-- visible_en_marketplace
-- created_at
-- updated_at
 
-Regla:
-No agregar todos estos campos sin revisar el sistema actual.
-Esto es una guía, no una orden automática de migración.
+Y opcional tabla hija:
 
-## 23. Posibles modelos futuros
+`InteresTiendaDomesticaItem` para normalizar candidatas.
 
-Modelos posibles:
+No crear todavía. Primero validar integración con operación y panel admin.
 
-- CandidataMarketplace
-- CandidataFavorita
-- ComparacionCandidata
-- OfertaCandidata
-- EntrevistaCandidata
-- RecomendacionCandidataCliente
+## 12. Fases de implementación
 
-Regla:
-No crear modelos duplicados si ya existen modelos equivalentes.
-Primero revisar models.py y módulos actuales.
+### Fase 1: Tienda pública (listado + detalle + filtros)
 
-## 24. Rutas públicas sugeridas
+Alcance:
 
-Posibles rutas:
+- rutas públicas sin login
+- listado con filtros mínimos:
+  - ciudad
+  - modalidad
+  - cocina
+  - limpieza
+  - niños
+  - envejecientes
+  - dormida
+  - salida diaria
+  - sueldo
+  - disponibilidad inmediata
+- detalle público profesional
+- hardening de privacidad
 
-- /candidatas
-- /candidatas/<codigo>
-- /candidatas/buscar
-- /candidatas/categoria/<categoria>
+### Fase 2: Mi selección en sesión
 
-Regla:
-No crear rutas públicas sin revisar estructura actual de blueprints.
+Alcance:
 
-## 25. Rutas de cliente sugeridas
+- agregar/quitar candidatas
+- vista `/mi-seleccion`
+- contador y persistencia en sesión
+- revalidación de disponibilidad
 
-Posibles rutas:
+### Fase 3: Enviar selección para coordinar entrevista
 
-- /clientes/candidatas
-- /clientes/candidatas/<codigo>
-- /clientes/favoritas
-- /clientes/favoritas/agregar
-- /clientes/favoritas/eliminar
-- /clientes/comparar
-- /clientes/ofertas/nueva
+Alcance:
 
-Regla:
-Estas rutas deben estar protegidas por login de cliente.
+- formulario público envío
+- persistencia operativa (reusar modelo existente o nuevo)
+- alertado/panel mínimo para staff
 
-## 26. Rutas administrativas sugeridas
+### Fase 4: Panel admin de intereses/selecciones
 
-Posibles rutas:
+Alcance:
 
-- /admin/candidatas
-- /admin/candidatas/nueva
-- /admin/candidatas/<id>/editar
-- /admin/candidatas/<id>/ocultar
-- /admin/candidatas/<id>/disponibilidad
-- /admin/ofertas-candidatas
-- /admin/favoritas-clientes
+- listado de envíos
+- detalle por envío
+- estado operativo
+- trazabilidad básica de gestión
 
-Regla:
-Estas rutas deben estar protegidas por login administrativo.
+## 13. Riesgos de privacidad y mitigaciones
 
-## 27. Templates sugeridos
+Riesgos:
 
-Templates públicos:
+1. Exponer campos internos por fallback mal filtrado.
+2. Buscar sobre campos sensibles en queries públicas.
+3. Enumeración masiva de perfiles con scraping.
+4. Fuga de fotos privadas no marcadas como públicas.
+5. Inyección de contenido en textos editoriales públicos.
 
-- templates/marketplace/candidatas_index.html
-- templates/marketplace/candidata_detalle.html
-- templates/marketplace/_candidata_card.html
-- templates/marketplace/_filtros_candidatas.html
+Mitigaciones:
 
-Templates cliente:
+- serializador/viewmodel público explícito (allowlist)
+- prohibir filtros/búsquedas sobre cédula, teléfono interno, email interno
+- rate limit y observabilidad de rutas públicas
+- validación estricta de fuente de foto pública
+- escape/sanitización de contenido textual en templates
 
-- templates/clientes/candidatas.html
-- templates/clientes/candidata_detalle.html
-- templates/clientes/favoritas.html
-- templates/clientes/comparar_candidatas.html
+## 14. Archivos probables a tocar (cuando se implemente)
 
-Templates admin:
+- `clientes/routes.py` o nuevo blueprint público dedicado (recomendado separar)
+- `templates/public/*` (nuevos templates de tienda)
+- `static/css/*` y JS de interacción selección
+- `admin/routes.py` (fase 4: panel de intereses)
+- `tests/test_domesticas_store_*.py` (nuevos)
+- `tests/test_privacidad_tienda_domesticas.py`
 
-- templates/admin/candidatas/list.html
-- templates/admin/candidatas/form.html
-- templates/admin/candidatas/detail.html
-- templates/admin/candidatas/ofertas.html
+## 15. Tests necesarios
 
-Regla:
-Antes de crear templates nuevos, revisar si ya existen templates similares.
+Mínimos por fase:
 
-## 28. Archivos CSS sugeridos
+### Fase 1
 
-Posibles archivos:
+- listado muestra solo `visible=True`
+- listado respeta `estado_publico` permitido
+- no expone teléfono/cédula/notas internas
+- filtros combinados funcionan
+- detalle 404 para candidata no visible/no permitida
 
-- static/css/marketplace.css
-- static/css/candidatas.css
-- static/css/components/candidate-card.css
-- static/css/pages/candidate-profile.css
+### Fase 2
 
-Regla:
-Mantener diseño profesional, limpio y moderno.
-No saturar.
-No usar colores aleatorios.
-Usar colores de marca cuando existan.
-
-## 29. Estilo visual esperado
-
-Inspiración conceptual:
-
-- Amazon: claridad, filtros, tarjetas, comparación.
-- Airbnb: limpieza visual, confianza, perfil individual.
-- LinkedIn: experiencia profesional y trayectoria.
-- Marketplace premium: orden y control.
-
-No copiar diseños directamente.
-Usar la lógica visual, no clonar marcas.
-
-Elementos visuales:
-
-- Tarjetas limpias.
-- Sombras suaves.
-- Bordes redondeados.
-- Etiquetas claras.
-- Íconos simples.
-- Botones consistentes.
-- Espaciado amplio.
-- Tipografía legible.
-- Jerarquía visual clara.
-
-## 30. Reglas de privacidad
-
-No mostrar públicamente:
-
-- Cédula.
-- Teléfono.
-- Dirección exacta.
-- Referencias completas.
-- Notas internas.
-- Datos familiares sensibles.
-- Información médica.
-- Comentarios administrativos privados.
-
-Mostrar solo información útil para decisión del cliente:
+- agregar a sesión
+- evitar duplicados
+- quitar de sesión
+- contador correcto
+- remoción automática si candidata deja de calificar
 
-- Nombre público.
-- Edad.
-- Ciudad.
-- Modalidad.
-- Experiencia.
-- Especialidades.
-- Estado de disponibilidad.
-- Verificación general.
-- Descripción profesional.
+### Fase 3
 
-## 31. Reglas de seguridad
+- envío falla sin candidatas
+- envío valida nombre/teléfono
+- envío persiste selección correctamente
+- admin puede visualizar el envío
 
-- Validar permisos.
-- Proteger rutas de cliente.
-- Proteger rutas admin.
-- No permitir que un cliente acceda a datos de otro cliente.
-- No confiar en IDs enviados desde frontend.
-- Validar candidata existente antes de guardar favorita u oferta.
-- No exponer errores internos al usuario final.
-- No mezclar datos de local con producción.
-- No ejecutar migraciones peligrosas sin explicación previa.
+### Fase 4
 
-## 32. Reglas sobre datos reales
+- permisos admin correctos
+- cambios de estado auditables
+- no exposición de datos fuera de rol
 
-No inventar candidatas.
-No inventar experiencia.
-No inventar verificaciones.
-No inventar referencias.
-No inventar disponibilidad.
-No inventar sueldo.
-No completar campos desconocidos con datos falsos.
+## 16. Decisiones explícitas de alcance (por ahora)
 
-Si falta información:
-- Dejar campo vacío.
-- Marcar como pendiente.
-- Pedir que se complete desde admin.
+No implementar todavía:
 
-## 33. Fases de desarrollo
+- pagos
+- login cliente obligatorio para tienda
+- cambios sobre portal cliente existente fuera del alcance de la tienda pública
+- membresías
+- IA de matching
+- comparador avanzado
+- refactor masivo de módulos legacy
 
-### Fase 0: Documento maestro
+## 17. Regla operativa para próximos cambios
 
-Crear este archivo y no tocar nada más.
+Cualquier PR/tarea nueva del marketplace debe responder primero:
 
-### Fase 1: Revisión del sistema actual
+1. ¿Esto acerca o aleja la visión principal de tienda pública con selección del cliente?
+2. ¿Protege privacidad por defecto?
+3. ¿Mantiene `CatalogoPrivado` como complemento y no como eje?
 
-Antes de programar:
-
-- Revisar estructura de carpetas.
-- Revisar models.py.
-- Revisar blueprints existentes.
-- Revisar rutas de clientes.
-- Revisar rutas admin.
-- Revisar sistema actual de ofertas.
-- Revisar sistema actual de candidatas si existe.
-- Revisar templates base.
-- Revisar CSS existente.
-- Revisar autenticación de cliente y admin.
-
-Entregar un reporte con:
-
-- Archivos encontrados.
-- Qué se puede reutilizar.
-- Qué falta.
-- Riesgos.
-- Propuesta de implementación Fase 2.
-
-### Fase 2: Catálogo básico premium
-
-Crear:
-
-- Vista de catálogo.
-- Tarjeta de candidata.
-- Perfil individual.
-- Filtros básicos.
-
-Sin favoritas todavía.
-Sin comparador todavía.
-Sin ofertas todavía.
-
-### Fase 3: Favoritas
-
-Crear:
-
-- Guardar candidata.
-- Eliminar favorita.
-- Ver favoritas.
-- Conectar favoritas al cliente logueado.
-
-### Fase 4: Comparador
-
-Crear:
-
-- Selección de varias candidatas.
-- Vista comparativa.
-- Acciones desde comparación.
-
-### Fase 5: Ofertas conectadas a candidatas
-
-Crear o extender:
-
-- Enviar oferta.
-- Ver ofertas del cliente.
-- Gestionar ofertas desde admin.
-
-Reutilizar lógica existente si ya existe.
-
-### Fase 6: Recomendaciones/matching
-
-Crear:
-
-- Recomendaciones por solicitud.
-- Porcentaje de compatibilidad.
-- Ranking de candidatas.
-
-No hacer esta fase antes de tener datos suficientes.
-
-## 34. Orden obligatorio de trabajo para Codex
-
-En cada nuevo chat, Codex debe hacer esto:
-
-1. Leer este archivo.
-2. Revisar estado actual del proyecto.
-3. Revisar git status --short.
-4. No modificar nada si hay cambios sin revisar.
-5. Identificar la fase actual.
-6. Decir qué archivos tocará.
-7. Explicar qué hará antes de hacerlo.
-8. Hacer cambios pequeños.
-9. Entregar archivos completos si el usuario lo pide.
-10. Ejecutar pruebas o indicar pruebas manuales.
-11. Mostrar git status --short al final.
-12. No avanzar a otra fase sin autorización.
-
-## 35. Archivos que Codex probablemente tocará en fases futuras
-
-Codex puede necesitar revisar o tocar:
-
-- app.py
-- models.py
-- extensions.py
-- admin/routes.py
-- clientes/routes.py
-- public/routes.py
-- templates/base.html
-- templates/clientes/base.html
-- templates/admin/base.html
-- templates/marketplace/
-- static/css/
-- static/js/
-- migrations/
-- forms.py
-- clientes/forms.py
-- admin/forms.py
-
-Regla:
-No tocar todos a la vez.
-Primero revisar.
-Luego proponer.
-Después modificar por fase.
-
-## 36. Qué NO debe hacer Codex
-
-Codex NO debe:
-
-- Crear todo el marketplace de golpe.
-- Crear modelos duplicados.
-- Crear rutas sin revisar blueprints.
-- Cambiar autenticación existente.
-- Romper login de clientes.
-- Romper login admin.
-- Romper solicitudes existentes.
-- Romper ofertas existentes.
-- Mezclar datos locales con producción.
-- Crear datos falsos en producción.
-- Inventar candidatas.
-- Cambiar nombres de columnas sin migración clara.
-- Borrar archivos.
-- Renombrar rutas existentes sin autorización.
-- Hacer cambios visuales que dañen páginas existentes.
-- Usar datos sensibles públicamente.
-- Mostrar teléfonos o cédulas de candidatas en el marketplace.
-- Implementar IA o matching antes de tener catálogo funcional.
-
-## 37. Criterio de éxito de la primera versión
-
-La primera versión será exitosa si:
-
-- El cliente puede ver un catálogo limpio.
-- El cliente puede abrir un perfil.
-- La información se entiende rápido.
-- El diseño transmite confianza.
-- No se rompió nada existente.
-- El admin mantiene control.
-- No se expone información sensible.
-- El sistema puede crecer por fases.
-
-## 38. Mensaje estándar para nuevos chats de Codex
-
-Cuando se abra un nuevo chat de Codex, usar este mensaje:
-
-“Necesito continuar el módulo Marketplace de Candidatas para Agencia Doméstica del Cibao A&D.
-
-Antes de tocar código, lee:
-
-docs/marketplace_domesticas_blueprint.md
-
-Ese archivo contiene la visión, fases, reglas, estructura, privacidad, rutas sugeridas y límites del proyecto.
-
-No improvises.
-No crees modelos ni rutas sin revisar primero.
-No rompas funcionalidades existentes.
-No mezcles datos locales con producción.
-No avances de fase sin confirmarlo.
-
-Primero revisa el estado actual del proyecto, muestra git status --short y dime exactamente qué archivos tocarías para la fase actual.”
-
-## 39. Estado actual
-
-Marketplace interno `/clientes/marketplace-candidatas`:
-
-- Implementado parcialmente.
-- Pausado.
-- No eliminar.
-- No expandir todavía.
-- Puede reutilizarse visualmente después.
-
-Nueva prioridad:
-
-- Diseño y arquitectura del catálogo privado por enlace.
-
-## 40. Nota final
-
-Este módulo debe construirse como una plataforma seria de selección y confianza, no como una página genérica.
-
-El objetivo no es solo mostrar candidatas.
-El objetivo es ayudar al cliente a tomar una decisión segura, ordenada y acompañada por la agencia.
-
-Fin del documento.
+Si la respuesta no es clara, no avanzar a implementación.

@@ -372,6 +372,8 @@ def _protect_sensitive_routes():
         return None
     if path.startswith("/clientes/api/sueldo-sugerido"):
         return None
+    if path.startswith("/clientes/api/solicitud-atractivo-preview"):
+        return None
     if path == "/admin/bot/sandbox/webhook/inbound":
         return None
     if path.startswith("/admin/bot/sandbox/asistente"):

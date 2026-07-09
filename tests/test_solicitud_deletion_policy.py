@@ -116,11 +116,12 @@ def test_owner_delete_solicitud_rolls_back_when_tree_delete_fails():
     assert resp.status_code in (302, 303)
 
 
-def test_collect_solicitud_delete_plan_marks_recommendation_tables_as_managed():
+def test_collect_solicitud_delete_plan_marks_managed_tables_as_managed():
     from admin import routes as admin_routes
 
     inspector = MagicMock()
     inspector.get_table_names.return_value = [
+        "pagos_solicitud",
         "solicitud_recommendation_runs",
         "solicitud_recommendation_items",
         "solicitud_recommendation_selections",
@@ -175,4 +176,22 @@ def test_delete_solicitud_tree_deletes_recommendation_artifacts_safely():
     assert int(deleted.get("recommendation_selections") or 0) == 3
     assert int(deleted.get("recommendation_items") or 0) == 5
     assert int(deleted.get("recommendation_runs") or 0) == 2
+    assert int(deleted.get("solicitud") or 0) == 1
+
+
+def test_delete_solicitud_tree_deletes_pagos_before_solicitud():
+    from admin import routes as admin_routes
+
+    with patch(
+        "admin.routes._table_exists",
+        side_effect=lambda name: name in {"pagos_solicitud"},
+    ), patch("admin.routes.PagoSolicitud") as pago_model, patch(
+        "admin.routes.Solicitud"
+    ) as solicitud_model:
+        pago_model.query.filter.return_value.delete.return_value = 2
+        solicitud_model.query.filter.return_value.delete.return_value = 1
+
+        deleted = admin_routes._delete_solicitud_tree(solicitud_id=734, cliente_id=621)
+
+    assert int(deleted.get("pagos") or 0) == 2
     assert int(deleted.get("solicitud") or 0) == 1

@@ -225,6 +225,7 @@ from services.solicitud_estado import (
 )
 from services.solicitud_recommendation_service import SolicitudRecommendationService
 from services.solicitud_recommendation_snapshot import build_candidate_guard, build_solicitud_fingerprint
+from services.solicitud_atractivo_service import apply_solicitud_atractivo_to_model
 from services.payment_rules import (
     PLAN_PRICES,
     format_money as format_money_payment,
@@ -12064,6 +12065,7 @@ def nueva_solicitud_admin(cliente_id):
                     text_raw=public_pasaje_otro,
                     default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
                 )
+                apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
 
                 db.session.add(s)
                 db.session.flush()
@@ -12471,6 +12473,7 @@ def editar_solicitud_admin(cliente_id, id):
                     text_raw=public_pasaje_otro,
                     default_mode="aparte" if bool(getattr(s, "pasaje_aporte", False)) else "incluido",
                 )
+                apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
                 db.session.flush()
                 _emit_cliente_live_solicitud_events(
                     event_type="CLIENTE_SOLICITUD_UPDATED",

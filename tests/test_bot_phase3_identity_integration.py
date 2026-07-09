@@ -101,6 +101,18 @@ def test_phone_normalization_rd_and_invalid_cases():
     assert normalize_phone_to_e164("000-000-0000") is None
 
 
+def test_phone_normalization_supports_international_whatsapp_formats():
+    assert normalize_phone_to_e164("8494604501") == "+18494604501"
+    assert normalize_phone_to_e164("(849) 460-4501") == "+18494604501"
+    assert normalize_phone_to_e164("+1 849 460 4501") == "+18494604501"
+    assert normalize_phone_to_e164("1 849 460 4501") == "+18494604501"
+    assert normalize_phone_to_e164("+34 612 345 678") == "+34612345678"
+    assert normalize_phone_to_e164("0034 612 345 678") == "+34612345678"
+    assert normalize_phone_to_e164("+52 55 1234 5678") == "+525512345678"
+    assert normalize_phone_to_e164("12345") is None
+    assert normalize_phone_to_e164("abc xyz") is None
+
+
 def test_identity_resolver_all_statuses():
     flask_app.config["TESTING"] = True
     with flask_app.app_context():

@@ -10,9 +10,9 @@
       <p class="ps-expire">Perfiles verificados · Vence: {{ catalogo.expires_at or 'Sin vencimiento' }}</p>
       <div class="ps-stat-grid">
         <div class="ps-stat"><strong>{{ total }}</strong><span>Disponibles</span></div>
-        <div class="ps-stat"><strong>{{ cards|selectattr('modalidad_publica', 'equalto', 'Con dormida')|list|length if cards else 0 }}</strong><span>Con dormida</span></div>
-        <div class="ps-stat"><strong>{{ cards|selectattr('modalidad_publica', 'equalto', 'Salida diaria')|list|length if cards else 0 }}</strong><span>Salida diaria</span></div>
-        <div class="ps-stat"><strong>{{ cards|selectattr('disponible_inmediato')|list|length if cards else 0 }}</strong><span>Inmediatas</span></div>
+        <div class="ps-stat"><strong>{{ page_stats.con_dormida if page_stats else 0 }}</strong><span>Con dormida</span></div>
+        <div class="ps-stat"><strong>{{ page_stats.salida_diaria if page_stats else 0 }}</strong><span>Salida diaria</span></div>
+        <div class="ps-stat"><strong>{{ page_stats.inmediatas if page_stats else 0 }}</strong><span>Inmediatas</span></div>
       </div>
     </div>
   </div>

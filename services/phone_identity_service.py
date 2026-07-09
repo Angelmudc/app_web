@@ -4,10 +4,6 @@ from __future__ import annotations
 
 import re
 
-
-_RD_AREA_CODES = {"809", "829", "849"}
-
-
 def sanitize_phone(raw_phone: str | None) -> str:
     return re.sub(r"\D+", "", str(raw_phone or ""))
 
@@ -21,22 +17,43 @@ def validate_possible_phone(raw_phone: str | None) -> bool:
     return True
 
 
+def _strip_international_prefix(raw_phone: str | None) -> tuple[str, str]:
+    raw = str(raw_phone or "").strip()
+    if not raw:
+        return "", ""
+    if raw.startswith("+"):
+        return "+", sanitize_phone(raw)
+    digits = sanitize_phone(raw)
+    if digits.startswith("00"):
+        return "00", digits[2:]
+    return "", digits
+
+
 def normalize_phone_to_e164(raw_phone: str | None, default_country: str = "DO") -> str | None:
-    digits = sanitize_phone(raw_phone)
-    if not validate_possible_phone(digits):
+    _ = (default_country or "DO").strip().upper()
+    prefix, digits = _strip_international_prefix(raw_phone)
+    if not digits:
+        return None
+    if len(set(digits)) == 1:
+        return None
+    if prefix == "00" and (len(digits) < 8 or len(digits) > 15):
+        return None
+    if prefix != "00" and not validate_possible_phone(digits):
         return None
 
-    country = (default_country or "DO").strip().upper()
-    if country == "DO":
-        # RD local: 809/829/849 + 7 digitos.
-        if len(digits) == 10 and digits[:3] in _RD_AREA_CODES:
-            return f"+1{digits}"
-        # RD con prefijo 1.
-        if len(digits) == 11 and digits.startswith("1") and digits[1:4] in _RD_AREA_CODES:
-            return f"+{digits}"
-        return None
+    if prefix == "+":
+        return f"+{digits}"
 
-    # Fallback general: mantener digitos como E.164 con +.
-    if 10 <= len(digits) <= 15:
+    if prefix == "00":
+        return f"+{digits}"
+
+    if len(digits) == 10:
+        # Mantiene compatibilidad con RD y cubre NANP (RD/US/Caribe) sin forzar DO.
+        return f"+1{digits}"
+
+    if len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+
+    if len(digits) > 10 and not digits.startswith("1"):
         return f"+{digits}"
     return None

@@ -366,6 +366,8 @@
   </div>
 
   <!-- Información completa -->
+  {% set atractivo = {'score': s.atractivo_score, 'label': s.atractivo_label, 'motivos': (s.atractivo_motivos or [])} %}
+  {% include 'clientes/_solicitud_atractivo_block.html' %}
   <div class="kard mb-4 print-zone solicitud-block solicitud-info-block">
     <div class="kard-h bg-success bg-opacity-10 text-success fw-semibold">
       <i class="bi bi-list-ul me-2"></i>Información completa
