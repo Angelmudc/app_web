@@ -317,6 +317,11 @@ def create_app():
             "SALARY_SUGGESTION_ENABLED": _is_true(
                 os.getenv("SALARY_SUGGESTION_ENABLED", "0")
             ),
+            # Pausa temporal del score/barra de atractivo de solicitudes.
+            # Mantiene la implementacion disponible sin renderizar ni calcular.
+            "ENABLE_ATTRACTIVENESS_SCORE": _is_true(
+                os.getenv("ENABLE_ATTRACTIVENESS_SCORE", "0")
+            ),
         }
     )
 

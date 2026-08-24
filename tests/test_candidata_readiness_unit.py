@@ -116,6 +116,54 @@ class CandidataReadinessUnitTest(unittest.TestCase):
         self.assertTrue(any("referencias_laboral" in r for r in reasons))
         self.assertTrue(any("referencias_familiares" in r for r in reasons))
 
+    def test_formulario_lleno_no_cuenta_para_readiness_si_entrevista_vacia(self):
+        c = _build_candidata(
+            entrevista="",
+            entrevistas_nuevas=_RelCount(0),
+            referencias_laboral=None,
+            referencias_familiares=None,
+            contactos_referencias_laborales="FORM-LAB",
+            referencias_familiares_detalle="FORM-FAM",
+        )
+        refs = candidata_referencias_complete(c)
+        self.assertFalse(refs["referencias_laboral"])
+        self.assertFalse(refs["referencias_familiares"])
+        ready, reasons = candidata_is_ready_to_send(c)
+        self.assertFalse(ready)
+        self.assertTrue(any("referencias_laboral" in r for r in reasons))
+        self.assertTrue(any("referencias_familiares" in r for r in reasons))
+
+    def test_referencias_formulario_no_cuentan_para_readiness(self):
+        c = _build_candidata(
+            entrevista="ok",
+            referencias_laboral=None,
+            referencias_familiares=None,
+            contactos_referencias_laborales="FORM-LAB",
+            referencias_familiares_detalle="FORM-FAM",
+        )
+        refs = candidata_referencias_complete(c)
+        self.assertFalse(refs["referencias_laboral"])
+        self.assertFalse(refs["referencias_familiares"])
+        ready, reasons = candidata_is_ready_to_send(c)
+        self.assertFalse(ready)
+        self.assertTrue(any("referencias_laboral" in r for r in reasons))
+        self.assertTrue(any("referencias_familiares" in r for r in reasons))
+
+    def test_entrevista_llena_habilita_referencias_para_readiness(self):
+        c = _build_candidata(
+            entrevista="ok",
+            referencias_laboral="INT-LAB",
+            referencias_familiares="INT-FAM",
+            contactos_referencias_laborales="FORM-LAB",
+            referencias_familiares_detalle="FORM-FAM",
+        )
+        refs = candidata_referencias_complete(c)
+        self.assertTrue(refs["referencias_laboral"])
+        self.assertTrue(refs["referencias_familiares"])
+        ready, reasons = candidata_is_ready_to_send(c)
+        self.assertTrue(ready)
+        self.assertEqual(reasons, [])
+
     def test_readiness_base_completa_es_valida(self):
         c = _build_candidata(entrevista="ok")
         ready, reasons = candidata_is_ready_to_send(c)

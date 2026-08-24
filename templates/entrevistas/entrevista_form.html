@@ -11,10 +11,16 @@
     <p style="margin:0 0 18px 0; opacity:.85;">
       <b>Candidata:</b> {{ candidata.nombre_completo }}
       {% if candidata.codigo %} · <b>Código:</b> {{ candidata.codigo }}{% endif %}
+      · <b>Tipo:</b> {{ (tipo or 'domestica')|replace('_', ' ')|title }}
       {# Nota: datos sensibles como cédula NO se muestran aquí #}
     </p>
 
-    <form method="POST">
+    {% if not preguntas %}
+      <div class="alert alert-warning">
+        No hay preguntas activas configuradas para este tipo de entrevista.
+      </div>
+    {% else %}
+    <form method="POST" data-page="entrevista-form">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
 
@@ -23,7 +29,7 @@
         {% for p in preguntas %}
           <div class="field" style="padding:12px; border:1px solid rgba(0,0,0,.08); border-radius:12px;">
             <label style="display:block; font-weight:700; margin-bottom:8px;">
-              {{ p.texto }}
+              {{ p.texto or p.enunciado or p.clave or ('Pregunta ' ~ p.id) }}
             </label>
 
             {% set value = respuestas_por_pregunta.get(p.id, "") %}
@@ -73,6 +79,7 @@
         </a>
       </div>
     </form>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

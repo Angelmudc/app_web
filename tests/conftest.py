@@ -6,22 +6,28 @@ import uuid
 
 # Fuerza entorno de pruebas aislado para que pytest nunca use la BD real.
 os.environ["APP_ENV"] = "test"
-# Usa una base SQLite única por sesión para evitar colisiones entre corridas
-# y bootstrap duplicado de tablas al reutilizar el mismo archivo temporal.
-_tmp_db = os.path.join(tempfile.gettempdir(), f"app_web_pytest_{uuid.uuid4().hex}.sqlite")
-os.environ["DATABASE_URL_TEST"] = f"sqlite:///{_tmp_db}"
+_postgresql_test_url = (os.environ.get("APP_WEB_PYTEST_POSTGRESQL_DATABASE_URL") or "").strip()
+if _postgresql_test_url:
+    os.environ["DATABASE_URL_TEST"] = _postgresql_test_url
+else:
+    # Usa una base SQLite única por sesión para evitar colisiones entre corridas
+    # y bootstrap duplicado de tablas al reutilizar el mismo archivo temporal.
+    _tmp_db = os.path.join(tempfile.gettempdir(), f"app_web_pytest_{uuid.uuid4().hex}.sqlite")
+    os.environ["DATABASE_URL_TEST"] = f"sqlite:///{_tmp_db}"
 os.environ.setdefault("DATABASE_URL", "postgresql://prod-user:prod-pass@prod-host/prod_db")
 
 from app import app as flask_app
 from config_app import db
-from models import Cliente
+from models import Cliente, PagoSolicitud
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def pytest_sessionstart(session):
     # Bootstrap mínimo y determinista para suites que usan Cliente sin migraciones.
     with flask_app.app_context():
-        ensure_sqlite_compat_tables([Cliente], reset=False)
+        if db.engine.dialect.name != "sqlite":
+            return
+        ensure_sqlite_compat_tables([Cliente, PagoSolicitud], reset=False)
         # SQLite no autoincrementa BigInteger PK como se espera para algunos modelos;
         # normalizamos esta tabla de presencia solo en entorno de tests.
         cols = db.session.execute(db.text("PRAGMA table_info('staff_presence_state')")).fetchall()

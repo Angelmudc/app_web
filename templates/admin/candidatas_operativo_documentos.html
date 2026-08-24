@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Documentos · {{ candidata.nombre_completo }}{% endblock %}
+{% block extra_head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/candidatas_operativo.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 cand-docs"
+     data-presence-entity-type="candidata"
+     data-presence-entity-id="{{ candidata.fila }}"
+     data-presence-entity-name="{{ candidata.nombre_completo }}"
+     data-presence-entity-code="{{ candidata.codigo or '' }}">
+  <div class="mb-3">
+    <a class="btn btn-outline-secondary btn-sm" href="{{ back_url }}">Volver a candidata</a>
+  </div>
+
+  <header class="cand-docs-header mb-3">
+    <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <div>
+        <h1 class="h4 mb-1">{{ candidata.nombre_completo }}</h1>
+        <div class="text-muted small">
+          <span class="cand-code">{{ candidata.codigo or 'sin código' }}</span>
+          · Documentos
+        </div>
+      </div>
+      <span class="badge {% if readiness.ready %}text-bg-success{% else %}text-bg-warning{% endif %}">
+        {% if readiness.ready %}Lista para enviar{% else %}Pendiente{% endif %}
+      </span>
+    </div>
+  </header>
+
+  <section class="card">
+    <div class="card-header d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong>Documentos</strong>
+      <a class="btn btn-outline-secondary btn-sm" href="{{ finalize_url }}">Finalizar proceso</a>
+    </div>
+    <div class="card-body">
+      {% for doc in document_rows %}
+        <div class="cand-doc-row" id="{{ doc.key }}">
+          <div class="fw-semibold">{{ doc.label }}</div>
+          <div>
+            {% if doc.available %}
+              <span class="badge text-bg-success">Disponible</span>
+            {% else %}
+              <span class="badge text-bg-warning">Pendiente</span>
+            {% endif %}
+          </div>
+          <div class="cand-doc-actions">
+            {% if doc.available %}
+              <a class="btn btn-outline-primary btn-sm" href="{{ doc.view_url }}" target="_blank" rel="noopener">Ver</a>
+              <a class="btn btn-outline-secondary btn-sm" href="{{ doc.download_url }}">Descargar</a>
+              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Reemplazar documento</a>
+            {% else %}
+              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Subir</a>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="mt-3">
+    <a class="btn btn-outline-secondary" href="{{ back_url }}">Volver a candidata</a>
+  </div>
+</div>
+{% endblock %}

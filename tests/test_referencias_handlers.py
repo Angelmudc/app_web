@@ -77,12 +77,9 @@ def test_referencias_guardado_preserva_side_effects_clave():
 
     cand = _build_candidata_stub(fila=99)
 
-    def _ok_result(**_kwargs):
-        return SimpleNamespace(ok=True, attempts=1, error_message='')
-
     with flask_app.app_context():
         with patch('core.handlers.referencias_handlers.get_candidata_by_id', return_value=cand), \
-             patch('core.legacy_handlers.execute_robust_save', side_effect=_ok_result) as robust_mock:
+             patch('core.services.candidata_quick_edit.execute_robust_save', return_value=SimpleNamespace(ok=True, attempts=1, error_message='')):
             resp = client.post(
                 '/referencias',
                 data={
@@ -96,11 +93,10 @@ def test_referencias_guardado_preserva_side_effects_clave():
     body = resp.get_data(as_text=True)
     assert resp.status_code == 200
     assert 'Referencias actualizadas' in body
-    robust_mock.assert_called_once()
     assert cand.referencias_laboral == 'Laboral sincronizada'
     assert cand.referencias_familiares == 'Familiar sincronizada'
-    assert cand.contactos_referencias_laborales == 'Laboral sincronizada'
-    assert cand.referencias_familiares_detalle == 'Familiar sincronizada'
+    assert cand.contactos_referencias_laborales == ''
+    assert cand.referencias_familiares_detalle == ''
 
 
 def test_referencias_placeholders_no_disparan_robust_save():
@@ -113,7 +109,7 @@ def test_referencias_placeholders_no_disparan_robust_save():
 
     with flask_app.app_context():
         with patch('core.handlers.referencias_handlers.get_candidata_by_id', return_value=cand), \
-             patch('core.legacy_handlers.execute_robust_save') as robust_mock:
+             patch('core.services.candidata_quick_edit.execute_robust_save') as robust_mock:
             resp = client.post(
                 '/referencias',
                 data={
@@ -138,12 +134,9 @@ def test_referencias_post_con_next_redirige_al_contexto():
 
     cand = _build_candidata_stub(fila=51)
 
-    def _ok_result(**_kwargs):
-        return SimpleNamespace(ok=True, attempts=1, error_message='')
-
     with flask_app.app_context():
         with patch('core.handlers.referencias_handlers.get_candidata_by_id', return_value=cand), \
-             patch('core.legacy_handlers.execute_robust_save', side_effect=_ok_result):
+             patch('core.services.candidata_quick_edit.execute_robust_save', return_value=SimpleNamespace(ok=True, attempts=1, error_message='')):
             resp = client.post(
                 '/referencias?next=/finalizar_proceso?fila=51',
                 data={

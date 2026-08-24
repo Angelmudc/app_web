@@ -39,6 +39,7 @@ class _FakeSolicitudForm:
         self.adultos = _Field(2)
         self.ninos = _Field(1)
         self.edades_ninos = _Field("4")
+        self.ayuda_cuidado_ninos = _Field("con_ayuda")
         self.mascota = _Field("perro")
         self.sueldo = _Field("18,500")
         self.pasaje_aporte = _Field(False)
@@ -152,6 +153,8 @@ def test_public_solicitud_field_mapping_is_consistent_for_both_flows():
     assert (s_existente.detalles_servicio or {}).get("cantidad_pisos") == "3+"
     assert (s_nuevo.detalles_servicio or {}).get("horario_tipo") == "salida_diaria"
     assert (s_existente.detalles_servicio or {}).get("horario_tipo") == "salida_diaria"
+    assert (s_nuevo.detalles_servicio or {}).get("ayuda_cuidado_ninos") == "con_ayuda"
+    assert "detalle_ayuda_cuidado_ninos" not in (s_existente.detalles_servicio or {})
     assert getattr(s_nuevo, "horario", "") == "Lunes a viernes, de 8:00 AM a 5:00 PM"
     assert getattr(s_existente, "horario", "") == "Lunes a viernes, de 8:00 AM a 5:00 PM"
     assert "Pisos reportados:" not in (s_nuevo.nota_cliente or "")

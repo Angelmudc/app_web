@@ -213,6 +213,16 @@ def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optiona
     assert "id=\"horario_salida_diaria_wrap\" style=\"display:none;\"" in partial
 
 
+def test_shared_partial_child_care_help_uses_backend_age_summary_without_detail_field():
+    partial = _read("templates/clientes/_solicitud_form_fields.html")
+    assert "wrapper_id='wrap_ayuda_cuidado_ninos'" in partial
+    assert "api_child_age_summary" in partial
+    assert "has_confirmed_small_child" in partial
+    assert "detalle_ayuda_cuidado_ninos" not in partial
+    assert "wrap_detalle_ayuda_cuidado_ninos" not in partial
+    assert "hasSmallOrUnknown" not in partial
+
+
 def test_shared_partial_horario_depends_on_modalidad_and_clears_cross_fields():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "function syncHorarioInteligente(fromUserEvent)" in partial

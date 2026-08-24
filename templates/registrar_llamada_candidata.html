@@ -6,6 +6,9 @@
   <h1>Registrar llamada – {{ candidata.nombre_completo }}</h1>
   <form method="post" novalidate>
     {{ form.hidden_tag() }}
+    {% if next_url %}
+      <input type="hidden" name="next" value="{{ next_url }}">
+    {% endif %}
 
     <div class="mb-3">
       {{ form.resultado.label(class="form-label") }}
@@ -24,7 +27,7 @@
     </div>
 
     <button type="submit" class="btn btn-primary">{{ form.submit.label.text }}</button>
-    <a href="{{ url_for('listado_llamadas_candidatas') }}"
+    <a href="{{ next_url or url_for('listado_llamadas_candidatas') }}"
        class="btn btn-secondary ms-2">Cancelar</a>
   </form>
 </div>

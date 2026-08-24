@@ -10,10 +10,20 @@ from sqlalchemy import Date, cast, func, or_
 from config_app import cache, db
 from decorators import roles_required
 from core.services.cache_keys import _cache_key_with_role
+from core.services.candidata_quick_edit import register_candidate_call
 from core.services.date_utils import get_date_bounds, get_start_date
 from forms import LlamadaCandidataForm
 from models import Candidata, LlamadaCandidata
-from utils.timezone import rd_today, utc_now_naive
+from utils.timezone import rd_today
+
+
+def _safe_llamada_next_url(value: str | None) -> str | None:
+    next_url = (value or "").strip()
+    if not next_url:
+        return None
+    if next_url.startswith("/admin/candidatas/"):
+        return next_url[:300]
+    return None
 
 
 @roles_required("admin", "secretaria")
@@ -98,36 +108,27 @@ def listado_llamadas_candidatas():
 def registrar_llamada_candidata(fila):
     candidata = Candidata.query.get_or_404(fila)
     form = LlamadaCandidataForm()
+    next_url = _safe_llamada_next_url(request.values.get("next"))
 
     if form.validate_on_submit():
-        minutos = form.duracion_minutos.data
-        segundos = (minutos * 60) if (minutos is not None) else None
-
-        llamada = LlamadaCandidata(
-            candidata_id=candidata.fila,
-            fecha_llamada=func.now(),
-            agente=session.get("usuario", "desconocido")[:64],
-            resultado=(form.resultado.data or "").strip()[:200],
-            duracion_segundos=segundos,
-            notas=(form.notas.data or "").strip()[:2000],
-            created_at=utc_now_naive(),
+        result = register_candidate_call(
+            candidata,
+            dict(request.form or {}),
+            actor=session.get("usuario", "desconocido"),
         )
-        db.session.add(llamada)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            current_app.logger.exception("❌ Error guardando llamada de candidata")
+        if not result.ok:
+            current_app.logger.error("❌ Error guardando llamada de candidata: %s", result.error_code or result.message)
             flash("❌ Error al registrar la llamada.", "danger")
-            return redirect(url_for("listado_llamadas_candidatas"))
+            return redirect(next_url or url_for("listado_llamadas_candidatas"))
 
         flash(f"Llamada registrada para {candidata.nombre_completo}.", "success")
-        return redirect(url_for("listado_llamadas_candidatas"))
+        return redirect(next_url or url_for("listado_llamadas_candidatas"))
 
     return render_template(
         "registrar_llamada_candidata.html",
         form=form,
         candidata=candidata,
+        next_url=next_url,
     )
 
 

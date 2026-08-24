@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}Domésticas{% endblock %}
+{% block extra_head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/candidatas_operativo.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 cand-center">
+  <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap mb-3">
+    <div>
+      <h1 class="h4 mb-1">Domésticas</h1>
+      <div class="cand-muted small">Busca por nombre, teléfono, cédula o código.</div>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#candCriteria">
+      Criterios
+    </button>
+  </div>
+
+  <div class="collapse mb-3" id="candCriteria">
+    <div class="alert alert-light border small mb-0">
+      {% for key, text in queue_criteria.items() %}
+        <div><strong>{{ filter_labels.get(key, 'Seguimiento') }}:</strong> {{ text }}</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <form method="get" action="{{ url_for('admin.candidatas_operativo_index') }}" class="mb-4" data-cand-index-search data-search-url="{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}">
+    <div class="cand-searchbox">
+      <label class="visually-hidden" for="candQ">Buscar candidata</label>
+      <input id="candQ" name="q" value="{{ q }}" class="form-control form-control-lg" autocomplete="off"
+             placeholder="Nombre, teléfono, cédula o código" aria-controls="candSuggest" aria-expanded="false">
+      <div id="candSuggest" class="cand-suggest" role="listbox" hidden></div>
+    </div>
+    <input type="hidden" name="filtro" value="{{ active_filter }}">
+  </form>
+
+  {% set search_active = q|default('', true)|trim %}
+  {% if search_active %}
+    <div class="alert alert-light border small mb-3">
+      <strong>Resultados para:</strong> {{ search_active }}
+      {% if rows is not none %}
+        <span class="text-muted ms-2">{{ rows|length }} resultado{{ '' if rows|length == 1 else 's' }}</span>
+      {% endif %}
+    </div>
+  {% else %}
+    <section class="cand-section">
+      <div class="cand-section-heading">
+        <h2>Pendientes</h2>
+        <div class="small cand-muted">Solo tareas que requieren acción inmediata.</div>
+      </div>
+      <div class="cand-panel">
+        <div class="cand-attention-kpis">
+          {% for kpi in dashboard.attention_kpis %}
+            <a class="cand-kpi cand-kpi-{{ kpi.tone }}" href="{{ kpi.url }}">
+              <span>{{ kpi.label }}</span>
+              <strong>{{ kpi.count }}</strong>
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    </section>
+
+    <section class="cand-section">
+      <div class="cand-section-heading">
+        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+          <div>
+            <h2>Atender ahora</h2>
+            <div class="small cand-muted">Sigue la prioridad operativa ya calculada por el sistema.</div>
+          </div>
+          <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#candPriorityCriteria">Criterio</button>
+        </div>
+      </div>
+      <div class="cand-panel cand-panel-compact">
+        <div class="collapse mb-2" id="candPriorityCriteria">
+          <div class="small cand-muted">{{ dashboard.priority_explanation }}</div>
+        </div>
+        {% if dashboard.priority_items %}
+          <div class="cand-priority-list">
+            {% for item in dashboard.priority_items %}
+              <div class="cand-priority-item">
+                <div class="min-w-0">
+                  <a class="fw-semibold cand-row-link" href="{{ item.detail_url }}">{{ item.nombre }}</a>
+                  <div class="small cand-muted">
+                    <strong>Motivo:</strong> {{ item.title }}{% if item.detail %} · {{ item.detail }}{% endif %}
+                  </div>
+                </div>
+                <a class="btn btn-sm btn-primary" href="{{ item.action_url or item.detail_url }}">{{ item.action_label or 'Continuar' }}</a>
+              </div>
+            {% endfor %}
+          </div>
+        {% else %}
+          <div class="alert alert-light border mb-0">No hay candidatas que requieran atención inmediata.</div>
+        {% endif %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="cand-section">
+    <div class="cand-section-heading">
+      <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+        <div>
+          <h2>Listado de candidatas</h2>
+          <div class="small cand-muted">Todas las candidatas y filtros rápidos.</div>
+        </div>
+        {% if q %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.candidatas_operativo_index', filtro=active_filter) }}">Limpiar búsqueda</a>{% endif %}
+      </div>
+    </div>
+
+    <div class="cand-chipbar mb-3" aria-label="Filtros rápidos">
+    {% for key, label in filter_labels.items() %}
+      {% if key != 'descalificadas' or can_view_descalificadas %}
+        <a class="btn btn-sm {% if active_filter == key %}btn-primary{% else %}btn-outline-secondary{% endif %}"
+           href="{{ url_for('admin.candidatas_operativo_index', filtro=key, q=q) }}">
+          {{ label }}{% if queue_counts.get(key) is not none %} {{ queue_counts.get(key) }}{% endif %}
+        </a>
+      {% endif %}
+    {% endfor %}
+    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#candFilters">Filtros</button>
+    </div>
+
+    <div class="collapse mb-3" id="candFilters">
+      <form method="get" class="border rounded p-3">
+        <input type="hidden" name="q" value="{{ q }}">
+        <input type="hidden" name="filtro" value="{{ active_filter }}">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small" for="filterEstado">Estado</label>
+            <select id="filterEstado" name="estado" class="form-select form-select-sm">
+              <option value="">Todos</option>
+              {% for estado, label in estado_filter_options %}
+                <option value="{{ estado }}" {% if request.args.get('estado') == estado %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small" for="filterPrep">Preparación</label>
+            <select id="filterPrep" name="preparacion" class="form-select form-select-sm">
+              <option value="">Todas</option>
+              <option value="lista" {% if request.args.get('preparacion') == 'lista' %}selected{% endif %}>Completa</option>
+              <option value="pendiente" {% if request.args.get('preparacion') == 'pendiente' %}selected{% endif %}>Pendiente</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small" for="filterIns">Inscripción</label>
+            <select id="filterIns" name="inscripcion" class="form-select form-select-sm">
+              <option value="">Todas</option>
+              <option value="si" {% if request.args.get('inscripcion') == 'si' %}selected{% endif %}>Sí</option>
+              <option value="no" {% if request.args.get('inscripcion') == 'no' %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small" for="filterEnt">Entrevista</label>
+            <select id="filterEnt" name="entrevista" class="form-select form-select-sm">
+              <option value="">Todas</option>
+              <option value="si" {% if request.args.get('entrevista') == 'si' %}selected{% endif %}>Con entrevista</option>
+              <option value="no" {% if request.args.get('entrevista') == 'no' %}selected{% endif %}>Sin entrevista</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small" for="filterDocs">Documentos</label>
+            <select id="filterDocs" name="documentos" class="form-select form-select-sm">
+              <option value="">Todos</option>
+              <option value="pendientes" {% if request.args.get('documentos') == 'pendientes' %}selected{% endif %}>Con pendientes</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small" for="filterZona">Ciudad/sector</label>
+            <input id="filterZona" name="zona" class="form-control form-control-sm" value="{{ request.args.get('zona','') }}">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small" for="filterModalidad">Modalidad</label>
+            <input id="filterModalidad" name="modalidad" class="form-control form-control-sm" value="{{ request.args.get('modalidad','') }}">
+          </div>
+          {% for name, label in [('ninos','Niños'), ('mascotas','Mascotas'), ('dormir_fuera','Dormir fuera')] %}
+          <div class="col-md-2">
+            <label class="form-label small" for="filter_{{ name }}">{{ label }}</label>
+            <select id="filter_{{ name }}" name="{{ name }}" class="form-select form-select-sm">
+              <option value="">Todos</option>
+              <option value="si" {% if request.args.get(name) == 'si' %}selected{% endif %}>Sí</option>
+              <option value="no" {% if request.args.get(name) == 'no' %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          {% endfor %}
+          <div class="col-md-2 d-flex gap-2">
+            <button class="btn btn-primary btn-sm" type="submit">Aplicar</button>
+            <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('admin.candidatas_operativo_index') }}">Limpiar</a>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    {% if rows %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover cand-table">
+          <thead>
+            <tr>
+              <th>Nombre</th>
+              <th>Estado</th>
+              <th>Preparación</th>
+              <th>Modalidad</th>
+              <th>Última actividad</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              {% set c = row.candidata %}
+              <tr data-row-url="{{ row.detail_url }}">
+                <td data-label="Nombre">
+                  <a href="{{ row.detail_url }}" class="cand-row-link fw-semibold">{{ c.nombre_completo }}</a>
+                  <div class="small cand-muted">
+                    <span class="cand-code">{{ c.codigo or 'sin código' }}</span>
+                    · {{ c.edad or 'edad no informada' }}
+                    · {{ c.numero_telefono or 'sin teléfono' }}
+                  </div>
+                </td>
+                <td data-label="Estado"><span class="badge text-bg-light border">{{ row.estado_label or c.estado or '—' }}</span></td>
+                <td data-label="Preparación">
+                  <span class="badge {% if row.readiness.ready %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                    {{ row.completed_label }}
+                  </span>
+                  {% if row.readiness.missing %}
+                    <div class="small cand-muted">Falta {{ row.readiness.labels.get(row.readiness.missing[0], row.readiness.missing[0]) }}</div>
+                  {% endif %}
+                </td>
+                <td data-label="Modalidad">{{ c.modalidad_trabajo_preferida or '—' }}</td>
+                <td data-label="Última actividad">{{ row.last_activity|rd_datetime('%d/%m/%Y %I:%M %p') if row.last_activity and row.last_activity is not string else (row.last_activity or '—') }}</td>
+                <td data-label="">
+                  <div class="d-flex gap-1 justify-content-end">
+                    <a class="btn btn-sm btn-outline-primary" href="{{ row.detail_url }}">Abrir</a>
+                    {% if c.numero_telefono %}<a class="btn btn-sm btn-outline-secondary" href="tel:{{ c.numero_telefono }}">Llamar</a>{% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-light border">
+        {% if search_active %}
+          No se encontraron candidatas para esta búsqueda.
+        {% else %}
+          No encontramos candidatas con ese criterio.
+        {% endif %}
+      </div>
+    {% endif %}
+  </section>
+
+  {% if pages and pages > 1 %}
+    <nav aria-label="Paginación candidatas">
+      <ul class="pagination pagination-sm">
+        <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+          <a class="page-link" href="{{ prev_page_url or '#' }}">Anterior</a>
+        </li>
+        <li class="page-item disabled"><span class="page-link">{{ page }} / {{ pages }}</span></li>
+        <li class="page-item {% if page >= pages %}disabled{% endif %}">
+          <a class="page-link" href="{{ next_page_url or '#' }}">Siguiente</a>
+        </li>
+      </ul>
+    </nav>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    const form = document.querySelector('[data-cand-index-search]');
+    if (!form) return;
+    const input = form.querySelector('input[name="q"]');
+    const box = form.querySelector('#candSuggest');
+    const searchUrl = form.dataset.searchUrl || '';
+    let timer = null;
+    let items = [];
+    let active = 0;
+    let controller = null;
+    let requestSeq = 0;
+
+    function hide() {
+      box.hidden = true;
+      input.setAttribute('aria-expanded', 'false');
+    }
+
+    function openItem(index) {
+      const item = items[index];
+      if (item && item.detail_url) window.location.href = item.detail_url;
+    }
+
+    function render() {
+      box.innerHTML = '';
+      if (!items.length) {
+        hide();
+        return;
+      }
+      items.forEach((item, index) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = index === active ? 'is-active' : '';
+        btn.setAttribute('role', 'option');
+        btn.setAttribute('aria-selected', index === active ? 'true' : 'false');
+        const meta = [item.codigo || 'sin código', item.edad ? item.edad + ' años' : '', item.telefono || '', item.estado_label || ''].filter(Boolean).join(' · ');
+        btn.innerHTML = '<span><strong></strong><div class="small cand-muted"></div></span><span class="small cand-muted">Abrir</span>';
+        btn.querySelector('strong').textContent = item.nombre || 'Sin nombre';
+        btn.querySelector('.small').textContent = meta;
+        btn.addEventListener('click', () => openItem(index));
+        box.appendChild(btn);
+      });
+      box.hidden = false;
+      input.setAttribute('aria-expanded', 'true');
+    }
+
+    function fetchItems() {
+      const q = input.value.trim();
+      const seq = ++requestSeq;
+      if (q.length < 2 || !searchUrl) {
+        if (controller) controller.abort();
+        items = [];
+        render();
+        return;
+      }
+      if (controller) controller.abort();
+      controller = new AbortController();
+      const url = new URL(searchUrl, window.location.origin);
+      url.searchParams.set('q', q);
+      url.searchParams.set('limit', '7');
+      fetch(url.toString(), { headers: { Accept: 'application/json' }, signal: controller.signal })
+        .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error('search_failed')))
+        .then((payload) => {
+          if (seq !== requestSeq) return;
+          items = Array.isArray(payload.items) ? payload.items : [];
+          active = 0;
+          render();
+        })
+        .catch((err) => {
+          if (err && err.name === 'AbortError') return;
+          if (seq !== requestSeq) return;
+          items = [];
+          render();
+        });
+    }
+
+    input.addEventListener('input', () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(fetchItems, 220);
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        hide();
+      } else if (event.key === 'ArrowDown' && items.length) {
+        event.preventDefault();
+        active = Math.min(items.length - 1, active + 1);
+        render();
+      } else if (event.key === 'ArrowUp' && items.length) {
+        event.preventDefault();
+        active = Math.max(0, active - 1);
+        render();
+      } else if (event.key === 'Enter' && items.length && !box.hidden) {
+        event.preventDefault();
+        openItem(active);
+      }
+    });
+    document.addEventListener('click', (event) => {
+      if (!form.contains(event.target)) hide();
+    });
+
+    document.querySelectorAll('[data-row-url]').forEach((row) => {
+      row.addEventListener('click', (event) => {
+        if (event.target.closest('a, button, input, select, textarea')) return;
+        const url = row.getAttribute('data-row-url');
+        if (url) window.location.href = url;
+      });
+      row.style.cursor = 'pointer';
+    });
+  })();
+</script>
+{% endblock %}

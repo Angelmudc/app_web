@@ -14,12 +14,24 @@ from decorators import roles_required
 from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaRespuesta
 from utils.audit_entity import log_candidata_action
 from utils.candidata_readiness import maybe_update_estado_por_completitud
-from utils.guards import assert_candidata_no_descalificada, candidatas_activas_filter
+from utils.guards import (
+    assert_candidata_can_create_interview,
+    assert_candidata_no_descalificada,
+    candidata_can_create_interview,
+    candidatas_activas_filter,
+)
 from utils.robust_save import execute_robust_save, legacy_text_is_useful
 from utils.timezone import utc_now_naive
 
 from core import legacy_handlers as legacy_h
 from core.services.search import apply_search_to_candidata_query
+
+
+_INTERVIEW_TYPE_LABELS = {
+    "domestica": "Doméstica",
+    "enfermera": "Enfermera",
+    "empleo_general": "General",
+}
 
 
 def _safe_next_url() -> str:
@@ -45,6 +57,29 @@ def _get_preguntas_db_por_tipo(tipo: str):
         return []
 
     return _get_preguntas_db_por_tipo_cached(tipo)
+
+
+def _available_interview_types() -> list[dict]:
+    rows = (
+        EntrevistaPregunta.query
+        .with_entities(EntrevistaPregunta.clave)
+        .filter(EntrevistaPregunta.activa.is_(True))
+        .filter(EntrevistaPregunta.clave.isnot(None))
+        .all()
+    )
+    found = set()
+    for (clave,) in rows:
+        text = str(clave or "").strip().lower()
+        if "." not in text:
+            continue
+        key = text.split(".", 1)[0].strip()
+        if key in _INTERVIEW_TYPE_LABELS:
+            found.add(key)
+    return [
+        {"key": key, "label": label}
+        for key, label in _INTERVIEW_TYPE_LABELS.items()
+        if key in found
+    ]
 
 
 def _safe_setattr(obj, name: str, value):
@@ -97,7 +132,12 @@ def _verify_interview_new_saved(entrevista_id: int, candidata_id: Optional[int] 
 def _build_legacy_interview_text(preguntas, respuestas_por_pregunta: dict[int, str]) -> str:
     lines = []
     for p in (preguntas or []):
-        q = (getattr(p, "enunciado", None) or getattr(p, "clave", None) or f"Pregunta {getattr(p, 'id', '')}").strip()
+        q = (
+            getattr(p, "texto", None)
+            or getattr(p, "enunciado", None)
+            or getattr(p, "clave", None)
+            or f"Pregunta {getattr(p, 'id', '')}"
+        ).strip()
         a = (respuestas_por_pregunta.get(getattr(p, "id", 0)) or "").strip()
         if not q:
             continue
@@ -108,7 +148,8 @@ def _build_legacy_interview_text(preguntas, respuestas_por_pregunta: dict[int, s
 @roles_required('admin', 'secretaria')
 def entrevistas_index():
     """Entrada principal a las entrevistas NUEVAS (DB)."""
-    return redirect(url_for('entrevistas_buscar'))
+    next_url = _safe_next_url()
+    return redirect(url_for('entrevistas_buscar', next=next_url or None))
 
 
 @roles_required('admin', 'secretaria')
@@ -122,7 +163,7 @@ def entrevistas_buscar():
     if request.method == 'POST':
         if not q:
             flash('⚠️ Escribe algo para buscar.', 'warning')
-            return redirect(url_for('entrevistas_buscar'))
+            return redirect(url_for('entrevistas_buscar', next=next_url or None))
 
     if q:
         try:
@@ -161,9 +202,9 @@ def entrevistas_buscar():
             for c in resultados:
                 html.append(
                     f"<li><b>{(c.nombre_completo or '').strip()}</b> · {c.cedula or ''} · {c.numero_telefono or ''} "
-                    f"— <a href=\"{url_for('entrevistas_de_candidata', fila=c.fila)}\">Ver entrevistas</a> "
-                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='domestica')}\">Nueva doméstica</a> "
-                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='enfermera')}\">Nueva enfermera</a>"
+                    f"— <a href=\"{url_for('entrevistas_de_candidata', fila=c.fila, next=next_url or None)}\">Ver entrevistas</a> "
+                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='domestica', next=next_url or None)}\">Nueva doméstica</a> "
+                    f"— <a href=\"{url_for('entrevista_nueva_db', fila=c.fila, tipo='enfermera', next=next_url or None)}\">Nueva enfermera</a>"
                     f"</li>"
                 )
             html.append('</ul>')
@@ -200,8 +241,8 @@ def entrevistas_lista():
                 tipo = getattr(e, 'tipo', None) if hasattr(e, 'tipo') else None
                 eid = getattr(e, 'id', None)
 
-                link_cand = f' — <a href="{url_for("entrevistas_de_candidata", fila=fila)}">ver candidata</a>' if fila else ''
-                link_edit = f' — <a href="{url_for("entrevista_editar_db", entrevista_id=eid)}">editar</a>' if eid else ''
+                link_cand = f' — <a href="{url_for("entrevistas_de_candidata", fila=fila, next=next_url or None)}">ver candidata</a>' if fila else ''
+                link_edit = f' — <a href="{url_for("entrevista_editar_db", entrevista_id=eid, next=next_url or None)}">editar</a>' if eid else ''
 
                 html.append(f"<li>ID: {eid or ''} · candidata_id: {fila or ''} · tipo: {tipo or ''}{link_cand}{link_edit}</li>")
             html.append('</ul>')
@@ -216,7 +257,7 @@ def entrevistas_de_candidata(fila):
     candidata = legacy_h._get_candidata_safe_by_pk(fila)
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
-        return redirect(url_for('entrevistas_buscar'))
+        return redirect(url_for('entrevistas_buscar', next=next_url or None))
 
     entrevistas = (
         Entrevista.query
@@ -230,6 +271,8 @@ def entrevistas_de_candidata(fila):
         candidata=candidata,
         entrevistas=entrevistas,
         next_url=next_url,
+        interview_types=_available_interview_types(),
+        interview_create_capability=candidata_can_create_interview(candidata),
     )
 
 
@@ -239,12 +282,11 @@ def entrevista_nueva_db(fila, tipo):
     candidata = legacy_h._get_candidata_safe_by_pk(fila)
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
-        return redirect(url_for('entrevistas_buscar'))
-    blocked = assert_candidata_no_descalificada(
+        return redirect(url_for('entrevistas_buscar', next=next_url or None))
+    blocked = assert_candidata_can_create_interview(
         candidata,
-        action="crear entrevista",
         redirect_endpoint="entrevistas_de_candidata",
-        redirect_kwargs={"fila": fila},
+        redirect_kwargs={"fila": fila, "next": next_url or None},
     )
     if blocked is not None:
         return blocked
@@ -252,7 +294,7 @@ def entrevista_nueva_db(fila, tipo):
     preguntas = _get_preguntas_db_por_tipo(tipo)
     if not preguntas:
         flash("⚠️ No hay preguntas configuradas para ese tipo de entrevista.", "warning")
-        return redirect(url_for('entrevistas_de_candidata', fila=fila))
+        return redirect(url_for('entrevistas_de_candidata', fila=fila, next=next_url or None))
 
     if request.method == "POST":
         respuestas_payload = {}
@@ -262,7 +304,7 @@ def entrevista_nueva_db(fila, tipo):
 
         if not any(legacy_text_is_useful(v) for v in respuestas_payload.values()):
             flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
-            return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
+            return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo, next=next_url or None))
 
         state = {"entrevista_id": 0, "legacy_text": ""}
 
@@ -326,7 +368,7 @@ def entrevista_nueva_db(fila, tipo):
             flash("✅ Entrevista guardada.", "success")
             if next_url:
                 return redirect(next_url)
-            return redirect(url_for('entrevistas_de_candidata', fila=fila))
+            return redirect(url_for('entrevistas_de_candidata', fila=fila, next=next_url or None))
 
         current_app.logger.error(
             "❌ Error guardando entrevista (robust_save) fila=%s attempts=%s error=%s",
@@ -358,7 +400,7 @@ def entrevista_nueva_db(fila, tipo):
             error="No se pudo guardar la entrevista nueva.",
         )
         flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
-        return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo))
+        return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo, next=next_url or None))
 
     return render_template(
         "entrevistas/entrevista_form.html",
@@ -391,12 +433,12 @@ def entrevista_editar_db(entrevista_id):
     candidata = legacy_h._get_candidata_safe_by_pk(fila) if fila else None
     if not candidata:
         flash("⚠️ Candidata no encontrada.", "warning")
-        return redirect(url_for('entrevistas_buscar'))
+        return redirect(url_for('entrevistas_buscar', next=next_url or None))
     blocked = assert_candidata_no_descalificada(
         candidata,
         action="editar entrevista",
         redirect_endpoint="entrevistas_de_candidata",
-        redirect_kwargs={"fila": fila},
+        redirect_kwargs={"fila": fila, "next": next_url or None},
     )
     if blocked is not None:
         return blocked
@@ -422,7 +464,7 @@ def entrevista_editar_db(entrevista_id):
     preguntas = _get_preguntas_db_por_tipo(tipo)
     if not preguntas:
         flash("⚠️ No hay preguntas configuradas para este tipo.", "warning")
-        return redirect(url_for('entrevistas_de_candidata', fila=fila))
+        return redirect(url_for('entrevistas_de_candidata', fila=fila, next=next_url or None))
 
     if request.method == "POST":
         respuestas_payload = {}
@@ -432,7 +474,7 @@ def entrevista_editar_db(entrevista_id):
 
         if not any(legacy_text_is_useful(v) for v in respuestas_payload.values()):
             flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
-            return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
+            return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id, next=next_url or None))
 
         def _persist_interview_update(_attempt: int):
             for p in preguntas:
@@ -498,7 +540,7 @@ def entrevista_editar_db(entrevista_id):
             flash("✅ Entrevista actualizada.", "success")
             if next_url:
                 return redirect(next_url)
-            return redirect(url_for('entrevistas_de_candidata', fila=fila))
+            return redirect(url_for('entrevistas_de_candidata', fila=fila, next=next_url or None))
 
         current_app.logger.error(
             "❌ Error actualizando entrevista (robust_save) entrevista_id=%s attempts=%s error=%s",
@@ -531,7 +573,7 @@ def entrevista_editar_db(entrevista_id):
             error="No se pudo actualizar la entrevista.",
         )
         flash("No se pudo guardar. Intente de nuevo. Si persiste, contacte admin.", "danger")
-        return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id))
+        return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id, next=next_url or None))
 
     return render_template(
         "entrevistas/entrevista_form.html",

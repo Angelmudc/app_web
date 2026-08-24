@@ -118,6 +118,10 @@ def test_registro_publico_domestica_muestra_textos_de_confianza_y_enlaces_legale
     assert "Registro para personas interesadas en empleo" in html
     assert "Tus datos serán usados únicamente para fines de evaluación y contacto laboral." in html
     assert "Este registro no garantiza empleo inmediato." in html
+    assert "¿Cuándo puedes iniciar a trabajar?" in html
+    assert "Aún no lo sabe" in html
+    assert "En 1-2 semanas" in html
+    assert "¿Cuál es el motivo por el que deseas trabajar como doméstica?" in html
     assert "https://domesticadelcibao.com/registro/registro_publico" in html
     assert 'href="/privacidad"' in html
     assert 'href="/politicas"' in html

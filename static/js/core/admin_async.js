@@ -10,6 +10,7 @@
   const DEFAULT_LINK_TEXT = "Cargando...";
   const BUSY_KEY = "adminAsyncBusy";
   const REEMPLAZO_MODAL_ATTR = 'data-reemplazo-modal';
+  const BODY_MODAL_ATTR = 'data-admin-body-modal';
   const reemplazoModalAncestorState = new WeakMap();
   const reemplazoModalTeleportState = new WeakMap();
   const rowHighlightTimers = new WeakMap();
@@ -20,6 +21,7 @@
   const activeRequestControllerByTarget = new Map();
   let lastResponseMeta = null;
   let secondaryBound = false;
+  let modalGuardsBound = false;
   const scheduleIdle = (cb, timeout = 700) => {
     if (typeof window.requestIdleCallback === "function") {
       return window.requestIdleCallback(cb, { timeout });
@@ -208,8 +210,69 @@
     } catch (_) {}
   }
 
+  function forceHideManagedModal(modalEl) {
+    if (!modalEl || !isBodyManagedModal(modalEl) || !modalEl.classList.contains("show")) return;
+    try {
+      modalEl.classList.remove("show");
+      modalEl.style.display = "none";
+      modalEl.setAttribute("aria-hidden", "true");
+      modalEl.removeAttribute("aria-modal");
+      modalEl.removeAttribute("role");
+      resetManagedModalOnClose(modalEl);
+      if (window.bootstrap && window.bootstrap.Modal) {
+        const instance = window.bootstrap.Modal.getInstance(modalEl);
+        if (instance && typeof instance.dispose === "function") instance.dispose();
+      }
+      restoreModalAncestors(modalEl);
+      restoreTeleportedReemplazoModal(modalEl);
+      cleanupModalState(true);
+      const selector = modalEl.id ? `[data-bs-toggle="modal"][data-bs-target="#${escapeCssToken(modalEl.id)}"]` : "";
+      const trigger = selector ? document.querySelector(selector) : null;
+      if (trigger && typeof trigger.focus === "function") trigger.focus();
+    } catch (_) {}
+  }
+
+  function requestManagedModalHide(modalEl) {
+    if (!modalEl || !isBodyManagedModal(modalEl)) return;
+    try {
+      if (window.bootstrap && window.bootstrap.Modal) {
+        const instance = window.bootstrap.Modal.getInstance(modalEl) || new window.bootstrap.Modal(modalEl);
+        instance.hide();
+        window.setTimeout(() => {
+          try {
+            if (modalEl.classList.contains("show")) {
+              (window.bootstrap.Modal.getInstance(modalEl) || instance).hide();
+            }
+          } catch (_) {}
+        }, 180);
+        window.setTimeout(() => forceHideManagedModal(modalEl), 420);
+      } else {
+        forceHideManagedModal(modalEl);
+      }
+    } catch (_) {
+      forceHideManagedModal(modalEl);
+    }
+  }
+
+  function resetManagedModalOnClose(modalEl) {
+    if (!modalEl || String(modalEl.getAttribute("data-admin-reset-on-close") || "").toLowerCase() !== "true") return;
+    try {
+      modalEl.querySelectorAll("form").forEach((form) => {
+        if (typeof form.reset === "function") form.reset();
+        form.querySelectorAll("[data-error-for]").forEach((el) => { el.textContent = ""; });
+        form.removeAttribute("aria-busy");
+        delete form.dataset.quickBusy;
+      });
+    } catch (_) {}
+  }
+
   function isReemplazoModal(el) {
     return !!(el && el.matches && el.matches(`.modal[${REEMPLAZO_MODAL_ATTR}="1"]`));
+  }
+
+  function isBodyManagedModal(el) {
+    if (!el || !el.matches) return false;
+    return isReemplazoModal(el) || el.matches(`.modal[${BODY_MODAL_ATTR}="true"], .modal[${BODY_MODAL_ATTR}="1"]`);
   }
 
   function normalizeModalBackdrops() {
@@ -223,7 +286,11 @@
   function enforceReemplazoModalLayering(modalEl) {
     if (!modalEl) return;
     try {
-      modalEl.style.setProperty("z-index", "1080");
+      const modalZ = isReemplazoModal(modalEl)
+        ? 1080
+        : (Number(modalEl.getAttribute("data-admin-modal-z") || "2000") || 2000);
+      const backdropZ = Math.max(0, modalZ - 10);
+      modalEl.style.setProperty("z-index", String(modalZ));
       modalEl.style.setProperty("pointer-events", "auto");
       const dialog = modalEl.querySelector(".modal-dialog");
       const content = modalEl.querySelector(".modal-content");
@@ -232,7 +299,7 @@
 
       const backdrops = Array.from(document.querySelectorAll(".modal-backdrop"));
       backdrops.forEach((node) => {
-        node.style.setProperty("z-index", "1070");
+        node.style.setProperty("z-index", String(backdropZ));
         node.style.setProperty("pointer-events", "auto");
       });
     } catch (_) {}
@@ -317,10 +384,35 @@
     reemplazoModalAncestorState.delete(modalEl);
   }
 
-  function bindReemplazoModalGuards() {
+  function bindManagedModalGuards() {
+    if (modalGuardsBound) return;
+    modalGuardsBound = true;
+
+    document.addEventListener("keydown", (ev) => {
+      if (!ev || ev.key !== "Escape" || ev.defaultPrevented) return;
+      const visibleManagedModals = Array.from(document.querySelectorAll(".modal.show")).filter(isBodyManagedModal);
+      const modalEl = visibleManagedModals[visibleManagedModals.length - 1];
+      if (!modalEl) return;
+      requestManagedModalHide(modalEl);
+      ev.preventDefault();
+    }, true);
+
+    document.addEventListener("click", (ev) => {
+      const target = ev && ev.target;
+      if (!target) return;
+      const visibleManagedModals = Array.from(document.querySelectorAll(".modal.show")).filter(isBodyManagedModal);
+      const modalEl = visibleManagedModals[visibleManagedModals.length - 1];
+      if (!modalEl) return;
+      const backdropMode = String(modalEl.getAttribute("data-bs-backdrop") || "").trim().toLowerCase();
+      if (backdropMode === "static") return;
+      const clickedBackdrop = target === modalEl || (target.classList && target.classList.contains("modal-backdrop"));
+      if (!clickedBackdrop) return;
+      requestManagedModalHide(modalEl);
+    }, true);
+
     document.addEventListener("show.bs.modal", (ev) => {
       const modalEl = ev && ev.target;
-      if (!isReemplazoModal(modalEl)) return;
+      if (!isBodyManagedModal(modalEl)) return;
       teleportReemplazoModalToBody(modalEl);
       neutralizeModalAncestors(modalEl);
       normalizeModalBackdrops();
@@ -330,16 +422,17 @@
 
     document.addEventListener("shown.bs.modal", (ev) => {
       const modalEl = ev && ev.target;
-      if (!isReemplazoModal(modalEl)) return;
+      if (!isBodyManagedModal(modalEl)) return;
       normalizeModalBackdrops();
       enforceReemplazoModalLayering(modalEl);
     });
 
     document.addEventListener("hidden.bs.modal", (ev) => {
       const modalEl = ev && ev.target;
-      if (!isReemplazoModal(modalEl)) return;
+      if (!isBodyManagedModal(modalEl)) return;
       restoreModalAncestors(modalEl);
       restoreTeleportedReemplazoModal(modalEl);
+      resetManagedModalOnClose(modalEl);
       normalizeModalBackdrops();
       cleanupModalState(false);
     });
@@ -1491,7 +1584,7 @@
     bindSecondaryListeners();
     syncCollapseToggleLabels(document);
     syncRegistrarPagoManualFields(document);
-    bindReemplazoModalGuards();
+    bindManagedModalGuards();
   }
 
   window.AdminAsync = {
@@ -1502,8 +1595,10 @@
   };
 
   if (document.readyState === "loading") {
+    bindManagedModalGuards();
     document.addEventListener("DOMContentLoaded", () => scheduleIdle(init, 900), { once: true });
   } else {
+    bindManagedModalGuards();
     scheduleIdle(init, 900);
   }
 })();

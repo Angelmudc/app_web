@@ -11,6 +11,10 @@ def _login(client, usuario: str, clave: str):
     return client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)
 
 
+def _nav_html(html: str) -> str:
+    return html.split("<nav", 1)[1].split("</nav>", 1)[0]
+
+
 def test_owner_sees_create_user_link_and_can_open_route():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -61,6 +65,69 @@ def test_secretaria_does_not_see_admin_menu_links():
     # Seguridad existente: crear usuario es owner-only.
     denied = client.get("/admin/usuarios/nuevo", follow_redirects=False)
     assert denied.status_code == 403
+
+
+def test_admin_global_nav_groups_secondary_modules_under_more():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    home = client.get("/home", follow_redirects=False)
+    assert home.status_code == 200
+    nav = _nav_html(home.get_data(as_text=True))
+
+    assert 'href="/home">Inicio</a>' in nav
+    assert 'href="/admin/solicitudes">Solicitudes</a>' in nav
+    assert 'href="/admin/candidatas">Domésticas</a>' in nav
+    assert 'id="adminMoreDropdown"' in nav
+
+    assert 'href="/admin/metricas"' in nav
+    assert 'href="/admin/matching/inteligente"' in nav
+    assert 'href="/admin/chat"' in nav
+    assert 'href="/admin/seguimiento-candidatas/cola"' in nav
+    assert 'href="/admin/solicitudes/publicas/nuevas"' in nav
+    assert 'href="/admin/tienda-intereses"' in nav
+    assert "Control Room" in nav
+    assert "Chat staff" in nav
+    assert "Solicitudes de entrevistas" in nav
+
+
+def test_admin_global_nav_marks_more_active_for_secondary_route():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    assert _login(client, "Cruz", "8998").status_code in (302, 303)
+
+    resp = client.get("/admin/metricas", follow_redirects=False)
+    assert resp.status_code == 200
+    nav = _nav_html(resp.get_data(as_text=True))
+
+    more_toggle = nav.split('id="adminMoreDropdown"', 1)[0].rsplit("<a", 1)[1]
+    assert "active" in more_toggle
+    assert 'href="/admin/metricas"' in nav
+    assert ">Métricas<" in nav
+
+
+def test_secretaria_global_nav_keeps_owner_admin_links_hidden_inside_more():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    assert _login(client, "Karla", "9989").status_code in (302, 303)
+
+    home = client.get("/home", follow_redirects=False)
+    assert home.status_code == 200
+    nav = _nav_html(home.get_data(as_text=True))
+
+    assert 'href="/admin/candidatas">Domésticas</a>' in nav
+    assert 'id="adminMoreDropdown"' in nav
+    assert 'href="/admin/metricas"' not in nav
+    assert 'href="/admin/usuarios"' not in nav
+    assert "Catálogos privados" not in nav
+    assert "Herramientas legacy candidatas" not in nav
 
 
 def test_staff_roles_see_new_public_client_form_link_in_admin_clientes():

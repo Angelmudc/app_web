@@ -28,6 +28,8 @@ class _DummyCandidata:
         self.areas_experiencia = "Limpieza"
         self.contactos_referencias_laborales = "Ref 1"
         self.referencias_familiares_detalle = "Ref fam"
+        self.referencias_laboral = "Ref laboral verificada"
+        self.referencias_familiares = "Ref familiar verificada"
         self.sabe_planchar = False
         self.acepta_porcentaje_sueldo = True
         self.estado = estado
@@ -107,6 +109,9 @@ class _FakePagoForm:
         self.candidata_id = _DummyField(1)
         self.monto_pagado = _DummyField("1000")
 
+    def hidden_tag(self):
+        return ""
+
     def validate_on_submit(self):
         return True
 
@@ -185,6 +190,15 @@ class _ScalarQueryStub:
         return self._value
 
 
+def _session_get_candidata_only(cand, real_get):
+    def _get(model, ident=None, *args, **kwargs):
+        if getattr(model, "__name__", "") == "Candidata":
+            return cand
+        return real_get(model, ident, *args, **kwargs)
+
+    return _get
+
+
 class DescalificacionFlowTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
@@ -237,7 +251,7 @@ class DescalificacionFlowTest(unittest.TestCase):
                     follow_redirects=False,
                 )
                 self.assertEqual(resp.status_code, 302)
-                self.assertEqual(cand.estado, "lista_para_trabajar")
+                self.assertEqual(cand.estado, "proceso_inscripcion")
                 self.assertIsNone(cand.nota_descalificacion)
                 self.assertGreaterEqual(commit_mock.call_count, 1)
 
@@ -262,9 +276,14 @@ class DescalificacionFlowTest(unittest.TestCase):
         cand = _DummyCandidata(fila=1, estado="descalificada")
 
         with flask_app.app_context():
+            real_get = admin_routes.db.session.get
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery()), \
                  patch.object(admin_routes.Candidata, "query", _CandidataPagoQuery(cand)), \
                  patch("admin.routes.AdminPagoForm", _FakePagoForm), \
+                 patch(
+                     "admin.routes.db.session.get",
+                     side_effect=_session_get_candidata_only(cand, real_get),
+                 ), \
                  patch("admin.routes.db.session.commit") as commit_mock:
                 resp = self.client.post(
                     "/admin/clientes/7/solicitudes/10/pago",
@@ -444,9 +463,10 @@ class DescalificacionFlowTest(unittest.TestCase):
     def test_secretaria_no_puede_confirmar_eliminacion_definitiva(self):
         self._login_secretaria()
         cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
+        real_get = legacy_handlers.db.session.get
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+            with patch("core.legacy_handlers.db.session.get", side_effect=_session_get_candidata_only(cand, real_get)), \
                  patch("core.legacy_handlers.db.session.delete") as delete_mock, \
                  patch("core.legacy_handlers.db.session.commit") as commit_mock:
                 resp = self.client.post(
@@ -469,9 +489,10 @@ class DescalificacionFlowTest(unittest.TestCase):
         cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
         cand.solicitudes = [SimpleNamespace(id=10)]
         cand.llamadas = []
+        real_get = legacy_handlers.db.session.get
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+            with patch("core.legacy_handlers.db.session.get", side_effect=_session_get_candidata_only(cand, real_get)), \
                  patch("core.legacy_handlers.db.session.delete") as delete_mock, \
                  patch("core.legacy_handlers.db.session.commit") as commit_mock:
                 resp = self.client.post(
@@ -494,9 +515,10 @@ class DescalificacionFlowTest(unittest.TestCase):
         cand = _DummyCandidata(fila=1, estado="lista_para_trabajar")
         cand.solicitudes = []
         cand.llamadas = []
+        real_get = legacy_handlers.db.session.get
 
         with flask_app.app_context():
-            with patch("core.legacy_handlers.db.session.get", return_value=cand), \
+            with patch("core.legacy_handlers.db.session.get", side_effect=_session_get_candidata_only(cand, real_get)), \
                  patch("core.legacy_handlers.db.session.query", return_value=_ScalarQueryStub(0)), \
                  patch("core.legacy_handlers.db.session.delete") as delete_mock, \
                  patch("core.legacy_handlers.db.session.commit") as commit_mock:

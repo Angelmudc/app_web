@@ -1,0 +1,1617 @@
+{% extends "base.html" %}
+{% block title %}{{ candidata.nombre_completo }} · Domésticas{% endblock %}
+{% block extra_head %}
+  {{ super() }}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/candidatas_operativo.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4 cand-center"
+     data-candidata-center
+     data-presence-entity-type="candidata"
+     data-presence-entity-id="{{ candidata.fila }}"
+     data-presence-entity-name="{{ candidata.nombre_completo }}"
+     data-presence-entity-code="{{ candidata.codigo or '' }}">
+  <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+    <nav class="small" aria-label="breadcrumb">
+      <a href="{{ center_back_url }}">Domésticas</a>
+      <span class="cand-muted"> &gt; </span>
+      <span>{{ candidata.nombre_completo }}</span>
+    </nav>
+    <a href="{{ center_back_url }}" class="btn btn-outline-secondary btn-sm">Volver a Domésticas</a>
+  </div>
+
+  <header class="cand-header mb-3">
+    <div class="cand-header-main">
+      <div>
+        <h1 class="h4 mb-1" data-cand-header="nombre">{{ candidata.nombre_completo }}</h1>
+        <div class="cand-muted small cand-header-meta">
+          <span class="cand-code" data-cand-header="codigo">{{ candidata.codigo or 'sin código' }}</span>
+          <span data-cand-header="edad">{{ candidata.edad or 'edad no informada' }}</span>
+          {% if candidata.numero_telefono %}
+            <a href="tel:{{ candidata.numero_telefono }}" data-cand-header="telefono">{{ candidata.numero_telefono }}</a>
+          {% else %}
+            <span data-cand-header="telefono">sin teléfono</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="d-flex gap-1 flex-wrap justify-content-end" data-status-badges>
+        <span class="badge text-bg-light border">{{ estado_label }}</span>
+        {% if status_badges.inscrita and estado_label != 'Inscrita' %}<span class="badge text-bg-primary">Inscrita</span>{% endif %}
+        {% if status_badges.lista %}<span class="badge text-bg-success">Lista</span>{% endif %}
+        {% if status_badges.trabajando and estado_label != 'Trabajando' %}<span class="badge text-bg-info">Trabajando</span>{% endif %}
+        {% if status_badges.descalificada and estado_label != 'Descalificada' %}<span class="badge text-bg-danger">Descalificada</span>{% endif %}
+      </div>
+    </div>
+    <div class="cand-header-tools mt-3">
+      <div class="cand-actions-primary" data-header-actions>
+        <button class="btn btn-primary btn-sm" type="button">Llamada</button>
+      </div>
+      <div class="cand-inline-search" data-cand-inline-search data-search-url="{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}">
+        <label class="visually-hidden" for="candOtherSearch">Buscar otra candidata</label>
+        <input id="candOtherSearch" class="form-control form-control-sm" autocomplete="off" placeholder="Buscar otra candidata..." aria-controls="candOtherResults">
+        <div id="candOtherResults" class="cand-inline-search-results" role="listbox" hidden></div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="cand-tabs mb-3" aria-label="Secciones de candidata">
+    <a href="#resumen">Resumen</a>
+    <a href="#informacion">Información</a>
+    <a href="#referencias">Referencias</a>
+    <a href="#entrevistas">Entrevistas</a>
+    <a href="#documentos">Documentos</a>
+    <a href="#finanzas">Inscripción y Porciento</a>
+    <a href="#actividad">Actividad</a>
+    <a href="#historial">Historial</a>
+  </nav>
+
+  <div class="cand-section" id="resumen">
+    <div class="cand-section-heading">
+      <h2>Resumen y estado</h2>
+      <div class="small cand-muted">Estado operativo, próximos pasos e inscripción.</div>
+    </div>
+    <div class="cand-grid cand-section-grid">
+      <section class="cand-panel cand-panel-compact cand-span-4">
+        <h2>Próxima acción</h2>
+        <div class="fw-semibold">{{ next_action.title }}</div>
+        <div class="small cand-muted mb-2">{{ next_action.detail }}</div>
+        {% if next_action.url %}
+          <a class="btn btn-primary btn-sm" href="{{ next_action.url }}">{{ next_action.label }}</a>
+        {% endif %}
+      </section>
+
+      <section class="cand-panel cand-panel-compact cand-span-4">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <h2>Preparación</h2>
+            <div class="fw-semibold">{{ readiness_completed }}/{{ readiness_total }} requisitos</div>
+            <div class="small cand-muted">
+              {% if readiness_missing_labels %}
+                Falta {{ readiness_missing_labels[:2]|join(', ') }}{% if readiness_missing_labels|length > 2 %} y {{ readiness_missing_labels|length - 2 }} más{% endif %}
+              {% else %}
+                Requisitos completos
+              {% endif %}
+            </div>
+          </div>
+          <span class="badge {% if readiness.ready %}text-bg-success{% else %}text-bg-warning{% endif %}" data-readiness-badge>
+            {% if readiness.ready %}Lista{% else %}Pendiente{% endif %}
+          </span>
+        </div>
+      </section>
+
+      <section class="cand-panel cand-panel-compact cand-span-4">
+        <h2>Seguimiento pendiente</h2>
+        {% if seguimiento %}
+          <div class="d-flex justify-content-between gap-2 flex-wrap">
+            <div>
+              <div class="fw-semibold">{{ seguimiento.proxima_accion_detalle or seguimiento.proxima_accion_tipo or 'Caso abierto' }}</div>
+              <div class="small cand-muted">
+                {{ seguimiento.public_id }} · {{ seguimiento.estado }} · vence {{ seguimiento.due_at or 'sin fecha' }}
+              </div>
+            </div>
+            <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.tracking }}">Abrir seguimiento</a>
+          </div>
+        {% else %}
+          <div class="cand-muted small">Sin caso abierto.</div>
+        {% endif %}
+      </section>
+
+      <section class="cand-panel cand-span-12" data-state-card>
+        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+          <div>
+            <h2>Estado</h2>
+            <div class="cand-state-summary">
+              <div class="cand-state-cell">
+                <span class="label">Proceso</span>
+                <span class="value" data-state-process>{{ state_capabilities.process.label }}</span>
+              </div>
+              <div class="cand-state-cell">
+                <span class="label">Preparación</span>
+                <span class="value" data-state-preparation>{{ state_capabilities.preparation.label }} materiales</span>
+                {% if state_capabilities.preparation.missing %}
+                  <span class="small cand-muted" data-state-missing>
+                    Falta
+                    {% for key in state_capabilities.preparation.missing[:2] %}
+                      {{ state_capabilities.preparation.labels.get(key, key) }}{% if not loop.last %}, {% endif %}
+                    {% endfor %}
+                  </span>
+                {% else %}
+                  <span class="small cand-muted" data-state-missing>Requisitos materiales completos</span>
+                {% endif %}
+              </div>
+              <div class="cand-state-cell">
+                <span class="label">Situación laboral</span>
+                <span class="value" data-state-situation>{{ state_capabilities.situation.label }}</span>
+                {% if state_capabilities.situation.nota_descalificacion %}
+                  <span class="small cand-muted" data-state-note>Motivo: {{ state_capabilities.situation.nota_descalificacion }}</span>
+                {% else %}
+                  <span class="small cand-muted" data-state-note></span>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 flex-wrap align-items-start" data-state-actions>
+            <form data-state-action data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_estado_lista', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-success btn-sm" type="submit" data-no-loader="true" {% if not state_capabilities.actions.can_mark_ready %}disabled{% endif %}>Marcar lista</button>
+            </form>
+            <form data-state-action data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_estado_trabajando', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-primary btn-sm" type="submit" data-no-loader="true" {% if not state_capabilities.actions.can_mark_working %}disabled{% endif %}>Marcar trabajando</button>
+            </form>
+            <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#candDisqualifyModal" {% if not state_capabilities.actions.can_disqualify %}disabled{% endif %}>Descalificar</button>
+            <form data-state-action data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_estado_reactivar', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="btn btn-outline-secondary btn-sm" type="submit" data-no-loader="true" {% if not state_capabilities.actions.can_reactivate %}disabled{% endif %}>Reactivar</button>
+            </form>
+          </div>
+        </div>
+        <div class="row g-3 mt-2">
+          <div class="col-lg-6">
+            <div class="small">
+              <strong>Bloqueos operativos</strong>
+              <ul class="mb-0" data-state-blockers>
+                {% for reason in state_capabilities.preparation.operational_blockers %}
+                  <li>{{ reason }}</li>
+                {% else %}
+                  <li>Sin bloqueos operativos.</li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+          <div class="col-lg-6">
+            <div class="small">
+              <strong>Asignación activa</strong>
+              <div data-state-assignment>
+                {% if state_capabilities.assignment.solicitud %}
+                  Solicitud: {{ state_capabilities.assignment.solicitud.codigo }} · Estado: {{ state_capabilities.assignment.solicitud.estado }}{% if state_capabilities.assignment.solicitud.status %} · {{ state_capabilities.assignment.solicitud.status }}{% endif %}
+                {% else %}
+                  Sin asignación activa.
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="small mt-2 text-warning{% if state_capabilities.actions.can_mark_ready and state_capabilities.actions.can_mark_working and state_capabilities.actions.can_disqualify %} d-none{% endif %}" data-state-action-reasons>
+          {% for action, reasons in state_capabilities.reasons.items() %}
+            {% if reasons %}
+              <div data-action-reason="{{ action }}">{{ reasons|join(' ') }}</div>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <div class="small mt-2 cand-feedback" data-state-feedback></div>
+      </section>
+
+    </div>
+  </div>
+
+  <div class="cand-section" id="informacion">
+    <div class="cand-section-heading">
+      <h2>Información de la candidata</h2>
+      <div class="small cand-muted">Datos personales y laborales en una sola vista.</div>
+    </div>
+    <div class="cand-grid cand-section-grid">
+      <section class="cand-panel cand-span-6" data-edit-section="personal">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <h2>Información personal</h2>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
+        </div>
+        <dl class="cand-kv cand-display" data-display="personal">
+          {% for label, value in personal_fields %}
+            <dt>{{ label }}</dt>
+            <dd>
+              {% if label in ['Marca temporal', 'Último cambio de estado'] and value is not string %}
+                {{ value|rd_datetime('%d/%m/%Y %I:%M %p') }}
+              {% else %}
+                {{ value }}
+              {% endif %}
+            </dd>
+          {% endfor %}
+        </dl>
+        <form class="cand-edit-form" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_datos', fila=candidata.fila) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label small" for="cand_nombre">Nombre completo</label>
+              <input class="form-control form-control-sm" id="cand_nombre" name="nombre" value="{{ edit_values.personal.nombre }}">
+              <div class="text-danger small cand-field-error" data-error-for="nombre"></div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small" for="cand_edad">Edad</label>
+              <input class="form-control form-control-sm" id="cand_edad" name="edad" value="{{ edit_values.personal.edad }}">
+              <div class="text-danger small cand-field-error" data-error-for="edad"></div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small" for="cand_telefono">Teléfono</label>
+              <input class="form-control form-control-sm" id="cand_telefono" name="telefono" value="{{ edit_values.personal.telefono }}">
+              <div class="text-danger small cand-field-error" data-error-for="telefono"></div>
+            </div>
+            <div class="col-md-7">
+              <label class="form-label small" for="cand_direccion">Dirección</label>
+              <input class="form-control form-control-sm" id="cand_direccion" name="direccion" value="{{ edit_values.personal.direccion }}">
+              <div class="text-danger small cand-field-error" data-error-for="direccion"></div>
+            </div>
+            <div class="col-md-5">
+              <label class="form-label small" for="cand_cedula">Cédula</label>
+              <input class="form-control form-control-sm" id="cand_cedula" name="cedula" value="{{ edit_values.personal.cedula }}">
+              <div class="text-danger small cand-field-error" data-error-for="cedula"></div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 align-items-center mt-3">
+            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+            <a class="btn btn-link btn-sm" href="{{ legacy_urls.edit }}">Abrir flujo anterior</a>
+            <span class="small cand-feedback" data-feedback></span>
+          </div>
+        </form>
+      </section>
+
+      <section id="trabajo" class="cand-panel cand-span-6" data-edit-section="labor">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <h2>Información laboral</h2>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
+        </div>
+        {% if labor_primary_fields %}
+          <dl class="cand-kv cand-display" data-display="labor">
+            {% for label, value in labor_primary_fields %}
+              <dt>{{ label }}</dt>
+              <dd>
+                {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
+                  {{ value|rd_datetime('%d/%m/%Y') }}
+                {% else %}
+                  {{ value }}
+                {% endif %}
+              </dd>
+            {% endfor %}
+          </dl>
+          {% if labor_secondary_fields %}
+            <details class="small mt-2 cand-display">
+              <summary class="cand-muted">Ver datos secundarios</summary>
+              <dl class="cand-kv cand-kv-tight mt-2">
+                {% for label, value in labor_secondary_fields %}
+                  <dt>{{ label }}</dt>
+                  <dd>
+                    {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
+                      {{ value|rd_datetime('%d/%m/%Y') }}
+                    {% else %}
+                      {{ value }}
+                    {% endif %}
+                  </dd>
+                {% endfor %}
+              </dl>
+            </details>
+          {% endif %}
+        {% else %}
+          <div class="cand-muted cand-display" data-display="labor">Sin información laboral registrada.</div>
+        {% endif %}
+        <form class="cand-edit-form" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_perfil_laboral', fila=candidata.fila) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+          <div class="row g-2">
+            {% set labor_text_fields = [
+              ('modalidad', 'Modalidad preferida'), ('rutas', 'Rutas cercanas'),
+              ('disponibilidad_inicio', 'Disponibilidad de inicio'), ('empleo_anterior', 'Empleo anterior'),
+              ('anos_experiencia', 'Años de experiencia'), ('areas_experiencia', 'Áreas de experiencia'),
+              ('sueldo_esperado', 'Sueldo esperado')
+            ] %}
+            {% for name, label in labor_text_fields %}
+              <div class="col-md-6">
+                <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
+                <input class="form-control form-control-sm" id="cand_{{ name }}" name="{{ name }}" value="{{ edit_values.labor.get(name) }}">
+                <div class="text-danger small cand-field-error" data-error-for="{{ name }}"></div>
+              </div>
+            {% endfor %}
+            <div class="col-12">
+              <label class="form-label small" for="cand_motivacion_trabajo">Motivo para trabajar</label>
+              <textarea class="form-control form-control-sm" id="cand_motivacion_trabajo" name="motivacion_trabajo" rows="2">{{ edit_values.labor.motivacion_trabajo }}</textarea>
+              <div class="text-danger small cand-field-error" data-error-for="motivacion_trabajo"></div>
+            </div>
+            {% set bool_fields = [
+              ('sabe_planchar', 'Sabe planchar'), ('trabaja_con_ninos', 'Trabaja con niños'),
+              ('trabaja_con_mascotas', 'Trabaja con mascotas'), ('puede_dormir_fuera', 'Puede dormir fuera'),
+              ('acepta_porcentaje_sueldo', 'Acepta porcentaje')
+            ] %}
+            {% for name, label in bool_fields %}
+              <div class="col-md-3">
+                <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
+                <select class="form-select form-select-sm" id="cand_{{ name }}" name="{{ name }}">
+                  <option value="" {% if edit_values.labor.get(name) == '' %}selected{% endif %}>No informado</option>
+                  <option value="si" {% if edit_values.labor.get(name) == 'si' %}selected{% endif %}>Sí</option>
+                  <option value="no" {% if edit_values.labor.get(name) == 'no' %}selected{% endif %}>No</option>
+                </select>
+              </div>
+            {% endfor %}
+          </div>
+          <div class="d-flex gap-2 align-items-center mt-3">
+            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+            <span class="small cand-feedback" data-feedback></span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="cand-section" id="referencias">
+    <div class="cand-section-heading">
+      <h2>Referencias y entrevista</h2>
+      <div class="small cand-muted">Formulario, entrevista y respuestas registradas.</div>
+    </div>
+    <div class="cand-grid cand-section-grid">
+      <section class="cand-panel cand-span-6" data-edit-section="form_references">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div>
+            <h2>Referencias del formulario</h2>
+            <p class="cand-muted small mb-0">Fuente exclusiva: formulario de la doméstica.</p>
+          </div>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar formulario</button>
+        </div>
+        <div class="d-flex gap-2 flex-wrap mb-2 small mt-3">
+          <span class="badge {% if references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
+            Laboral {% if references_summary.laboral %}✓{% else %}pendiente{% endif %}
+          </span>
+          <span class="badge {% if references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
+            Familiar {% if references_summary.familiar %}✓{% else %}pendiente{% endif %}
+          </span>
+        </div>
+        <dl class="cand-kv cand-display" data-display="references">
+          <dt>Laborales</dt><dd>{{ form_references.laboral or 'No informado' }}</dd>
+          <dt>Familiares</dt><dd>{{ form_references.familiar or 'No informado' }}</dd>
+        </dl>
+        {% if form_references.laboral_full or form_references.familiar_full %}
+          <div class="cand-display">
+            {% if form_references.laboral_full %}
+              <details class="small mb-2">
+                <summary class="cand-muted">Ver referencia laboral declarada completa</summary>
+                <div class="mt-2 white-space-pre-line">{{ form_references.laboral_full }}</div>
+              </details>
+            {% endif %}
+            {% if form_references.familiar_full %}
+              <details class="small">
+                <summary class="cand-muted">Ver referencia familiar declarada completa</summary>
+                <div class="mt-2 white-space-pre-line">{{ form_references.familiar_full }}</div>
+              </details>
+            {% endif %}
+          </div>
+        {% endif %}
+        <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias_formulario', fila=candidata.fila) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+          <div class="mb-2">
+            <label class="form-label small" for="cand_ref_form_lab">Referencias laborales del formulario</label>
+            <textarea class="form-control form-control-sm" id="cand_ref_form_lab" name="contactos_referencias_laborales" rows="4">{{ edit_values.form_references.contactos_referencias_laborales }}</textarea>
+            <div class="text-danger small cand-field-error" data-error-for="contactos_referencias_laborales"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" for="cand_ref_form_fam">Referencias familiares del formulario</label>
+            <textarea class="form-control form-control-sm" id="cand_ref_form_fam" name="referencias_familiares_detalle" rows="4">{{ edit_values.form_references.referencias_familiares_detalle }}</textarea>
+            <div class="text-danger small cand-field-error" data-error-for="referencias_familiares_detalle"></div>
+          </div>
+          <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar formulario</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+            <span class="small cand-feedback" data-feedback></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="cand-panel cand-span-6" data-edit-section="secretary_references">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <div>
+            <h2>Referencias de entrevista</h2>
+            <p class="cand-muted small mb-0">Fuente exclusiva: entrevista o secretaría.</p>
+          </div>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar entrevista</button>
+        </div>
+        <div class="d-flex gap-2 flex-wrap mb-2 small mt-3">
+          <span class="badge {% if secretary_references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
+            Laboral {% if secretary_references_summary.laboral %}✓{% else %}pendiente{% endif %}
+          </span>
+          <span class="badge {% if secretary_references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
+            Familiar {% if secretary_references_summary.familiar %}✓{% else %}pendiente{% endif %}
+          </span>
+        </div>
+        <dl class="cand-kv cand-display" data-display="secretary-references">
+          <dt>Laborales</dt><dd>{{ secretary_references.laboral or 'No informado' }}</dd>
+          <dt>Familiares</dt><dd>{{ secretary_references.familiar or 'No informado' }}</dd>
+        </dl>
+        {% if secretary_references.laboral_full or secretary_references.familiar_full %}
+          <div class="cand-display">
+            {% if secretary_references.laboral_full %}
+              <details class="small mb-2">
+                <summary class="cand-muted">Ver referencia laboral de entrevista completa</summary>
+                <div class="mt-2 white-space-pre-line">{{ secretary_references.laboral_full }}</div>
+              </details>
+            {% endif %}
+            {% if secretary_references.familiar_full %}
+              <details class="small">
+                <summary class="cand-muted">Ver referencia familiar de entrevista completa</summary>
+                <div class="mt-2 white-space-pre-line">{{ secretary_references.familiar_full }}</div>
+              </details>
+            {% endif %}
+          </div>
+        {% endif %}
+        <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias', fila=candidata.fila) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+          <div class="mb-2">
+            <label class="form-label small" for="cand_ref_int_lab">Referencia laboral de entrevista</label>
+            <textarea class="form-control form-control-sm" id="cand_ref_int_lab" name="referencias_laboral" rows="4">{{ edit_values.secretary_references.referencias_laboral }}</textarea>
+            <div class="text-danger small cand-field-error" data-error-for="referencias_laboral"></div>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small" for="cand_ref_int_fam">Referencia familiar de entrevista</label>
+            <textarea class="form-control form-control-sm" id="cand_ref_int_fam" name="referencias_familiares" rows="4">{{ edit_values.secretary_references.referencias_familiares }}</textarea>
+            <div class="text-danger small cand-field-error" data-error-for="referencias_familiares"></div>
+          </div>
+          <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar entrevista</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+            <span class="small cand-feedback" data-feedback></span>
+          </div>
+        </form>
+      </section>
+
+      <section id="entrevistas" class="cand-panel cand-span-12">
+        <h2>Entrevistas</h2>
+        <dl class="cand-kv">
+          <dt>Total</dt><dd>{{ entrevista_summary.count }}</dd>
+          <dt>Última</dt>
+          <dd>
+            {% if entrevista_summary.last %}
+              {{ entrevista_summary.last.tipo }} · {{ entrevista_summary.last.creada_en|rd_datetime('%d/%m/%Y %I:%M %p') }} · {{ entrevista_summary.last.estado }}
+            {% else %}
+              Sin entrevistas nuevas.
+            {% endif %}
+          </dd>
+        </dl>
+        {% if entrevista_summary.recent %}
+          <ul class="cand-list small mb-2">
+            {% for item in entrevista_summary.recent %}
+              {% set interview_refs = entrevista_summary.reference_map.get(item.id, []) %}
+              <li>
+                <div class="d-flex justify-content-between gap-2 flex-wrap">
+                  <span>{{ item.tipo or 'sin tipo' }} · {{ (item.creada_en or item.actualizada_en)|rd_datetime('%d/%m/%Y %I:%M %p') if (item.creada_en or item.actualizada_en) else 'sin fecha' }} · {{ item.estado or 'sin estado' }}</span>
+                  <span class="d-flex gap-2">
+                    <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Leer respuestas</a>
+                    <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Editar</a>
+                  </span>
+                </div>
+                {% if interview_refs %}
+                  <div class="mt-2">
+                    <strong>Referencias registradas durante entrevista</strong>
+                    <div class="cand-muted small">Información registrada por el entrevistador durante esta entrevista.</div>
+                    <dl class="cand-kv cand-kv-tight mt-1 mb-0">
+                      {% for ref in interview_refs %}
+                        <dt>{{ ref.label }}</dt>
+                        <dd class="white-space-pre-line">{{ ref.respuesta }}</dd>
+                      {% endfor %}
+                    </dl>
+                  </div>
+                {% else %}
+                  <div class="cand-muted small mt-2">No se registraron referencias en esta entrevista.</div>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% elif candidata.entrevista %}
+          <details class="small mb-2" open>
+            <summary class="cand-muted">Entrevista legacy</summary>
+            <div class="mt-2 white-space-pre-line">{{ candidata.entrevista }}</div>
+          </details>
+        {% endif %}
+        <div class="d-flex gap-2 flex-wrap mt-2">
+          <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.interviews }}">Ver entrevistas</a>
+          {% for tipo in interview_types %}
+            {% if interview_create_capability.can_create %}
+              <a class="btn btn-primary btn-sm" href="{{ legacy_urls.new_interview_by_type.get(tipo.key) }}">Nueva entrevista {{ tipo.label }}</a>
+            {% else %}
+              <button class="btn btn-primary btn-sm" type="button" disabled aria-disabled="true" title="{{ interview_create_capability.reason }}">Nueva entrevista {{ tipo.label }}</button>
+            {% endif %}
+          {% endfor %}
+        </div>
+        {% if not interview_create_capability.can_create and interview_create_capability.reason %}
+          <div class="form-text text-warning mt-1">{{ interview_create_capability.reason }}</div>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  <div class="cand-section" id="documentos">
+    <div class="cand-section-heading">
+      <h2>Documentos</h2>
+      <div class="small cand-muted">Subida rápida, reemplazo y acceso al flujo completo.</div>
+    </div>
+    <section class="cand-panel cand-span-12">
+      <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+        <div>
+          <h2 class="h6 mb-1">Subida rápida</h2>
+          <div class="small cand-muted">Sube o reemplaza archivos sin salir de la ficha.</div>
+        </div>
+        <a class="btn btn-primary btn-sm" href="{{ legacy_urls.documents }}">Administrar documentos</a>
+      </div>
+      <div class="cand-doc-quick-list mt-3">
+        {% for key, label in doc_labels.items() %}
+          {% set ok = doc_flags.get(key) %}
+          <form class="cand-doc-quick-row{% if ok %} is-available{% endif %}"
+                data-quick-form
+                data-doc-upload-form
+                data-doc-key="{{ key }}"
+                data-endpoint="{{ url_for('admin.candidatas_operativo_documentos_subir', fila=candidata.fila, campo=key) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="file" name="archivo" class="visually-hidden" accept=".jpg,.jpeg,.png" data-doc-file-input>
+            <button type="submit" class="visually-hidden" tabindex="-1" aria-hidden="true">Subir</button>
+            <div class="cand-doc-main">
+              <div class="fw-semibold">{{ label }}</div>
+              <div class="small cand-muted" data-doc-hint>
+                {% if ok %}
+                  Arrastra otro archivo para reemplazarlo.
+                {% else %}
+                  Arrastra aquí o haz clic para subir.
+                {% endif %}
+              </div>
+            </div>
+            <div class="cand-doc-state">
+              <span class="badge {% if ok %}text-bg-success{% else %}text-bg-warning{% endif %}" data-doc-status>
+                {% if ok %}Disponible{% else %}Pendiente{% endif %}
+              </span>
+              <div class="cand-doc-actions-inline">
+                <a class="btn btn-outline-secondary btn-sm{% if not ok %} d-none{% endif %}" data-doc-action="view" href="{{ url_for('subir_fotos.ver_imagen', fila=candidata.fila, campo=key) }}" target="_blank" rel="noopener">Ver</a>
+                <a class="btn btn-outline-secondary btn-sm{% if not ok %} d-none{% endif %}" data-doc-action="download" href="{{ url_for('descargar_uno_db', id=candidata.fila, doc=key) }}">Descargar</a>
+                <button class="btn btn-outline-primary btn-sm" type="button" data-doc-action="pick">{{ 'Reemplazar' if ok else 'Subir' }}</button>
+              </div>
+              <div class="text-danger small mt-1" data-error-for="archivo"></div>
+              <div class="small cand-feedback mt-1" data-feedback></div>
+            </div>
+            <div class="cand-doc-dropzone" data-doc-dropzone role="button" tabindex="0" aria-label="Subir {{ label }}">
+              <span>{% if ok %}Suelta otro archivo o haz clic{% else %}Arrastra aquí o haz clic{% endif %}</span>
+            </div>
+          </form>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+
+  <div class="cand-section" id="finanzas">
+    <div class="cand-section-heading">
+      <h2>Inscripción y Porciento</h2>
+      <div class="small cand-muted">Datos financieros y de inscripción en un solo bloque visual.</div>
+    </div>
+    <div class="cand-grid cand-section-grid">
+      <section class="cand-panel cand-span-6" data-summary-section="inscription" data-edit-section="inscription">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <h2>Inscripción</h2>
+          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar inscripción</button>
+        </div>
+        <dl class="cand-kv cand-display" data-display="inscription">
+          <dt>Código</dt><dd>{{ inscription_summary.codigo or '—' }}</dd>
+          <dt>Estado</dt><dd>{{ 'Inscrita' if inscription_summary.inscrita else 'No inscrita' }}</dd>
+          <dt>Medio de pago</dt><dd>{{ inscription_summary.medio or '—' }}</dd>
+          <dt>Pago de inscripción</dt><dd>{{ inscription_summary.monto or '—' }}</dd>
+          <dt>Fecha de inscripción</dt><dd>{{ inscription_summary.fecha|rd_datetime('%d/%m/%Y') if inscription_summary.fecha else '—' }}</dd>
+          <dt>Inscrita por</dt><dd>{{ inscription_summary.inscrita_por or '—' }}</dd>
+        </dl>
+        <form class="cand-edit-form" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_inscripcion', fila=candidata.fila) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+          <div class="row g-2">
+            <div class="col-12">
+              <label class="form-label small" for="cand_ins_medio">Medio de pago</label>
+              <select class="form-select form-select-sm" id="cand_ins_medio" name="medio">
+                <option value="Vía Oficina" {% if edit_values.inscription.medio == 'Vía Oficina' %}selected{% endif %}>Vía Oficina</option>
+                <option value="Transferencia Bancaria" {% if edit_values.inscription.medio == 'Transferencia Bancaria' %}selected{% endif %}>Transferencia Bancaria</option>
+              </select>
+              <div class="text-danger small cand-field-error" data-error-for="medio"></div>
+            </div>
+            <div class="col-12">
+              <label class="form-label small" for="cand_ins_estado">Estado de inscripción</label>
+              <select class="form-select form-select-sm" id="cand_ins_estado" name="estado">
+                <option value="si" {% if edit_values.inscription.estado == 'si' %}selected{% endif %}>Sí</option>
+                <option value="no" {% if edit_values.inscription.estado == 'no' %}selected{% endif %}>No</option>
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label small" for="cand_ins_monto">Pago de inscripción</label>
+              <input class="form-control form-control-sm" id="cand_ins_monto" name="monto" inputmode="decimal" value="{{ edit_values.inscription.monto }}">
+              <div class="text-danger small cand-field-error" data-error-for="monto"></div>
+            </div>
+            <div class="col-6">
+              <label class="form-label small" for="cand_ins_fecha">Fecha de inscripción</label>
+              <input class="form-control form-control-sm" id="cand_ins_fecha" name="fecha" type="date" value="{{ edit_values.inscription.fecha }}">
+              <div class="text-danger small cand-field-error" data-error-for="fecha"></div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+            <a class="btn btn-link btn-sm" href="{{ legacy_urls.inscription }}">Abrir flujo anterior</a>
+            <span class="small cand-feedback" data-feedback></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="cand-panel cand-span-6" data-summary-section="porciento">
+        <div class="d-flex justify-content-between align-items-center gap-2">
+          <h2>Porciento</h2>
+          <span class="badge {% if porciento_summary.configurado %}{% if porciento_summary.state == 'Pagado' %}text-bg-success{% else %}text-bg-warning{% endif %}{% else %}text-bg-secondary{% endif %}" data-porciento-state>
+            {{ porciento_summary.state }}
+          </span>
+        </div>
+        <dl class="cand-kv cand-display" data-display="porciento">
+          <dt>Monto total</dt><dd>{{ porciento_summary.monto_total or '—' }}</dd>
+          <dt>Pagado</dt><dd>{{ porciento_summary.pagado or '—' }}</dd>
+          <dt>Pendiente</dt><dd>{{ porciento_summary.pendiente or '—' }}</dd>
+          <dt>Último pago</dt><dd>{{ porciento_summary.ultimo_pago or '—' }}</dd>
+          <dt>Estado</dt><dd>{{ porciento_summary.state }}</dd>
+        </dl>
+        <div class="d-flex gap-2 flex-wrap mt-2">
+          <button class="btn btn-outline-primary btn-sm" type="button" data-finance-open="configurar">Configurar porciento</button>
+          <button class="btn btn-outline-success btn-sm" type="button" data-finance-open="pago" {% if not porciento_summary.configurado or porciento_summary.state == 'Pagado' %}disabled{% endif %}>Registrar pago</button>
+          <button class="btn btn-outline-secondary btn-sm" type="button" data-finance-open="historial">Ver historial</button>
+        </div>
+
+        <details class="cand-finance-details mt-3" data-finance-panel="configurar">
+          <summary>Configurar porciento</summary>
+          <form class="cand-edit-form mt-2" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_porciento', fila=candidata.fila) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+            <input type="hidden" name="idempotency_key" value="">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label small" for="cand_fin_monto_total">Monto total</label>
+                <input class="form-control form-control-sm" id="cand_fin_monto_total" name="monto_total" inputmode="decimal" value="{{ candidata.monto_total or '' }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small" for="cand_fin_fecha_pago">Fecha de pago</label>
+                <input class="form-control form-control-sm" id="cand_fin_fecha_pago" name="fecha_pago" type="date" value="{{ candidata.fecha_de_pago and candidata.fecha_de_pago.isoformat() or '' }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small" for="cand_fin_fecha_inicio">Fecha de inicio</label>
+                <input class="form-control form-control-sm" id="cand_fin_fecha_inicio" name="fecha_inicio" type="date" value="{{ candidata.inicio and candidata.inicio.isoformat() or '' }}">
+              </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+              <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar porciento</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" data-finance-close>Cancelar</button>
+              <span class="small cand-feedback" data-feedback></span>
+            </div>
+          </form>
+        </details>
+
+        <details class="cand-finance-details mt-3" data-finance-panel="pago" {% if not porciento_summary.configurado or porciento_summary.state == 'Pagado' %}open{% endif %}>
+          <summary>Registrar pago</summary>
+          <form class="cand-edit-form mt-2" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_register_porciento_payment', fila=candidata.fila) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+            <input type="hidden" name="idempotency_key" value="">
+            <div class="row g-2">
+              <div class="col-md-4">
+                <label class="form-label small" for="cand_fin_monto_pagado">Monto pagado</label>
+                <input class="form-control form-control-sm" id="cand_fin_monto_pagado" name="monto_pagado" inputmode="decimal" value="">
+              </div>
+              <div class="col-md-8">
+                <label class="form-label small" for="cand_fin_calificacion">Calificación / nota</label>
+                <input class="form-control form-control-sm" id="cand_fin_calificacion" name="calificacion" value="">
+              </div>
+            </div>
+            <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+              <button class="btn btn-success btn-sm" type="submit" data-no-loader="true" {% if not porciento_summary.configurado or porciento_summary.state == 'Pagado' %}disabled{% endif %}>Registrar pago</button>
+              <button class="btn btn-outline-secondary btn-sm" type="button" data-finance-close>Cancelar</button>
+              <span class="small cand-feedback" data-feedback></span>
+            </div>
+          </form>
+        </details>
+
+        <details class="cand-finance-details mt-3" data-finance-panel="historial">
+          <summary>Ver historial</summary>
+          <div class="mt-2" data-finance-history>
+            {% if porciento_history %}
+              <ul class="mb-0 small">
+                {% for item in porciento_history %}
+                  <li class="mb-2">
+                    <div><strong>{{ item.fecha or '—' }}</strong> · {{ item.monto or '—' }}</div>
+                    <div class="cand-muted">{{ item.metodo or 'Sin método' }} · Registrado por {{ item.actor or 'staff' }}</div>
+                    {% if item.detalle %}<div class="cand-muted">{{ item.detalle }}</div>{% endif %}
+                  </li>
+                {% else %}
+                  <li class="cand-muted">Sin pagos registrados.</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <div class="cand-muted small">Sin pagos registrados.</div>
+            {% endif %}
+          </div>
+        </details>
+      </section>
+    </div>
+  </div>
+
+  <div class="cand-section" id="actividad">
+    <div class="cand-section-heading">
+      <h2>Información pública y actividad laboral</h2>
+      <div class="small cand-muted">Estado público, asignación activa y compatibilidad.</div>
+    </div>
+    <div class="cand-grid cand-section-grid">
+      <section class="cand-panel cand-span-6">
+        <h2>Información pública</h2>
+        {% if public_profile %}
+          <dl class="cand-kv">
+            <dt>Perfil público</dt><dd>Existe</dd>
+            <dt>Visible</dt><dd>{{ 'Sí' if public_profile.visible else 'No' }}</dd>
+            <dt>Estado público</dt><dd>{{ public_profile.estado_publico }}</dd>
+            <dt>Destacado</dt><dd>{{ 'Sí' if public_profile.es_destacada else 'No' }}</dd>
+          </dl>
+        {% else %}
+          <div class="cand-muted">No existe perfil público.</div>
+        {% endif %}
+        <a class="btn btn-outline-primary btn-sm mt-2" href="{{ legacy_urls.public_profile }}">Editar perfil público</a>
+      </section>
+
+      <section class="cand-panel cand-span-6">
+        <h2>Actividad laboral</h2>
+        {% if active_assignment %}
+          <div class="mb-2">
+            <strong>Asignación activa:</strong>
+            {{ active_assignment.codigo_solicitud }} · {{ active_assignment.estado }}
+          </div>
+        {% else %}
+          <div class="cand-muted mb-2">Sin asignación activa.</div>
+        {% endif %}
+        {% if solicitud_links %}
+          <ul class="cand-list small">
+            {% for link in solicitud_links %}
+              <li>
+                {{ link.solicitud.codigo_solicitud if link.solicitud else ('Solicitud ' ~ link.solicitud_id) }}
+                · <strong>{{ link.status }}</strong>
+                · {{ link.solicitud.estado if link.solicitud else 'sin estado' }}
+                {% if link.solicitud and link.solicitud.cliente %}
+                  · {{ link.solicitud.cliente.nombre_completo }}{% if link.solicitud.cliente.codigo %} ({{ link.solicitud.cliente.codigo }}){% endif %}
+                {% endif %}
+                · {{ link.created_at|rd_datetime('%d/%m/%Y %I:%M %p') if link.created_at else 'sin fecha' }}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+      </section>
+
+      {% if compatibility.exists %}
+        <section id="compatibilidad" class="cand-panel cand-span-12">
+          <h2>Compatibilidad</h2>
+          {% if compatibility.fields %}
+            <dl class="cand-kv">
+              {% for label, value in compatibility.fields %}
+                <dt>{{ label }}</dt>
+                <dd>
+                  {% if label == 'Fecha' and value is not string %}
+                    {{ value|rd_datetime('%d/%m/%Y %I:%M %p') }}
+                  {% else %}
+                    {{ value }}
+                  {% endif %}
+                </dd>
+              {% endfor %}
+            </dl>
+          {% endif %}
+          {% if compatibility.summary %}
+            <details class="small">
+              <summary class="cand-muted">Ver respuestas/resultado</summary>
+              <pre class="mt-2 mb-0 cand-pre">{{ compatibility.summary }}</pre>
+            </details>
+          {% endif %}
+        </section>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="cand-section" id="historial">
+    <div class="cand-section-heading">
+      <h2>Historial</h2>
+      <div class="small cand-muted">Acciones recientes de auditoría.</div>
+    </div>
+    <section class="cand-panel cand-span-12">
+      <h2>Historial limitado</h2>
+      {% set has_disqualify_history = audit_history_items|selectattr('action', 'equalto', 'Descalificó a la candidata')|list %}
+      {% if candidata.estado == 'descalificada' and candidata.nota_descalificacion and not has_disqualify_history %}
+        <div class="alert alert-warning py-2">Motivo: {{ candidata.nota_descalificacion }}</div>
+      {% endif %}
+      {% if audit_history_items %}
+        <ul class="cand-list cand-history-list small">
+          {% for item in audit_history_items %}
+            <li class="cand-history-item">
+              <div class="cand-history-action">{{ item.action }}</div>
+              <div class="cand-history-subject">{{ item.subject }}</div>
+              <div class="cand-history-meta">
+                <span>Por: <strong>{{ item.actor }}</strong></span>
+                <span>{{ item.created_at }}</span>
+              </div>
+              {% if item.detail %}<div class="cand-history-detail">{{ item.detail }}</div>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <div class="cand-muted">Sin acciones recientes de auditoría para esta candidata.</div>
+      {% endif %}
+    </section>
+  </div>
+</div>
+
+<div class="modal fade" id="candDisqualifyModal" tabindex="-1" aria-labelledby="candDisqualifyModalLabel" aria-hidden="true" data-admin-body-modal="true" data-admin-modal-z="2000" data-admin-reset-on-close="true">
+  <div class="modal-dialog">
+    <form class="modal-content" data-state-action data-no-loader="true" novalidate data-endpoint="{{ url_for('admin.candidatas_operativo_estado_descalificar', fila=candidata.fila) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="modal-header">
+        <h2 class="modal-title h6" id="candDisqualifyModalLabel">Descalificar candidata</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label" for="cand_disqualify_motivo">Motivo</label>
+        <textarea class="form-control" id="cand_disqualify_motivo" name="motivo" rows="4" required></textarea>
+        <div class="text-danger small cand-field-error" data-error-for="motivo"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <button type="submit" class="btn btn-danger btn-sm" data-no-loader="true">Descalificar</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+  (function () {
+    const root = document.querySelector('[data-candidata-center]');
+    if (!root) return;
+
+    (function setupInlineSearch() {
+      const shell = document.querySelector('[data-cand-inline-search]');
+      if (!shell) return;
+      const input = shell.querySelector('input');
+      const results = shell.querySelector('[role="listbox"]');
+      const searchUrl = shell.dataset.searchUrl || '';
+      let timer = null;
+      let items = [];
+      let active = 0;
+      let controller = null;
+      let requestSeq = 0;
+
+      function hide() {
+        results.hidden = true;
+      }
+
+      function openItem(index) {
+        const item = items[index];
+        if (item && item.detail_url) window.location.href = item.detail_url;
+      }
+
+      function render() {
+        results.innerHTML = '';
+        if (!items.length) {
+          hide();
+          return;
+        }
+        items.forEach((item, index) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = index === active ? 'is-active' : '';
+          btn.setAttribute('role', 'option');
+          btn.setAttribute('aria-selected', index === active ? 'true' : 'false');
+          const meta = [item.codigo || 'sin código', item.edad ? item.edad + ' años' : '', item.telefono || '', item.estado_label || ''].filter(Boolean).join(' · ');
+          btn.innerHTML = '<strong></strong><div class="small cand-muted"></div>';
+          btn.querySelector('strong').textContent = item.nombre || 'Sin nombre';
+          btn.querySelector('.small').textContent = meta;
+          btn.addEventListener('click', () => openItem(index));
+          results.appendChild(btn);
+        });
+        results.hidden = false;
+      }
+
+      function search() {
+        const q = input.value.trim();
+        const seq = ++requestSeq;
+        if (q.length < 2 || !searchUrl) {
+          if (controller) controller.abort();
+          items = [];
+          render();
+          return;
+        }
+        if (controller) controller.abort();
+        controller = new AbortController();
+        const url = new URL(searchUrl, window.location.origin);
+        url.searchParams.set('q', q);
+        url.searchParams.set('limit', '7');
+        fetch(url.toString(), { headers: { Accept: 'application/json' }, signal: controller.signal })
+          .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error('search_failed')))
+          .then((payload) => {
+            if (seq !== requestSeq) return;
+            items = Array.isArray(payload.items) ? payload.items : [];
+            active = 0;
+            render();
+          })
+          .catch((err) => {
+            if (err && err.name === 'AbortError') return;
+            if (seq !== requestSeq) return;
+            items = [];
+            render();
+          });
+      }
+
+      input.addEventListener('input', () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(search, 220);
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          hide();
+        } else if (event.key === 'ArrowDown' && items.length) {
+          event.preventDefault();
+          active = Math.min(items.length - 1, active + 1);
+          render();
+        } else if (event.key === 'ArrowUp' && items.length) {
+          event.preventDefault();
+          active = Math.max(0, active - 1);
+          render();
+        } else if (event.key === 'Enter' && items.length && !results.hidden) {
+          event.preventDefault();
+          openItem(active);
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (!shell.contains(event.target)) hide();
+      });
+    })();
+
+    function csrfToken() {
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      return meta ? String(meta.content || '') : '';
+    }
+
+    function setFeedback(form, message, ok) {
+      const el = form.querySelector('[data-feedback]');
+      if (!el) return;
+      el.textContent = message || '';
+      el.className = 'small cand-feedback ' + (ok ? 'text-success' : 'text-danger');
+    }
+
+    function clearErrors(form) {
+      form.querySelectorAll('[data-error-for]').forEach((el) => { el.textContent = ''; });
+    }
+
+    function paintErrors(form, errors) {
+      Object.keys(errors || {}).forEach((key) => {
+        const el = form.querySelector('[data-error-for="' + key + '"]');
+        if (el) el.textContent = errors[key] || '';
+      });
+    }
+
+    function clearGlobalLoaders() {
+      try {
+        if (window.AppLoader && typeof window.AppLoader.hideAll === 'function') {
+          window.AppLoader.hideAll();
+        } else if (window.AppLoader && typeof window.AppLoader.hide === 'function') {
+          window.AppLoader.hide();
+        }
+      } catch (_) {}
+      ['globalLoader', 'appGlobalLoader', 'loader', 'pageLoader', 'loadingOverlay', 'overlayLoader'].forEach((id) => {
+        const node = document.getElementById(id);
+        if (node) node.style.display = 'none';
+      });
+      document.documentElement.classList.remove('is-loading');
+      if (document.body) document.body.classList.remove('is-loading');
+    }
+
+    function setFormBusy(form, isBusy, submitter) {
+      if (!form) return;
+      if (isBusy) {
+        form.dataset.quickBusy = '1';
+        form.setAttribute('aria-busy', 'true');
+      } else {
+        delete form.dataset.quickBusy;
+        form.removeAttribute('aria-busy');
+      }
+      form.querySelectorAll('button, input, select, textarea').forEach((field) => {
+        if (field.type === 'hidden') return;
+        if (isBusy) {
+          field.dataset.quickPrevDisabled = field.disabled ? '1' : '0';
+          field.disabled = true;
+        } else {
+          if (field.dataset.quickPrevDisabled === '0') field.disabled = false;
+          delete field.dataset.quickPrevDisabled;
+        }
+      });
+      if (submitter && submitter.tagName === 'BUTTON') {
+        if (isBusy) {
+          submitter.dataset.quickPrevText = submitter.textContent || '';
+          submitter.textContent = 'Guardando...';
+        } else if (submitter.dataset.quickPrevText) {
+          submitter.textContent = submitter.dataset.quickPrevText;
+          delete submitter.dataset.quickPrevText;
+        }
+      }
+    }
+
+    async function fetchJsonWithTimeout(url, options, timeoutMs) {
+      const controller = window.AbortController ? new AbortController() : null;
+      const timer = controller ? window.setTimeout(() => controller.abort(), timeoutMs || 15000) : null;
+      try {
+        const resp = await fetch(url, Object.assign({}, options || {}, {
+          signal: controller ? controller.signal : undefined,
+        }));
+        const raw = await resp.text();
+        let payload = null;
+        try {
+          payload = raw ? JSON.parse(raw) : {};
+        } catch (_) {
+          payload = {
+            ok: false,
+            message: resp.ok ? 'Respuesta inválida del servidor.' : 'No se pudo guardar.',
+            errors: {},
+          };
+        }
+        return { resp, payload };
+      } finally {
+        if (timer) window.clearTimeout(timer);
+      }
+    }
+
+    function renderKv(target, values, fallback) {
+      if (!target) return;
+      const entries = Object.entries(values || {}).filter(([, value]) => String(value || '').trim() !== '');
+      if (!entries.length && fallback) {
+        target.innerHTML = '';
+        target.textContent = fallback;
+        return;
+      }
+      target.innerHTML = '';
+      entries.forEach(([label, value]) => {
+        const dt = document.createElement('dt');
+        const dd = document.createElement('dd');
+        dt.textContent = label;
+        dd.textContent = String(value || '');
+        target.appendChild(dt);
+        target.appendChild(dd);
+      });
+    }
+
+    function ensureFinanceIdempotencyKeys() {
+      root.querySelectorAll('[data-finance-panel] input[name="idempotency_key"]').forEach((input) => {
+        if (!input.value) {
+          input.value = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(16).slice(2);
+        }
+      });
+    }
+
+    function refreshFinance(payload) {
+      const finance = payload.porciento || {};
+      renderKv(root.querySelector('[data-display="porciento"]'), {
+        'Monto total': finance.monto_total || '—',
+        'Pagado': finance.pagado || '—',
+        'Pendiente': finance.pendiente || '—',
+        'Último pago': finance.ultimo_pago || '—',
+        'Estado': finance.state || '—',
+      }, '');
+      const badge = root.querySelector('[data-porciento-state]');
+      if (badge) {
+        badge.textContent = finance.state || 'Sin cálculo de porciento';
+        badge.className = 'badge ' + (
+          finance.state === 'Pagado'
+            ? 'text-bg-success'
+            : finance.configurado
+              ? 'text-bg-warning'
+              : 'text-bg-secondary'
+        );
+      }
+      const registerButton = root.querySelector('[data-finance-open="pago"]');
+      if (registerButton) {
+        registerButton.disabled = !finance.configurado || finance.state === 'Pagado';
+      }
+      const historyRoot = root.querySelector('[data-finance-history]');
+      if (historyRoot) {
+        const items = Array.isArray(finance.history) ? finance.history : [];
+        if (!items.length) {
+          historyRoot.innerHTML = '<div class="cand-muted small">Sin pagos registrados.</div>';
+        } else {
+          const list = document.createElement('ul');
+          list.className = 'mb-0 small';
+          items.forEach((item) => {
+            const li = document.createElement('li');
+            li.className = 'mb-2';
+            const line = document.createElement('div');
+            line.innerHTML = '';
+            const strong = document.createElement('strong');
+            strong.textContent = item.fecha || '—';
+            line.appendChild(strong);
+            line.appendChild(document.createTextNode(' · ' + (item.monto || '—')));
+            li.appendChild(line);
+            const meta = document.createElement('div');
+            meta.className = 'cand-muted';
+            meta.textContent = (item.metodo || 'Sin método') + ' · Registrado por ' + (item.actor || 'staff');
+            li.appendChild(meta);
+            if (item.detalle) {
+              const detail = document.createElement('div');
+              detail.className = 'cand-muted';
+              detail.textContent = item.detalle;
+              li.appendChild(detail);
+            }
+            list.appendChild(li);
+          });
+          historyRoot.innerHTML = '';
+          historyRoot.appendChild(list);
+        }
+      }
+      ensureFinanceIdempotencyKeys();
+    }
+
+    function refreshFormValues(payload) {
+      const values = payload.values || {};
+      Object.keys(values).forEach((section) => {
+        const panel = root.querySelector('[data-edit-section="' + section + '"]');
+        if (!panel) return;
+        const sectionValues = values[section] || {};
+        Object.keys(sectionValues).forEach((name) => {
+          const field = panel.querySelector('[name="' + name + '"]');
+          if (field) field.value = sectionValues[name] || '';
+        });
+      });
+    }
+
+    function refreshReadiness(readiness) {
+      if (!readiness) return;
+      const badge = root.querySelector('[data-readiness-badge]');
+      if (badge) {
+        badge.textContent = readiness.ready ? 'Lista' : 'Pendiente';
+        badge.className = 'badge ' + (readiness.ready ? 'text-bg-success' : 'text-bg-warning');
+      }
+      const count = root.querySelector('[data-readiness-count]');
+      if (count) {
+        count.textContent = (readiness.completed || 0) + '/' + (readiness.total || 0) + ' completos';
+      }
+      const flagsRoot = root.querySelector('[data-readiness-flags]');
+      if (flagsRoot) {
+        flagsRoot.innerHTML = '';
+        Object.keys(readiness.flags || {}).forEach((key) => {
+          const ok = Boolean(readiness.flags[key]);
+          const row = document.createElement('div');
+          const label = document.createElement('span');
+          const status = document.createElement('strong');
+          row.className = 'cand-check';
+          label.textContent = (readiness.labels || {})[key] || key;
+          status.className = ok ? 'text-success' : 'text-danger';
+          status.textContent = ok ? '✓' : 'Falta';
+          row.appendChild(label);
+          row.appendChild(status);
+          flagsRoot.appendChild(row);
+        });
+      }
+      const reasonsRoot = root.querySelector('[data-readiness-reasons]');
+      if (reasonsRoot) {
+        const reasons = readiness.reasons || [];
+        reasonsRoot.classList.toggle('d-none', reasons.length === 0);
+        const list = reasonsRoot.querySelector('ul');
+        if (list) {
+          list.innerHTML = '';
+          reasons.forEach((reason) => {
+            const li = document.createElement('li');
+            li.textContent = reason;
+            list.appendChild(li);
+          });
+        }
+      }
+    }
+
+    function refreshStateCapabilities(payload) {
+      const caps = payload.state_capabilities || {};
+      const prep = caps.preparation || {};
+      const assignment = caps.assignment || {};
+      const situation = caps.situation || {};
+      const process = caps.process || {};
+      const actions = caps.actions || {};
+      const reasons = caps.reasons || {};
+
+      const processEl = root.querySelector('[data-state-process]');
+      const prepEl = root.querySelector('[data-state-preparation]');
+      const missingEl = root.querySelector('[data-state-missing]');
+      const situationEl = root.querySelector('[data-state-situation]');
+      const noteEl = root.querySelector('[data-state-note]');
+      if (processEl) processEl.textContent = process.label || '';
+      if (prepEl) prepEl.textContent = (prep.label || '') + ' materiales';
+      if (missingEl) {
+        const missing = prep.missing || [];
+        const labels = prep.labels || {};
+        missingEl.textContent = missing.length
+          ? 'Falta ' + missing.slice(0, 2).map((key) => labels[key] || key).join(', ')
+          : 'Requisitos materiales completos';
+      }
+      if (situationEl) situationEl.textContent = situation.label || '';
+      if (noteEl) noteEl.textContent = situation.nota_descalificacion ? 'Motivo: ' + situation.nota_descalificacion : '';
+
+      const blockers = root.querySelector('[data-state-blockers]');
+      if (blockers) {
+        blockers.innerHTML = '';
+        const items = prep.operational_blockers || [];
+        (items.length ? items : ['Sin bloqueos operativos.']).forEach((text) => {
+          const li = document.createElement('li');
+          li.textContent = text;
+          blockers.appendChild(li);
+        });
+      }
+
+      const assignmentEl = root.querySelector('[data-state-assignment]');
+      if (assignmentEl) {
+        const sol = assignment.solicitud || null;
+        assignmentEl.textContent = sol
+          ? 'Solicitud: ' + (sol.codigo || ('#' + sol.id)) + ' · Estado: ' + (sol.estado || '') + (sol.status ? ' · ' + sol.status : '')
+          : 'Sin asignación activa.';
+      }
+
+      const actionMap = {
+        can_mark_ready: 'estado/lista',
+        can_mark_working: 'estado/trabajando',
+        can_reactivate: 'estado/reactivar',
+      };
+      Object.keys(actionMap).forEach((key) => {
+        root.querySelectorAll('[data-state-action]').forEach((form) => {
+          const endpoint = form.getAttribute('data-endpoint') || '';
+          if (!endpoint.includes(actionMap[key])) return;
+          const button = form.querySelector('button[type="submit"]');
+          if (button) button.disabled = !actions[key];
+        });
+      });
+      const disqualify = root.querySelector('[data-bs-target="#candDisqualifyModal"]');
+      if (disqualify) disqualify.disabled = !actions.can_disqualify;
+
+      const reasonsRoot = root.querySelector('[data-state-action-reasons]');
+      if (reasonsRoot) {
+        reasonsRoot.innerHTML = '';
+        Object.keys(reasons).forEach((key) => {
+          const list = reasons[key] || [];
+          if (!list.length) return;
+          const div = document.createElement('div');
+          div.setAttribute('data-action-reason', key);
+          div.textContent = list.join(' ');
+          reasonsRoot.appendChild(div);
+        });
+        reasonsRoot.classList.toggle('d-none', reasonsRoot.children.length === 0);
+      }
+    }
+
+    function refreshStatusBadges(payload) {
+      const target = root.querySelector('[data-status-badges]');
+      if (!target) return;
+      const badges = payload.status_badges || {};
+      const header = payload.header || {};
+      const state = (header.estado_label || (payload.candidate || {}).estado || header.estado || '').trim();
+      target.innerHTML = '';
+      function addBadge(text, klass) {
+        const span = document.createElement('span');
+        span.className = 'badge ' + klass;
+        span.textContent = text;
+        target.appendChild(span);
+      }
+      if (state) addBadge(state.replaceAll('_', ' '), 'text-bg-light border');
+      if (badges.inscrita && state !== 'Inscrita') addBadge('Inscrita', 'text-bg-primary');
+      if (badges.lista) addBadge('Lista', 'text-bg-success');
+      if (badges.trabajando && state !== 'Trabajando') addBadge('Trabajando', 'text-bg-info');
+      if (badges.descalificada && state !== 'Descalificada') addBadge('Descalificada', 'text-bg-danger');
+    }
+
+    function refreshRecentCalls(calls) {
+      if (!Array.isArray(calls)) return;
+      const list = root.querySelector('[data-recent-calls]');
+      if (!list) return;
+      list.innerHTML = '';
+      calls.forEach((call) => {
+        const li = document.createElement('li');
+        const strong = document.createElement('strong');
+        strong.textContent = call.fecha || '';
+        li.appendChild(strong);
+        li.appendChild(document.createTextNode(' · ' + (call.agente || '') + ' · ' + (call.resultado || '')));
+        if (call.notas) {
+          const notes = document.createElement('div');
+          notes.className = 'cand-muted';
+          notes.textContent = call.notas;
+          li.appendChild(notes);
+        }
+        list.appendChild(li);
+      });
+      const empty = root.querySelector('[data-no-calls]');
+      if (empty) empty.classList.toggle('d-none', calls.length > 0);
+    }
+
+    function refreshDocuments(payload) {
+      if (!payload || !payload.doc_flags) return;
+      const flags = payload.doc_flags || {};
+      root.querySelectorAll('[data-doc-upload-form]').forEach((form) => {
+        const key = form.getAttribute('data-doc-key') || '';
+        const ok = Boolean(flags[key]);
+        const status = form.querySelector('[data-doc-status]');
+        const hint = form.querySelector('[data-doc-hint]');
+        const view = form.querySelector('[data-doc-action="view"]');
+        const download = form.querySelector('[data-doc-action="download"]');
+        const pick = form.querySelector('[data-doc-action="pick"]');
+        form.classList.toggle('is-available', ok);
+        if (status) {
+          status.textContent = ok ? 'Disponible' : 'Pendiente';
+          status.className = 'badge ' + (ok ? 'text-bg-success' : 'text-bg-warning');
+        }
+        if (hint) {
+          hint.textContent = ok ? 'Arrastra otro archivo para reemplazarlo.' : 'Arrastra aquí o haz clic para subir.';
+        }
+        if (view) view.classList.toggle('d-none', !ok);
+        if (download) download.classList.toggle('d-none', !ok);
+        if (pick) pick.textContent = ok ? 'Reemplazar' : 'Subir';
+      });
+    }
+
+    function toggleFinancePanel(key) {
+      const panel = root.querySelector('[data-finance-panel="' + key + '"]');
+      if (!panel) return;
+      panel.open = true;
+      panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      const first = panel.querySelector('input, textarea, select, button');
+      if (first) window.setTimeout(() => first.focus(), 120);
+    }
+
+    function applyPayload(payload) {
+      const header = payload.header || {};
+      const name = root.querySelector('[data-cand-header="nombre"]');
+      const age = root.querySelector('[data-cand-header="edad"]');
+      const phone = root.querySelector('[data-cand-header="telefono"]');
+      const code = root.querySelector('[data-cand-header="codigo"]');
+      if (name) name.textContent = header.nombre || '';
+      if (age) age.textContent = header.edad || 'edad no informada';
+      if (phone) phone.textContent = header.telefono || 'sin teléfono';
+      if (code) code.textContent = header.codigo || 'sin código';
+
+      const display = payload.display || {};
+      renderKv(root.querySelector('[data-display="personal"]'), display.personal, '');
+      renderKv(root.querySelector('[data-display="labor"]'), display.labor, 'Sin información laboral registrada.');
+      renderKv(root.querySelector('[data-display="references"]'), {
+        Laborales: (display.references || {}).laboral || 'No informado',
+        Familiares: (display.references || {}).familiar || 'No informado',
+      }, '');
+      renderKv(root.querySelector('[data-display="secretary-references"]'), {
+        Laborales: (display.secretary_references || {}).laboral || 'No informado',
+        Familiares: (display.secretary_references || {}).familiar || 'No informado',
+      }, '');
+      const inscription = payload.inscription || {};
+      renderKv(root.querySelector('[data-display="inscription"]'), {
+        Código: inscription.codigo || '—',
+        Estado: inscription.inscrita ? 'Inscrita' : 'No inscrita',
+        'Medio de pago': inscription.medio || '—',
+        'Pago de inscripción': inscription.monto || '—',
+        'Fecha de inscripción': inscription.fecha || '—',
+        'Inscrita por': inscription.inscrita_por || '—',
+      }, '');
+      refreshFinance(payload);
+      refreshDocuments(payload);
+      refreshReadiness(payload.readiness);
+      refreshStateCapabilities(payload);
+      refreshStatusBadges(payload);
+      refreshRecentCalls(payload.recent_calls);
+      refreshFormValues(payload);
+    }
+
+    root.addEventListener('click', (event) => {
+      const financeOpen = event.target.closest('[data-finance-open]');
+      if (financeOpen) {
+        toggleFinancePanel(financeOpen.getAttribute('data-finance-open') || '');
+      }
+      const financeClose = event.target.closest('[data-finance-close]');
+      if (financeClose) {
+        const panel = financeClose.closest('[data-finance-panel]');
+        if (panel) panel.open = false;
+      }
+      const toggle = event.target.closest('[data-edit-toggle]');
+      if (toggle) {
+        const panel = toggle.closest('[data-edit-section]');
+        if (panel) panel.classList.add('cand-editing');
+      }
+      const shortcut = event.target.closest('[data-edit-shortcut]');
+      if (shortcut) {
+        const key = shortcut.getAttribute('data-edit-shortcut') || '';
+        const panel = root.querySelector('[data-edit-section="' + key + '"]');
+        if (panel) {
+          panel.classList.add('cand-editing');
+          panel.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          const first = panel.querySelector('input, textarea, select, button');
+          if (first) window.setTimeout(() => first.focus(), 180);
+        }
+      }
+      const cancel = event.target.closest('[data-edit-cancel]');
+      if (cancel) {
+        const panel = cancel.closest('[data-edit-section]');
+        if (panel) panel.classList.remove('cand-editing');
+      }
+    });
+
+    root.querySelectorAll('[data-quick-form]').forEach((form) => {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (form.dataset.quickBusy === '1') return;
+        const submitter = event.submitter || form.querySelector('button[type="submit"]');
+        clearErrors(form);
+        setFeedback(form, 'Guardando...', true);
+        const formData = new FormData(form);
+        setFormBusy(form, true, submitter);
+        const headers = { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRFToken'] = csrf;
+        try {
+          const { resp, payload } = await fetchJsonWithTimeout(form.getAttribute('data-endpoint'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers,
+            body: formData,
+          }, 15000);
+          if (!resp.ok || !payload.ok) {
+            paintErrors(form, payload.errors || {});
+            setFeedback(form, payload.message || 'No se pudo guardar.', false);
+            return;
+          }
+          applyPayload(payload);
+          if (form.closest('[data-finance-panel]')) {
+            form.reset();
+            ensureFinanceIdempotencyKeys();
+            const panel = form.closest('[data-finance-panel]');
+            if (panel) panel.open = false;
+          }
+          setFeedback(form, payload.message || 'Guardado.', true);
+          if (form.closest('[data-edit-section="calls"]')) form.reset();
+          if (form.closest('[data-doc-upload-form]')) form.reset();
+          const panel = form.closest('[data-edit-section]');
+          if (panel) panel.classList.remove('cand-editing');
+        } catch (err) {
+          setFeedback(form, err && err.name === 'AbortError' ? 'El servidor tardó demasiado. Intenta de nuevo.' : 'No se pudo guardar. Intenta de nuevo.', false);
+        } finally {
+          setFormBusy(form, false, submitter);
+          clearGlobalLoaders();
+        }
+      });
+    });
+
+    document.querySelectorAll('[data-state-action]').forEach((form) => {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        if (form.dataset.quickBusy === '1') return;
+        const submitter = event.submitter || form.querySelector('button[type="submit"]');
+        clearErrors(form);
+        const requiredMotivo = form.querySelector('textarea[name="motivo"][required], input[name="motivo"][required]');
+        if (requiredMotivo && !String(requiredMotivo.value || '').trim()) {
+          paintErrors(form, { motivo: 'Debes indicar el motivo de descalificación.' });
+          const feedback = root.querySelector('[data-state-feedback]');
+          if (feedback) {
+            feedback.textContent = 'Debes indicar el motivo de descalificación.';
+            feedback.className = 'small mt-2 cand-feedback text-danger';
+          }
+          requiredMotivo.focus();
+          clearGlobalLoaders();
+          return;
+        }
+        const formData = new FormData(form);
+        setFormBusy(form, true, submitter);
+        const feedback = root.querySelector('[data-state-feedback]');
+        if (feedback) {
+          feedback.textContent = 'Guardando...';
+          feedback.className = 'small mt-2 cand-feedback text-success';
+        }
+        const headers = { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' };
+        const csrf = csrfToken();
+        if (csrf) headers['X-CSRFToken'] = csrf;
+        try {
+          const { resp, payload } = await fetchJsonWithTimeout(form.getAttribute('data-endpoint'), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers,
+            body: formData,
+          }, 15000);
+          if (!resp.ok || !payload.ok) {
+            paintErrors(form, payload.errors || {});
+            if (feedback) {
+              feedback.textContent = payload.message || 'No se pudo actualizar el estado.';
+              feedback.className = 'small mt-2 cand-feedback text-danger';
+            }
+            if (payload.state_capabilities) refreshStateCapabilities(payload);
+            return;
+          }
+          applyPayload(payload);
+          if (feedback) {
+            feedback.textContent = payload.message || 'Estado actualizado.';
+            feedback.className = 'small mt-2 cand-feedback text-success';
+          }
+          if (form.closest('.modal')) {
+            const modalEl = form.closest('.modal');
+            const modal = window.bootstrap && window.bootstrap.Modal ? window.bootstrap.Modal.getInstance(modalEl) : null;
+            if (modal) modal.hide();
+            form.reset();
+          }
+        } catch (err) {
+          if (feedback) {
+            feedback.textContent = err && err.name === 'AbortError' ? 'El servidor tardó demasiado. Intenta de nuevo.' : 'No se pudo actualizar el estado.';
+            feedback.className = 'small mt-2 cand-feedback text-danger';
+          }
+        } finally {
+          setFormBusy(form, false, submitter);
+          clearGlobalLoaders();
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-doc-upload-form]').forEach((form) => {
+      const input = form.querySelector('[data-doc-file-input]');
+      const pick = form.querySelector('[data-doc-action="pick"]');
+      const dropzone = form.querySelector('[data-doc-dropzone]');
+      function openPicker() {
+        if (input && !input.disabled) input.click();
+      }
+      function submitIfFileSelected() {
+        if (!input || !input.files || !input.files.length) return;
+        if (typeof form.requestSubmit === 'function') {
+          form.requestSubmit(form.querySelector('button[type="submit"]'));
+        } else {
+          form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+        }
+      }
+      if (pick) {
+        pick.addEventListener('click', (event) => {
+          event.preventDefault();
+          openPicker();
+        });
+      }
+      if (dropzone) {
+        dropzone.addEventListener('click', openPicker);
+        dropzone.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            openPicker();
+          }
+        });
+        dropzone.addEventListener('dragenter', (event) => {
+          event.preventDefault();
+          form.classList.add('is-dragover');
+        });
+        dropzone.addEventListener('dragover', (event) => {
+          event.preventDefault();
+          form.classList.add('is-dragover');
+        });
+        dropzone.addEventListener('dragleave', () => {
+          form.classList.remove('is-dragover');
+        });
+        dropzone.addEventListener('drop', (event) => {
+          event.preventDefault();
+          form.classList.remove('is-dragover');
+          const files = event.dataTransfer && event.dataTransfer.files ? event.dataTransfer.files : null;
+          if (!files || !files.length || !input) return;
+          const dt = new DataTransfer();
+          dt.items.add(files[0]);
+          input.files = dt.files;
+          submitIfFileSelected();
+        });
+      }
+      if (input) {
+        input.addEventListener('change', () => submitIfFileSelected());
+      }
+    });
+
+    ensureFinanceIdempotencyKeys();
+  })();
+</script>
+{% endblock %}

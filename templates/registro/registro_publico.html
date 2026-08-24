@@ -197,17 +197,18 @@
         </div>
 
         <div class="field">
-          <label for="disponibilidad_inicio" class="label">¿Cuándo puedes iniciar? </label>
+          <label for="disponibilidad_inicio" class="label">¿Cuándo puedes iniciar a trabajar?</label>
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">🗓️</span>
             <select class="input" id="disponibilidad_inicio" name="disponibilidad_inicio">
-              <option value="">Selecciona</option>
-              <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>Inmediata</option>
+              <option value="">Aún no lo sabe</option>
+              <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>De inmediato</option>
               <option value="esta_semana" {% if f.get('disponibilidad_inicio') == 'esta_semana' %}selected{% endif %}>Esta semana</option>
+              <option value="1-2 semanas" {% if f.get('disponibilidad_inicio') == '1-2 semanas' %}selected{% endif %}>En 1-2 semanas</option>
               <option value="este_mes" {% if f.get('disponibilidad_inicio') == 'este_mes' %}selected{% endif %}>Este mes</option>
             </select>
           </div>
-          <div class="help">Si aún no tienes fecha exacta, elige la opción más cercana.</div>
+          <div class="help">Si todavía no lo tiene claro, puede dejarlo en Aún no lo sabe.</div>
         </div>
 
         <div class="field">
@@ -415,7 +416,7 @@
         </div>
 
         <div class="field full">
-          <label for="motivacion_trabajo" class="label">¿Por qué te interesa este tipo de trabajo?</label>
+          <label for="motivacion_trabajo" class="label">¿Cuál es el motivo por el que deseas trabajar como doméstica?</label>
           <div class="control-wrap">
             <span class="lead" aria-hidden="true">📝</span>
             <textarea class="textarea" id="motivacion_trabajo" name="motivacion_trabajo" rows="2" maxlength="350"

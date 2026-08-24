@@ -73,6 +73,18 @@ def test_edades_ninos_is_required_when_cuidar_ninos_and_ninos_gt_zero():
     assert any("edades" in e.lower() for e in form.edades_ninos.errors)
 
 
+def test_edades_ninos_requires_one_age_per_declared_child():
+    payload = _base_payload()
+    payload.setlist("funciones", ["ninos"])
+    payload["ninos"] = "2"
+    payload["edades_ninos"] = "2 años"
+
+    form, ok = _validate(payload)
+
+    assert ok is False
+    assert any("una edad por cada niño" in e.lower() for e in form.edades_ninos.errors)
+
+
 def test_edades_ninos_not_required_when_cuidar_ninos_and_ninos_zero():
     payload = _base_payload()
     payload.setlist("funciones", ["ninos"])
@@ -91,6 +103,21 @@ def test_form_placeholders_remove_optional_copy_for_mascota_and_edades_ninos():
 
         assert "(opcional)" not in str(form.mascota.render_kw.get("placeholder", "")).lower()
         assert "(opcional)" not in str(form.edades_ninos.render_kw.get("placeholder", "")).lower()
+
+
+def test_child_care_help_fields_are_optional_and_have_expected_choices():
+    payload = _base_payload()
+    payload.setlist("funciones", ["limpieza", "ninos"])
+    payload["ninos"] = "2"
+    payload["edades_ninos"] = "2 y 3 años"
+    payload["ayuda_cuidado_ninos"] = "con_ayuda"
+
+    form, ok = _validate(payload)
+
+    assert ok is True
+    assert form.ayuda_cuidado_ninos.data == "con_ayuda"
+    assert [value for value, _ in form.ayuda_cuidado_ninos.choices] == ["", "sin_ayuda", "con_ayuda"]
+    assert not hasattr(form, "detalle_ayuda_cuidado_ninos")
 
 
 def test_adultos_not_required_when_only_cuidar_ninos_is_selected():

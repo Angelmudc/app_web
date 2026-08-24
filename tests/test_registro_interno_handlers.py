@@ -51,6 +51,11 @@ def test_registro_interno_render_basico_formulario():
     resp = client.get("/registro_interno/", follow_redirects=False)
     assert resp.status_code == 200
     assert "registro_interno".encode("utf-8") in resp.data.lower()
+    html = resp.get_data(as_text=True)
+    assert "¿Cuándo puede iniciar a trabajar?" in html
+    assert "Aún no lo sabe" in html
+    assert "En 1-2 semanas" in html
+    assert "¿Cuál es el motivo por el que deseas trabajar como doméstica?" in html
 
 
 def test_registro_interno_submit_valido_redirect_y_log_ok():

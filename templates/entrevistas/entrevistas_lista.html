@@ -18,9 +18,6 @@
             {% if candidata.codigo %}
               · <strong>Código:</strong> {{ candidata.codigo }}
             {% endif %}
-            {% if candidata.cedula %}
-              · <strong>Cédula:</strong> {{ candidata.cedula }}
-            {% endif %}
           </p>
         {% else %}
           <p class="card-meta"><strong>Candidata:</strong> —</p>
@@ -29,21 +26,31 @@
 
       <div class="header-actions">
         {% if candidata %}
-          <a class="btn btn-primary"
-             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='domestica', next=next_url or None) }}">
-            + Doméstica
-          </a>
-          <a class="btn btn-outline"
-             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='enfermera', next=next_url or None) }}">
-            + Enfermera
-          </a>
-          <a class="btn btn-outline"
-             href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo='empleo_general', next=next_url or None) }}">
-            + General
-          </a>
+          {% for tipo in interview_types or [] %}
+            {% if interview_create_capability.can_create %}
+              <a class="btn {% if loop.first %}btn-primary{% else %}btn-outline{% endif %}"
+                 href="{{ url_for('entrevista_nueva_db', fila=candidata.fila, tipo=tipo.key, next=next_url or None) }}">
+                + {{ tipo.label }}
+              </a>
+            {% else %}
+              <button class="btn {% if loop.first %}btn-primary{% else %}btn-outline{% endif %}"
+                      type="button"
+                      disabled
+                      aria-disabled="true"
+                      title="{{ interview_create_capability.reason }}">
+                + {{ tipo.label }}
+              </button>
+            {% endif %}
+          {% endfor %}
         {% endif %}
       </div>
     </div>
+
+    {% if candidata and not interview_create_capability.can_create and interview_create_capability.reason %}
+      <div class="alert alert-warning">
+        {{ interview_create_capability.reason }}
+      </div>
+    {% endif %}
 
     <hr class="divider">
 

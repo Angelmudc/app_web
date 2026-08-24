@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -68,6 +68,7 @@ def test_pagos_submit_valido_descuenta_porciento_y_actualiza_campos():
     captured = {}
     candidata = SimpleNamespace(
         fila=30,
+        monto_total=Decimal("2000.00"),
         porciento=Decimal("500.00"),
         calificacion=None,
         fecha_de_pago=None,
@@ -80,7 +81,7 @@ def test_pagos_submit_valido_descuenta_porciento_y_actualiza_campos():
 
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
          patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
-         patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
+         patch("core.handlers.procesos_transacciones_handlers.utc_now_naive", return_value=datetime(2026, 3, 27, 11, 0, 0)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock, \
          patch("core.handlers.procesos_transacciones_handlers.render_template", side_effect=_fake_render):
         resp = client.post(
@@ -115,10 +116,10 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
     ]
 
     for monto_raw, esperado in casos:
-        candidata = SimpleNamespace(fila=1, porciento=Decimal("20000.00"), calificacion=None, fecha_de_pago=None)
+        candidata = SimpleNamespace(fila=1, monto_total=Decimal("80000.00"), porciento=Decimal("20000.00"), calificacion=None, fecha_de_pago=None)
         with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
              patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
-             patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
+             patch("core.handlers.procesos_transacciones_handlers.utc_now_naive", return_value=datetime(2026, 3, 27, 11, 0, 0)), \
              patch("core.handlers.procesos_transacciones_handlers.db.session.commit"), \
              patch("core.handlers.procesos_transacciones_handlers.render_template", return_value="ok"):
             resp = client.post(
@@ -129,10 +130,10 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
         assert resp.status_code == 200
         assert candidata.porciento == (Decimal("20000.00") - esperado).quantize(Decimal("0.01"))
 
-    candidata_clamp = SimpleNamespace(fila=1, porciento=Decimal("100.00"), calificacion=None, fecha_de_pago=None)
+    candidata_clamp = SimpleNamespace(fila=1, monto_total=Decimal("400.00"), porciento=Decimal("100.00"), calificacion=None, fecha_de_pago=None)
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata_clamp), \
          patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_charge=True, reason_message="ok")), \
-         patch("core.handlers.procesos_transacciones_handlers.legacy_h.rd_today", return_value=date(2026, 3, 27)), \
+         patch("core.handlers.procesos_transacciones_handlers.utc_now_naive", return_value=datetime(2026, 3, 27, 11, 0, 0)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit"), \
          patch("core.handlers.procesos_transacciones_handlers.render_template", return_value="ok"):
         resp = client.post(
@@ -140,8 +141,8 @@ def test_pagos_parsing_monto_formatos_relevantes_y_clamp():
             data={"fila": "1", "monto_pagado": "150.00", "calificacion": "Pago completo"},
             follow_redirects=False,
         )
-    assert resp.status_code == 200
-    assert candidata_clamp.porciento == Decimal("0.00")
+    assert resp.status_code in (302, 303)
+    assert candidata_clamp.porciento == Decimal("100.00")
 
 
 def test_pagos_redirects_fallbacks_contrato_actual():

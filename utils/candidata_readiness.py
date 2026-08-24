@@ -49,16 +49,8 @@ def candidata_has_interview(candidata) -> bool:
 
 
 def candidata_referencias_complete(candidata) -> Dict[str, bool]:
-    ref_laboral = (
-        getattr(candidata, "referencias_laborales_texto", None)
-        or getattr(candidata, "contactos_referencias_laborales", None)
-        or getattr(candidata, "referencias_laboral", None)
-    )
-    ref_familiar = (
-        getattr(candidata, "referencias_familiares_texto", None)
-        or getattr(candidata, "referencias_familiares_detalle", None)
-        or getattr(candidata, "referencias_familiares", None)
-    )
+    ref_laboral = getattr(candidata, "referencias_laboral", None)
+    ref_familiar = getattr(candidata, "referencias_familiares", None)
     return {
         "referencias_laboral": referencias_ok(ref_laboral),
         "referencias_familiares": referencias_ok(ref_familiar),

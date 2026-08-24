@@ -147,6 +147,29 @@ def test_new_public_form_hides_salary_suggestion_block_when_feature_flag_off():
     assert "/clientes/api/sueldo-sugerido?" not in html
 
 
+def test_new_public_form_hides_attractiveness_when_feature_flag_off():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    previous = flask_app.config.get("ENABLE_ATTRACTIVENESS_SCORE", False)
+    flask_app.config["ENABLE_ATTRACTIVENESS_SCORE"] = False
+    client = flask_app.test_client()
+
+    try:
+        with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
+             patch("clientes.routes._public_new_link_usage_by_hash", return_value=None), \
+             patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})):
+            resp = client.get("/clientes/solicitudes/nueva-publica/tok123")
+    finally:
+        flask_app.config["ENABLE_ATTRACTIVENESS_SCORE"] = previous
+
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Atractivo de la solicitud" not in html
+    assert "id=\"atractivoPreviewBox\"" not in html
+    assert "id=\"atractivoPreviewSticky\"" not in html
+    assert "/clientes/api/solicitud-atractivo-preview?" not in html
+
+
 def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

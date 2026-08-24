@@ -9,6 +9,7 @@ from sqlalchemy.orm import Query
 from config_app import db
 from models import Candidata, Solicitud, SolicitudCandidata
 from services.candidata_assignment_guard import validate_candidata_assignment_context
+from utils.candidata_readiness import candidata_is_ready_to_send
 from utils.timezone import iso_utc_z, utc_now_naive
 
 
@@ -114,6 +115,28 @@ def candidate_blocked_by_other_client(*, candidata_id: int, solicitud: Solicitud
         .first()
     )
     return row is not None
+
+
+def resolve_candidate_reactivation_state(cand: Candidata) -> str:
+    """Resolve the canonical target when a disqualified candidate is reactivated."""
+    if not bool(getattr(cand, "inscripcion", False)):
+        return "proceso_inscripcion"
+
+    if not getattr(cand, "monto", None) or not getattr(cand, "fecha", None):
+        return "inscrita_incompleta"
+
+    original_estado = getattr(cand, "estado", None)
+    with db.session.no_autoflush:
+        try:
+            cand.estado = "inscrita"
+            ready, reasons = candidata_is_ready_to_send(cand)
+        finally:
+            cand.estado = original_estado
+
+    blocking = [r for r in (reasons or []) if not str(r).lower().startswith("advertencia:")]
+    if ready and not blocking:
+        return "lista_para_trabajar"
+    return "inscrita_incompleta"
 
 
 def sync_solicitud_candidatas_after_assignment(
@@ -250,12 +273,18 @@ def change_candidate_state(
             guard.reason_message or "No se puede marcar trabajando sin una asignación activa coherente.",
         )
 
-    cand.estado = target
+    current_state = (getattr(cand, "estado", None) or "").strip().lower()
+    actual_target = target
+    is_reactivation = current_state == "descalificada" and target == "lista_para_trabajar"
+    if is_reactivation:
+        actual_target = resolve_candidate_reactivation_state(cand)
+
+    cand.estado = actual_target
     cand.fecha_cambio_estado = utc_now_naive()
     cand.usuario_cambio_estado = (actor or "sistema")[:100]
-    if target == "descalificada":
+    if actual_target == "descalificada":
         cand.nota_descalificacion = (nota_descalificacion or reason or "").strip()[:500] or None
-    elif target == "lista_para_trabajar":
+    elif actual_target == "lista_para_trabajar" or is_reactivation:
         cand.nota_descalificacion = None
     return cand
 

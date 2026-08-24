@@ -28,7 +28,7 @@ class Candidata(db.Model):
     nombre_completo                 = db.Column(db.String(200), nullable=False)
     edad                            = db.Column(db.String(50))
     numero_telefono                 = db.Column(db.String(50))
-    telefono_e164                  = db.Column(db.String(20), nullable=True, index=True)
+    telefono_e164                   = db.Column(db.String(20), nullable=True, index=True)
     direccion_completa              = db.Column(db.String(300))
     modalidad_trabajo_preferida     = db.Column(db.String(100))
     rutas_cercanas                  = db.Column(db.String(200))
@@ -252,8 +252,6 @@ class Candidata(db.Model):
     def referencias_laborales_texto(self, value: str) -> None:
         val = (value or '').strip()
         self.contactos_referencias_laborales = val or None
-        # Mantener compatibilidad con el campo antiguo
-        self.referencias_laboral = val or None
 
     @property
     def referencias_familiares_texto(self) -> str:
@@ -264,8 +262,6 @@ class Candidata(db.Model):
     def referencias_familiares_texto(self, value: str) -> None:
         val = (value or '').strip()
         self.referencias_familiares_detalle = val or None
-        # Mantener compatibilidad con el campo antiguo
-        self.referencias_familiares = val or None
 
 
 def _cedula_digits_only(value: str) -> str:

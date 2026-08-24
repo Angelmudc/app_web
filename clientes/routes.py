@@ -106,6 +106,7 @@ from utils.modalidad import (
 )
 from utils.sueldo_sugerido import analyze_salary_suggestion
 from utils.codigo_solicitud import compose_codigo_solicitud
+from utils.child_age_parser import parse_child_age_summary
 from utils.timezone import (
     iso_utc_z,
     rd_today,
@@ -158,6 +159,10 @@ from utils.compat_engine import (
     normalize_horarios_tokens,
     persist_result_to_solicitud,
 )
+
+
+def _attractiveness_score_enabled() -> bool:
+    return bool(current_app.config.get("ENABLE_ATTRACTIVENESS_SCORE", False))
 
 
 def _format_rd_money(value) -> str:
@@ -719,6 +724,7 @@ def _clientes_force_login_view():
         'clientes.solicitud_publica_nueva_short_plan',
         'clientes.solicitud_publica_nueva_plan_resumen',
         'clientes.api_sueldo_sugerido',
+        'clientes.api_child_age_summary',
         'clientes.api_solicitud_atractivo_preview',
         'clientes.politicas',
         'clientes.aceptar_politicas',
@@ -2868,14 +2874,37 @@ def api_sueldo_sugerido():
     return jsonify(analyze_salary_suggestion(payload))
 
 
+@clientes_bp.route('/api/child-age-summary', methods=['GET'])
+def api_child_age_summary():
+    summary = parse_child_age_summary(
+        request.args.get("edades_ninos", ""),
+        declared_count=request.args.get("ninos", ""),
+    )
+    return _json_no_cache({
+        "small_child_count": int(summary.get("small_child_count") or 0),
+        "supervision_count": int(summary.get("supervision_count") or 0),
+        "child_care_load": float(summary.get("child_care_load") or 0.0),
+        "has_confirmed_small_child": int(summary.get("small_child_count") or 0) > 0,
+        "unknown_child_count": int(summary.get("unknown_count") or 0),
+        "parsed_count": int(summary.get("parsed_count") or 0),
+        "confidence": summary.get("confidence") or "low",
+        "warnings": list(summary.get("warnings") or []),
+    })
+
+
 @clientes_bp.route('/api/solicitud-atractivo-preview', methods=['GET', 'POST'])
 def api_solicitud_atractivo_preview():
+    if not _attractiveness_score_enabled():
+        return _json_no_cache({
+            "enabled": False,
+            "message": "El score de atractivo esta temporalmente deshabilitado.",
+        }), 404
     if request.method == "GET":
         payload = _atractivo_preview_payload_from_source(request.args)
     else:
         raw = request.get_json(silent=True)
         payload = _atractivo_preview_payload_from_source(raw or request.form)
-    return jsonify(evaluate_solicitud_atractivo(payload))
+    return _json_no_cache(evaluate_solicitud_atractivo(payload))
 
 
 @clientes_bp.route('/live/ping', methods=['POST'])
@@ -3431,6 +3460,18 @@ def _normalize_modalidad_on_solicitud(solicitud_obj) -> None:
         return
 
 
+def _sync_child_care_help_details(solicitud_obj, form) -> None:
+    ayuda = ""
+    if hasattr(form, "ayuda_cuidado_ninos"):
+        ayuda = str(getattr(form.ayuda_cuidado_ninos, "data", "") or "").strip()
+    base = dict(getattr(solicitud_obj, "detalles_servicio", None) or {})
+    for key in ("ayuda_cuidado_ninos", "detalle_ayuda_cuidado_ninos"):
+        base.pop(key, None)
+    if ayuda:
+        base["ayuda_cuidado_ninos"] = ayuda
+    solicitud_obj.detalles_servicio = base or None
+
+
 def _apply_public_solicitud_fields(
     *,
     solicitud_obj,
@@ -3523,6 +3564,7 @@ def _apply_public_solicitud_fields(
 
     if hasattr(solicitud_obj, 'sueldo'):
         solicitud_obj.sueldo = _money_sanitize(getattr(form, 'sueldo', type('x', (object,), {'data': None})).data)
+    _sync_child_care_help_details(solicitud_obj, form)
     _clear_house_structure_if_not_limpieza(solicitud_obj, selected_funciones)
     _clear_adultos_if_not_household_funciones(solicitud_obj, selected_funciones)
     _sync_envejeciente_fields(solicitud_obj, selected_funciones)
@@ -3530,15 +3572,20 @@ def _apply_public_solicitud_fields(
     solicitud_obj.ciudad_sector = (form.ciudad_sector.data or '').strip()
     if hasattr(solicitud_obj, 'fecha_ultima_modificacion'):
         solicitud_obj.fecha_ultima_modificacion = now_ref
-    apply_solicitud_atractivo_to_model(solicitud_obj, now=now_ref)
+    if _attractiveness_score_enabled():
+        apply_solicitud_atractivo_to_model(solicitud_obj, now=now_ref)
 
 
 def _atractivo_preview_payload_from_source(source: Any) -> dict[str, Any]:
     return {
         "modalidad_trabajo": source.get("modalidad_trabajo", ""),
         "horario": source.get("horario", ""),
+        "horario_tipo": source.get("horario_tipo", ""),
+        "dias_trabajo": source.get("dias_trabajo", "") or source.get("horario_dias_trabajo", ""),
         "horario_hora_entrada": source.get("horario_hora_entrada", ""),
         "horario_hora_salida": source.get("horario_hora_salida", ""),
+        "dormida_entrada": source.get("dormida_entrada", "") or source.get("horario_dormida_entrada", ""),
+        "dormida_salida": source.get("dormida_salida", "") or source.get("horario_dormida_salida", ""),
         "tipo_lugar": source.get("tipo_lugar", ""),
         "habitaciones": source.get("habitaciones", ""),
         "banos": source.get("banos", ""),
@@ -3546,8 +3593,11 @@ def _atractivo_preview_payload_from_source(source: Any) -> dict[str, Any]:
         "dos_pisos": source.get("dos_pisos", ""),
         "ninos": source.get("ninos", ""),
         "edades_ninos": source.get("edades_ninos", ""),
+        "ayuda_cuidado_ninos": source.get("ayuda_cuidado_ninos", ""),
         "adultos": source.get("adultos", ""),
         "sueldo": source.get("sueldo", ""),
+        "pasaje_aporte": source.get("pasaje_aporte", ""),
+        "pasaje_mode": source.get("pasaje_mode", ""),
         "envejeciente_tipo_cuidado": source.get("envejeciente_tipo_cuidado", ""),
         "envejeciente_responsabilidades": source.getlist("envejeciente_responsabilidades") if hasattr(source, "getlist") else (source.get("envejeciente_responsabilidades", []) or []),
         "funciones": source.getlist("funciones") if hasattr(source, "getlist") else (source.get("funciones", []) or []),
@@ -4230,6 +4280,7 @@ def nueva_solicitud():
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            _sync_child_care_help_details(s, form)
             _clear_house_structure_if_not_limpieza(s, selected_funciones)
             _clear_adultos_if_not_household_funciones(s, selected_funciones)
             _sync_envejeciente_fields(s, selected_funciones)
@@ -4241,7 +4292,8 @@ def nueva_solicitud():
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = utc_now_naive()
-            apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
+            if _attractiveness_score_enabled():
+                apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
 
             db.session.add(s)
             try:
@@ -4412,6 +4464,9 @@ def editar_solicitud(id):
             form.dos_pisos.data = bool(getattr(s, 'dos_pisos', False))
         if form.pasaje_aporte.data is None:
             form.pasaje_aporte.data = bool(getattr(s, 'pasaje_aporte', False))
+        detalles = getattr(s, "detalles_servicio", None) or {}
+        if hasattr(form, "ayuda_cuidado_ninos"):
+            form.ayuda_cuidado_ninos.data = str(detalles.get("ayuda_cuidado_ninos") or "")
         public_pasaje_mode, public_pasaje_otro = read_pasaje_mode_text(
             pasaje_aporte=getattr(s, "pasaje_aporte", False),
             detalles_servicio=getattr(s, "detalles_servicio", None),
@@ -4543,6 +4598,7 @@ def editar_solicitud(id):
                 s.nota_cliente = strip_pasaje_marker_from_note((form.nota_cliente.data or '').strip())
             if hasattr(s, 'sueldo'):
                 s.sueldo = _money_sanitize(form.sueldo.data)
+            _sync_child_care_help_details(s, form)
             _clear_house_structure_if_not_limpieza(s, selected_funciones)
             _clear_adultos_if_not_household_funciones(s, selected_funciones)
             _sync_envejeciente_fields(s, selected_funciones)
@@ -4554,7 +4610,8 @@ def editar_solicitud(id):
             )
             if hasattr(s, 'fecha_ultima_modificacion'):
                 s.fecha_ultima_modificacion = utc_now_naive()
-            apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
+            if _attractiveness_score_enabled():
+                apply_solicitud_atractivo_to_model(s, now=utc_now_naive())
 
             db.session.flush()
             _emit_cliente_outbox_event(

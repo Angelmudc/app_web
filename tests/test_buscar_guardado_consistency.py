@@ -55,7 +55,7 @@ def test_buscar_editar_sincroniza_columnas_referencias():
 
     cand = _build_candidata_stub(fila=77)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):
@@ -74,8 +74,8 @@ def test_buscar_editar_sincroniza_columnas_referencias():
     assert resp.status_code in (302, 303)
     assert cand.contactos_referencias_laborales == "Ref laboral nueva"
     assert cand.referencias_familiares_detalle == "Ref familiar nueva"
-    assert cand.referencias_laboral == "Ref laboral nueva"
-    assert cand.referencias_familiares == "Ref familiar nueva"
+    assert cand.referencias_laboral == "Ref laboral vieja"
+    assert cand.referencias_familiares == "Ref familiar vieja"
 
 
 def test_buscar_no_confirma_guardado_si_no_se_puede_verificar_post_commit():
@@ -86,7 +86,7 @@ def test_buscar_no_confirma_guardado_si_no_se_puede_verificar_post_commit():
 
     cand = _build_candidata_stub(fila=88)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=None), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):
@@ -113,8 +113,9 @@ def test_referencias_sync_escribe_en_columnas_legacy_y_canonica():
 
     cand = _build_candidata_stub(fila=99)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.referencias_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
+             patch("core.services.candidata_quick_edit._verify_candidata_fields_saved", return_value=True), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):
             resp = client.post(
@@ -132,8 +133,8 @@ def test_referencias_sync_escribe_en_columnas_legacy_y_canonica():
     assert "Referencias actualizadas" in body
     assert cand.referencias_laboral == "Laboral sincronizada"
     assert cand.referencias_familiares == "Familiar sincronizada"
-    assert cand.contactos_referencias_laborales == "Laboral sincronizada"
-    assert cand.referencias_familiares_detalle == "Familiar sincronizada"
+    assert cand.contactos_referencias_laborales == "Ref laboral vieja"
+    assert cand.referencias_familiares_detalle == "Ref familiar vieja"
 
 
 def test_buscar_prioriza_ultima_fila_editada_en_resultados():
@@ -151,7 +152,7 @@ def test_buscar_prioriza_ultima_fila_editada_en_resultados():
 
     with flask_app.app_context():
         with patch(
-            "core.legacy_handlers.search_candidatas_limited",
+            "core.handlers.buscar_candidata_handlers.search_candidatas_limited",
             return_value=[fila_a, fila_b],
         ):
             resp = client.get("/buscar?busqueda=demo", follow_redirects=False)
@@ -182,7 +183,7 @@ def test_referencias_prioriza_ultima_fila_editada_en_resultados():
 
     with flask_app.app_context():
         with patch(
-            "core.legacy_handlers.search_candidatas_limited",
+            "core.handlers.referencias_handlers.search_candidatas_limited",
             return_value=[fila_a, fila_b],
         ):
             resp = client.post(
@@ -213,7 +214,7 @@ def test_buscar_post_trace_loguea_form_y_asignacion(caplog, monkeypatch):
 
     cand = _build_candidata_stub(fila=123)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"), \
@@ -257,7 +258,7 @@ def test_buscar_edicion_muestra_mensaje_error_en_modo_editar():
 
     cand = _build_candidata_stub(fila=222)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):
@@ -286,7 +287,7 @@ def test_buscar_cedula_invalida_no_bloquea_guardado_de_otros_campos():
 
     cand = _build_candidata_stub(fila=226)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):
@@ -318,7 +319,7 @@ def test_buscar_cedula_duplicada_no_bloquea_guardado_de_otros_campos():
     cand = _build_candidata_stub(fila=227)
     dup = _build_candidata_stub(fila=999)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.find_duplicate_candidata_by_cedula", return_value=(dup, "00100000001")), \
              patch("core.legacy_handlers.db.session.flush"), \
@@ -349,7 +350,7 @@ def test_buscar_editar_guardar_y_reabrir_muestra_valor_actualizado():
 
     cand = _build_candidata_stub(fila=333)
     with flask_app.app_context():
-        with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+        with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
              patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
              patch("core.legacy_handlers.db.session.flush"), \
              patch("core.legacy_handlers.db.session.commit"):

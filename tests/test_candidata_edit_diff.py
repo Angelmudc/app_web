@@ -37,13 +37,15 @@ def test_candidata_edit_diff_has_from_to_values():
         areas_experiencia='limpieza',
         contactos_referencias_laborales='',
         referencias_familiares_detalle='',
+        referencias_laboral='',
+        referencias_familiares='',
         cedula='001-0000000-2',
         sabe_planchar=True,
         acepta_porcentaje_sueldo=True,
     )
 
     with flask_app.app_context():
-        with patch('core.legacy_handlers.get_candidata_by_id', return_value=candidata_stub), \
+        with patch('core.handlers.buscar_candidata_handlers.get_candidata_by_id', return_value=candidata_stub), \
              patch('core.legacy_handlers._get_candidata_by_fila_or_pk', return_value=candidata_stub), \
              patch('core.legacy_handlers.db.session.flush'), \
              patch('core.legacy_handlers.db.session.commit'):

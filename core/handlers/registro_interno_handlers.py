@@ -175,8 +175,6 @@ def registro_interno():
                 sabe_planchar=sabe_planchar,
                 contactos_referencias_laborales=ref_lab,
                 referencias_familiares_detalle=ref_fam,
-                referencias_laboral=ref_lab,
-                referencias_familiares=ref_fam,
                 acepta_porcentaje_sueldo=acepta_pct,
                 cedula=cedula_store,
                 disponibilidad_inicio=disponibilidad_inicio,

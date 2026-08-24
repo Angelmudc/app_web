@@ -54,7 +54,7 @@ def test_buscar_edicion_retry_si_commit_falla_una_vez():
     assert _login_secretaria(client).status_code in (302, 303)
 
     cand = _DummyCandidata()
-    with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+    with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
          patch("core.legacy_handlers._get_candidata_by_fila_or_pk", return_value=cand), \
          patch(
              "core.legacy_handlers.db.session.commit",
@@ -81,7 +81,7 @@ def test_buscar_edicion_hace_rollback_si_no_verifica_guardado():
     assert _login_secretaria(client).status_code in (302, 303)
 
     cand = _DummyCandidata()
-    with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+    with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
          patch("core.legacy_handlers._verify_candidata_fields_saved", return_value=False), \
          patch("core.legacy_handlers.db.session.rollback") as rollback_mock:
         resp = client.post(
@@ -107,7 +107,7 @@ def test_buscar_edicion_actualiza_campos_nuevos_publicos():
 
     cand = _DummyCandidata()
     ok_result = SimpleNamespace(ok=True, attempts=1, error_message="")
-    with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+    with patch("core.handlers.buscar_candidata_handlers.get_candidata_by_id", return_value=cand), \
          patch("core.legacy_handlers.execute_robust_save", return_value=ok_result):
         resp = client.post(
             "/buscar",
@@ -140,7 +140,7 @@ def test_referencias_no_acepta_placeholders():
     assert _login_secretaria(client).status_code in (302, 303)
 
     cand = _DummyCandidata()
-    with patch("core.legacy_handlers.get_candidata_by_id", return_value=cand), \
+    with patch("core.handlers.referencias_handlers.get_candidata_by_id", return_value=cand), \
          patch("core.legacy_handlers.db.session.commit") as commit_mock:
         resp = client.post(
             "/referencias",

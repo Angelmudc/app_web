@@ -8,3 +8,8 @@ data/
 *.sqlite
 *.db
 *.log
+/artifacts/
+/backups/
+/tmp/
+backup_local_pre_pagos_*.dump
+backups/*.meta.json

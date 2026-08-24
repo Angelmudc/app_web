@@ -145,21 +145,6 @@ def buscar_candidata():
                     before_value,
                     obj.referencias_familiares_detalle,
                 )
-                obj.referencias_laboral = obj.contactos_referencias_laborales
-                obj.referencias_familiares = obj.referencias_familiares_detalle
-                _trace_field_apply(
-                    "referencias_laboral",
-                    "contactos_referencias_laborales",
-                    before_snapshot.get("referencias_laboral"),
-                    obj.referencias_laboral,
-                )
-                _trace_field_apply(
-                    "referencias_familiares",
-                    "referencias_familiares_detalle",
-                    before_snapshot.get("referencias_familiares"),
-                    obj.referencias_familiares,
-                )
-
                 if "disponibilidad_inicio" in request.form:
                     before_value = obj.disponibilidad_inicio
                     obj.disponibilidad_inicio = (request.form.get("disponibilidad_inicio") or "").strip()[:80] or None

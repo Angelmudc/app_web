@@ -78,8 +78,7 @@ def test_porciento_submit_sin_asignacion_activa_guarda_sin_forzar_trabajando():
         return "ok"
 
     with patch("core.handlers.procesos_transacciones_handlers.get_candidata_by_id", return_value=candidata), \
-         patch("core.handlers.procesos_transacciones_handlers.parse_date", side_effect=[date(2026, 2, 10), date(2026, 2, 15)]), \
-         patch("core.handlers.procesos_transacciones_handlers.parse_decimal", return_value=Decimal("1000.00")), \
+         patch("core.services.candidata_finance.parse_date", side_effect=[date(2026, 2, 10), date(2026, 2, 15)]), \
          patch("core.handlers.procesos_transacciones_handlers.validate_candidata_assignment_context", return_value=SimpleNamespace(can_mark_working=False, reason_message="No existe una asignación activa coherente para esta candidata.")), \
          patch("core.handlers.procesos_transacciones_handlers.utc_now_naive", return_value=datetime(2026, 3, 27, 10, 0, 0)), \
          patch("core.handlers.procesos_transacciones_handlers.db.session.commit") as commit_mock, \

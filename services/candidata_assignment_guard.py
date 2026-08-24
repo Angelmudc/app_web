@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from flask import current_app
+from sqlalchemy.orm import load_only
 
 from config_app import db
 from models import Solicitud, SolicitudCandidata
@@ -57,6 +58,33 @@ def _guard_logger_exception(msg: str, **extra):
         pass
 
 
+def _with_options_if_supported(query, *options):
+    if hasattr(query, "options"):
+        return query.options(*options)
+    return query
+
+
+def _load_only_if_supported(model, *names):
+    try:
+        attrs = [getattr(model, name) for name in names]
+    except Exception:
+        return None
+    if len(attrs) != len(names):
+        return None
+    try:
+        return load_only(*attrs)
+    except Exception:
+        return None
+
+
+def _rollback_failed_session_if_needed() -> None:
+    session = getattr(db, "session", None)
+    if session is None or not hasattr(session, "rollback"):
+        return
+    if getattr(session, "is_active", True) is False:
+        session.rollback()
+
+
 def validate_candidata_assignment_context(*, candidata_id: int, solicitud_id: int | None = None) -> CandidateAssignmentGuardResult:
     try:
         cand_id = int(candidata_id)
@@ -72,8 +100,32 @@ def validate_candidata_assignment_context(*, candidata_id: int, solicitud_id: in
                 cliente_id=None,
             )
 
+        sc_query = db.session.query(SolicitudCandidata, Solicitud)
+        sc_options = [
+            opt
+            for opt in (
+                _load_only_if_supported(
+                    SolicitudCandidata,
+                    "id",
+                    "solicitud_id",
+                    "candidata_id",
+                    "status",
+                ),
+                _load_only_if_supported(
+                    Solicitud,
+                    "id",
+                    "cliente_id",
+                    "estado",
+                    "candidata_id",
+                ),
+            )
+            if opt is not None
+        ]
         sc_query = (
-            db.session.query(SolicitudCandidata, Solicitud)
+            _with_options_if_supported(
+                sc_query,
+                *sc_options,
+            )
             .join(Solicitud, Solicitud.id == SolicitudCandidata.solicitud_id)
             .filter(
                 SolicitudCandidata.candidata_id == cand_id,
@@ -106,7 +158,22 @@ def validate_candidata_assignment_context(*, candidata_id: int, solicitud_id: in
             )
 
         # Fallback controlado por compatibilidad legacy.
-        fallback_query = Solicitud.query.filter(Solicitud.candidata_id == cand_id)
+        fallback_query = _with_options_if_supported(
+            Solicitud.query,
+            *[
+                opt
+                for opt in (
+                    _load_only_if_supported(
+                        Solicitud,
+                        "id",
+                        "cliente_id",
+                        "estado",
+                        "candidata_id",
+                    ),
+                )
+                if opt is not None
+            ],
+        ).filter(Solicitud.candidata_id == cand_id)
         if solicitud_id is not None:
             fallback_query = fallback_query.filter(Solicitud.id == int(solicitud_id))
         fallback = fallback_query.order_by(Solicitud.id.desc()).first()
@@ -156,6 +223,7 @@ def validate_candidata_assignment_context(*, candidata_id: int, solicitud_id: in
             cliente_id=None,
         )
     except Exception as exc:
+        _rollback_failed_session_if_needed()
         _guard_logger_exception(
             "Error validando contexto de asignación de candidata.",
             candidata_id=candidata_id,

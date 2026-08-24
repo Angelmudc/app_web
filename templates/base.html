@@ -261,6 +261,7 @@
       data-seg-candidatas-queue-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola_json') %}{{ url_for('admin.seguimiento_candidatas_cola_json') }}{% endif %}"
       data-seg-candidatas-full-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_cola') %}{{ url_for('admin.seguimiento_candidatas_cola') }}{% endif %}"
       data-seg-candidatas-create-url="{% if _seg_candidatas_island_enabled and has_endpoint('admin.seguimiento_candidatas_crear_caso') %}{{ url_for('admin.seguimiento_candidatas_crear_caso') }}{% endif %}"
+      data-candidata-quick-search-url="{% if _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_operativo_busqueda_rapida_json') %}{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}{% endif %}"
       data-client-public-message-island-enabled="{% if _client_public_message_island_enabled %}1{% else %}0{% endif %}"
       data-client-public-message-link-url="{% if _client_public_message_island_enabled %}{{ url_for('admin.generar_link_publico_cliente_nuevo_json') }}{% endif %}"
       data-client-public-message-debug="{% if request.host.startswith('127.0.0.1') or request.host.startswith('localhost') %}1{% else %}0{% endif %}"
@@ -288,12 +289,31 @@
     </div>
   </noscript>
 
+  {% set _admin_more_active_endpoints = [
+    'contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view',
+    'admin.monitoreo_staff', 'admin.monitoreo_logs',
+    'admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view',
+    'admin.matching_inteligente', 'admin.sugerencias_solicitud',
+    'admin.chat_staff_inbox',
+    'admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail',
+    'admin.bandeja_formularios_publicos_nuevos',
+    'admin.tienda_intereses_list', 'admin.tienda_intereses_detail',
+    'admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create',
+    'admin.catalogos_privados_detail', 'admin.catalogos_privados_edit', 'admin.catalogos_privados_update',
+    'admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update',
+    'admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles',
+    'admin.acciones_solicitudes_proceso',
+    'buscar_candidata', 'inscripcion', 'porciento', 'pagos',
+    'admin.alertas_canales'
+  ] %}
+  {% set _admin_more_is_active = request.endpoint in _admin_more_active_endpoints %}
+
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-light">
     <div class="container">
-      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('home') }}" aria-label="Inicio">
+      <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('home') }}" aria-label="Inicio - Doméstica del Cibao A&amp;D" title="Doméstica del Cibao A&amp;D">
         <i class="fa-solid fa-house-chimney"></i>
-        Doméstica del Cibao A&amp;D
+        <span>Cibao A&amp;D</span>
       </a>
 
       <div class="d-flex align-items-center gap-2 order-lg-2">
@@ -325,35 +345,6 @@
                href="{{ url_for('home') }}">Inicio</a>
           </li>
 
-          {% if has_endpoint('buscar_candidata') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='buscar_candidata' %}active{% endif %}"
-               href="{{ url_for('buscar_candidata') }}">Buscar/Editar</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('inscripcion') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='inscripcion' %}active{% endif %}"
-               href="{{ url_for('inscripcion') }}">Inscripción</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('porciento') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='porciento' %}active{% endif %}"
-               href="{{ url_for('porciento') }}">Porciento</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('pagos') %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint=='pagos' %}active{% endif %}"
-               href="{{ url_for('pagos') }}">Pagos</a>
-          </li>
-          {% endif %}
-
-
           {# ================= Admin: Solicitudes / Reportes / Registro Interno ================= #}
 
           {% if has_endpoint('admin.listar_solicitudes') %}
@@ -363,104 +354,10 @@
           </li>
           {% endif %}
 
-          {% if has_endpoint('contratos.listado_contratos_admin') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+          {% if has_endpoint('admin.candidatas_operativo_index') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view'] %}active{% endif %}"
-               href="{{ url_for('contratos.listado_contratos_admin') }}">Contratos</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.monitoreo_staff') and _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
-               href="{{ url_for('admin.monitoreo_staff') }}">Control Room</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.metricas_dashboard') and _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view'] %}active{% endif %}"
-               href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.matching_inteligente') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
-               href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.chat_staff_inbox') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.chat_staff_inbox'] %}active{% endif %}"
-               href="{{ url_for('admin.chat_staff_inbox') }}"
-               id="adminChatGlobalBadgeLink">
-              Chat staff
-              <span id="adminChatGlobalBadge"
-                    class="badge rounded-pill text-bg-danger ms-1 d-none"
-                    aria-live="polite"
-                    aria-label="Conversaciones pendientes de staff">0</span>
-            </a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.seguimiento_candidatas_cola') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}active{% endif %}"
-               href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
-              Seguimiento
-              {% if _seg_candidatas_badge_count|int > 0 %}
-                <span class="badge rounded-pill text-bg-danger ms-1">{{ _seg_candidatas_badge_count|int }}</span>
-              {% endif %}
-            </a>
-          </li>
-          {% endif %}
-
-          {% if _public_intake_badge_enabled %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.bandeja_formularios_publicos_nuevos'] %}active{% endif %}"
-               href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}">
-              Formularios nuevos
-              {% if _public_intake_badge_count|int > 0 %}
-                <span class="badge rounded-pill text-bg-danger ms-1">{{ _public_intake_badge_count|int }}</span>
-              {% endif %}
-            </a>
-          </li>
-          {% endif %}
-
-          {% if _tienda_intereses_badge_enabled %}
-          <li class="nav-item">
-            <a class="nav-link {% if request.endpoint in ['admin.tienda_intereses_list', 'admin.tienda_intereses_detail'] %}active{% endif %}"
-               href="{{ url_for('admin.tienda_intereses_list') }}">
-              Solicitudes de entrevistas
-              {% if _tienda_intereses_badge_count|int > 0 %}
-                <span class="badge rounded-pill text-bg-danger ms-1">{{ _tienda_intereses_badge_count|int }}</span>
-              {% endif %}
-            </a>
-          </li>
-          {% endif %}
-
-          {% if has_endpoint('admin.listar_usuarios') and _staff_authenticated and (_staff_role == 'owner') %}
-          <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle {% if request.endpoint in ['admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles'] %}active{% endif %}"
-               href="#"
-               id="usuariosDropdown"
-               role="button"
-               data-bs-toggle="dropdown"
-               aria-expanded="false">
-              Usuarios
-            </a>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="usuariosDropdown">
-              <li>
-                <a class="dropdown-item {% if request.endpoint == 'admin.listar_usuarios' %}active{% endif %}"
-                   href="{{ url_for('admin.listar_usuarios') }}">Listado de usuarios</a>
-              </li>
-              <li>
-                <a class="dropdown-item {% if request.endpoint == 'admin.admin_roles' %}active{% endif %}"
-                   href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
-              </li>
-            </ul>
+            <a class="nav-link {% if request.endpoint in ['admin.candidatas_operativo_index', 'admin.candidatas_operativo_detail'] %}active{% endif %}"
+               href="{{ url_for('admin.candidatas_operativo_index') }}">Domésticas</a>
           </li>
           {% endif %}
 
@@ -482,10 +379,21 @@
             {% endif %}
           {% endfor %}
 
-          {% set _show_admin_more = _staff_authenticated and (_staff_role in ['owner', 'admin']) %}
+          {% set _show_admin_more = _staff_authenticated and (
+            (has_endpoint('contratos.listado_contratos_admin') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or (has_endpoint('admin.monitoreo_staff') and (_staff_role in ['owner', 'admin']))
+            or (has_endpoint('admin.metricas_dashboard') and (_staff_role in ['owner', 'admin']))
+            or (has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or (has_endpoint('admin.chat_staff_inbox') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or (has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or _public_intake_badge_enabled
+            or _tienda_intereses_badge_enabled
+            or has_endpoint('admin.acciones_solicitudes_proceso')
+            or (_staff_role in ['owner', 'admin'])
+          ) %}
           {% if _show_admin_more %}
           <li class="nav-item dropdown">
-            <a class="nav-link dropdown-toggle"
+            <a class="nav-link dropdown-toggle {% if _admin_more_is_active or request.endpoint==ns_rep.ep or request.endpoint==ns_reg.ep %}active{% endif %}"
                href="#"
                id="adminMoreDropdown"
                role="button"
@@ -494,14 +402,73 @@
               Más
             </a>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminMoreDropdown">
-              {% if has_endpoint('admin.catalogos_privados_list') %}
+              {% if has_endpoint('contratos.listado_contratos_admin') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
               <li>
-                <a class="dropdown-item {% if request.endpoint in ['admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create', 'admin.catalogos_privados_detail', 'admin.catalogos_privados_edit', 'admin.catalogos_privados_update'] %}active{% endif %}"
-                   href="{{ url_for('admin.catalogos_privados_list') }}">Catálogos privados</a>
+                <a class="dropdown-item {% if request.endpoint in ['contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view'] %}active{% endif %}"
+                   href="{{ url_for('contratos.listado_contratos_admin') }}">Contratos</a>
               </li>
               {% endif %}
 
-              {% if has_endpoint('admin.tienda_intereses_list') %}
+              {% if has_endpoint('admin.monitoreo_staff') and (_staff_role in ['owner', 'admin']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.monitoreo_staff', 'admin.monitoreo_logs'] %}active{% endif %}"
+                   href="{{ url_for('admin.monitoreo_staff') }}">Control Room</a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.metricas_dashboard') and (_staff_role in ['owner', 'admin']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view'] %}active{% endif %}"
+                   href="{{ url_for('admin.metricas_dashboard') }}">Métricas</a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
+                   href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.chat_staff_inbox') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.chat_staff_inbox'] %}active{% endif %}"
+                   href="{{ url_for('admin.chat_staff_inbox') }}"
+                   id="adminChatGlobalBadgeLink">
+                  Chat staff
+                  <span id="adminChatGlobalBadge"
+                        class="badge rounded-pill text-bg-danger ms-1 d-none"
+                        aria-live="polite"
+                        aria-label="Conversaciones pendientes de staff">0</span>
+                </a>
+              </li>
+              {% endif %}
+
+              {% if has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}active{% endif %}"
+                   href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
+                  Seguimiento
+                  {% if _seg_candidatas_badge_count|int > 0 %}
+                    <span class="badge rounded-pill text-bg-danger ms-1">{{ _seg_candidatas_badge_count|int }}</span>
+                  {% endif %}
+                </a>
+              </li>
+              {% endif %}
+
+              {% if _public_intake_badge_enabled %}
+              <li>
+                <a class="dropdown-item {% if request.endpoint in ['admin.bandeja_formularios_publicos_nuevos'] %}active{% endif %}"
+                   href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}">
+                  Formularios nuevos
+                  {% if _public_intake_badge_count|int > 0 %}
+                    <span class="badge rounded-pill text-bg-danger ms-1">{{ _public_intake_badge_count|int }}</span>
+                  {% endif %}
+                </a>
+              </li>
+              {% endif %}
+
+              {% if _tienda_intereses_badge_enabled %}
               <li>
                 <a class="dropdown-item {% if request.endpoint in ['admin.tienda_intereses_list', 'admin.tienda_intereses_detail'] %}active{% endif %}"
                    href="{{ url_for('admin.tienda_intereses_list') }}">
@@ -513,18 +480,83 @@
               </li>
               {% endif %}
 
-              {% if has_endpoint('admin.candidatas_web_list') %}
+              {% if has_endpoint('admin.acciones_solicitudes_proceso') %}
               <li>
-                <a class="dropdown-item {% if request.endpoint in ['admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update'] %}active{% endif %}"
-                   href="{{ url_for('admin.candidatas_web_list') }}">Perfiles públicos</a>
+                <a class="dropdown-item {% if request.endpoint=='admin.acciones_solicitudes_proceso' %}active{% endif %}"
+                   href="{{ url_for('admin.acciones_solicitudes_proceso') }}">Acciones rápidas</a>
               </li>
               {% endif %}
 
-              {% if ns_rep.url %}
-              <li>
-                <a class="dropdown-item {% if request.endpoint==ns_rep.ep %}active{% endif %}"
-                   href="{{ ns_rep.url }}">Reportes</a>
-              </li>
+              {% if _staff_role in ['owner', 'admin'] %}
+              <li><hr class="dropdown-divider"></li>
+              <li><h6 class="dropdown-header">Administración</h6></li>
+
+                {% if has_endpoint('admin.catalogos_privados_list') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint in ['admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create', 'admin.catalogos_privados_detail', 'admin.catalogos_privados_edit', 'admin.catalogos_privados_update'] %}active{% endif %}"
+                     href="{{ url_for('admin.catalogos_privados_list') }}">Catálogos privados</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('admin.candidatas_web_list') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint in ['admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update'] %}active{% endif %}"
+                     href="{{ url_for('admin.candidatas_web_list') }}">Perfiles públicos</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('admin.listar_usuarios') and (_staff_role == 'owner') %}
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Usuarios</h6></li>
+                <li>
+                  <a class="dropdown-item {% if request.endpoint == 'admin.listar_usuarios' %}active{% endif %}"
+                     href="{{ url_for('admin.listar_usuarios') }}">Listado de usuarios</a>
+                </li>
+                <li>
+                  <a class="dropdown-item {% if request.endpoint == 'admin.admin_roles' %}active{% endif %}"
+                     href="{{ url_for('admin.listar_usuarios') }}">Usuarios y roles</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('buscar_candidata') or has_endpoint('inscripcion') or has_endpoint('porciento') or has_endpoint('pagos') %}
+                <li><hr class="dropdown-divider"></li>
+                <li><h6 class="dropdown-header">Herramientas legacy candidatas</h6></li>
+                {% endif %}
+
+                {% if has_endpoint('buscar_candidata') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint=='buscar_candidata' %}active{% endif %}"
+                     href="{{ url_for('buscar_candidata') }}">Buscar/Editar legacy</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('inscripcion') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint=='inscripcion' %}active{% endif %}"
+                     href="{{ url_for('inscripcion') }}">Inscripción legacy</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('porciento') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint=='porciento' %}active{% endif %}"
+                     href="{{ url_for('porciento') }}">Porciento legacy</a>
+                </li>
+                {% endif %}
+
+                {% if has_endpoint('pagos') %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint=='pagos' %}active{% endif %}"
+                     href="{{ url_for('pagos') }}">Pagos legacy</a>
+                </li>
+                {% endif %}
+
+                {% if ns_rep.url %}
+                <li>
+                  <a class="dropdown-item {% if request.endpoint==ns_rep.ep %}active{% endif %}"
+                     href="{{ ns_rep.url }}">Reportes</a>
+                </li>
+                {% endif %}
               {% endif %}
 
               {% if ns_reg.url and (_staff_role in ['owner', 'admin']) %}
@@ -544,13 +576,7 @@
           </li>
           {% endif %}
 
-          {% block quick_actions_nav %}
-            {% if has_endpoint('admin.acciones_solicitudes_proceso') and _staff_authenticated %}
-            <li class="nav-item">
-              <a class="nav-link" href="{{ url_for('admin.acciones_solicitudes_proceso') }}">Acciones Rápidas</a>
-            </li>
-            {% endif %}
-          {% endblock %}
+          {% block quick_actions_nav %}{% endblock %}
 
           {% if has_endpoint('otros_listar') %}
           <li class="nav-item">
@@ -858,6 +884,9 @@
   {% if _admin_core_runtime_enabled %}
   <script src="{{ url_for('static', filename='js/core/entity_lock.js') }}" defer></script>
   <script src="{{ url_for('static', filename='js/core/perf_toggle.js') }}" defer></script>
+  {% if _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) and has_endpoint('admin.candidatas_operativo_busqueda_rapida_json') %}
+  <script src="{{ url_for('static', filename='js/core/admin_candidate_palette.js') }}" defer></script>
+  {% endif %}
   {% endif %}
 {% block scripts %}{% endblock %}
 </body>

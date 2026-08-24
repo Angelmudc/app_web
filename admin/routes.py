@@ -42,6 +42,8 @@ from models import (
     ClienteNotificacion,
     ContratoDigital,
     Entrevista,
+    EntrevistaPregunta,
+    EntrevistaRespuesta,
     StaffAuditLog,
     StaffPresenceState,
     TrustedDevice,
@@ -52,6 +54,7 @@ from models import (
     SolicitudRecommendationSelection,
     RequestIdempotencyKey,
     DomainOutbox,
+    LlamadaCandidata,
     SeguimientoCandidataCaso,
     SeguimientoCandidataContacto,
     SeguimientoCandidataEvento,
@@ -106,10 +109,11 @@ from utils.codigo_solicitud import compose_codigo_solicitud
 from utils.compat_engine import compute_match, format_compat_result
 from utils.guards import (
     assert_candidata_no_descalificada,
+    candidata_can_create_interview,
     candidata_esta_descalificada,
     candidatas_activas_filter,
 )
-from utils.candidata_readiness import candidata_is_ready_to_send
+from utils.candidata_readiness import candidata_is_ready_to_send, candidata_referencias_complete
 from utils.candidata_completitud_audit import (
     entrevista_ok,
     binario_ok,
@@ -183,7 +187,10 @@ from utils.audit_entity import (
     candidata_entity_meta,
     log_candidata_action,
 )
-from utils.robust_save import execute_robust_save
+from utils.candidata_readiness import maybe_update_estado_por_completitud
+from utils.robust_save import execute_robust_save, safe_bytes_length
+from utils.upload_limits import MAX_FILE_BYTES, file_too_large, get_filestorage_size, human_size
+from utils.upload_security import validate_upload_file
 from utils.rbac import (
     can as rbac_can,
     has_admin_access,
@@ -215,6 +222,7 @@ from services.candidata_invariants import (
     sync_solicitud_candidatas_after_assignment as invariant_sync_solicitud_candidatas_after_assignment,
 )
 from services.candidata_assignment_guard import validate_candidata_assignment_context
+from services.candidata_state_capabilities import build_candidata_state_capabilities
 from services.solicitud_estado import (
     days_in_state,
     priority_band_for_days,
@@ -338,7 +346,16 @@ from utils.staff_mfa import (
     staff_role_requires_mfa,
     verify_totp_code,
 )
-from core.services.search import search_candidatas_limited
+from core.services.search import apply_search_to_candidata_query, search_candidatas_limited
+from core.services.candidata_quick_edit import (
+    register_candidate_call,
+    update_candidate_basic_fields,
+    update_candidate_inscription,
+    update_candidate_form_references,
+    update_candidate_references,
+)
+from core.services.candidata_finance import build_candidate_finance_snapshot, configure_candidate_finance, register_candidate_payment
+from core.services.interview_references import is_interview_reference_question
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -21858,6 +21875,2411 @@ def _links_completar_por_faltantes(candidata_id: int, faltantes: list[str]) -> l
     return links
 
 
+_CANDIDATA_CENTER_SEARCH_FIELDS = (
+    Candidata.fila,
+    Candidata.nombre_completo,
+    Candidata.edad,
+    Candidata.numero_telefono,
+    Candidata.cedula,
+    Candidata.codigo,
+    Candidata.estado,
+    Candidata.inscripcion,
+    Candidata.entrevista,
+    Candidata.direccion_completa,
+    Candidata.modalidad_trabajo_preferida,
+    Candidata.trabaja_con_ninos,
+    Candidata.trabaja_con_mascotas,
+    Candidata.puede_dormir_fuera,
+    Candidata.fecha_cambio_estado,
+    Candidata.contactos_referencias_laborales,
+    Candidata.referencias_familiares_detalle,
+    Candidata.referencias_laboral,
+    Candidata.referencias_familiares,
+)
+
+_CANDIDATA_CENTER_DETAIL_FIELDS = _CANDIDATA_CENTER_SEARCH_FIELDS + (
+    Candidata.marca_temporal,
+    Candidata.direccion_completa,
+    Candidata.modalidad_trabajo_preferida,
+    Candidata.rutas_cercanas,
+    Candidata.empleo_anterior,
+    Candidata.anos_experiencia,
+    Candidata.areas_experiencia,
+    Candidata.sabe_planchar,
+    Candidata.trabaja_con_ninos,
+    Candidata.trabaja_con_mascotas,
+    Candidata.puede_dormir_fuera,
+    Candidata.sueldo_esperado,
+    Candidata.motivacion_trabajo,
+    Candidata.disponibilidad_inicio,
+    Candidata.acepta_porcentaje_sueldo,
+    Candidata.origen_registro,
+    Candidata.creado_por_staff,
+    Candidata.creado_desde_ruta,
+    Candidata.medio_inscripcion,
+    Candidata.monto,
+    Candidata.fecha,
+    Candidata.fecha_de_pago,
+    Candidata.inicio,
+    Candidata.monto_total,
+    Candidata.porciento,
+    Candidata.calificacion,
+    Candidata.nota_descalificacion,
+    Candidata.fecha_cambio_estado,
+    Candidata.usuario_cambio_estado,
+    Candidata.fecha_finalizacion_proceso,
+    Candidata.grupos_empleo,
+    Candidata.compat_test_candidata_json,
+    Candidata.compat_test_candidata_at,
+    Candidata.compat_fortalezas,
+    Candidata.compat_ritmo_preferido,
+    Candidata.compat_estilo_trabajo,
+    Candidata.compat_orden_detalle_nivel,
+    Candidata.compat_relacion_ninos,
+    Candidata.compat_limites_no_negociables,
+    Candidata.compat_disponibilidad_dias,
+    Candidata.compat_disponibilidad_horario,
+)
+
+_CANDIDATA_CENTER_DOC_LABELS = {
+    "depuracion": "Depuración",
+    "perfil": "Perfil",
+    "cedula1": "Cédula frontal",
+    "cedula2": "Cédula trasera",
+}
+
+_CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS = {
+    "domestica": "doméstica",
+    "enfermera": "enfermera",
+    "empleo_general": "empleo general",
+}
+
+_CANDIDATA_CENTER_READINESS_LABELS = {
+    "codigo": "Código",
+    "inscripcion": "Inscripción",
+    "referencias_laboral": "Referencia laboral",
+    "referencias_familiares": "Referencia familiar",
+    "entrevista": "Entrevista",
+    "depuracion": "Depuración",
+    "perfil": "Perfil",
+    "cedula1": "Cédula frontal",
+    "cedula2": "Cédula trasera",
+}
+
+_CANDIDATA_CENTER_RECENT_SESSION_KEY = "admin_candidatas_recent_v1"
+_CANDIDATA_CENTER_PROCESS_STATES = ("en_proceso", "proceso_inscripcion", "inscrita_incompleta")
+_CANDIDATA_CENTER_REF_PLACEHOLDERS = ("none", "node", "no", "n/a", "na", "null", "sin", "pendiente", "vacio", "vacío", "--", "-")
+_CANDIDATA_CENTER_FILTERS = {
+    "todas": "Todas",
+    "por_completar": "Por completar",
+    "proceso": "En proceso",
+    "listas": "Listas",
+    "trabajando": "Trabajando",
+    "descalificadas": "Descalificadas",
+}
+_CANDIDATA_CENTER_QUEUE_CRITERIA = {
+    "por_completar": "No descalificadas ni trabajando con algun requisito de preparacion pendiente: codigo, inscripcion, referencias, entrevista o documentos.",
+    "seguimiento": "Casos abiertos de seguimiento no fusionados con proxima accion vencida o pendiente para hoy.",
+    "proceso": "Estados en_proceso, proceso_inscripcion o inscrita_incompleta.",
+    "listas": "Estado lista_para_trabajar.",
+    "trabajando": "Estado trabajando.",
+    "descalificadas": "Estado descalificada; visible como cola para roles owner/admin.",
+}
+_CANDIDATA_CENTER_OPEN_TRACKING_STATES = ("cerrado_exitoso", "cerrado_no_exitoso", "duplicado")
+_CANDIDATA_HISTORY_MONTHS_ES = (
+    "",
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
+_CANDIDATA_HISTORY_ACTION_LABELS = {
+    "CANDIDATA_CALL_REGISTER": "Registró una llamada",
+    "CANDIDATA_CENTER_EDIT": "Actualizó datos de la candidata",
+    "CANDIDATA_CREATE_FAIL": "Intentó registrar a la candidata",
+    "CANDIDATA_CREATE_OK": "Registró a la candidata",
+    "CANDIDATA_DESCALIFICAR": "Descalificó a la candidata",
+    "CANDIDATA_DESQUALIFICAR": "Descalificó a la candidata",
+    "CANDIDATA_DESQUALIFY": "Descalificó a la candidata",
+    "CANDIDATA_EDIT": "Actualizó datos de la candidata",
+    "CANDIDATA_ESTADO_LISTA": "Marcó lista para trabajar",
+    "CANDIDATA_ESTADO_TRABAJANDO": "Marcó trabajando",
+    "CANDIDATA_INSCRIPTION_EDIT": "Actualizó la inscripción",
+    "CANDIDATA_INTERVIEW_LEGACY_SAVE": "Guardó la entrevista",
+    "CANDIDATA_INTERVIEW_NEW_CREATE": "Registró la entrevista",
+    "CANDIDATA_MARK_LISTA": "Marcó lista para trabajar",
+    "CANDIDATA_MARK_TRABAJANDO": "Marcó trabajando",
+    "CANDIDATA_REACTIVATE": "Reactivó a la candidata",
+    "CANDIDATA_REACTIVAR": "Reactivó a la candidata",
+    "CANDIDATA_REFERENCES_EDIT": "Actualizó referencias",
+    "CANDIDATA_UPLOAD_DOCS": "Actualizó documentos",
+    "CANDIDATA_UPLOAD_DOCS_SAVE_FAIL": "Intentó actualizar documentos",
+    "CANDIDATA_UPLOAD_DOCS_SIZE_REJECT": "Intentó subir documentos",
+    "MATCHING_SEND": "Envió la candidata a matching",
+}
+_CANDIDATA_HISTORY_DEDUPE_GROUPS = {
+    "CANDIDATA_DESCALIFICAR": "disqualify",
+    "CANDIDATA_DESQUALIFICAR": "disqualify",
+    "CANDIDATA_DESQUALIFY": "disqualify",
+    "CANDIDATA_ESTADO_LISTA": "ready",
+    "CANDIDATA_MARK_LISTA": "ready",
+    "CANDIDATA_ESTADO_TRABAJANDO": "working",
+    "CANDIDATA_MARK_TRABAJANDO": "working",
+    "CANDIDATA_REACTIVATE": "reactivate",
+    "CANDIDATA_REACTIVAR": "reactivate",
+}
+
+
+def _center_bool_label(value) -> str:
+    if value is True:
+        return "Sí"
+    if value is False:
+        return "No"
+    return "No informado"
+
+
+def _candidata_history_action_label(action_type: str | None, *, success: bool = True) -> str:
+    action = str(action_type or "").strip().upper()
+    label = _CANDIDATA_HISTORY_ACTION_LABELS.get(action)
+    if not label:
+        words = [part.lower() for part in action.replace("-", "_").split("_") if part and part.upper() != "CANDIDATA"]
+        label = f"Registró actividad: {' '.join(words)}" if words else "Registró actividad de la candidata"
+    if not success and not label.startswith(("Intentó", "No pudo")):
+        label = f"No pudo completar: {label[:1].lower()}{label[1:]}"
+    return label
+
+
+def _candidata_history_datetime(dt: datetime | None) -> str:
+    dt_rd = to_rd(dt)
+    if dt_rd is None:
+        return "sin fecha"
+    hour = dt_rd.hour % 12 or 12
+    minute = f"{dt_rd.minute:02d}"
+    suffix = "a. m." if dt_rd.hour < 12 else "p. m."
+    month = _CANDIDATA_HISTORY_MONTHS_ES[dt_rd.month]
+    return f"{dt_rd.day} de {month} de {dt_rd.year} · {hour}:{minute} {suffix}"
+
+
+def _candidata_history_actor(log: StaffAuditLog) -> str:
+    username = str(getattr(getattr(log, "actor_user", None), "username", "") or "").strip()
+    if username:
+        return username
+    role = str(getattr(log, "actor_role", "") or "").strip().lower()
+    role_labels = {
+        "owner": "Owner",
+        "admin": "Admin",
+        "staff": "Staff",
+        "secretaria": "Staff",
+        "secretario": "Staff",
+    }
+    return role_labels.get(role, role[:1].upper() + role[1:] if role else "Staff")
+
+
+def _candidata_history_subject(candidata: Candidata) -> str:
+    chunks = [
+        str(getattr(candidata, "codigo", "") or "").strip(),
+        str(getattr(candidata, "nombre_completo", "") or "").strip(),
+    ]
+    return " ".join(chunk for chunk in chunks if chunk) or f"Candidata #{getattr(candidata, 'fila', '')}"
+
+
+def _candidata_history_detail(log: StaffAuditLog, candidata: Candidata) -> str:
+    metadata = dict(getattr(log, "metadata_json", {}) or {})
+    action = str(getattr(log, "action_type", "") or "").strip().upper()
+    for key in ("motivo", "reason", "nota_descalificacion"):
+        detail = str(metadata.get(key) or "").strip()
+        if detail:
+            return f"Motivo: {detail}"
+    if action in {"CANDIDATA_DESCALIFICAR", "CANDIDATA_DESQUALIFICAR", "CANDIDATA_DESQUALIFY"}:
+        note = str(getattr(candidata, "nota_descalificacion", "") or "").strip()
+        if note:
+            return f"Motivo: {note}"
+    summary = str(getattr(log, "summary", "") or "").strip()
+    if summary and not summary.upper().startswith("CANDIDATA_") and summary != action:
+        return summary
+    return ""
+
+
+def _candidata_history_dedupe_key(log: StaffAuditLog) -> tuple | None:
+    action = str(getattr(log, "action_type", "") or "").strip().upper()
+    group = _CANDIDATA_HISTORY_DEDUPE_GROUPS.get(action)
+    created_at = getattr(log, "created_at", None)
+    if not group or created_at is None:
+        return None
+    bucket = (
+        (
+            created_at.year,
+            created_at.month,
+            created_at.day,
+            created_at.hour,
+            created_at.minute,
+            created_at.second // 10,
+        )
+        if isinstance(created_at, datetime)
+        else 0
+    )
+    return (group, str(getattr(log, "entity_id", "") or ""), getattr(log, "actor_user_id", None), str(getattr(log, "actor_role", "") or ""), bucket)
+
+
+def _candidata_history_items(logs: list[StaffAuditLog] | None, candidata: Candidata) -> list[dict]:
+    items: list[dict] = []
+    seen: set[tuple] = set()
+    subject = _candidata_history_subject(candidata)
+    for log in logs or []:
+        dedupe_key = _candidata_history_dedupe_key(log)
+        if dedupe_key and dedupe_key in seen:
+            continue
+        if dedupe_key:
+            seen.add(dedupe_key)
+        success_value = getattr(log, "success", True)
+        success = True if success_value is None else bool(success_value)
+        items.append(
+            {
+                "action": _candidata_history_action_label(getattr(log, "action_type", None), success=success),
+                "subject": subject,
+                "actor": _candidata_history_actor(log),
+                "created_at": _candidata_history_datetime(getattr(log, "created_at", None)),
+                "detail": _candidata_history_detail(log, candidata),
+            }
+        )
+    return items
+
+
+def _center_text(value, max_len: int | None = None) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if max_len and len(text) > max_len:
+        return text[: max(0, max_len - 1)].rstrip() + "…"
+    return text
+
+
+def _center_form_value(value):
+    if value is True:
+        return "si"
+    if value is False:
+        return "no"
+    return ""
+
+
+def _center_state_label(value) -> str:
+    labels = {
+        "en_proceso": "En proceso",
+        "proceso_inscripcion": "Inscripción en proceso",
+        "inscrita": "Inscrita",
+        "inscrita_incompleta": "Inscripción incompleta",
+        "lista_para_trabajar": "Lista para trabajar",
+        "trabajando": "Trabajando",
+        "descalificada": "Descalificada",
+    }
+    text = str(value or "").strip()
+    return labels.get(text, text.replace("_", " ").strip().capitalize() or "Sin estado")
+
+
+def _candidata_center_return_path(fila: int) -> str:
+    return url_for("admin.candidatas_operativo_detail", fila=int(fila))
+
+
+def _candidata_center_staff_role() -> str:
+    return (
+        str(getattr(current_user, "role", "") or "").strip().lower()
+        or str(session.get("role", "") or "").strip().lower()
+    )
+
+
+def _candidata_center_can_view_descalificadas() -> bool:
+    return _candidata_center_staff_role() in {"owner", "admin"}
+
+
+def _candidata_center_clean_list_url(raw: str | None = None) -> str:
+    candidate = (raw if raw is not None else request.args.get("next") or "").strip()
+    if candidate.startswith("/admin/candidatas") and not candidate.startswith("//"):
+        return candidate
+    return url_for("admin.candidatas_operativo_index")
+
+
+def _candidata_center_current_list_url() -> str:
+    full_path = request.full_path or request.path
+    return full_path[:-1] if full_path.endswith("?") else full_path
+
+
+def _candidata_center_recent_key() -> str:
+    uid = str(getattr(current_user, "id", "") or session.get("usuario") or "anon").strip()[:80]
+    return f"{_CANDIDATA_CENTER_RECENT_SESSION_KEY}:{uid or 'anon'}"
+
+
+def _candidata_center_touch_recent(fila: int) -> None:
+    key = _candidata_center_recent_key()
+    current = []
+    for raw in session.get(key, []) or []:
+        try:
+            value = int(raw)
+        except Exception:
+            continue
+        if value > 0 and value != int(fila) and value not in current:
+            current.append(value)
+    session[key] = [int(fila)] + current[:9]
+    session.modified = True
+
+
+def _candidata_center_recent_rows(limit: int = 8) -> list[dict]:
+    key = _candidata_center_recent_key()
+    ids = []
+    for raw in session.get(key, []) or []:
+        try:
+            value = int(raw)
+        except Exception:
+            continue
+        if value > 0 and value not in ids:
+            ids.append(value)
+    ids = ids[:10]
+    if not ids:
+        return []
+    rows = (
+        Candidata.query.options(load_only(*_CANDIDATA_CENTER_SEARCH_FIELDS))
+        .filter(Candidata.fila.in_(ids))
+        .all()
+    )
+    by_id = {int(c.fila): c for c in rows}
+    valid_ids = [fila for fila in ids if fila in by_id]
+    if valid_ids != ids:
+        session[key] = valid_ids
+        session.modified = True
+    max_rows = max(1, min(int(limit or 8), 10))
+    return [_candidata_center_light_row(by_id[fila]) for fila in valid_ids[:max_rows]]
+
+
+def _candidata_center_ref_ok_expr(*cols):
+    value = func.lower(func.trim(func.coalesce(*cols, "")))
+    return and_(value != "", value.notin_(_CANDIDATA_CENTER_REF_PLACEHOLDERS))
+
+
+def _candidata_center_interviews_subquery():
+    return (
+        db.session.query(
+            Entrevista.candidata_id.label("candidata_id"),
+            func.count(Entrevista.id).label("entrevistas_count"),
+            func.max(Entrevista.creada_en).label("last_interview_at"),
+        )
+        .group_by(Entrevista.candidata_id)
+        .subquery()
+    )
+
+
+def _candidata_center_tracking_subquery():
+    return (
+        db.session.query(
+            SeguimientoCandidataCaso.candidata_id.label("candidata_id"),
+            func.max(func.coalesce(SeguimientoCandidataCaso.last_movement_at, SeguimientoCandidataCaso.updated_at)).label("last_tracking_at"),
+            func.min(SeguimientoCandidataCaso.due_at).label("next_due_at"),
+        )
+        .filter(
+            SeguimientoCandidataCaso.candidata_id.isnot(None),
+            SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+        )
+        .group_by(SeguimientoCandidataCaso.candidata_id)
+        .subquery()
+    )
+
+
+def _candidata_center_listing_base():
+    doc_lengths = _candidata_center_doc_lengths_subquery()
+    entrevistas_counts = _candidata_center_interviews_subquery()
+    tracking = _candidata_center_tracking_subquery()
+    query = (
+        Candidata.query.options(load_only(*_CANDIDATA_CENTER_SEARCH_FIELDS))
+        .outerjoin(doc_lengths, doc_lengths.c.fila == Candidata.fila)
+        .outerjoin(entrevistas_counts, entrevistas_counts.c.candidata_id == Candidata.fila)
+        .outerjoin(tracking, tracking.c.candidata_id == Candidata.fila)
+        .add_columns(
+            func.coalesce(entrevistas_counts.c.entrevistas_count, 0).label("entrevistas_count"),
+            doc_lengths.c.depuracion_len,
+            doc_lengths.c.perfil_len,
+            doc_lengths.c.cedula1_len,
+            doc_lengths.c.cedula2_len,
+            tracking.c.last_tracking_at,
+            tracking.c.next_due_at,
+        )
+    )
+    ctx = SimpleNamespace(doc_lengths=doc_lengths, entrevistas=entrevistas_counts, tracking=tracking)
+    return query, ctx
+
+
+def _candidata_center_ready_missing_expr(ctx):
+    entrevista_count = func.coalesce(ctx.entrevistas.c.entrevistas_count, 0)
+    entrevista_legacy = func.trim(func.coalesce(Candidata.entrevista, ""))
+    has_interview = or_(
+        and_(entrevista_legacy != "", func.lower(entrevista_legacy).notin_(_CANDIDATA_CENTER_REF_PLACEHOLDERS)),
+        entrevista_count > 0,
+    )
+    return or_(
+        func.trim(func.coalesce(Candidata.codigo, "")) == "",
+        Candidata.inscripcion.isnot(True),
+        ~_candidata_center_ref_ok_expr(Candidata.referencias_laboral),
+        ~_candidata_center_ref_ok_expr(Candidata.referencias_familiares),
+        ~has_interview,
+        func.coalesce(ctx.doc_lengths.c.depuracion_len, 0) <= 0,
+        func.coalesce(ctx.doc_lengths.c.perfil_len, 0) <= 0,
+        func.coalesce(ctx.doc_lengths.c.cedula1_len, 0) <= 0,
+        func.coalesce(ctx.doc_lengths.c.cedula2_len, 0) <= 0,
+    )
+
+
+def _candidata_center_apply_filters(query, ctx, *, chip: str, args):
+    chip = chip if chip in _CANDIDATA_CENTER_FILTERS else "todas"
+    if chip == "por_completar":
+        query = query.filter(Candidata.estado.notin_(["descalificada", "trabajando"]))
+        query = query.filter(_candidata_center_ready_missing_expr(ctx))
+    elif chip == "proceso":
+        query = query.filter(Candidata.estado.in_(_CANDIDATA_CENTER_PROCESS_STATES))
+    elif chip == "listas":
+        query = query.filter(Candidata.estado == "lista_para_trabajar")
+    elif chip == "trabajando":
+        query = query.filter(Candidata.estado == "trabajando")
+    elif chip == "descalificadas":
+        query = query.filter(Candidata.estado == "descalificada")
+
+    estado = (args.get("estado") or "").strip()
+    if estado:
+        query = query.filter(Candidata.estado == estado)
+
+    prep = (args.get("preparacion") or "").strip()
+    if prep == "lista":
+        query = query.filter(~_candidata_center_ready_missing_expr(ctx))
+    elif prep == "pendiente":
+        query = query.filter(_candidata_center_ready_missing_expr(ctx))
+
+    inscripcion = (args.get("inscripcion") or "").strip()
+    if inscripcion == "si":
+        query = query.filter(Candidata.inscripcion.is_(True))
+    elif inscripcion == "no":
+        query = query.filter(Candidata.inscripcion.isnot(True))
+
+    entrevista = (args.get("entrevista") or "").strip()
+    entrevista_legacy = func.trim(func.coalesce(Candidata.entrevista, ""))
+    has_interview = or_(
+        func.coalesce(ctx.entrevistas.c.entrevistas_count, 0) > 0,
+        and_(entrevista_legacy != "", func.lower(entrevista_legacy).notin_(_CANDIDATA_CENTER_REF_PLACEHOLDERS)),
+    )
+    if entrevista == "si":
+        query = query.filter(has_interview)
+    elif entrevista == "no":
+        query = query.filter(~has_interview)
+
+    if (args.get("documentos") or "").strip() == "pendientes":
+        query = query.filter(or_(
+            func.coalesce(ctx.doc_lengths.c.depuracion_len, 0) <= 0,
+            func.coalesce(ctx.doc_lengths.c.perfil_len, 0) <= 0,
+            func.coalesce(ctx.doc_lengths.c.cedula1_len, 0) <= 0,
+            func.coalesce(ctx.doc_lengths.c.cedula2_len, 0) <= 0,
+        ))
+
+    zona = (args.get("zona") or "").strip()[:80]
+    if zona:
+        like = f"%{zona}%"
+        query = query.filter(or_(Candidata.direccion_completa.ilike(like), Candidata.rutas_cercanas.ilike(like)))
+
+    modalidad = (args.get("modalidad") or "").strip()[:80]
+    if modalidad:
+        query = query.filter(Candidata.modalidad_trabajo_preferida.ilike(f"%{modalidad}%"))
+
+    for key, column in (
+        ("ninos", Candidata.trabaja_con_ninos),
+        ("mascotas", Candidata.trabaja_con_mascotas),
+        ("dormir_fuera", Candidata.puede_dormir_fuera),
+    ):
+        value = (args.get(key) or "").strip()
+        if value == "si":
+            query = query.filter(column.is_(True))
+        elif value == "no":
+            query = query.filter(column.is_(False))
+
+    return query
+
+
+def _candidata_center_row_from_tuple(row, *, list_url: str | None = None) -> dict:
+    cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len, last_tracking_at, next_due_at = row
+    doc_flags = {
+        "depuracion": binario_ok(dep_len),
+        "perfil": binario_ok(perfil_len),
+        "cedula1": binario_ok(ced1_len),
+        "cedula2": binario_ok(ced2_len),
+    }
+    readiness = _candidata_center_build_readiness(cand, int(entrevistas_count or 0), doc_flags)
+    completed = sum(1 for ok in readiness["flags"].values() if ok)
+    total = len(readiness["flags"])
+    params = {"fila": cand.fila}
+    if list_url:
+        params["next"] = list_url
+    return {
+        "candidata": cand,
+        "detail_url": url_for("admin.candidatas_operativo_detail", **params),
+        "readiness": readiness,
+        "completed": completed,
+        "total": total,
+        "completed_label": f"{completed}/{total}",
+        "estado_label": _center_state_label(cand.estado),
+        "last_activity": last_tracking_at or next_due_at or getattr(cand, "fecha_cambio_estado", None) or getattr(cand, "marca_temporal", None),
+        "next_due_at": next_due_at,
+    }
+
+
+def _candidata_center_due_label(due_at) -> str:
+    if not due_at:
+        return "Sin vencimiento"
+    now = utc_now_naive()
+    delta = now - due_at
+    if delta.total_seconds() >= 0:
+        hours = int(delta.total_seconds() // 3600)
+        if hours < 1:
+            return "Vencio hace minutos"
+        if hours < 24:
+            return f"Vencio hace {hours} h"
+        days = int(hours // 24)
+        if days == 1:
+            return "Vencio ayer"
+        return f"Vencio hace {days} dias"
+    ahead = due_at - now
+    hours = int(ahead.total_seconds() // 3600)
+    if due_at.date() == now.date():
+        return "Vence hoy"
+    if hours < 48:
+        return "Vence manana"
+    return f"Vence en {max(2, int(hours // 24))} dias"
+
+
+def _candidata_center_dashboard_tracking(limit: int = 5) -> list[dict]:
+    today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
+    cases = (
+        SeguimientoCandidataCaso.query.options(
+            load_only(
+                SeguimientoCandidataCaso.id,
+                SeguimientoCandidataCaso.candidata_id,
+                SeguimientoCandidataCaso.nombre_contacto,
+                SeguimientoCandidataCaso.proxima_accion_tipo,
+                SeguimientoCandidataCaso.proxima_accion_detalle,
+                SeguimientoCandidataCaso.due_at,
+                SeguimientoCandidataCaso.last_movement_at,
+            ),
+            joinedload(SeguimientoCandidataCaso.candidata).load_only(
+                Candidata.fila,
+                Candidata.nombre_completo,
+                Candidata.codigo,
+                Candidata.estado,
+            ),
+        )
+        .filter(
+            SeguimientoCandidataCaso.estado.notin_(_CANDIDATA_CENTER_OPEN_TRACKING_STATES),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+            SeguimientoCandidataCaso.due_at.isnot(None),
+            SeguimientoCandidataCaso.due_at <= today_end,
+        )
+        .order_by(SeguimientoCandidataCaso.due_at.asc(), SeguimientoCandidataCaso.id.asc())
+        .limit(max(1, min(int(limit or 5), 10)))
+        .all()
+    )
+    items = []
+    for case_row in cases:
+        cand = case_row.candidata
+        fila = int(getattr(cand, "fila", 0) or getattr(case_row, "candidata_id", 0) or 0)
+        items.append(
+            {
+                "kind": "seguimiento",
+                "priority": 10,
+                "fila": fila,
+                "case_id": int(case_row.id),
+                "nombre": (getattr(cand, "nombre_completo", None) or case_row.nombre_contacto or "Contacto sin nombre"),
+                "codigo": getattr(cand, "codigo", None) or "",
+                "estado": getattr(cand, "estado", None) or "",
+                "title": "Seguimiento vencido",
+                "detail": case_row.proxima_accion_detalle or case_row.proxima_accion_tipo or "Caso abierto con accion pendiente.",
+                "meta": _candidata_center_due_label(case_row.due_at),
+                "detail_url": (
+                    url_for("admin.candidatas_operativo_detail", fila=fila)
+                    if fila
+                    else url_for("admin.seguimiento_candidatas_caso_detail", caso_id=int(case_row.id))
+                ),
+                "action_url": url_for("admin.seguimiento_candidatas_caso_detail", caso_id=int(case_row.id)),
+                "action_label": "Abrir caso",
+            }
+        )
+    return items
+
+
+def _candidata_center_dashboard_incomplete(limit: int = 5) -> list[dict]:
+    base, ctx = _candidata_center_listing_base()
+    rows = (
+        _candidata_center_apply_filters(base, ctx, chip="por_completar", args={})
+        .order_by(
+            case(
+                (_candidata_center_ready_missing_expr(ctx), 0),
+                else_=1,
+            ),
+            desc(func.coalesce(ctx.tracking.c.next_due_at, Candidata.fecha_cambio_estado, Candidata.marca_temporal)),
+            Candidata.fila.desc(),
+        )
+        .limit(max(1, min(int(limit or 5), 10)))
+        .all()
+    )
+    items = []
+    for raw in rows:
+        row = _candidata_center_row_from_tuple(raw)
+        cand = row["candidata"]
+        missing = list(row["readiness"].get("missing") or [])
+        first = missing[0] if missing else ""
+        label = row["readiness"]["labels"].get(first, first)
+        action = _candidata_center_next_action(cand, row["readiness"], None, _candidata_center_legacy_urls(int(cand.fila)))
+        items.append(
+            {
+                "kind": "por_completar",
+                "priority": 30,
+                "fila": int(cand.fila),
+                "nombre": cand.nombre_completo or "",
+                "codigo": cand.codigo or "",
+                "estado": cand.estado or "",
+                "title": f"Falta {label.lower()}" if label else "Preparacion incompleta",
+                "detail": "Ademas faltan {} requisitos".format(max(0, len(missing) - 1)) if len(missing) > 1 else "Siguiente requisito pendiente.",
+                "meta": row["completed_label"],
+                "detail_url": row["detail_url"],
+                "action_url": action.get("url") or row["detail_url"],
+                "action_label": action.get("label") or "Continuar",
+            }
+        )
+    return items
+
+
+def _candidata_center_dashboard_activity(limit: int = 6) -> list[dict]:
+    logs = (
+        StaffAuditLog.query.options(
+            load_only(
+                StaffAuditLog.id,
+                StaffAuditLog.created_at,
+                StaffAuditLog.action_type,
+                StaffAuditLog.summary,
+                StaffAuditLog.actor_role,
+                StaffAuditLog.entity_type,
+                StaffAuditLog.entity_id,
+            ),
+            joinedload(StaffAuditLog.actor_user).load_only(StaffUser.id, StaffUser.username),
+        )
+        .filter(StaffAuditLog.entity_type.in_(["candidata", "Candidata"]))
+        .filter(StaffAuditLog.success.is_(True))
+        .order_by(StaffAuditLog.created_at.desc(), StaffAuditLog.id.desc())
+        .limit(max(1, min(int(limit or 6), 10)))
+        .all()
+    )
+    items = []
+    for log in logs:
+        fila = _safe_int(log.entity_id, default=0)
+        items.append(
+            {
+                "created_at": log.created_at,
+                "actor": log.actor_user.username if log.actor_user else (log.actor_role or "staff"),
+                "summary": log.summary or log.action_type or "Actividad de candidata",
+                "detail_url": url_for("admin.candidatas_operativo_detail", fila=fila) if fila > 0 else "",
+            }
+        )
+    return items
+
+
+def _candidata_center_dashboard_summary(counts: dict) -> dict:
+    tracking_items = _candidata_center_dashboard_tracking(limit=5)
+    incomplete_items = _candidata_center_dashboard_incomplete(limit=6)
+    by_fila: dict[int, dict] = {}
+    for item in tracking_items + incomplete_items:
+        fila = int(item.get("fila") or 0)
+        if fila <= 0:
+            continue
+        existing = by_fila.get(fila)
+        if existing is None or int(item.get("priority", 99)) < int(existing.get("priority", 99)):
+            by_fila[fila] = item
+        elif existing is not None and existing.get("kind") == "seguimiento" and item.get("kind") == "por_completar":
+            existing["detail"] = f"{existing.get('detail') or 'Seguimiento pendiente'}; {item.get('title') or 'preparacion incompleta'}"
+    priority_items = sorted(by_fila.values(), key=lambda item: (int(item.get("priority", 99)), item.get("meta") or "", item.get("nombre") or ""))[:8]
+    return {
+        "attention_kpis": [
+            {
+                "key": "seguimiento",
+                "label": "Seguimientos vencidos",
+                "count": int(counts.get("seguimiento", 0) or 0),
+                "url": url_for("admin.seguimiento_candidatas_cola"),
+                "tone": "danger",
+                "note": "Casos abiertos con proxima accion hasta hoy.",
+            },
+            {
+                "key": "por_completar",
+                "label": "Por completar",
+                "count": int(counts.get("por_completar", 0) or 0),
+                "url": url_for("admin.candidatas_operativo_index", filtro="por_completar"),
+                "tone": "warning",
+                "note": "Mismo criterio del filtro operativo.",
+            },
+        ],
+        "inventory_kpis": [
+            {
+                "key": "listas",
+                "label": "Listas para trabajar",
+                "count": int(counts.get("listas", 0) or 0),
+                "url": url_for("admin.candidatas_operativo_index", filtro="listas"),
+            },
+            {
+                "key": "trabajando",
+                "label": "Trabajando",
+                "count": int(counts.get("trabajando", 0) or 0),
+                "url": url_for("admin.candidatas_operativo_index", filtro="trabajando"),
+            },
+        ],
+        "secondary_kpis": [
+            {
+                "key": "proceso",
+                "label": "En proceso",
+                "count": int(counts.get("proceso", 0) or 0),
+                "url": url_for("admin.candidatas_operativo_index", filtro="proceso"),
+                "note": "Filtro secundario; normalmente ya cae dentro de Por completar.",
+            }
+        ],
+        "tracking_items": tracking_items,
+        "priority_items": priority_items,
+        "activity_items": _candidata_center_dashboard_activity(limit=6),
+        "priority_explanation": "Orden deterministico: seguimiento vencido; luego candidatas por completar segun el primer requisito canonico pendiente. Cada candidata aparece una sola vez.",
+    }
+
+
+def _candidata_center_light_row(cand) -> dict:
+    estado = str(getattr(cand, "estado", "") or "")
+    return {
+        "fila": int(cand.fila),
+        "nombre": cand.nombre_completo or "",
+        "codigo": cand.codigo or "",
+        "edad": cand.edad or "",
+        "telefono": cand.numero_telefono or "",
+        "estado": estado,
+        "estado_label": _center_state_label(estado),
+        "detail_url": url_for("admin.candidatas_operativo_detail", fila=int(cand.fila)),
+    }
+
+
+def _candidata_center_listing_rows(q: str, chip: str, page: int, args) -> dict:
+    page = max(1, int(page or 1))
+    per_page = 25
+    list_url = _candidata_center_current_list_url()
+    base, ctx = _candidata_center_listing_base()
+    if q:
+        base = apply_search_to_candidata_query(base, q)
+
+    filtered = _candidata_center_apply_filters(base, ctx, chip=chip, args=args)
+    if q:
+        filtered = filtered.order_by(Candidata.nombre_completo.asc(), Candidata.fila.desc())
+    else:
+        filtered = filtered.order_by(Candidata.fila.desc())
+    pagination = filtered.paginate(page=page, per_page=per_page, error_out=False)
+    return {
+        "rows": [_candidata_center_row_from_tuple(row, list_url=list_url) for row in pagination.items],
+        "total": int(pagination.total or 0),
+        "page": int(pagination.page or page),
+        "per_page": per_page,
+        "pages": int(pagination.pages or 0),
+    }
+
+
+def _candidata_center_queue_counts() -> dict:
+    base, ctx = _candidata_center_listing_base()
+    counts = {
+        "todas": int(Candidata.query.count() or 0),
+        "por_completar": int(
+            _candidata_center_apply_filters(base, ctx, chip="por_completar", args={}).with_entities(func.count(Candidata.fila)).scalar() or 0
+        ),
+        "proceso": int(Candidata.query.filter(Candidata.estado.in_(_CANDIDATA_CENTER_PROCESS_STATES)).count() or 0),
+        "listas": int(Candidata.query.filter(Candidata.estado == "lista_para_trabajar").count() or 0),
+        "trabajando": int(Candidata.query.filter(Candidata.estado == "trabajando").count() or 0),
+    }
+    if _candidata_center_can_view_descalificadas():
+        counts["descalificadas"] = int(Candidata.query.filter(Candidata.estado == "descalificada").count() or 0)
+    today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
+    counts["seguimiento"] = int(
+        SeguimientoCandidataCaso.query.filter(
+            SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+            SeguimientoCandidataCaso.due_at.isnot(None),
+            SeguimientoCandidataCaso.due_at <= today_end,
+        ).count() or 0
+    )
+    return counts
+
+
+def _candidata_center_next_action(candidata, readiness: dict, seguimiento, legacy_urls: dict) -> dict:
+    estado = str(getattr(candidata, "estado", "") or "").strip().lower()
+    if estado == "descalificada":
+        return {
+            "title": "Descalificada",
+            "detail": "Revisar motivo operativo antes de continuar preparación.",
+            "url": None,
+            "label": "",
+            "kind": "descalificada",
+        }
+    if estado == "trabajando":
+        return {
+            "title": "Trabajando",
+            "detail": "No hay acción de preparación como prioridad mientras está trabajando.",
+            "url": None,
+            "label": "",
+            "kind": "trabajando",
+        }
+    missing = set(readiness.get("missing") or [])
+    order = [
+        ("codigo", "Falta código", legacy_urls.get("inscription"), "Completar inscripción"),
+        ("inscripcion", "Falta inscripción", legacy_urls.get("inscription"), "Completar inscripción"),
+        ("referencias_laboral", "Falta referencia laboral", legacy_urls.get("references"), "Editar referencias"),
+        ("referencias_familiares", "Falta referencia familiar", legacy_urls.get("references"), "Editar referencias"),
+        ("entrevista", "Falta entrevista", legacy_urls.get("new_interview"), "Entrevistar"),
+        ("depuracion", "Falta depuración", legacy_urls.get("documents"), "Subir documento"),
+        ("perfil", "Falta perfil", legacy_urls.get("documents"), "Subir documento"),
+        ("cedula1", "Falta cédula frontal", legacy_urls.get("documents"), "Subir documento"),
+        ("cedula2", "Falta cédula trasera", legacy_urls.get("documents"), "Subir documento"),
+    ]
+    for key, title, url, label in order:
+        if key in missing:
+            return {"title": title, "detail": "Próximo requisito de preparación.", "url": url, "label": label, "kind": key}
+    if seguimiento and getattr(seguimiento, "due_at", None):
+        return {
+            "title": "Seguimiento pendiente",
+            "detail": getattr(seguimiento, "proxima_accion_detalle", None) or getattr(seguimiento, "proxima_accion_tipo", None) or "Caso abierto con próxima acción.",
+            "url": legacy_urls.get("tracking"),
+            "label": "Abrir seguimiento",
+            "kind": "seguimiento",
+        }
+    return {
+        "title": "Lista para trabajar",
+        "detail": "No hay acciones de preparación pendientes.",
+        "url": None,
+        "label": "",
+        "kind": "lista",
+    }
+
+
+def _candidata_center_interview_types() -> list[dict]:
+    rows = (
+        db.session.query(EntrevistaPregunta.clave)
+        .filter(EntrevistaPregunta.activa.is_(True))
+        .filter(EntrevistaPregunta.clave.isnot(None))
+        .all()
+    )
+    found = set()
+    for (clave,) in rows:
+        text = str(clave or "").strip().lower()
+        if "." not in text:
+            continue
+        prefix = text.split(".", 1)[0].strip()
+        if prefix in _CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS:
+            found.add(prefix)
+    return [
+        {"key": key, "label": _CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS[key]}
+        for key in _CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS
+        if key in found
+    ]
+
+
+def _candidata_center_is_interview_reference_question(pregunta) -> bool:
+    return is_interview_reference_question(pregunta)
+
+
+def _candidata_center_interview_reference_map(entrevista_ids: list[int]) -> dict[int, list[dict]]:
+    ids = [int(eid) for eid in entrevista_ids if int(eid or 0)]
+    if not ids:
+        return {}
+    rows = (
+        db.session.query(EntrevistaRespuesta, EntrevistaPregunta)
+        .join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
+        .filter(EntrevistaRespuesta.entrevista_id.in_(ids))
+        .order_by(
+            EntrevistaRespuesta.entrevista_id.asc(),
+            EntrevistaPregunta.orden.asc(),
+            EntrevistaPregunta.id.asc(),
+            EntrevistaRespuesta.id.asc(),
+        )
+        .all()
+    )
+    refs: dict[int, list[dict]] = {}
+    for respuesta, pregunta in rows:
+        value = _center_text(getattr(respuesta, "respuesta", ""))
+        if not value or not _candidata_center_is_interview_reference_question(pregunta):
+            continue
+        refs.setdefault(int(respuesta.entrevista_id), []).append(
+            {
+                "label": getattr(pregunta, "texto", None) or getattr(pregunta, "clave", None) or "Referencia en entrevista",
+                "clave": getattr(pregunta, "clave", "") or "",
+                "respuesta": value,
+            }
+        )
+    return refs
+
+
+def _candidata_center_legacy_urls(fila: int) -> dict:
+    next_url = _candidata_center_return_path(fila)
+    return {
+        "call": url_for("registrar_llamada_candidata", fila=fila, next=next_url),
+        "edit": url_for("buscar_candidata", candidata_id=fila, next=next_url),
+        "references": url_for("referencias", candidata=fila, next=next_url),
+        "interviews": url_for("entrevistas_de_candidata", fila=fila, next=next_url),
+        "new_interview": url_for("entrevista_nueva_db", fila=fila, tipo="domestica", next=next_url),
+        "new_interview_by_type": {
+            key: url_for("entrevista_nueva_db", fila=fila, tipo=key, next=next_url)
+            for key in _CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS
+        },
+        "documents": url_for("admin.candidatas_operativo_documentos", fila=fila),
+        "upload_documents": url_for("subir_fotos.subir_fotos", accion="subir", fila=fila, next=next_url),
+        "finalize": url_for("finalizar_proceso", fila=fila, next=next_url),
+        "inscription": url_for("inscripcion", candidata_seleccionada=fila),
+        "tracking": url_for("admin.seguimiento_candidatas_cola"),
+        "public_profile": url_for("admin.candidatas_web_detail", fila=fila),
+    }
+
+
+def _candidata_center_document_upload_response(fila: int, message: str, changes: dict | None = None) -> dict:
+    payload = _candidata_center_response_payload(int(fila), message, changes)
+    ctx = _candidata_center_detail_context(int(fila))
+    payload["doc_flags"] = ctx["doc_flags"]
+    payload["doc_labels"] = ctx["doc_labels"]
+    return payload
+
+
+def _candidata_center_seek_upload(file_storage) -> None:
+    try:
+        if file_storage is not None and getattr(file_storage, "stream", None) is not None:
+            file_storage.stream.seek(0)
+    except Exception:
+        return
+
+
+def _candidata_center_snapshot(candidata, entrevistas_count: int, doc_flags: dict[str, bool]):
+    return SimpleNamespace(
+        estado=getattr(candidata, "estado", None),
+        codigo=getattr(candidata, "codigo", None),
+        entrevista=getattr(candidata, "entrevista", None),
+        referencias_laboral=getattr(candidata, "referencias_laboral", None),
+        referencias_familiares=getattr(candidata, "referencias_familiares", None),
+        contactos_referencias_laborales=getattr(candidata, "contactos_referencias_laborales", None),
+        referencias_familiares_detalle=getattr(candidata, "referencias_familiares_detalle", None),
+        depuracion=1 if doc_flags.get("depuracion") else None,
+        perfil=1 if doc_flags.get("perfil") else None,
+        cedula1=1 if doc_flags.get("cedula1") else None,
+        cedula2=1 if doc_flags.get("cedula2") else None,
+        entrevistas_nuevas=SimpleNamespace(count=(lambda n=int(entrevistas_count or 0): n)),
+    )
+
+
+def _candidata_center_build_readiness(candidata, entrevistas_count: int, doc_flags: dict[str, bool]) -> dict:
+    refs = candidata_referencias_complete(candidata)
+    flags = {
+        "codigo": candidata_tiene_codigo_valido(getattr(candidata, "codigo", None)),
+        "inscripcion": bool(getattr(candidata, "inscripcion", False)),
+        "referencias_laboral": bool(refs.get("referencias_laboral")),
+        "referencias_familiares": bool(refs.get("referencias_familiares")),
+        "entrevista": entrevista_ok(getattr(candidata, "entrevista", None), entrevistas_count),
+        "depuracion": bool(doc_flags.get("depuracion")),
+        "perfil": bool(doc_flags.get("perfil")),
+        "cedula1": bool(doc_flags.get("cedula1")),
+        "cedula2": bool(doc_flags.get("cedula2")),
+    }
+    snapshot = _candidata_center_snapshot(candidata, entrevistas_count, doc_flags)
+    ready, reasons = candidata_is_ready_to_send(snapshot)
+    missing = [key for key, ok in flags.items() if not ok]
+    return {
+        "ready": bool(ready),
+        "flags": flags,
+        "missing": missing,
+        "reasons": list(reasons or []),
+        "labels": _CANDIDATA_CENTER_READINESS_LABELS,
+    }
+
+
+def _candidata_center_doc_lengths_subquery():
+    return (
+        db.session.query(
+            Candidata.fila.label("fila"),
+            _blob_len_expr(Candidata.depuracion).label("depuracion_len"),
+            _blob_len_expr(Candidata.perfil).label("perfil_len"),
+            _blob_len_expr(Candidata.cedula1).label("cedula1_len"),
+            _blob_len_expr(Candidata.cedula2).label("cedula2_len"),
+        )
+        .subquery()
+    )
+
+
+def _candidata_center_search_rows(q: str) -> list[dict]:
+    q = (q or "").strip()[:128]
+    if not q:
+        return []
+    doc_lengths = _candidata_center_doc_lengths_subquery()
+    entrevistas_counts = (
+        db.session.query(
+            Entrevista.candidata_id.label("candidata_id"),
+            func.count(Entrevista.id).label("entrevistas_count"),
+        )
+        .group_by(Entrevista.candidata_id)
+        .subquery()
+    )
+    base = (
+        Candidata.query.options(load_only(*_CANDIDATA_CENTER_SEARCH_FIELDS))
+        .outerjoin(doc_lengths, doc_lengths.c.fila == Candidata.fila)
+        .outerjoin(entrevistas_counts, entrevistas_counts.c.candidata_id == Candidata.fila)
+        .add_columns(
+            func.coalesce(entrevistas_counts.c.entrevistas_count, 0).label("entrevistas_count"),
+            doc_lengths.c.depuracion_len,
+            doc_lengths.c.perfil_len,
+            doc_lengths.c.cedula1_len,
+            doc_lengths.c.cedula2_len,
+        )
+    )
+    rows = search_candidatas_limited(
+        q,
+        limit=40,
+        base_query=base,
+        fields=_CANDIDATA_CENTER_SEARCH_FIELDS,
+        order_mode="nombre_asc",
+        log_label="admin_candidatas_center",
+    )
+    results: list[dict] = []
+    for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows:
+        doc_flags = {
+            "depuracion": binario_ok(dep_len),
+            "perfil": binario_ok(perfil_len),
+            "cedula1": binario_ok(ced1_len),
+            "cedula2": binario_ok(ced2_len),
+        }
+        readiness = _candidata_center_build_readiness(cand, int(entrevistas_count or 0), doc_flags)
+        completed = sum(1 for ok in readiness["flags"].values() if ok)
+        total = len(readiness["flags"])
+        results.append(
+            {
+                "candidata": cand,
+                "detail_url": url_for("admin.candidatas_operativo_detail", fila=cand.fila),
+                "readiness": readiness,
+                "completed": completed,
+                "total": total,
+                "completed_label": f"{completed}/{total}",
+            }
+        )
+    return results
+
+
+def _candidata_center_detail_context(fila: int) -> dict:
+    doc_lengths = _candidata_center_doc_lengths_subquery()
+    row = (
+        Candidata.query.options(load_only(*_CANDIDATA_CENTER_DETAIL_FIELDS))
+        .filter(Candidata.fila == int(fila))
+        .outerjoin(doc_lengths, doc_lengths.c.fila == Candidata.fila)
+        .add_columns(
+            doc_lengths.c.depuracion_len,
+            doc_lengths.c.perfil_len,
+            doc_lengths.c.cedula1_len,
+            doc_lengths.c.cedula2_len,
+        )
+        .first()
+    )
+    if not row:
+        abort(404)
+    candidata, dep_len, perfil_len, ced1_len, ced2_len = row
+    doc_flags = {
+        "depuracion": binario_ok(dep_len),
+        "perfil": binario_ok(perfil_len),
+        "cedula1": binario_ok(ced1_len),
+        "cedula2": binario_ok(ced2_len),
+    }
+
+    entrevista_stats = (
+        db.session.query(
+            func.count(Entrevista.id).label("count"),
+            func.max(Entrevista.creada_en).label("last_date"),
+        )
+        .filter(Entrevista.candidata_id == int(fila))
+        .first()
+    )
+    entrevistas_count = int(getattr(entrevista_stats, "count", 0) or 0)
+    ultima_entrevista = (
+        Entrevista.query.options(
+            load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+        )
+        .filter(Entrevista.candidata_id == int(fila))
+        .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
+        .first()
+    )
+    recent_interviews = (
+        Entrevista.query.options(
+            load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+        )
+        .filter(Entrevista.candidata_id == int(fila))
+        .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
+        .limit(4)
+        .all()
+    )
+    interview_references = _candidata_center_interview_reference_map(
+        [int(item.id) for item in recent_interviews if getattr(item, "id", None)]
+    )
+    recent_calls = (
+        LlamadaCandidata.query.options(
+            load_only(
+                LlamadaCandidata.id,
+                LlamadaCandidata.fecha_llamada,
+                LlamadaCandidata.agente,
+                LlamadaCandidata.resultado,
+                LlamadaCandidata.duracion_segundos,
+                LlamadaCandidata.notas,
+                LlamadaCandidata.proxima_llamada,
+            )
+        )
+        .filter(LlamadaCandidata.candidata_id == int(fila))
+        .order_by(LlamadaCandidata.fecha_llamada.desc(), LlamadaCandidata.id.desc())
+        .limit(5)
+        .all()
+    )
+    calls_count = (
+        db.session.query(func.count(LlamadaCandidata.id))
+        .filter(LlamadaCandidata.candidata_id == int(fila))
+        .scalar()
+        or 0
+    )
+    seguimiento = (
+        SeguimientoCandidataCaso.query.options(
+            load_only(
+                SeguimientoCandidataCaso.id,
+                SeguimientoCandidataCaso.public_id,
+                SeguimientoCandidataCaso.estado,
+                SeguimientoCandidataCaso.owner_staff_user_id,
+                SeguimientoCandidataCaso.proxima_accion_tipo,
+                SeguimientoCandidataCaso.proxima_accion_detalle,
+                SeguimientoCandidataCaso.due_at,
+                SeguimientoCandidataCaso.last_movement_at,
+                SeguimientoCandidataCaso.updated_at,
+            ),
+            joinedload(SeguimientoCandidataCaso.owner_staff_user).load_only(StaffUser.id, StaffUser.username),
+        )
+        .filter(
+            SeguimientoCandidataCaso.candidata_id == int(fila),
+            SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
+            SeguimientoCandidataCaso.is_merged.is_(False),
+        )
+        .order_by(SeguimientoCandidataCaso.last_movement_at.desc(), SeguimientoCandidataCaso.id.desc())
+        .first()
+    )
+    seguimiento_events = []
+    seguimiento_events_ready = False
+    try:
+        seguimiento_events_ready = bool(sa_inspect(db.engine).has_table("seguimiento_candidatas_eventos"))
+    except Exception:
+        seguimiento_events_ready = False
+    if seguimiento and seguimiento_events_ready:
+        seguimiento_events = (
+            SeguimientoCandidataEvento.query.options(
+                load_only(
+                    SeguimientoCandidataEvento.id,
+                    SeguimientoCandidataEvento.caso_id,
+                    SeguimientoCandidataEvento.event_type,
+                    SeguimientoCandidataEvento.note,
+                    SeguimientoCandidataEvento.created_at,
+                ),
+            )
+            .filter(SeguimientoCandidataEvento.caso_id == int(seguimiento.id))
+            .order_by(SeguimientoCandidataEvento.created_at.desc(), SeguimientoCandidataEvento.id.desc())
+            .limit(5)
+            .all()
+        )
+    public_profile = CandidataWeb.query.options(
+        load_only(
+            CandidataWeb.id,
+            CandidataWeb.candidata_id,
+            CandidataWeb.visible,
+            CandidataWeb.estado_publico,
+            CandidataWeb.es_destacada,
+            CandidataWeb.fecha_ultima_actualizacion,
+        )
+    ).filter(CandidataWeb.candidata_id == int(fila)).first()
+    active_assignment = Solicitud.query.options(
+        load_only(Solicitud.id, Solicitud.codigo_solicitud, Solicitud.estado, Solicitud.candidata_id, Solicitud.fecha_solicitud)
+    ).filter(
+        Solicitud.candidata_id == int(fila),
+        Solicitud.estado.in_(["proceso", "activa", "reemplazo", "pendiente_servicio"]),
+    ).order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc()).first()
+    solicitud_links = (
+        SolicitudCandidata.query.options(
+            load_only(
+                SolicitudCandidata.id,
+                SolicitudCandidata.solicitud_id,
+                SolicitudCandidata.candidata_id,
+                SolicitudCandidata.status,
+                SolicitudCandidata.created_at,
+            ),
+            joinedload(SolicitudCandidata.solicitud).load_only(
+                Solicitud.id,
+                Solicitud.codigo_solicitud,
+                Solicitud.estado,
+                Solicitud.cliente_id,
+                Solicitud.fecha_solicitud,
+            ).joinedload(Solicitud.cliente).load_only(
+                Cliente.id,
+                Cliente.codigo,
+                Cliente.nombre_completo,
+            ),
+        )
+        .filter(SolicitudCandidata.candidata_id == int(fila))
+        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+        .limit(6)
+        .all()
+    )
+    audit_logs = (
+        StaffAuditLog.query.options(
+            load_only(
+                StaffAuditLog.id,
+                StaffAuditLog.created_at,
+                StaffAuditLog.action_type,
+                StaffAuditLog.actor_role,
+                StaffAuditLog.summary,
+                StaffAuditLog.route,
+                StaffAuditLog.metadata_json,
+                StaffAuditLog.changes_json,
+                StaffAuditLog.success,
+            ),
+            joinedload(StaffAuditLog.actor_user).load_only(StaffUser.id, StaffUser.username),
+        )
+        .filter(
+            StaffAuditLog.entity_type.in_(["candidata", "Candidata"]),
+            StaffAuditLog.entity_id.in_(
+                [
+                    str(getattr(candidata, "id", None) or "").strip(),
+                    str(int(fila)),
+                ]
+            ),
+        )
+        .order_by(StaffAuditLog.created_at.desc(), StaffAuditLog.id.desc())
+        .limit(8)
+        .all()
+    )
+
+    readiness = _candidata_center_build_readiness(candidata, entrevistas_count, doc_flags)
+    state_capabilities = build_candidata_state_capabilities(
+        candidata,
+        entrevistas_count=entrevistas_count,
+        doc_flags=doc_flags,
+    )
+    readiness_completed = sum(1 for ok in readiness["flags"].values() if ok)
+    readiness_total = len(readiness["flags"])
+    readiness_missing_labels = [
+        readiness["labels"].get(key, key)
+        for key in readiness.get("missing", [])
+    ]
+    personal_fields = [
+        ("Nombre", candidata.nombre_completo),
+        ("Edad", candidata.edad),
+        ("Teléfono", candidata.numero_telefono),
+        ("Dirección", candidata.direccion_completa),
+        ("Cédula", candidata.cedula),
+        ("Código", candidata.codigo),
+        ("Marca temporal", candidata.marca_temporal),
+        ("Origen de registro", candidata.origen_registro),
+        ("Registrada por", candidata.creado_por_staff),
+        ("Ruta de creación", candidata.creado_desde_ruta),
+        ("Último cambio de estado", candidata.fecha_cambio_estado),
+        ("Usuario cambio estado", candidata.usuario_cambio_estado),
+    ]
+    labor_fields = [
+        ("Modalidad preferida", candidata.modalidad_trabajo_preferida),
+        ("Rutas", candidata.rutas_cercanas),
+        ("Disponibilidad/inicio", candidata.disponibilidad_inicio or candidata.inicio),
+        ("Empleo anterior", candidata.empleo_anterior),
+        ("Años de experiencia", candidata.anos_experiencia),
+        ("Áreas de experiencia", candidata.areas_experiencia),
+        ("Sabe planchar", _center_bool_label(candidata.sabe_planchar)),
+        ("Trabaja con niños", _center_bool_label(candidata.trabaja_con_ninos)),
+        ("Trabaja con mascotas", _center_bool_label(candidata.trabaja_con_mascotas)),
+        ("Puede dormir fuera", _center_bool_label(candidata.puede_dormir_fuera)),
+        ("Sueldo esperado", candidata.sueldo_esperado),
+        ("Motivo para trabajar", candidata.motivacion_trabajo),
+        ("Acepta porcentaje sueldo", _center_bool_label(candidata.acepta_porcentaje_sueldo)),
+        ("Fecha finalización proceso", candidata.fecha_finalizacion_proceso),
+        ("Grupos de empleo", ", ".join(candidata.grupos_empleo or [])),
+    ]
+    labor_primary_labels = {
+        "Modalidad preferida",
+        "Rutas",
+        "Empleo anterior",
+        "Años de experiencia",
+        "Áreas de experiencia",
+        "Disponibilidad/inicio",
+        "Trabaja con niños",
+        "Trabaja con mascotas",
+        "Puede dormir fuera",
+        "Sueldo esperado",
+        "Acepta porcentaje sueldo",
+    }
+    labor_primary_fields = [
+        (label, value)
+        for label, value in labor_fields
+        if label in labor_primary_labels and _center_text(value)
+    ]
+    labor_secondary_fields = [
+        (label, value)
+        for label, value in labor_fields
+        if label not in labor_primary_labels and _center_text(value)
+    ]
+    form_references = {
+        "laboral": _center_text(getattr(candidata, "contactos_referencias_laborales", ""), 160),
+        "familiar": _center_text(getattr(candidata, "referencias_familiares_detalle", ""), 160),
+        "laboral_full": _center_text(getattr(candidata, "contactos_referencias_laborales", "")),
+        "familiar_full": _center_text(getattr(candidata, "referencias_familiares_detalle", "")),
+    }
+    secretary_references = {
+        "laboral": _center_text(getattr(candidata, "referencias_laboral", ""), 160),
+        "familiar": _center_text(getattr(candidata, "referencias_familiares", ""), 160),
+        "laboral_full": _center_text(getattr(candidata, "referencias_laboral", "")),
+        "familiar_full": _center_text(getattr(candidata, "referencias_familiares", "")),
+    }
+    references_summary = {
+        "laboral": bool(form_references["laboral_full"]),
+        "familiar": bool(form_references["familiar_full"]),
+    }
+    secretary_references_summary = {
+        "laboral": bool(secretary_references["laboral_full"]),
+        "familiar": bool(secretary_references["familiar_full"]),
+    }
+    edit_values = {
+        "personal": {
+            "nombre": candidata.nombre_completo or "",
+            "edad": candidata.edad or "",
+            "telefono": candidata.numero_telefono or "",
+            "direccion": candidata.direccion_completa or "",
+            "cedula": candidata.cedula or "",
+        },
+        "labor": {
+            "modalidad": candidata.modalidad_trabajo_preferida or "",
+            "rutas": candidata.rutas_cercanas or "",
+            "disponibilidad_inicio": candidata.disponibilidad_inicio or "",
+            "empleo_anterior": candidata.empleo_anterior or "",
+            "anos_experiencia": candidata.anos_experiencia or "",
+            "areas_experiencia": candidata.areas_experiencia or "",
+            "sabe_planchar": _center_form_value(candidata.sabe_planchar),
+            "trabaja_con_ninos": _center_form_value(candidata.trabaja_con_ninos),
+            "trabaja_con_mascotas": _center_form_value(candidata.trabaja_con_mascotas),
+            "puede_dormir_fuera": _center_form_value(candidata.puede_dormir_fuera),
+            "sueldo_esperado": candidata.sueldo_esperado or "",
+            "motivacion_trabajo": candidata.motivacion_trabajo or "",
+            "acepta_porcentaje_sueldo": _center_form_value(candidata.acepta_porcentaje_sueldo),
+        },
+        "form_references": {
+            "contactos_referencias_laborales": getattr(candidata, "contactos_referencias_laborales", "") or "",
+            "referencias_familiares_detalle": getattr(candidata, "referencias_familiares_detalle", "") or "",
+        },
+        "secretary_references": {
+            "referencias_laboral": getattr(candidata, "referencias_laboral", "") or "",
+            "referencias_familiares": getattr(candidata, "referencias_familiares", "") or "",
+        },
+        "references": form_references,
+        "inscription": {
+            "medio": candidata.medio_inscripcion or "",
+            "estado": "si" if bool(candidata.inscripcion) else "no",
+            "monto": str(candidata.monto or ""),
+            "fecha": candidata.fecha.isoformat() if candidata.fecha else "",
+        },
+    }
+    legacy_urls = _candidata_center_legacy_urls(int(fila))
+    if seguimiento:
+        legacy_urls["tracking"] = url_for("admin.seguimiento_candidatas_caso_detail", caso_id=int(seguimiento.id))
+    next_action = _candidata_center_next_action(candidata, readiness, seguimiento, legacy_urls)
+    compatibility_fields = [
+        ("Fecha", candidata.compat_test_candidata_at),
+        ("Fortalezas", ", ".join(candidata.compat_fortalezas or [])),
+        ("Ritmo preferido", candidata.compat_ritmo_preferido),
+        ("Estilo de trabajo", candidata.compat_estilo_trabajo),
+        ("Orden/detalle", candidata.compat_orden_detalle_nivel),
+        ("Relación con niños", candidata.compat_relacion_ninos),
+        ("Límites no negociables", ", ".join(candidata.compat_limites_no_negociables or [])),
+        ("Días disponibles", ", ".join(candidata.compat_disponibilidad_dias or [])),
+        ("Horario disponible", candidata.compat_disponibilidad_horario),
+    ]
+    compatibility_summary = _center_text(json.dumps(candidata.compat_test_candidata_json, ensure_ascii=False), 700) if candidata.compat_test_candidata_json else ""
+    finance_summary = build_candidate_finance_snapshot(candidata, audit_logs=audit_logs)
+    return {
+        "candidata": candidata,
+        "center_next_url": _candidata_center_return_path(int(fila)),
+        "center_back_url": _candidata_center_clean_list_url(),
+        "legacy_urls": legacy_urls,
+        "status_badges": {
+            "inscrita": bool(candidata.inscripcion),
+            "lista": str(candidata.estado or "") == "lista_para_trabajar",
+            "trabajando": str(candidata.estado or "") == "trabajando",
+            "descalificada": str(candidata.estado or "") == "descalificada",
+        },
+        "personal_fields": [(label, value) for label, value in personal_fields if _center_text(value)],
+        "labor_fields": [(label, value) for label, value in labor_fields if _center_text(value)],
+        "labor_primary_fields": labor_primary_fields,
+        "labor_secondary_fields": labor_secondary_fields,
+        "readiness": readiness,
+        "readiness_completed": readiness_completed,
+        "readiness_total": readiness_total,
+        "readiness_missing_labels": readiness_missing_labels,
+        "state_capabilities": state_capabilities,
+        "interview_create_capability": candidata_can_create_interview(candidata),
+        "doc_flags": doc_flags,
+        "doc_labels": _CANDIDATA_CENTER_DOC_LABELS,
+        "interview_types": _candidata_center_interview_types(),
+        "form_references": form_references,
+        "secretary_references": secretary_references,
+        "references": form_references,
+        "references_summary": references_summary,
+        "secretary_references_summary": secretary_references_summary,
+        "edit_values": edit_values,
+        "entrevista_summary": {
+            "count": entrevistas_count,
+            "last": ultima_entrevista,
+            "last_date": getattr(entrevista_stats, "last_date", None),
+            "recent": recent_interviews,
+            "reference_map": interview_references,
+        },
+        "recent_calls": recent_calls,
+        "calls_count": int(calls_count or 0),
+        "seguimiento": seguimiento,
+        "seguimiento_events": seguimiento_events,
+        "next_action": next_action,
+        "public_profile": public_profile,
+        "active_assignment": active_assignment,
+        "solicitud_links": solicitud_links,
+        "audit_logs": audit_logs,
+        "audit_history_items": _candidata_history_items(audit_logs, candidata),
+        "inscription_summary": {
+            "codigo": candidata.codigo,
+            "medio": candidata.medio_inscripcion,
+            "inscrita": bool(candidata.inscripcion),
+            "monto": candidata.monto,
+            "fecha": candidata.fecha,
+            "inscrita_por": (getattr(candidata, "usuario_cambio_estado", None) or getattr(candidata, "creado_por_staff", None) or ""),
+        },
+        "porciento_summary": finance_summary,
+        "porciento_history": finance_summary.get("history", []),
+        "compatibility": {
+            "exists": bool(candidata.compat_test_candidata_json or any(_center_text(value) for _, value in compatibility_fields)),
+            "fields": [(label, value) for label, value in compatibility_fields if _center_text(value)],
+            "summary": compatibility_summary,
+        },
+        "estado_label": _center_state_label(candidata.estado),
+        "estado_filter_options": [(estado, _center_state_label(estado)) for estado in [
+            "en_proceso",
+            "proceso_inscripcion",
+            "inscrita",
+            "inscrita_incompleta",
+            "lista_para_trabajar",
+            "trabajando",
+            "descalificada",
+        ]],
+    }
+
+
+def _candidata_center_response_payload(
+    fila: int,
+    message: str,
+    changes: dict | None = None,
+    finance_event: dict | None = None,
+) -> dict:
+    ctx = _candidata_center_detail_context(int(fila))
+    candidata = ctx["candidata"]
+    readiness = ctx["readiness"]
+    state_capabilities = ctx["state_capabilities"]
+    finance_summary = ctx.get("porciento_summary") or build_candidate_finance_snapshot(candidata, audit_logs=ctx.get("audit_logs"))
+    completed = sum(1 for ok in readiness["flags"].values() if ok)
+    porci_history = list(finance_summary.get("history", []))
+    if finance_event:
+        event_item = {
+            "fecha": _center_text(finance_event.get("fecha") or ""),
+            "monto": _center_text(finance_event.get("monto") or ""),
+            "metodo": _center_text(finance_event.get("metodo") or ""),
+            "actor": _center_text(finance_event.get("actor") or "staff"),
+            "detalle": _center_text(finance_event.get("detalle") or message or ""),
+        }
+        if not porci_history or any(
+            _center_text(item.get("fecha")) != event_item["fecha"]
+            or _center_text(item.get("monto")) != event_item["monto"]
+            or _center_text(item.get("actor")) != event_item["actor"]
+            for item in porci_history[:1]
+        ):
+            porci_history.insert(0, event_item)
+    return {
+        "ok": True,
+        "message": message,
+        "changes": changes or {},
+        "header": {
+            "nombre": candidata.nombre_completo or "",
+            "edad": candidata.edad or "",
+            "telefono": candidata.numero_telefono or "",
+            "codigo": candidata.codigo or "",
+            "estado": candidata.estado or "",
+            "estado_label": _center_state_label(candidata.estado),
+        },
+        "candidate": {
+            "codigo": candidata.codigo or "",
+            "estado": candidata.estado or "",
+        },
+        "status_badges": ctx["status_badges"],
+        "state_capabilities": state_capabilities,
+        "active_assignment": state_capabilities.get("assignment"),
+        "audit_logs": [
+            {
+                "created_at": str(log.created_at or ""),
+                "action_type": log.action_type or "",
+                "summary": log.summary or "",
+                "actor": log.actor_user.username if log.actor_user else (log.actor_role or "staff"),
+            }
+            for log in ctx["audit_logs"]
+        ],
+        "inscription": {
+            "codigo": candidata.codigo or "",
+            "medio": candidata.medio_inscripcion or "",
+            "inscrita": bool(candidata.inscripcion),
+            "monto": str(candidata.monto or ""),
+            "fecha": candidata.fecha.isoformat() if candidata.fecha else "",
+            "estado": candidata.estado or "",
+            "inscrita_por": (getattr(candidata, "usuario_cambio_estado", None) or getattr(candidata, "creado_por_staff", None) or ""),
+        },
+        "porciento": finance_summary,
+        "porciento_history": porci_history,
+        "recent_calls": [
+            {
+                "fecha": str(call.fecha_llamada or ""),
+                "agente": call.agente or "",
+                "resultado": call.resultado or "",
+                "notas": _center_text(call.notas, 180),
+            }
+            for call in ctx["recent_calls"]
+        ],
+        "values": ctx["edit_values"],
+        "display": {
+            "personal": {label: str(value or "") for label, value in ctx["personal_fields"]},
+            "labor": {label: str(value or "") for label, value in ctx["labor_fields"]},
+            "references": ctx["references"],
+            "secretary_references": ctx["secretary_references"],
+        },
+        "readiness": {
+            "ready": bool(readiness["ready"]),
+            "completed": completed,
+            "total": len(readiness["flags"]),
+            "label": f"{completed}/{len(readiness['flags'])}",
+            "flags": readiness["flags"],
+            "labels": readiness["labels"],
+            "reasons": readiness["reasons"],
+        },
+    }
+
+
+def _center_request_data() -> dict:
+    if request.is_json:
+        return dict(request.get_json(silent=True) or {})
+    return dict(request.form or {})
+
+
+def _candidata_center_action_error(fila: int, message: str, *, status: int = 400, reasons: list[str] | None = None):
+    payload = _candidata_center_response_payload(int(fila), message)
+    payload["ok"] = False
+    payload["message"] = message
+    payload["reasons"] = list(reasons or [])
+    return jsonify(payload), int(status)
+
+
+def _candidata_center_emit_estado_outbox(cand: Candidata, *, to_state: str, reason: str) -> None:
+    _emit_domain_outbox_event(
+        event_type="CANDIDATA_ESTADO_CAMBIADO",
+        aggregate_type="Candidata",
+        aggregate_id=int(cand.fila),
+        aggregate_version=None,
+        payload={"candidata_id": int(cand.fila), "to": to_state, "reason": reason[:255]},
+    )
+
+
+def _candidata_center_mark_ready(cand: Candidata) -> dict:
+    ctx = _candidata_center_detail_context(int(cand.fila))
+    capabilities = ctx["state_capabilities"]
+    if not capabilities["actions"]["can_mark_ready"]:
+        raise InvariantConflictError(
+            "conflict",
+            "; ".join(capabilities["reasons"].get("can_mark_ready") or [])
+            or "No se puede marcar lista para trabajar.",
+        )
+    estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
+    invariant_change_candidate_state(
+        candidata_id=int(cand.fila),
+        new_state="lista_para_trabajar",
+        actor=_staff_actor_name(),
+        reason="manual",
+        candidata_obj=cand,
+    )
+    db.session.commit()
+    _audit_log(
+        action_type="CANDIDATA_ESTADO_LISTA",
+        entity_type="Candidata",
+        entity_id=cand.fila,
+        summary=f"Candidata marcada lista para trabajar: {cand.nombre_completo or cand.fila}",
+        changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+    )
+    _log_lista_state_change(cand, source="centro_operativo", faltantes=[], from_state=estado_previo)
+    log_candidata_action(
+        action_type="CANDIDATA_ESTADO_LISTA",
+        candidata=cand,
+        summary=f"Estado candidata actualizado a lista para trabajar: {cand.nombre_completo or cand.fila}",
+        metadata={"source": "centro_operativo"},
+        changes={"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+        success=True,
+    )
+    _candidata_center_emit_estado_outbox(cand, to_state="lista_para_trabajar", reason="manual")
+    db.session.commit()
+    return _candidata_center_response_payload(
+        int(cand.fila),
+        "Candidata marcada como lista para trabajar.",
+        {"estado": {"from": estado_previo or None, "to": "lista_para_trabajar"}},
+    )
+
+
+def _candidata_center_disqualify(cand: Candidata, motivo: str) -> dict:
+    motivo = (motivo or "").strip()
+    if not motivo:
+        raise InvariantConflictError("motivo_required", "Debes indicar el motivo de descalificación.")
+    ctx = _candidata_center_detail_context(int(cand.fila))
+    capabilities = ctx["state_capabilities"]
+    if not capabilities["actions"]["can_disqualify"]:
+        raise InvariantConflictError(
+            "conflict",
+            "; ".join(capabilities["reasons"].get("can_disqualify") or [])
+            or "No se puede descalificar la candidata.",
+        )
+    estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
+    invariant_change_candidate_state(
+        candidata_id=int(cand.fila),
+        new_state="descalificada",
+        actor=_staff_actor_name(),
+        nota_descalificacion=motivo,
+        reason=motivo,
+        candidata_obj=cand,
+    )
+    db.session.commit()
+    _audit_log(
+        action_type="CANDIDATA_DESCALIFICAR",
+        entity_type="Candidata",
+        entity_id=cand.fila,
+        summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+        metadata={"motivo": motivo},
+        changes={"estado": {"from": estado_previo or None, "to": "descalificada"}},
+    )
+    log_candidata_action(
+        action_type="CANDIDATA_DESQUALIFY",
+        candidata=cand,
+        summary=f"Candidata descalificada: {cand.nombre_completo or cand.fila}",
+        metadata={"motivo": motivo},
+        changes={"estado": {"from": estado_previo or None, "to": "descalificada"}},
+        success=True,
+    )
+    _candidata_center_emit_estado_outbox(cand, to_state="descalificada", reason=motivo)
+    db.session.commit()
+    return _candidata_center_response_payload(
+        int(cand.fila),
+        "Candidata descalificada correctamente.",
+        {"estado": {"from": estado_previo or None, "to": "descalificada"}},
+    )
+
+
+def _candidata_center_reactivate(cand: Candidata) -> dict:
+    ctx = _candidata_center_detail_context(int(cand.fila))
+    capabilities = ctx["state_capabilities"]
+    if not capabilities["actions"]["can_reactivate"]:
+        raise InvariantConflictError(
+            "conflict",
+            "; ".join(capabilities["reasons"].get("can_reactivate") or [])
+            or "No se puede reactivar la candidata.",
+        )
+    estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
+    invariant_change_candidate_state(
+        candidata_id=int(cand.fila),
+        new_state="lista_para_trabajar",
+        actor=_staff_actor_name(),
+        reason="reactivar",
+        candidata_obj=cand,
+    )
+    estado_nuevo = (getattr(cand, "estado", None) or "").strip().lower()
+    db.session.commit()
+    _audit_log(
+        action_type="CANDIDATA_REACTIVAR",
+        entity_type="Candidata",
+        entity_id=cand.fila,
+        summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+        changes={"estado": {"from": estado_previo or None, "to": estado_nuevo or None}},
+    )
+    log_candidata_action(
+        action_type="CANDIDATA_REACTIVATE",
+        candidata=cand,
+        summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
+        changes={"estado": {"from": estado_previo or None, "to": estado_nuevo or None}},
+        success=True,
+    )
+    _candidata_center_emit_estado_outbox(cand, to_state=estado_nuevo or "sin_estado", reason="reactivar")
+    db.session.commit()
+    return _candidata_center_response_payload(
+        int(cand.fila),
+        "Candidata reactivada correctamente.",
+        {"estado": {"from": estado_previo or None, "to": estado_nuevo or None}},
+    )
+
+
+def _candidata_center_mark_working(cand: Candidata) -> dict:
+    ctx = _candidata_center_detail_context(int(cand.fila))
+    capabilities = ctx["state_capabilities"]
+    if not capabilities["actions"]["can_mark_working"]:
+        raise InvariantConflictError(
+            "conflict",
+            "; ".join(capabilities["reasons"].get("can_mark_working") or [])
+            or "No se puede marcar trabajando.",
+        )
+    estado_previo = (getattr(cand, "estado", None) or "").strip().lower()
+    invariant_change_candidate_state(
+        candidata_id=int(cand.fila),
+        new_state="trabajando",
+        actor=_staff_actor_name(),
+        reason="manual",
+        candidata_obj=cand,
+    )
+    db.session.commit()
+    _audit_log(
+        action_type="CANDIDATA_ESTADO_TRABAJANDO",
+        entity_type="Candidata",
+        entity_id=cand.fila,
+        summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+        changes={"estado": {"from": estado_previo or None, "to": "trabajando"}},
+    )
+    log_candidata_action(
+        action_type="CANDIDATA_MARK_TRABAJANDO",
+        candidata=cand,
+        summary=f"Candidata marcada trabajando: {cand.nombre_completo or cand.fila}",
+        changes={"estado": {"from": estado_previo or None, "to": "trabajando"}},
+        success=True,
+    )
+    _candidata_center_emit_estado_outbox(cand, to_state="trabajando", reason="manual")
+    db.session.commit()
+    return _candidata_center_response_payload(
+        int(cand.fila),
+        "Candidata marcada como trabajando.",
+        {"estado": {"from": estado_previo or None, "to": "trabajando"}},
+    )
+
+
+@admin_bp.route("/candidatas", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_index():
+    q = (request.args.get("q") or "").strip()[:128]
+    chip = (request.args.get("filtro") or "todas").strip()
+    if chip == "descalificadas" and not _candidata_center_can_view_descalificadas():
+        chip = "todas"
+    if chip not in _CANDIDATA_CENTER_FILTERS:
+        chip = "todas"
+    page = _safe_int(request.args.get("page"), default=1)
+    listing = _candidata_center_listing_rows(q, chip, page, request.args)
+    counts = _candidata_center_queue_counts()
+    dashboard = _candidata_center_dashboard_summary(counts)
+    page_args = request.args.to_dict()
+    page_args.pop("page", None)
+    return render_template(
+        "admin/candidatas_operativo_index.html",
+        q=q,
+        rows=listing["rows"],
+        total=listing["total"],
+        page=listing["page"],
+        pages=listing["pages"],
+        active_filter=chip,
+        filter_labels=_CANDIDATA_CENTER_FILTERS,
+        queue_counts=counts,
+        dashboard=dashboard,
+        queue_criteria=_CANDIDATA_CENTER_QUEUE_CRITERIA,
+        can_view_descalificadas=_candidata_center_can_view_descalificadas(),
+        recent_candidates=_candidata_center_recent_rows(limit=8),
+        estado_filter_options=[(estado, _center_state_label(estado)) for estado in [
+            "en_proceso",
+            "proceso_inscripcion",
+            "inscrita",
+            "inscrita_incompleta",
+            "lista_para_trabajar",
+            "trabajando",
+            "descalificada",
+        ]],
+        prev_page_url=(url_for("admin.candidatas_operativo_index", **page_args, page=max(1, listing["page"] - 1)) if listing["page"] > 1 else None),
+        next_page_url=(url_for("admin.candidatas_operativo_index", **page_args, page=listing["page"] + 1) if listing["pages"] and listing["page"] < listing["pages"] else None),
+    )
+
+
+@admin_bp.route("/candidatas/<int:fila>", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_detail(fila: int):
+    ctx = _candidata_center_detail_context(int(fila))
+    _candidata_center_touch_recent(int(fila))
+    return render_template("admin/candidatas_operativo_detail.html", **ctx)
+
+
+@admin_bp.route("/candidatas/busqueda-rapida.json", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_busqueda_rapida_json():
+    q = (request.args.get("q") or "").strip()[:128]
+    limit = max(1, min(_safe_int(request.args.get("limit"), default=8), 12))
+    if not q:
+        return jsonify({"ok": True, "items": _candidata_center_recent_rows(limit=limit), "source": "recent"})
+    rows = (
+        search_candidatas_limited(
+            q,
+            limit=limit,
+            base_query=Candidata.query,
+            fields=_CANDIDATA_CENTER_SEARCH_FIELDS,
+            order_mode="nombre_asc",
+            log_label="admin_candidatas_quick_json",
+        )
+        or []
+    )
+    return jsonify({"ok": True, "items": [_candidata_center_light_row(cand) for cand in rows], "source": "search"})
+
+
+@admin_bp.route("/candidatas/<int:fila>/documentos", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_documentos(fila: int):
+    ctx = _candidata_center_detail_context(int(fila))
+    next_url = _candidata_center_return_path(int(fila))
+    document_rows = []
+    for key, label in _CANDIDATA_CENTER_DOC_LABELS.items():
+        available = bool(ctx["doc_flags"].get(key))
+        document_rows.append(
+            {
+                "key": key,
+                "label": label,
+                "available": available,
+                "view_url": url_for("subir_fotos.ver_imagen", fila=int(fila), campo=key),
+                "download_url": url_for("descargar_uno_db", id=int(fila), doc=key),
+                "replace_url": url_for("subir_fotos.subir_fotos", accion="subir", fila=int(fila), next=next_url) + f"#{key}",
+            }
+        )
+    return render_template(
+        "admin/candidatas_operativo_documentos.html",
+        candidata=ctx["candidata"],
+        document_rows=document_rows,
+        readiness=ctx["readiness"],
+        back_url=next_url,
+        finalize_url=ctx["legacy_urls"]["finalize"],
+    )
+
+
+@admin_bp.route("/candidatas/<int:fila>/documentos/<string:campo>", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_documentos_subir(fila: int, campo: str):
+    field = (campo or "").strip()
+    if field not in _CANDIDATA_CENTER_DOC_LABELS:
+        return jsonify({"ok": False, "message": "Campo no permitido.", "errors": {"archivo": "Campo no permitido."}}), 400
+
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"archivo": "No existe la candidata."}}), 404
+
+    archivo = request.files.get("archivo")
+    if not archivo or not getattr(archivo, "filename", ""):
+        return jsonify({"ok": False, "message": "Debes seleccionar un archivo.", "errors": {"archivo": "Archivo requerido."}}), 400
+
+    max_file = int(MAX_FILE_BYTES(current_app))
+    if file_too_large(archivo, max_file):
+        detected_size = int(get_filestorage_size(archivo) or 0)
+        max_txt = human_size(max_file)
+        size_txt = human_size(detected_size)
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SIZE_REJECT",
+            candidata=candidata,
+            summary=f"Archivo rechazado por tamaño en {field}",
+            metadata={
+                "candidata_id": int(fila),
+                "field": field,
+                "max_bytes": int(max_file),
+                "size_bytes": int(detected_size),
+                "source": "admin_candidatas_operativo_detail",
+            },
+            success=False,
+            error="Archivo supera límite por campo.",
+        )
+        return jsonify({
+            "ok": False,
+            "message": f"Archivo demasiado pesado para {field}. Máximo: {max_txt}. Tu archivo: {size_txt}.",
+            "errors": {"archivo": "Archivo demasiado grande."},
+        }), 400
+
+    _candidata_center_seek_upload(archivo)
+    ok, data, err, meta = validate_upload_file(archivo, max_bytes=max_file)
+    if not ok:
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
+            candidata=candidata,
+            summary=f"Archivo inválido en {field}",
+            metadata={
+                "candidata_id": int(fila),
+                "field": field,
+                "source": "admin_candidatas_operativo_detail",
+                "filename": (meta or {}).get("filename_safe", ""),
+                "error": err or "",
+            },
+            success=False,
+            error=err or "Archivo inválido.",
+        )
+        return jsonify({"ok": False, "message": f"❌ Archivo inválido en {field}: {err}", "errors": {"archivo": err or "Archivo inválido."}}), 400
+
+    if safe_bytes_length(data) <= 0:
+        return jsonify({"ok": False, "message": f"❌ Archivo inválido en {field}: el archivo está vacío.", "errors": {"archivo": "El archivo está vacío."}}), 400
+
+    def _persist_document(_attempt: int):
+        setattr(candidata, field, data)
+        try:
+            maybe_update_estado_por_completitud(candidata, actor=_staff_actor_name())
+        except Exception:
+            pass
+
+    result = execute_robust_save(
+        session=db.session,
+        persist_fn=_persist_document,
+        verify_fn=lambda: safe_bytes_length(getattr(Candidata.query.filter(Candidata.fila == int(fila)).first(), field, None)) > 0,
+    )
+
+    metadata_base = {
+        "candidata_id": int(fila),
+        "fields": [field],
+        "source": "admin_candidatas_operativo_detail",
+        "attempt_count": int(result.attempts),
+        "bytes_length": {field: int(safe_bytes_length(data))},
+    }
+    if not result.ok:
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
+            candidata=candidata,
+            summary="Fallo guardado robusto de documentos de candidata",
+            metadata={**metadata_base, "error_message": (result.error_message or "")[:200]},
+            success=False,
+            error="No se pudo guardar documentos de forma verificada.",
+        )
+        return jsonify({"ok": False, "message": "No se pudo guardar. Intente de nuevo.", "errors": {"archivo": "No se pudo guardar."}}), 500
+
+    log_candidata_action(
+        action_type="CANDIDATA_UPLOAD_DOCS_SAVE_OK",
+        candidata=candidata,
+        summary="Guardado robusto de documentos de candidata",
+        metadata=metadata_base,
+        success=True,
+    )
+    log_candidata_action(
+        action_type="CANDIDATA_UPLOAD_DOCS",
+        candidata=candidata,
+        summary="Carga/actualización de documentos de candidata",
+        metadata={
+            "fields": [field],
+            "source": "admin_candidatas_operativo_detail",
+        },
+        success=True,
+    )
+    return jsonify(_candidata_center_document_upload_response(int(fila), f"{_CANDIDATA_CENTER_DOC_LABELS[field]} actualizado correctamente.", {"documento": field}))
+
+
+@admin_bp.route("/candidatas/<int:fila>/datos", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_datos(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    result = update_candidate_basic_fields(
+        candidata,
+        _center_request_data(),
+        section="personal",
+        allow_clear_optional=True,
+        audit_action="CANDIDATA_CENTER_EDIT",
+    )
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+
+
+@admin_bp.route("/candidatas/<int:fila>/perfil-laboral", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_perfil_laboral(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    result = update_candidate_basic_fields(
+        candidata,
+        _center_request_data(),
+        section="labor",
+        allow_clear_optional=True,
+        audit_action="CANDIDATA_CENTER_EDIT",
+    )
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+
+
+@admin_bp.route("/candidatas/<int:fila>/referencias", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_referencias(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    result = update_candidate_references(candidata, _center_request_data())
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+
+
+@admin_bp.route("/candidatas/<int:fila>/referencias-formulario", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_referencias_formulario(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    result = update_candidate_form_references(candidata, _center_request_data())
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+
+
+@admin_bp.route("/candidatas/<int:fila>/inscripcion", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_inscripcion(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    from core import legacy_handlers as legacy_h
+
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+    result = update_candidate_inscription(
+        candidata,
+        _center_request_data(),
+        actor=str(actor),
+        code_generator=legacy_h.generar_codigo_unico,
+    )
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(
+        int(fila),
+        result.message,
+        result.changes,
+        finance_event={
+            "fecha": utc_now_naive().isoformat(),
+            "monto": result.changes.get("monto_total", ""),
+            "actor": actor,
+            "detalle": result.message,
+        },
+    ))
+
+
+@admin_bp.route("/candidatas/<int:fila>/porciento", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_update_porciento(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+    idem_row, duplicate = _claim_idempotency(
+        scope="candidata_finance",
+        entity_type="candidata",
+        entity_id=int(fila),
+        action="configure_porciento",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return jsonify({
+                "ok": False,
+                "message": _idempotency_conflict_message(),
+                "errors": {"idempotency_key": "Solicitud duplicada."},
+                "error_code": "idempotency_conflict",
+            }), 409
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            payload = _candidata_center_response_payload(int(fila), "Operación ya procesada previamente.", {})
+            _set_idempotency_response(idem_row, status=200, code="ok")
+            return jsonify(payload)
+
+    result = configure_candidate_finance(candidata, _center_request_data(), actor=str(actor), now_fn=utc_now_naive)
+    if not result.ok:
+        if idem_row is not None:
+            _set_idempotency_response(idem_row, status=int(result.status_code or 400), code=result.error_code or "error")
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+
+    db.session.commit()
+    session["last_edited_candidata_fila"] = int(fila)
+    _set_idempotency_response(idem_row, status=200, code="ok")
+    return jsonify(_candidata_center_response_payload(
+        int(fila),
+        result.message,
+        result.changes,
+        finance_event={
+            "fecha": utc_now_naive().isoformat(),
+            "monto": result.changes.get("monto_pagado", ""),
+            "metodo": _center_text(_center_request_data().get("metodo_pago") or ""),
+            "actor": actor,
+            "detalle": result.message,
+        },
+    ))
+
+
+@admin_bp.route("/candidatas/<int:fila>/porciento/pagos", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_register_porciento_payment(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+    idem_row, duplicate = _claim_idempotency(
+        scope="candidata_finance",
+        entity_type="candidata",
+        entity_id=int(fila),
+        action="register_payment",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return jsonify({
+                "ok": False,
+                "message": _idempotency_conflict_message(),
+                "errors": {"idempotency_key": "Solicitud duplicada."},
+                "error_code": "idempotency_conflict",
+            }), 409
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            payload = _candidata_center_response_payload(int(fila), "Operación ya procesada previamente.", {})
+            _set_idempotency_response(idem_row, status=200, code="ok")
+            return jsonify(payload)
+
+    result = register_candidate_payment(candidata, _center_request_data(), actor=str(actor), now_fn=utc_now_naive)
+    if not result.ok:
+        if idem_row is not None:
+            _set_idempotency_response(idem_row, status=int(result.status_code or 400), code=result.error_code or "error")
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        if idem_row is not None:
+            _set_idempotency_response(idem_row, status=500, code="save_error")
+        return jsonify({
+            "ok": False,
+            "message": "No se pudo guardar el pago.",
+            "errors": {"server": "No se pudo guardar el pago."},
+            "error_code": "server_error",
+        }), 500
+
+    session["last_edited_candidata_fila"] = int(fila)
+    _set_idempotency_response(idem_row, status=200, code="ok")
+    return jsonify(_candidata_center_response_payload(
+        int(fila),
+        result.message,
+        result.changes,
+        finance_event={
+            "fecha": utc_now_naive().isoformat(),
+            "monto": result.changes.get("monto_pagado", ""),
+            "metodo": _center_text(_center_request_data().get("metodo_pago") or ""),
+            "actor": actor,
+            "detalle": result.message,
+        },
+    ))
+
+
+@admin_bp.route("/candidatas/<int:fila>/llamadas", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_registrar_llamada(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"candidata": "No existe."}}), 404
+    actor = (
+        getattr(current_user, "username", None)
+        or getattr(current_user, "id", None)
+        or session.get("usuario")
+        or "sistema"
+    )
+    result = register_candidate_call(
+        candidata,
+        _center_request_data(),
+        actor=str(actor),
+    )
+    if not result.ok:
+        return jsonify({
+            "ok": False,
+            "message": result.message,
+            "errors": result.errors,
+            "error_code": result.error_code,
+        }), int(result.status_code or 400)
+    session["last_edited_candidata_fila"] = int(fila)
+    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+
+
+@admin_bp.route("/candidatas/<int:fila>/estado/lista", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_estado_lista(fila: int):
+    cand = Candidata.query.filter_by(fila=int(fila)).first_or_404()
+    try:
+        payload = _candidata_center_mark_ready(cand)
+        return jsonify(payload), 200
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        return _candidata_center_action_error(int(fila), str(inv_exc), status=409)
+    except Exception:
+        db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_LISTA",
+            candidata=cand,
+            summary=f"Fallo marcando candidata lista para trabajar {cand.fila}",
+            success=False,
+            error="No se pudo actualizar estado a lista para trabajar.",
+        )
+        return _candidata_center_action_error(int(fila), "No se pudo actualizar el estado a lista para trabajar.", status=500)
+
+
+@admin_bp.route("/candidatas/<int:fila>/estado/descalificar", methods=["POST"])
+@login_required
+@admin_required
+def candidatas_operativo_estado_descalificar(fila: int):
+    cand = Candidata.query.filter_by(fila=int(fila)).first_or_404()
+    data = _center_request_data()
+    try:
+        payload = _candidata_center_disqualify(cand, (data.get("motivo") or ""))
+        return jsonify(payload), 200
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        status = 400 if getattr(inv_exc, "code", "") == "motivo_required" else 409
+        return _candidata_center_action_error(int(fila), str(inv_exc), status=status)
+    except Exception:
+        db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_DESQUALIFY",
+            candidata=cand,
+            summary=f"Fallo descalificando candidata {cand.fila}",
+            success=False,
+            error="No se pudo descalificar la candidata.",
+        )
+        return _candidata_center_action_error(int(fila), "No se pudo descalificar la candidata.", status=500)
+
+
+@admin_bp.route("/candidatas/<int:fila>/estado/reactivar", methods=["POST"])
+@login_required
+@admin_required
+def candidatas_operativo_estado_reactivar(fila: int):
+    cand = Candidata.query.filter_by(fila=int(fila)).first_or_404()
+    try:
+        payload = _candidata_center_reactivate(cand)
+        return jsonify(payload), 200
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        return _candidata_center_action_error(int(fila), str(inv_exc), status=409)
+    except Exception:
+        db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_REACTIVATE",
+            candidata=cand,
+            summary=f"Fallo reactivando candidata {cand.fila}",
+            success=False,
+            error="No se pudo reactivar la candidata.",
+        )
+        return _candidata_center_action_error(int(fila), "No se pudo reactivar la candidata.", status=500)
+
+
+@admin_bp.route("/candidatas/<int:fila>/estado/trabajando", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_estado_trabajando(fila: int):
+    cand = Candidata.query.filter_by(fila=int(fila)).first_or_404()
+    try:
+        payload = _candidata_center_mark_working(cand)
+        return jsonify(payload), 200
+    except InvariantConflictError as inv_exc:
+        db.session.rollback()
+        return _candidata_center_action_error(int(fila), str(inv_exc), status=409)
+    except Exception:
+        db.session.rollback()
+        log_candidata_action(
+            action_type="CANDIDATA_MARK_TRABAJANDO",
+            candidata=cand,
+            summary=f"Fallo marcando candidata trabajando {cand.fila}",
+            success=False,
+            error="No se pudo actualizar estado a trabajando.",
+        )
+        return _candidata_center_action_error(int(fila), "No se pudo actualizar el estado a trabajando.", status=500)
+
+
 _CANDIDATAS_FINALIZAR_BADGE_CACHE_KEY = "admin:candidatas:por_finalizar:badge:v1"
 _CANDIDATAS_FINALIZAR_BADGE_TTL_SEC_DEFAULT = 60
 _CANDIDATAS_FINALIZAR_URGENCIA_RANK = {"critica": 4, "alta": 3, "media": 2, "baja": 1}
@@ -22052,9 +24474,8 @@ def _build_candidatas_por_finalizar_rows(q: str = "", *, count_only: bool = Fals
             Candidata.fecha_cambio_estado,
             Candidata.marca_temporal,
         )
-    ).filter(
-        Candidata.estado.notin_(["descalificada", "trabajando"]),
-    )
+    ).filter(Candidata.estado.notin_(["descalificada", "trabajando"]))
+
     if q:
         like = f"%{q}%"
         base = base.filter(
@@ -22093,10 +24514,9 @@ def _build_candidatas_por_finalizar_rows(q: str = "", *, count_only: bool = Fals
     count_result = 0
     for cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len in rows_iter:
         falta_entrevista = not entrevista_ok(getattr(cand, "entrevista", None), entrevistas_count)
-        ref_lab_txt = getattr(cand, "contactos_referencias_laborales", None) or getattr(cand, "referencias_laboral", None)
-        ref_fam_txt = getattr(cand, "referencias_familiares_detalle", None) or getattr(cand, "referencias_familiares", None)
-        falta_ref_lab = not referencias_ok(ref_lab_txt)
-        falta_ref_fam = not referencias_ok(ref_fam_txt)
+        refs = candidata_referencias_complete(cand)
+        falta_ref_lab = not refs.get("referencias_laboral")
+        falta_ref_fam = not refs.get("referencias_familiares")
         falta_depuracion = not binario_ok(dep_len)
         falta_perfil = not binario_ok(perfil_len)
         falta_cedula1 = not binario_ok(ced1_len)
@@ -22472,19 +24892,20 @@ def reactivar_candidata(candidata_id: int):
             reason="reactivar",
             candidata_obj=cand,
         )
+        estado_nuevo = (getattr(cand, "estado", None) or "").strip().lower()
         db.session.commit()
         _audit_log(
             action_type="CANDIDATA_REACTIVAR",
             entity_type="Candidata",
             entity_id=cand.fila,
             summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            changes={"estado": {"from": "descalificada", "to": estado_nuevo or None}},
         )
         log_candidata_action(
             action_type="CANDIDATA_REACTIVATE",
             candidata=cand,
             summary=f"Candidata reactivada: {cand.nombre_completo or cand.fila}",
-            changes={"estado": {"from": "descalificada", "to": "lista_para_trabajar"}},
+            changes={"estado": {"from": "descalificada", "to": estado_nuevo or None}},
             success=True,
         )
         _emit_domain_outbox_event(
@@ -22492,7 +24913,7 @@ def reactivar_candidata(candidata_id: int):
             aggregate_type="Candidata",
             aggregate_id=int(cand.fila),
             aggregate_version=None,
-            payload={"candidata_id": int(cand.fila), "to": "lista_para_trabajar", "reason": "reactivar"},
+            payload={"candidata_id": int(cand.fila), "to": estado_nuevo or "sin_estado", "reason": "reactivar"},
         )
         db.session.commit()
         flash("Candidata reactivada correctamente.", "success")

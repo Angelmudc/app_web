@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 import math
-from utils.child_age_parser import parse_child_age_summary
+from utils.child_age_parser import child_care_help_factor, parse_child_age_summary
 
 
 NO_SUGGESTION_MESSAGE = (
@@ -24,10 +24,11 @@ BASE_SALARY_MAP = {
     "sd_4_dias": 14500,
     "sd_l_v": 16000,
     "sd_l_s": 17000,
+    "fin_semana": 12500,
     "sd_fin_semana": 11000,
     "cd_l_v": 20000,
     "cd_l_s": 21000,
-    "cd_quincenal": 25000,
+    "cd_quincenal": 24000,
     "cd_fin_semana": 14000,
 }
 
@@ -38,6 +39,34 @@ SD_PROFILE_BASE = {
     4: {"ninera": 12500, "domestica": 14500, "envejeciente": 16000, "mixto": 16000, "mixto_alto": 17000},
     5: {"ninera": 15000, "domestica": 18000, "envejeciente": 19000, "mixto": 20000, "mixto_alto": 21000},
 }
+
+BASE_COMMON_AREAS = {"sala", "comedor", "cocina", "piscina"}
+LIGHT_COMMON_AREAS = {"estudio", "patio", "marquesina"}
+MEDIUM_COMMON_AREAS = {"terraza", "jardin", "salon_juegos"}
+REAL_COMMON_AREAS = BASE_COMMON_AREAS | LIGHT_COMMON_AREAS | MEDIUM_COMMON_AREAS
+
+
+def common_areas_load(data: dict[str, Any]) -> tuple[float, set[str]]:
+    areas = {_norm(a) for a in _as_list(data.get("areas_comunes")) if _norm(a)}
+    if "todas_anteriores" in areas:
+        areas = (areas - {"todas_anteriores"}) | REAL_COMMON_AREAS
+    area_otro = _norm(data.get("area_otro"))
+    if area_otro or "otro" in areas:
+        areas.add("otro")
+
+    load = 0.0
+    for area in areas:
+        if area in BASE_COMMON_AREAS or area == "todas_anteriores":
+            continue
+        if area in LIGHT_COMMON_AREAS:
+            load += 0.1
+        elif area in MEDIUM_COMMON_AREAS:
+            load += 0.25
+        elif area == "otro":
+            load += 0.5
+        else:
+            load += 0.5
+    return round(load, 2), areas
 
 
 def _norm(v: Any) -> str:
@@ -92,6 +121,7 @@ def parse_salary_amount(raw: Any) -> int | None:
 def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
     modalidad = _norm(data.get("modalidad_trabajo"))
     horario = _norm(data.get("horario"))
+    dias_trabajo = _norm(data.get("dias_trabajo") or data.get("horario_dias_trabajo"))
     if not modalidad:
         return None, "incompleta"
 
@@ -111,11 +141,21 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
             else f"con dormida {horario_hint}"
         ).strip()
 
-    patterns = [
+    dormida_patterns = [
+        (r"quincenal|salida\s+quincenal", "cd_quincenal"),
         (r"con\s+dormida.*lunes\s*a\s*viernes", "cd_l_v"),
         (r"con\s+dormida.*lunes\s*a\s*s[áa]bado", "cd_l_s"),
-        (r"quincenal|salida\s+quincenal", "cd_quincenal"),
         (r"con\s+dormida.*fin\s*de\s*semana|con\s+dormida.*s[áa]bado\s*y\s*domingo", "cd_fin_semana"),
+    ]
+    for pattern, key in dormida_patterns:
+        if re.search(pattern, expanded_modalidad):
+            return key, "ok"
+
+    if "otro" in modalidad and "salida diaria" in modalidad and not dias_trabajo:
+        return None, "ambigua"
+
+    schedule_hint = " ".join(part for part in (expanded_modalidad, dias_trabajo, horario) if part)
+    salida_patterns = [
         (r"salida\s+diaria.*1\s*d[ií]a|salida\s+diaria.*1\s*d[ií]a\s*a\s*la\s*semana", "sd_1_dia"),
         (r"salida\s+diaria.*2\s*d[ií]as|salida\s+diaria.*2\s*d[ií]as\s*a\s*la\s*semana", "sd_2_dias"),
         (r"salida\s+diaria.*3\s*d[ií]as|salida\s+diaria.*3\s*d[ií]as\s*a\s*la\s*semana", "sd_3_dias"),
@@ -124,12 +164,56 @@ def classify_schedule(data: dict[str, Any]) -> tuple[str | None, str]:
         (r"salida\s+diaria.*lunes\s*a\s*s[áa]bado", "sd_l_s"),
         (r"salida\s+diaria.*fin\s*de\s*semana|salida\s+diaria.*s[áa]bado\s*y\s*domingo|salida\s+diaria.*viernes\s*a\s*lunes", "sd_fin_semana"),
     ]
-    for pattern, key in patterns:
-        if re.search(pattern, expanded_modalidad):
+    for pattern, key in salida_patterns:
+        if re.search(pattern, schedule_hint):
             return key, "ok"
+    if "salida diaria" in modalidad:
+        inferred_key = _infer_sd_schedule_key_from_days(schedule_hint)
+        if inferred_key:
+            return inferred_key, "ok"
     if "otro" in modalidad:
         return None, "ambigua"
     return None, "ambigua"
+
+
+def _infer_sd_schedule_key_from_days(raw: str) -> str | None:
+    txt = _norm(raw)
+    if not txt:
+        return None
+    if re.search(r"s[áa]bado\s*y\s*domingo|fin\s*de\s*semana", txt):
+        return "sd_fin_semana"
+    if re.search(r"lunes\s*a\s*s[áa]bado", txt):
+        return "sd_l_s"
+    if re.search(r"lunes\s*a\s*viernes", txt):
+        return "sd_l_v"
+    explicit = re.search(r"\b([1-4])\s*d[ií]as?\b", txt)
+    if explicit:
+        day_count = int(explicit.group(1))
+        return "sd_1_dia" if day_count == 1 else f"sd_{day_count}_dias"
+    weekday_tokens = {
+        "lunes": "lunes",
+        "martes": "martes",
+        "miercoles": "miercoles",
+        "miércoles": "miercoles",
+        "jueves": "jueves",
+        "viernes": "viernes",
+        "sabado": "sabado",
+        "sábado": "sabado",
+        "domingo": "domingo",
+    }
+    found = {canonical for token, canonical in weekday_tokens.items() if token in txt}
+    if found == {"sabado", "domingo"}:
+        return "sd_fin_semana"
+    count = len(found)
+    if count == 1:
+        return "sd_1_dia"
+    if count in {2, 3, 4}:
+        return f"sd_{count}_dias"
+    if count == 5:
+        return "sd_l_v"
+    if count >= 6:
+        return "sd_l_s"
+    return None
 
 
 def _service_profile(funciones: list[str]) -> str:
@@ -157,6 +241,10 @@ def _service_profile(funciones: list[str]) -> str:
 def _sd_days_from_schedule(schedule_key: str) -> int | None:
     if schedule_key == "sd_l_v":
         return 5
+    if schedule_key == "sd_l_s":
+        return 6
+    if schedule_key == "sd_fin_semana":
+        return 2
     if schedule_key == "sd_1_dia":
         return 1
     if schedule_key == "sd_2_dias":
@@ -185,9 +273,7 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
     hab = _to_int(data.get("habitaciones"), default=0)
     banos = _to_float(data.get("banos"), default=0.0)
     pisos = _norm(data.get("pisos") or data.get("cantidad_pisos"))
-    areas = _as_list(data.get("areas_comunes"))
-    has_all_areas = any(_norm(a) == "todas_anteriores" for a in areas)
-    some_areas_count = len([a for a in areas if _norm(a) not in {"otro", "todas_anteriores"}])
+    areas_load, selected_area_codes = common_areas_load(data)
     two_levels = _norm(data.get("dos_pisos")) in {"true", "1", "y"}
     ajustes = 0
     motivos: list[str] = []
@@ -197,17 +283,35 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
         return 0, motivos, nivel
 
     if tipo_lugar in {"casa", "apto"}:
-        # Hogar grande: 3+ habitaciones y 3+ baños.
-        is_large_home = hab >= 3 and banos >= 3
-        if is_large_home:
+        def dimension_load(value: float) -> float:
+            if value <= 2.0:
+                return 0.0
+            if value <= 3.0:
+                return (value - 2.0) * 0.2
+            if value <= 4.0:
+                return 0.2 + ((value - 3.0) * 0.5)
+            if value <= 5.0:
+                return 0.7 + ((value - 4.0) * 0.65)
+            return 2.0 + max(0.0, value - 6.0) * 0.7
+
+        physical_load = round(dimension_load(float(hab)) + dimension_load(float(banos or 0.0)), 2)
+        if physical_load > 0:
             if tipo_lugar == "casa":
-                ajustes += 1000
+                house_adjustment = int(round((physical_load * 200.0) / 250.0) * 250)
+            else:
+                house_adjustment = int(round((physical_load * 125.0) / 250.0) * 250)
+            ajustes += min(1000, max(0, house_adjustment))
+            if physical_load >= 3.5:
+                nivel = "alta"
+                motivos.append("Vivienda muy grande por tamaño del hogar.")
+            elif physical_load >= 2.2:
                 nivel = "media"
-                motivos.append("Casa grande por tamaño del hogar (3+ habitaciones y 3+ baños).")
-            elif tipo_lugar == "apto":
-                ajustes += 500
+                motivos.append("Vivienda grande por tamaño del hogar.")
+            elif physical_load >= 1.2:
                 nivel = "media"
-                motivos.append("Apartamento grande por tamaño del hogar (3+ habitaciones y 3+ baños).")
+                motivos.append("La estructura del hogar suma una carga moderada por tamaño.")
+            else:
+                motivos.append("La estructura del hogar suma una carga ligera por tamaño.")
 
         # Reglas adicionales de carga real (más allá de tipo/tamaño base).
         if pisos == "3+":
@@ -219,13 +323,17 @@ def classify_house_size(data: dict[str, Any], funciones: list[str]) -> tuple[int
             nivel = "media"
             motivos.append("La vivienda tiene más de un nivel.")
 
-        if has_all_areas:
-            ajustes += 2000
+        area_adjustment = 0
+        if areas_load >= 1.5:
+            area_adjustment = 250
+            motivos.append("Incluye varias áreas adicionales del hogar.")
+        if areas_load >= 2.25:
+            area_adjustment = 500
+            motivos.append("Incluye áreas especiales acumuladas de mayor carga.")
+
+        if area_adjustment:
+            ajustes += area_adjustment
             nivel = "media"
-            motivos.append("Incluye varias áreas comunes del hogar.")
-        elif some_areas_count >= 4:
-            ajustes += 1000
-            motivos.append("Incluye varias áreas comunes del hogar.")
     return ajustes, motivos, nivel
 
 
@@ -238,9 +346,12 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
     if "ninos" not in funciones or ninos <= 0:
         return ajustes, motivos, nivel
 
-    summary = parse_child_age_summary(edades)
+    summary = parse_child_age_summary(edades, declared_count=ninos or None)
     small = int(summary.get("small_count") or 0)
     known_ages = bool(summary.get("ages_years"))
+    child_care_load = float(summary.get("child_care_load") or 0.0)
+    help_info = child_care_help_factor(data.get("ayuda_cuidado_ninos"), summary)
+    effective_child_care_load = round(child_care_load * float(help_info["factor"]), 3)
     has_older_only = bool(
         ninos > 0
         and known_ages
@@ -248,17 +359,29 @@ def classify_child_load(data: dict[str, Any], funciones: list[str]) -> tuple[int
         and (int(summary.get("big_count") or 0) + int(summary.get("teen_count") or 0)) > 0
     )
     if small == 0 and ninos > 0 and not known_ages:
-        small = 1
+        motivos.append("Faltan edades de los niños; conviene aclararlas para afinar el sueldo sugerido.")
+        return 0, motivos, "normal"
 
     if has_older_only:
         motivos.append("Los niños indicados son mayores, por lo que el cuidado suele ser más de supervisión.")
         return 0, motivos, "normal"
 
     if small > 0:
-        # Regla calibrada: RD$1,000 por cada niño de 5 años o menos.
-        ajustes += 1000 * small
-        nivel = "media" if small <= 2 else "alta"
-        motivos.append("Los niños pequeños requieren mayor atención y responsabilidad.")
+        if "limpieza" not in funciones:
+            ajustes += 1000 * small
+        else:
+            has_full_household = {"limpieza", "cocinar", "lavar"}.issubset(set(funciones))
+            per_load_amount = 750 if has_full_household else 500
+            raw_child_adjustment = per_load_amount * effective_child_care_load
+            if float(help_info["factor"]) < 0.75:
+                ajustes += int(round(raw_child_adjustment / 250.0) * 250)
+            else:
+                ajustes += int(round(raw_child_adjustment / 500.0) * 500)
+        nivel = "media" if effective_child_care_load < 1.5 else "alta"
+        if float(help_info["factor"]) < 1.0:
+            motivos.append("La ayuda con los niños reduce parte de la carga de cuidado.")
+        else:
+            motivos.append("Los niños pequeños requieren mayor atención y responsabilidad.")
     return ajustes, motivos, nivel
 
 
@@ -358,6 +481,7 @@ def _human_schedule_from_key(schedule_key: str) -> str:
         "sd_4_dias": "salida diaria de 4 días a la semana",
         "sd_l_v": "salida diaria de lunes a viernes",
         "sd_l_s": "salida diaria de lunes a sábado",
+        "fin_semana": "fin de semana",
         "sd_fin_semana": "salida diaria de fin de semana",
         "cd_l_v": "con dormida de lunes a viernes",
         "cd_l_s": "con dormida de lunes a sábado",
@@ -458,6 +582,7 @@ def _short_schedule_label(schedule_key: str) -> str:
         "sd_4_dias": "Salida diaria 4 días a la semana",
         "sd_l_v": "Salida diaria de lunes a viernes",
         "sd_l_s": "Salida diaria de lunes a sábado",
+        "fin_semana": "Fin de semana",
         "sd_fin_semana": "Salida diaria de fin de semana",
         "cd_l_v": "Con dormida de lunes a viernes",
         "cd_l_s": "Con dormida de lunes a sábado",
@@ -570,6 +695,8 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
     needs_house_context = "limpieza" in funciones
     tipo_lugar = _norm(data.get("tipo_lugar"))
     schedule_key, schedule_state = classify_schedule(data)
+    if schedule_key in {"sd_fin_semana", "cd_fin_semana"}:
+        schedule_key = "fin_semana"
     horario = _norm(data.get("horario"))
     if schedule_state == "incompleta" or not has_principal_function:
         out = dict(base_out)
@@ -685,7 +812,6 @@ def analyze_salary_suggestion(data: dict[str, Any]) -> dict[str, Any]:
         house_lvl in {"alta", "muy_alta"}
         or child_lvl in {"alta", "muy_alta"}
         or elder_lvl in {"alta", "muy_alta"}
-        or adultos >= 5
         or {"limpieza", "cocinar", "lavar", "planchar"}.issubset(set(funciones))
         or ("planchar" in funciones and len(funciones) >= 3)
     )

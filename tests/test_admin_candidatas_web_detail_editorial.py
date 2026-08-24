@@ -34,6 +34,10 @@ def _ensure_tables() -> None:
 
 
 def _seed_candidata(fila: int, has_profile: bool = False, entrevista_txt: str | None = None) -> None:
+    Entrevista.query.filter_by(candidata_id=fila).delete()
+    CandidataWeb.query.filter_by(candidata_id=fila).delete()
+    Candidata.query.filter_by(fila=fila).delete()
+    db.session.flush()
     c = Candidata(
         fila=fila,
         nombre_completo=f"Candidata QA {fila}",

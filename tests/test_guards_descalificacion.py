@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from flask import Flask
 from werkzeug.exceptions import Forbidden
 
-from utils.guards import is_candidata_descalificada, require_not_descalificada
+from utils.guards import candidata_can_create_interview, is_candidata_descalificada, require_not_descalificada
 
 
 class GuardsDescalificacionTest(unittest.TestCase):
@@ -49,6 +49,15 @@ class GuardsDescalificacionTest(unittest.TestCase):
             )
             self.assertEqual(resp.status_code, 302)
             self.assertTrue(resp.location.endswith("/destino"))
+
+    def test_candidata_can_create_interview_explica_bloqueo_descalificada(self):
+        blocked = candidata_can_create_interview(SimpleNamespace(estado="descalificada"))
+        allowed = candidata_can_create_interview(SimpleNamespace(estado="lista_para_trabajar"))
+
+        self.assertFalse(blocked["can_create"])
+        self.assertIn("descalificada", blocked["reason"])
+        self.assertTrue(allowed["can_create"])
+        self.assertEqual(allowed["reason"], "")
 
 
 if __name__ == "__main__":

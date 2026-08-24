@@ -11,6 +11,7 @@ from flask import current_app, redirect, request, send_file, url_for
 from decorators import roles_required
 
 from core import legacy_handlers as legacy_h
+from core.services.interview_references import is_interview_reference_question
 
 
 @roles_required('admin', 'secretaria')
@@ -48,8 +49,17 @@ def generar_pdf_entrevista_db(entrevista_id: int):
     respuestas_por_pregunta = {r.pregunta_id: (r.respuesta or "").strip() for r in respuestas}
     tipo = (getattr(entrevista, 'tipo', None) or '').strip().lower()
 
-    ref_laborales = (getattr(candidata, 'referencias_laboral', None) or '').strip()
-    ref_familiares = (getattr(candidata, 'referencias_familiares', None) or '').strip()
+    referencias_entrevista = []
+    for pregunta in preguntas:
+        value = (respuestas_por_pregunta.get(pregunta.id) or "").strip()
+        if not value or not is_interview_reference_question(pregunta):
+            continue
+        label = (
+            getattr(pregunta, "texto", None)
+            or getattr(pregunta, "clave", None)
+            or "Referencia en entrevista"
+        )
+        referencias_entrevista.append((label, value))
 
     BRAND = (0, 102, 204)
     FAINT = (120, 120, 120)
@@ -265,47 +275,36 @@ def generar_pdf_entrevista_db(entrevista_id: int):
             pdf.set_font("Arial", "B", 13)
 
         pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias", ln=True)
+        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias registradas durante entrevista", ln=True)
         pdf.set_text_color(0, 0, 0)
         pdf.ln(2)
 
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Laborales:", ln=True)
-
-        if ref_laborales:
+        if referencias_entrevista:
+            for label, value in referencias_entrevista:
+                try:
+                    pdf.set_font(base_font, "B" if has_bold else "", 12)
+                except Exception:
+                    pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 7, _ascii_if_needed(_collapse_ws(label), unicode_ok) + ":", ln=True)
+                safe_multicell(
+                    pdf,
+                    _wrap_unbreakables(_ascii_if_needed(value, unicode_ok), 60),
+                    base_font,
+                    "",
+                    12,
+                    color=BRAND,
+                    align="J",
+                )
+        else:
             safe_multicell(
                 pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_laborales, unicode_ok), 60),
+                "No se registraron referencias en esta entrevista.",
                 base_font,
                 "",
                 12,
-                color=BRAND,
-                align="J",
+                color=FAINT,
+                align="L",
             )
-        else:
-            safe_multicell(pdf, "No hay referencias laborales.", base_font, "", 12, color=FAINT, align="L")
-
-        try:
-            pdf.set_font(base_font, "B" if has_bold else "", 12)
-        except Exception:
-            pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 7, "Familiares:", ln=True)
-
-        if ref_familiares:
-            safe_multicell(
-                pdf,
-                _wrap_unbreakables(_ascii_if_needed(ref_familiares, unicode_ok), 60),
-                base_font,
-                "",
-                12,
-                color=BRAND,
-                align="J",
-            )
-        else:
-            safe_multicell(pdf, "No hay referencias familiares.", base_font, "", 12, color=FAINT, align="L")
 
         raw = pdf.output(dest="S")
         pdf_bytes = raw if isinstance(raw, (bytes, bytearray)) else raw.encode("latin1", "ignore")

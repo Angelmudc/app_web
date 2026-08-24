@@ -5,6 +5,7 @@ from flask import current_app, flash, redirect, render_template, request, sessio
 
 from decorators import roles_required
 from core.services.candidatas_shared import get_candidata_by_id
+from core.services.candidata_quick_edit import update_candidate_references
 from core.services.search import _prioritize_candidata_result, search_candidatas_limited
 
 from core import legacy_handlers as legacy_h
@@ -93,50 +94,23 @@ def referencias():
         if not candidata:
             mensaje = "⚠️ Candidata no existe."
         else:
-            cand_ref_lab = (request.form.get('referencias_laboral') or '').strip()[:5000]
-            cand_ref_fam = (request.form.get('referencias_familiares') or '').strip()[:5000]
-
-            if not legacy_h.legacy_text_is_useful(cand_ref_lab) or not legacy_h.legacy_text_is_useful(cand_ref_fam):
-                mensaje = "⚠️ Referencias inválidas. Usa texto real (no placeholders)."
-                return render_template(
-                    'referencias.html',
-                    accion='ver',
-                    candidata=candidata,
-                    mensaje=mensaje,
-                    next_url=next_url,
-                )
-
-            candidata.referencias_laboral = cand_ref_lab
-            candidata.referencias_familiares = cand_ref_fam
-            candidata.contactos_referencias_laborales = cand_ref_lab
-            candidata.referencias_familiares_detalle = cand_ref_fam
-            result = legacy_h.execute_robust_save(
-                session=legacy_h.db.session,
-                persist_fn=lambda _attempt: None,
-                verify_fn=lambda: legacy_h._verify_candidata_fields_saved(
-                    int(cid),
-                    {
-                        "referencias_laboral": cand_ref_lab,
-                        "referencias_familiares": cand_ref_fam,
-                        "contactos_referencias_laborales": cand_ref_lab,
-                        "referencias_familiares_detalle": cand_ref_fam,
-                    },
-                ),
-            )
+            result = update_candidate_references(candidata, dict(request.form))
             if result.ok:
                 mensaje = "✅ Referencias actualizadas."
                 flash(mensaje, "success")
                 if next_url:
                     return redirect(next_url)
             else:
-                legacy_h.db.session.rollback()
-                current_app.logger.error(
-                    "❌ Error al guardar referencias candidata_id=%s attempts=%s error=%s",
-                    cid,
-                    result.attempts,
-                    result.error_message,
-                )
-                mensaje = "❌ Error al guardar. No se pudo verificar la persistencia."
+                if result.error_code == "validation_error":
+                    mensaje = "⚠️ Referencias inválidas. Usa texto real (no placeholders)."
+                else:
+                    current_app.logger.error(
+                        "❌ Error al guardar referencias candidata_id=%s attempts=%s error=%s",
+                        cid,
+                        result.attempts,
+                        result.message,
+                    )
+                    mensaje = "❌ Error al guardar. No se pudo verificar la persistencia."
 
         return render_template(
             'referencias.html',

@@ -6,6 +6,7 @@ from unittest.mock import patch
 from sqlalchemy.exc import OperationalError
 
 from app import app as flask_app
+from services.candidata_invariants import InvariantConflictError
 from utils.robust_save import execute_robust_save
 
 
@@ -101,7 +102,7 @@ def test_form_save_post_commit_verification_required():
     assert 'verificar' in (result.error_message or '').lower()
 
 
-def test_form_save_failure_is_visible_to_user():
+def test_marcar_trabajando_invariant_conflict_is_visible_to_user():
     flask_app.config['TESTING'] = True
     flask_app.config['WTF_CSRF_ENABLED'] = False
     client = flask_app.test_client()
@@ -128,7 +129,10 @@ def test_form_save_failure_is_visible_to_user():
 
     with flask_app.app_context():
         with patch('admin.routes.Candidata.query', _CandidataQuery()), \
-             patch('admin.routes._execute_form_save', return_value=SimpleNamespace(ok=False, attempts=3, error_message='forced')):
+             patch(
+                 'admin.routes.invariant_change_candidate_state',
+                 side_effect=InvariantConflictError('conflict', 'No existe una asignación activa coherente.'),
+             ):
             resp = client.post(
                 '/admin/candidatas/91/marcar_trabajando',
                 data={'next': '/admin/solicitudes'},
@@ -138,4 +142,4 @@ def test_form_save_failure_is_visible_to_user():
     assert resp.status_code in (302, 303)
     with client.session_transaction() as sess:
         flashes = list(sess.get('_flashes', []))
-    assert any('No se pudo guardar correctamente. Intente nuevamente.' in msg for _cat, msg in flashes)
+    assert any('No existe una asignación activa coherente.' in msg for _cat, msg in flashes)

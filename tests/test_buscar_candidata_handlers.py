@@ -131,8 +131,10 @@ def test_buscar_candidata_post_edit_success_keeps_side_effects_and_redirect():
     assert resp.status_code in (302, 303)
     assert (resp.headers.get("Location") or "").endswith("/buscar?candidata_id=88")
     assert cand.numero_telefono == "8090001234"
-    assert cand.referencias_laboral == "Laboral nueva"
-    assert cand.referencias_familiares == "Familiar nueva"
+    assert cand.contactos_referencias_laborales == "Laboral nueva"
+    assert cand.referencias_familiares_detalle == "Familiar nueva"
+    assert cand.referencias_laboral == "Ref laboral vieja"
+    assert cand.referencias_familiares == "Ref familiar vieja"
     audit_mock.assert_called_once()
 
     with client.session_transaction() as sess:

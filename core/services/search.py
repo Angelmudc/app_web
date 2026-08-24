@@ -9,6 +9,7 @@ from flask import current_app
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import load_only
 
+from config_app import db
 from models import Candidata
 
 
@@ -48,6 +49,35 @@ def normalize_code(raw: str) -> str:
 
 def _sql_name_norm(col):
     """Normaliza nombre en SQL (PostgreSQL) sin depender de unaccent."""
+    if _dialect_name() == "sqlite":
+        lowered = func.lower(func.coalesce(col, ""))
+        for src, dst in (
+            ("á", "a"),
+            ("à", "a"),
+            ("ä", "a"),
+            ("â", "a"),
+            ("ã", "a"),
+            ("é", "e"),
+            ("è", "e"),
+            ("ë", "e"),
+            ("ê", "e"),
+            ("í", "i"),
+            ("ì", "i"),
+            ("ï", "i"),
+            ("î", "i"),
+            ("ó", "o"),
+            ("ò", "o"),
+            ("ö", "o"),
+            ("ô", "o"),
+            ("õ", "o"),
+            ("ú", "u"),
+            ("ù", "u"),
+            ("ü", "u"),
+            ("û", "u"),
+            ("ñ", "n"),
+        ):
+            lowered = func.replace(lowered, src, dst)
+        return lowered
     lowered = func.lower(col)
     translated = func.translate(
         lowered,
@@ -61,7 +91,22 @@ def _sql_name_norm(col):
 
 def _sql_digits(col):
     """Extrae solo digitos desde una columna (PostgreSQL)."""
+    if _dialect_name() == "sqlite":
+        cleaned = func.coalesce(col, "")
+        for ch in ("-", " ", "(", ")", ".", "+"):
+            cleaned = func.replace(cleaned, ch, "")
+        return cleaned
     return func.regexp_replace(col, r"\D", "", "g")
+
+
+def _dialect_name() -> str:
+    try:
+        bind = db.session.get_bind()
+        if bind is not None and bind.dialect is not None:
+            return str(bind.dialect.name or "").lower()
+    except Exception:
+        return ""
+    return ""
 
 
 def build_flexible_search_filters(q: str):

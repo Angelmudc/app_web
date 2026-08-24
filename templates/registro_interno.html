@@ -187,11 +187,12 @@
         </div>
 
         <div>
-          <label for="disponibilidad_inicio"><b>¿Cuándo puede iniciar?</b></label>
+          <label for="disponibilidad_inicio"><b>¿Cuándo puede iniciar a trabajar?</b></label>
           <select id="disponibilidad_inicio" name="disponibilidad_inicio" class="form-control">
-            <option value="" {% if not f.get('disponibilidad_inicio') %}selected{% endif %}>No especificado</option>
-            <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>Inmediata</option>
+            <option value="" {% if not f.get('disponibilidad_inicio') %}selected{% endif %}>Aún no lo sabe</option>
+            <option value="inmediata" {% if f.get('disponibilidad_inicio') == 'inmediata' %}selected{% endif %}>De inmediato</option>
             <option value="esta_semana" {% if f.get('disponibilidad_inicio') == 'esta_semana' %}selected{% endif %}>Esta semana</option>
+            <option value="1-2 semanas" {% if f.get('disponibilidad_inicio') == '1-2 semanas' %}selected{% endif %}>En 1-2 semanas</option>
             <option value="este_mes" {% if f.get('disponibilidad_inicio') == 'este_mes' %}selected{% endif %}>Este mes</option>
           </select>
         </div>
@@ -237,7 +238,7 @@
         </div>
 
         <div style="grid-column: 1 / -1;">
-          <label for="motivacion_trabajo"><b>Motivación para el trabajo</b></label>
+          <label for="motivacion_trabajo"><b>¿Cuál es el motivo por el que deseas trabajar como doméstica?</b></label>
           <textarea
             id="motivacion_trabajo"
             name="motivacion_trabajo"

@@ -6,53 +6,17 @@
 {% block title %}Doméstica del Cibao A&D – Inicio{% endblock %}
 
 {% block hero %}
-<section class="hero-section text-center py-5"
-         style="background: linear-gradient(160deg, #e7ecfb 0%, #f4f7fc 50%, #ffffff 100%);
-                border-bottom: 3px solid #dbe3f2;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
-
-  <div class="container d-flex flex-column align-items-center justify-content-center position-relative">
-
-    {# Logo #}
-    <img src="{{ url_for('static', filename='logo_nuevo.png') }}"
-         alt="Doméstica del Cibao A&D"
-         class="img-fluid mb-4 animate-fade"
-         style="max-width: 640px; width: 90%;
-                filter: drop-shadow(0 3px 8px rgba(0,0,0,0.10));">
-
-    <h1 class="fw-bold text-dark mb-2 animate-slide" style="font-size: 2rem;">
-      Doméstica del Cibao A&D
-    </h1>
-
-    <p class="lead text-muted mb-4 animate-fade" style="font-size: 1.1rem;">
-      Gestión profesional, moderna y confiable de empleadas domésticas.
-    </p>
-
-    {% set _hero_role = ((current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) or '')|string|lower %}
-    {% if _hero_role in ['secretary', 'secre', 'secretaría'] %}
-      {% set _hero_role = 'secretaria' %}
-    {% endif %}
-    {% set _hero_internal_staff = current_user.is_authenticated and (_hero_role in ['owner', 'admin', 'secretaria']) %}
-    {% set admin_panel_url = (url_for_safe('admin.listar_clientes') or url_for_safe('admin.admin_home') or '/admin/') %}
-    {% set admin_login_url = url_for_safe('admin.login') %}
-    {% set fallback_login_url = url_for_safe('login') %}
-
-    {% if _hero_internal_staff %}
-      <a href="{{ admin_panel_url }}"
-         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
-        <i class="fa-solid fa-gauge-high me-2"></i> Ir a Admin
-      </a>
-    {% elif admin_login_url %}
-      <a href="{{ admin_login_url }}"
-         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
-        <i class="fa-solid fa-key me-2"></i> Ingresar Administrador
-      </a>
-    {% elif fallback_login_url %}
-      <a href="{{ fallback_login_url }}"
-         class="btn btn-primary btn-lg fw-semibold px-5 py-2 shadow-sm animate-fade">
-        <i class="fa-solid fa-key me-2"></i> Ingresar
-      </a>
-    {% endif %}
+<section class="home-hero">
+  <div class="container d-flex align-items-center justify-content-between gap-3 flex-wrap">
+    <div class="d-flex align-items-center gap-3">
+      <img src="{{ url_for('static', filename='logo_nuevo.png') }}"
+           alt="Doméstica del Cibao A&D"
+           class="home-hero-logo">
+      <div>
+        <h1 class="h5 fw-bold home-hero-title mb-0">Doméstica del Cibao A&D</h1>
+        <div class="small home-hero-subtitle">Inicio operativo</div>
+      </div>
+    </div>
   </div>
 </section>
 {% endblock %}
@@ -60,348 +24,395 @@
 {% block content %}
 <div class="container py-5">
 
-  <h1 class="text-center mb-5 fw-bold text-dark animate-slide" style="font-size: 1.8rem;">
-    <i class="fa-solid fa-clipboard-list me-2 text-primary"></i> Panel Principal
-  </h1>
-
   {% set _role = ((current_user.role if current_user.is_authenticated and current_user.role is defined else session.get('role')) or '')|string|lower %}
   {% if _role in ['secretary', 'secre', 'secretaría'] %}
     {% set _role = 'secretaria' %}
   {% endif %}
   {% set _home_internal_staff = current_user.is_authenticated and (_role in ['owner', 'admin', 'secretaria']) %}
-  {% if _home_internal_staff %}
-  {% set buscar_solicitudes_url = (url_for_safe('secretarias_filtrar_solicitudes') or '/secretarias/solicitudes/filtro') %}
-  <div class="mb-5">
-    <h2 class="section-title">
-      <i class="fa-solid fa-magnifying-glass me-2 text-primary"></i> Solicitudes
-    </h2>
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      <div class="col">
-        <div class="dashboard-card">
-          <h5>Buscar solicitudes</h5>
-          <p>Buscador interno para filtrar solicitudes rápido y copiar para publicar.</p>
-          <a href="{{ buscar_solicitudes_url }}" class="btn btn-outline-primary w-100">
-            Ir a Buscar solicitudes
-          </a>
-        </div>
-      </div>
-      {% if has_endpoint('admin.candidatas_web_list') %}
-      <div class="col">
-        <div class="dashboard-card">
-          <h5>Candidatas en tienda</h5>
-          <p>Publica, edita u oculta los perfiles que los clientes verán en sus enlaces privados.</p>
-          <a href="{{ url_for('admin.candidatas_web_list') }}" class="btn btn-outline-primary w-100">
-            Gestionar perfiles
-          </a>
-        </div>
-      </div>
-      {% endif %}
-      {% if has_endpoint('admin.tienda_intereses_list') %}
-      <div class="col">
-        <div class="dashboard-card">
-          <h5>Solicitudes de entrevistas</h5>
-          <p>
-            {% if tienda_intereses_badge_count is defined %}
-              {{ tienda_intereses_badge_count() }} nuevas
-            {% else %}
-              Revisión de solicitudes desde tienda privada
-            {% endif %}
-          </p>
-          <a href="{{ url_for('admin.tienda_intereses_list') }}" class="btn btn-outline-primary w-100">
-            Ver solicitudes
-          </a>
-        </div>
-      </div>
-      {% endif %}
-      {% if has_endpoint('admin.reemplazos_dashboard') %}
-      <div class="col">
-        <div class="dashboard-card">
-          <h5>Panel de reemplazos</h5>
-          <p>
-            Activos: {{ (reemplazos_badge.activos if reemplazos_badge is defined else 0) }} ·
-            Críticos: {{ (reemplazos_badge.criticos if reemplazos_badge is defined else 0) }}
-          </p>
-          <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="btn btn-outline-primary w-100">
-            Gestionar reemplazos
-          </a>
-        </div>
-      </div>
-      {% endif %}
-    </div>
-  </div>
+  {% set domesticas_url = url_for_safe('admin.candidatas_operativo_index') or '/admin/candidatas' %}
+  {% set domesticas_search_url = url_for_safe('admin.candidatas_operativo_busqueda_rapida_json') or '/admin/candidatas/busqueda-rapida.json' %}
+  {% set registro_url = url_for_safe('registro_interno') or '/registro_interno/' %}
+  {% set dom_counts = domesticas_home.counts if domesticas_home is defined else {} %}
 
-  <div class="mb-5">
-    <h2 class="section-title">
-      <i class="fa-solid fa-bell me-2 text-primary"></i> Notificaciones de formularios públicos
-    </h2>
-    <div class="dashboard-card home-notif-wrap"
-         id="homePublicNotifCard"
-         data-count-url="{{ url_for('home_public_notifications_count') }}"
-         data-list-url="{{ url_for('home_public_notifications_list') }}"
-         data-read-base-url="{{ url_for('home_public_notifications_mark_read', notificacion_id=0) }}">
-      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <div class="d-flex flex-column">
-          <span class="fw-semibold">Centro de notificaciones</span>
-          <small class="text-muted">Pendientes arriba, revisadas debajo</small>
+  <section class="home-workspace mb-4" aria-label="Domésticas">
+    <div class="home-primary-card">
+      <div class="home-primary-copy">
+        <div class="home-eyebrow">Operación principal</div>
+        <h2>Domésticas</h2>
+        <p>Busca una candidata, entra a su ficha y gestiona el trabajo diario desde ahí.</p>
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{{ domesticas_url }}" class="btn btn-primary btn-lg">
+            <i class="fa-solid fa-users-gear me-2"></i> Abrir centro
+          </a>
+          <a href="{{ url_for('admin.candidatas_operativo_index', filtro='por_completar') }}" class="btn btn-outline-primary">
+            Ver candidatas por completar
+          </a>
+          {% if registro_url and _role in ['owner', 'admin', 'secretaria'] %}
+          <a href="{{ registro_url }}" class="btn btn-outline-primary">
+            <i class="fa-solid fa-user-plus me-2"></i> Registrar nueva
+          </a>
+          {% endif %}
         </div>
-        <button type="button"
-                id="homePublicNotifToggle"
-                class="btn btn-outline-primary position-relative home-notif-toggle"
-                aria-expanded="false"
-                aria-controls="homePublicNotifTray">
-          <i class="fa-solid fa-bell me-2"></i> Notificaciones
-          <span class="badge bg-danger position-absolute top-0 start-100 translate-middle home-notif-badge" id="homePublicNotifUnread">0</span>
-        </button>
       </div>
-      <div id="homePublicNotifTray" class="home-notif-tray d-none mt-3">
-        <div class="d-flex justify-content-end mb-2">
-          <button type="button" id="homePublicNotifRefresh" class="btn btn-sm btn-outline-secondary">
-            Actualizar
-          </button>
+
+      <div class="home-primary-panel">
+        <div class="home-kpi-grid">
+          <a class="home-kpi home-kpi-attention" href="{{ url_for('admin.candidatas_operativo_index', filtro='por_completar') }}">
+            <span>Por completar</span>
+            <strong>{{ dom_counts.get('por_completar', 0) }}</strong>
+          </a>
+          <a class="home-kpi home-kpi-attention" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
+            <span>Seguimientos pendientes/vencidos</span>
+            <strong>{{ dom_counts.get('seguimiento', 0) }}</strong>
+          </a>
+          <a class="home-kpi" href="{{ url_for('admin.candidatas_operativo_index', filtro='listas') }}">
+            <span>Listas para trabajar</span>
+            <strong>{{ dom_counts.get('listas', 0) }}</strong>
+          </a>
         </div>
-        <div id="homePublicNotifList" class="small home-notif-list">Cargando notificaciones...</div>
+
+        <form method="get"
+              action="{{ domesticas_url }}"
+              class="home-candidate-search"
+              data-home-candidate-search
+              data-search-url="{{ domesticas_search_url }}">
+          <label for="homeCandidateQ" class="form-label small fw-semibold mb-1">Buscar candidata</label>
+          <div class="home-searchbox">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input id="homeCandidateQ"
+                   name="q"
+                   class="form-control"
+                   autocomplete="off"
+                   placeholder="Nombre, teléfono, cédula o código"
+                   aria-controls="homeCandidateSuggest"
+                   aria-expanded="false">
+          </div>
+          <div id="homeCandidateSuggest" class="home-candidate-suggest" role="listbox" hidden></div>
+        </form>
       </div>
     </div>
-  </div>
+  </section>
+
+  {% if _home_internal_staff %}
+  <section class="mb-4">
+    <h2 class="section-title">
+      <i class="fa-solid fa-briefcase me-2 text-primary"></i> Operaciones generales
+    </h2>
+    <div class="home-compact-grid">
+      {% if has_endpoint('admin.listar_clientes') %}
+      <a class="home-tool-card" href="{{ url_for('admin.listar_clientes') }}">
+        <span class="home-tool-icon"><i class="fa-solid fa-address-book"></i></span>
+        <span>
+          <strong>Clientes</strong>
+          <small>Gestión de clientes existente.</small>
+        </span>
+      </a>
+      {% endif %}
+    </div>
+  </section>
   {% endif %}
 
-  {% set sections = [
+  <section class="mb-4 home-secondary-section">
+    <h2 class="section-title">
+      <i class="fa-solid fa-user-plus me-2 text-primary"></i> Reclutamiento General
+    </h2>
+    <div class="home-compact-grid">
+      {% set reclutas_lista_url = url_for_safe('reclutas.lista') %}
+      {% set reclutas_nuevo_url = url_for_safe('reclutas.nuevo') %}
+      {% if reclutas_lista_url %}
+      <a class="home-tool-card" href="{{ reclutas_lista_url }}">
+        <span class="home-tool-icon"><i class="fa-solid fa-list"></i></span>
+        <span>
+          <strong>Ver Reclutas</strong>
+          <small>Personas para empleos no domésticos.</small>
+        </span>
+      </a>
+      {% endif %}
+      {% if reclutas_nuevo_url %}
+      <a class="home-tool-card" href="{{ reclutas_nuevo_url }}">
+        <span class="home-tool-icon"><i class="fa-solid fa-plus"></i></span>
+        <span>
+          <strong>Nuevo Recluta</strong>
+          <small>Registrar perfil de reclutamiento general.</small>
+        </span>
+      </a>
+      {% endif %}
+    </div>
+  </section>
 
-    ('Gestión de Candidatas', 'fa-users', [
-      ('buscar_candidata', '🔍 Buscar / Editar', 'Busca cualquier candidata por nombre o cédula y edita sus datos.'),
-      ('inscripcion', '📝 Inscripción', 'Registra inscripción, asigna código, monto y fecha.'),
-      ('porciento', '💲 Porciento', 'Calcula porcentajes pendientes y estado.'),
-      ('candidatas_porcentaje', '📋 Candidatas con porcentaje', 'Lista candidatas con porcentaje activo.'),
-      ('pagos', '💳 Pagos', 'Gestiona pagos, abonos y calificaciones.'),
-      ('filtrar', '🔎 Filtrar Candidatas', 'Filtra por ciudad, rutas, modalidad y experiencia.'),
-      ('secretarias_filtrar_solicitudes', '🧭 Buscar solicitudes', 'Buscador interno de solicitudes con filtros avanzados para secretarias.'),
-      ('dashboard_procesos', '📊 Dashboard Procesos', 'Totales y métricas por estado.'),
-      ('admin.candidatas_descalificacion', '🚫 Descalificación de Candidatas', 'Buscar y gestionar estado descalificada/reactivación.'),
-      ('finalizar_proceso', '✅ Finalizar Proceso', 'Sube fotos y finaliza procesos.'),
-      ('eliminar_candidata', '🗑️ Eliminar Candidata', 'Elimina candidatas duplicadas revisando documentos e historial.')
-    ]),
-
-    ('Reclutamiento General', 'fa-user-plus', [
-      ('reclutas.lista', '📋 Ver Reclutas', 'Listado general de personas reclutadas para empleos no domésticos.'),
-      ('reclutas.nuevo', '➕ Nuevo Recluta', 'Registrar una nueva persona para empleos generales.'),
-    ]),
-
-    ('Reportes', 'fa-chart-line', [
-      ('reporte_inscripciones', '📈 Reporte Inscripciones', 'Reporte mensual de inscripciones.'),
-      ('reporte_pagos', '📄 Reporte Pagos', 'Pagos pendientes en PDF.')
-    ]),
-
-
-    ('Registro Interno', 'fa-user-lock', [
-      ('registro_interno', '🗂️ Registro Interno', 'Formulario interno para registrar candidatas desde oficina.')
-    ]),
-
-    ('Documentos', 'fa-folder-open', [
-      ('subir_fotos.subir_fotos', '📤 Subir Fotos', 'Sube imágenes a la base de datos.'),
-      ('gestionar_archivos', '📥 Gestionar Archivos', 'Descarga documentos y archivos.'),
-      ('referencias', '🗂️ Referencias', 'Edita referencias laborales y familiares.')
-    ])
-
-  ] %}
-
-  {% for section in sections %}
-    <div class="mb-5">
-      <h2 class="section-title">
-        <i class="fa-solid {{ section[1] }} me-2 text-primary"></i> {{ section[0] }}
-      </h2>
-
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-        {% for item in section[2] %}
-          {% set url = url_for_safe(item[0]) %}
-
-          {# Fallbacks para endpoints que a veces no resuelven en url_for_safe #}
-          {% if not url and item[0] == 'registro_interno' %}
-            {% set url = '/registro_interno/' %}
-          {% endif %}
-
-          {% if url %}
-            <div class="col">
-              <div class="dashboard-card">
-                <h5>{{ item[1] }}</h5>
-                <p>{{ item[2] }}</p>
-                <a href="{{ url }}" class="btn btn-outline-primary w-100">
-                  Ir a {{ item[1].split(' ', 1)[-1] }}
-                </a>
+  <details class="home-admin-tools mb-4">
+    <summary>
+      <span><i class="fa-solid fa-screwdriver-wrench me-2"></i>Administración y herramientas</span>
+      <small>Legacy, reportes y accesos especiales</small>
+    </summary>
+    <div class="home-admin-tools-body">
+      {% if _home_internal_staff %}
+      <section>
+        <h2>Notificaciones y tienda</h2>
+        <div class="home-compact-grid">
+          <div class="home-tool-card home-notif-wrap"
+               id="homePublicNotifCard"
+               data-count-url="{{ url_for('home_public_notifications_count') }}"
+               data-list-url="{{ url_for('home_public_notifications_list') }}"
+               data-read-base-url="{{ url_for('home_public_notifications_mark_read', notificacion_id=0) }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-bell"></i></span>
+            <span class="flex-grow-1">
+              <strong>Notificaciones públicas</strong>
+              <small>Formularios pendientes y revisados.</small>
+              <button type="button"
+                      id="homePublicNotifToggle"
+                      class="btn btn-sm btn-outline-primary position-relative home-notif-toggle mt-2"
+                      aria-expanded="false"
+                      aria-controls="homePublicNotifTray">
+                Notificaciones
+                <span class="badge bg-danger position-absolute top-0 start-100 translate-middle home-notif-badge" id="homePublicNotifUnread">0</span>
+              </button>
+              <div id="homePublicNotifTray" class="home-notif-tray d-none mt-3">
+                <div class="d-flex justify-content-end mb-2">
+                  <button type="button" id="homePublicNotifRefresh" class="btn btn-sm btn-outline-secondary">
+                    Actualizar
+                  </button>
+                </div>
+                <div id="homePublicNotifList" class="small home-notif-list">Cargando notificaciones...</div>
               </div>
-            </div>
-          {% endif %}
-        {% endfor %}
-      </div>
-    </div>
-  {% endfor %}
-
-  {% if _home_internal_staff %}
-    <div class="mb-5">
-      <h2 class="section-title">
-        <i class="fa-solid fa-clipboard-check me-2 text-primary"></i> Auditoría Staff
-      </h2>
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-        <div class="col">
-          <div class="dashboard-card">
-            <h5>Auditoría de completitud de candidatas</h5>
-            <p>Revisión solo lectura de candidatas oficiales con código para detectar faltantes.</p>
-            <a href="{{ url_for('admin.candidatas_auditoria_completitud') }}" class="btn btn-outline-primary w-100">
-              Abrir auditoría
-            </a>
+            </span>
           </div>
-        </div>
-      </div>
-    </div>
-
-    {% if _role in ['owner', 'admin'] %}
-    <div class="mb-5">
-      <h2 class="section-title">
-        <i class="fa-solid fa-user-shield me-2 text-primary"></i> Monitoreo
-      </h2>
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-        <div class="col">
-          <div class="dashboard-card">
-            <h5>Monitoreo de Secretarias</h5>
-            <p>Timeline, filtros, métricas y ranking de actividad staff.</p>
-            <a href="{{ url_for('admin.monitoreo_staff') }}" class="btn btn-outline-primary w-100">
-              Abrir monitoreo
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
-    <div class="mb-5">
-      <h2 class="section-title">
-        <i class="fa-solid fa-people-arrows me-2 text-primary"></i> Compatibilidad
-      </h2>
-      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-        <div class="col">
-          <div class="dashboard-card">
-            <h5>Test de compatibilidad de candidata</h5>
-            <p>
-              Evaluar el perfil de trabajo y personalidad de la candidata para calcular compatibilidad con solicitudes.
-            </p>
-            <a href="{{ url_for('compat_candidata') }}" class="btn btn-primary w-100">
-              Iniciar test
-            </a>
-          </div>
-        </div>
-        <div class="col">
-          <div class="dashboard-card">
-            <h5>Matching de Solicitudes</h5>
-            <p>
-              Sugerencias automáticas de candidatas por solicitud activa con ranking interno.
-            </p>
-            <a href="{{ url_for('admin.matching_solicitudes') }}" class="btn btn-outline-primary w-100">
-              Abrir matching
-            </a>
-          </div>
-        </div>
-      </div>
-    </div>
-  {% endif %}
-
-  {# ─────────────────────────────────────────────
-     ENTREVISTAS ESTRUCTURADAS (NUEVO) – ACCESO DIRECTO
-     (No quita la entrevista vieja; esto es un acceso aparte)
-  ───────────────────────────────────────────── #}
-  <div class="mb-5">
-    <h2 class="section-title">
-      <i class="fa-solid fa-clipboard-question me-2 text-primary"></i> Entrevistas estructuradas (Nuevo)
-    </h2>
-    <p style="margin-top:-6px; color:#667085;">
-      Acceso directo para que las secretarias creen y editen entrevistas por preguntas.
-    </p>
-
-    {# Usamos url_for_safe si existe el endpoint; si no, caemos a rutas directas #}
-    {% set entrevista_inicio_url = (url_for_safe('entrevistas_inicio') or '/entrevistas') %}
-    {% set entrevista_buscar_url = (url_for_safe('entrevistas_buscar') or '/entrevistas/buscar') %}
-    {% set entrevista_lista_url  = (url_for_safe('entrevistas_lista')  or '/entrevistas/lista') %}
-
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      <div class="col">
-        <div class="dashboard-card" style="border:1px solid rgba(74,105,189,.18);">
-          <h5>🧩 Entrar a Entrevistas (Nuevo)</h5>
-          <p>Abre el módulo nuevo de entrevistas estructuradas.</p>
-          <a href="{{ entrevista_inicio_url }}" class="btn btn-primary w-100">
-            Entrar
+          {% if has_endpoint('admin.candidatas_web_list') %}
+          <a class="home-tool-card" href="{{ url_for('admin.candidatas_web_list') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-store"></i></span>
+            <span>
+              <strong>Candidatas en tienda</strong>
+              <small>Perfiles para enlaces privados.</small>
+            </span>
           </a>
-        </div>
-      </div>
-
-      <div class="col">
-        <div class="dashboard-card" style="border:1px solid rgba(74,105,189,.18);">
-          <h5>🔎 Buscar candidata y entrevistar</h5>
-          <p>Busca por nombre/cédula y crea o edita la entrevista nueva.</p>
-          <a href="{{ entrevista_buscar_url }}" class="btn btn-outline-primary w-100">
-            Buscar
-          </a>
-        </div>
-      </div>
-
-      <div class="col">
-        <div class="dashboard-card" style="border:1px solid rgba(74,105,189,.18);">
-          <h5>📋 Listado de entrevistas</h5>
-          <p>Ve las entrevistas creadas recientemente y edítalas.</p>
-          <a href="{{ entrevista_lista_url }}" class="btn btn-outline-primary w-100">
-            Ver listado
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {# ─────────────────────────────────────────────
-     WEB ADMIN – FORMULARIOS PÚBLICOS (NUEVO)
-  ───────────────────────────────────────────── #}
-  <div class="mb-5">
-    <h2 class="section-title">
-      <i class="fa-solid fa-globe me-2 text-primary"></i> Web Admin – Formularios Públicos
-    </h2>
-    <p style="margin-top:-6px; color:#667085;">
-      Gestión de candidatas registradas desde el sitio web público.
-    </p>
-
-    {% set web_list_url = url_for_safe('webadmin.listar_candidatas_web') %}
-
-    <div class="row row-cols-1 row-cols-lg-2 g-4">
-      <div class="col">
-        <div class="dashboard-card" style="border:1px solid rgba(74,105,189,.18);">
-          <h5>📋 Candidatas registradas por la Web</h5>
-          <p>
-            Entra al listado para ver, filtrar y <b>editar</b> las candidatas que llegaron desde el formulario público.
-          </p>
-
-          {% if web_list_url %}
-            <a href="{{ web_list_url }}" class="btn btn-primary w-100">
-              Abrir listado
-            </a>
-            <small class="d-block mt-2\" style="color:#667085;">
-              Nota: la edición se hace dentro del listado (botón “Editar” por cada candidata).
-            </small>
-          {% else %}
-            <div class="alert alert-warning mb-0">
-              La ruta del listado no está registrada: <b>webadmin.listar_candidatas_web</b>.
-            </div>
           {% endif %}
         </div>
-      </div>
+      </section>
+      {% endif %}
+
+      <section>
+        <h2>Herramientas de candidatas</h2>
+        <div class="home-compact-grid">
+          {% if has_endpoint('finalizar_proceso') %}
+          <a class="home-tool-card" href="{{ url_for('finalizar_proceso') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-check"></i></span>
+            <span>
+              <strong>Finalizar proceso</strong>
+              <small>Herramienta especializada de cierre.</small>
+            </span>
+          </a>
+          {% endif %}
+          {% if has_endpoint('dashboard_procesos') %}
+          <a class="home-tool-card" href="{{ url_for('dashboard_procesos') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-chart-simple"></i></span>
+            <span>
+              <strong>Vista legacy de procesos</strong>
+              <small>Reporte histórico separado de Domésticas.</small>
+            </span>
+          </a>
+          {% endif %}
+          {% if has_endpoint('admin.candidatas_auditoria_completitud') and _home_internal_staff %}
+          <a class="home-tool-card" href="{{ url_for('admin.candidatas_auditoria_completitud') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-clipboard-check"></i></span>
+            <span>
+              <strong>Auditoría de completitud</strong>
+              <small>Revisión solo lectura de faltantes.</small>
+            </span>
+          </a>
+          {% endif %}
+          {% if has_endpoint('admin.candidatas_descalificacion') and _role in ['owner', 'admin'] %}
+          <a class="home-tool-card" href="{{ url_for('admin.candidatas_descalificacion') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-ban"></i></span>
+            <span>
+              <strong>Descalificación legacy</strong>
+              <small>Acceso administrativo secundario.</small>
+            </span>
+          </a>
+          {% endif %}
+        </div>
+      </section>
+
+      {% if _role in ['owner', 'admin'] %}
+      <section>
+        <h2>Finanzas legacy de candidatas</h2>
+        <div class="home-compact-grid">
+          {% for item in [
+            ('porciento', 'Porciento', 'Cálculo y seguimiento financiero.'),
+            ('candidatas_porcentaje', 'Candidatas con porcentaje', 'Candidatas con porcentaje activo.'),
+            ('pagos', 'Pagos', 'Pagos, abonos y calificaciones.'),
+            ('reporte_pagos', 'Reporte Pagos', 'Pagos pendientes en PDF.')
+          ] %}
+            {% set url = url_for_safe(item[0]) %}
+            {% if url %}
+            <a class="home-tool-card" href="{{ url }}">
+              <span class="home-tool-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span>
+              <span>
+                <strong>{{ item[1] }}</strong>
+                <small>{{ item[2] }}</small>
+              </span>
+            </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+      {% endif %}
+
+      <section>
+        <h2>Reportes y documentos</h2>
+        <div class="home-compact-grid">
+          {% for item in [
+            ('reporte_inscripciones', 'Reporte Inscripciones', 'Reporte mensual de inscripciones.'),
+            ('subir_fotos.subir_fotos', 'Subir Fotos', 'Carga de imágenes en base de datos.'),
+            ('gestionar_archivos', 'Gestionar Archivos', 'Descarga de documentos y archivos.'),
+            ('referencias', 'Referencias legacy', 'Edición puntual de referencias.')
+          ] %}
+            {% set url = url_for_safe(item[0]) %}
+            {% if url %}
+            <a class="home-tool-card" href="{{ url }}">
+              <span class="home-tool-icon"><i class="fa-solid fa-folder-open"></i></span>
+              <span>
+                <strong>{{ item[1] }}</strong>
+                <small>{{ item[2] }}</small>
+              </span>
+            </a>
+            {% endif %}
+          {% endfor %}
+        </div>
+      </section>
+
+      {% if _home_internal_staff %}
+      <section>
+        <h2>Administración operativa</h2>
+        <div class="home-compact-grid">
+          {% if has_endpoint('compat_candidata') %}
+          <a class="home-tool-card" href="{{ url_for('compat_candidata') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-scale-balanced"></i></span>
+            <span>
+              <strong>Test de compatibilidad</strong>
+              <small>Evaluación puntual para solicitudes.</small>
+            </span>
+          </a>
+          {% endif %}
+          {% if has_endpoint('admin.matching_solicitudes') %}
+          <a class="home-tool-card" href="{{ url_for('admin.matching_solicitudes') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-people-arrows"></i></span>
+            <span>
+              <strong>Matching de solicitudes</strong>
+              <small>Ranking operativo por solicitud activa.</small>
+            </span>
+          </a>
+          {% endif %}
+          {% if has_endpoint('admin.monitoreo_staff') and _role in ['owner', 'admin'] %}
+          <a class="home-tool-card" href="{{ url_for('admin.monitoreo_staff') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-user-shield"></i></span>
+            <span>
+              <strong>Monitoreo de Secretarias</strong>
+              <small>Timeline, filtros y métricas staff.</small>
+            </span>
+          </a>
+          {% endif %}
+        </div>
+      </section>
+      {% endif %}
+
+      {% if has_endpoint('eliminar_candidata') %}
+      <section>
+        <h2 class="text-danger">Herramientas destructivas</h2>
+        <div class="home-compact-grid">
+          <a class="home-tool-card home-tool-danger" href="{{ url_for('eliminar_candidata') }}">
+            <span class="home-tool-icon"><i class="fa-solid fa-trash"></i></span>
+            <span>
+              <strong>Eliminar candidata</strong>
+              <small>Acceso separado para revisión deliberada.</small>
+            </span>
+          </a>
+        </div>
+      </section>
+      {% endif %}
     </div>
-  </div>
+  </details>
 </div>
 <style>
-  body { background-color:#f2f5fa; transition:.4s; }
+  body { background-color:var(--home-page-bg, #f2f5fa); transition:.4s; color:var(--home-page-text, #1b2840); }
+  html[data-theme="light"],
+  body[data-theme="light"],
+  html.theme-light,
+  body.theme-light,
+  html.light,
+  body.light {
+    --home-page-bg:#f2f5fa;
+    --home-page-text:#1b2840;
+    --home-surface:#ffffff;
+    --home-surface-soft:#f7faff;
+    --home-surface-alt:#eef4ff;
+    --home-border:#dbe3f2;
+    --home-border-strong:#cdd8ea;
+    --home-heading:#1f2f4a;
+    --home-text:#1b2840;
+    --home-text-soft:#536174;
+    --home-text-muted:#667085;
+    --home-icon-bg:#eef4ff;
+    --home-icon-fg:#4a69bd;
+    --home-hover-bg:#eef4ff;
+    --home-hero-bg:#ffffff;
+    --home-hero-border:#dbe3f2;
+    --home-hero-title:#1f2f4a;
+    --home-hero-subtitle:#667085;
+    --home-section-title:#2f3640;
+    --home-shadow:0 3px 14px rgba(27,40,64,.07);
+    --home-shadow-soft:0 2px 10px rgba(27,40,64,.04);
+  }
+  html[data-theme="dark"],
+  body[data-theme="dark"],
+  html.theme-dark,
+  body.theme-dark,
+  html.dark,
+  body.dark {
+    --home-page-bg:#121720;
+    --home-page-text:#e5eefb;
+    --home-surface:#1f2733;
+    --home-surface-soft:#222c3a;
+    --home-surface-alt:#2a3444;
+    --home-border:#3b4658;
+    --home-border-strong:#475569;
+    --home-heading:#f1f5f9;
+    --home-text:#e5eefb;
+    --home-text-soft:#cbd5e1;
+    --home-text-muted:#9fb0c7;
+    --home-icon-bg:#2b3647;
+    --home-icon-fg:#c8d8ff;
+    --home-hover-bg:#2d3748;
+    --home-hero-bg:#1f2733;
+    --home-hero-border:#3b4658;
+    --home-hero-title:#f1f5f9;
+    --home-hero-subtitle:#cbd5e1;
+    --home-section-title:#f1f5f9;
+    --home-shadow:0 3px 14px rgba(0,0,0,.28);
+    --home-shadow-soft:0 2px 10px rgba(0,0,0,.18);
+  }
+  .home-hero {
+    background:var(--home-hero-bg);
+    border-bottom:1px solid var(--home-hero-border);
+    padding:.9rem 0;
+    box-shadow:0 2px 8px rgba(27,40,64,.04);
+  }
+  .home-hero-logo {
+    width:120px;
+    max-width:34vw;
+    height:auto;
+    filter:drop-shadow(0 2px 5px rgba(0,0,0,.08));
+  }
+  .home-hero-title { color:var(--home-hero-title); }
+  .home-hero-subtitle { color:var(--home-hero-subtitle); }
 
   .section-title {
-    font-weight:600; color:#2f3640;
+    font-weight:600; color:var(--home-section-title);
     border-left:5px solid #4a69bd;
     padding-left:14px; margin-bottom:1.6rem;
   }
 
   .dashboard-card {
-    background:#fff; border-radius:16px;
+    background:var(--home-surface); border-radius:16px;
     padding:2rem 1.7rem;
     box-shadow:0 4px 18px rgba(0,0,0,.07);
     transition:.35s;
@@ -411,19 +422,223 @@
     box-shadow:0 8px 22px rgba(74,105,189,.2);
   }
 
+  .home-workspace { color:var(--home-text); }
+  .home-primary-card {
+    display:grid;
+    grid-template-columns:minmax(0, 1.15fr) minmax(320px, .85fr);
+    gap:1.25rem;
+    align-items:stretch;
+    background:var(--home-surface);
+    border:1px solid color-mix(in srgb, var(--home-border) 88%, #4a69bd 12%);
+    border-radius:14px;
+    padding:1.5rem;
+    box-shadow:var(--home-shadow);
+  }
+  .home-primary-copy h2 {
+    margin:0 0 .55rem;
+    font-size:1.65rem;
+    line-height:1.1;
+    color:var(--home-heading);
+  }
+  .home-primary-copy p {
+    max-width:760px;
+    margin:0 0 1rem;
+    color:var(--home-text-soft);
+    line-height:1.45;
+  }
+  .home-eyebrow {
+    font-size:.78rem;
+    font-weight:700;
+    text-transform:uppercase;
+    color:#4a69bd;
+    margin-bottom:.4rem;
+  }
+  .home-primary-panel {
+    border:1px solid var(--home-border);
+    border-radius:12px;
+    padding:1rem;
+    background:var(--home-surface-soft);
+  }
+  .home-kpi-grid {
+    display:grid;
+    grid-template-columns:repeat(3, minmax(0, 1fr));
+    gap:.65rem;
+    margin-bottom:1rem;
+  }
+  .home-kpi {
+    display:flex;
+    min-height:86px;
+    flex-direction:column;
+    justify-content:space-between;
+    gap:.45rem;
+    padding:.8rem;
+    border:1px solid var(--home-border);
+    border-radius:10px;
+    background:var(--home-surface);
+    color:var(--home-text);
+    text-decoration:none;
+  }
+  .home-kpi:hover,
+  .home-tool-card:hover {
+    border-color:#9fb5d9;
+    color:var(--home-text);
+  }
+  .home-kpi span {
+    color:var(--home-text-muted);
+    font-size:.82rem;
+    line-height:1.2;
+  }
+  .home-kpi strong {
+    font-size:1.45rem;
+    line-height:1;
+  }
+  .home-kpi-attention { border-left:4px solid #4a69bd; }
+  .home-searchbox {
+    display:flex;
+    align-items:center;
+    gap:.55rem;
+    background:var(--home-surface);
+    border:1px solid var(--home-border-strong);
+    border-radius:10px;
+    padding:.25rem .65rem;
+  }
+  .home-searchbox i { color:var(--home-text-muted); }
+  .home-searchbox .form-control {
+    border:0;
+    box-shadow:none;
+    padding-left:0;
+    background:transparent;
+    color:var(--home-text);
+  }
+  .home-candidate-search { position:relative; }
+  .home-candidate-suggest {
+    position:absolute;
+    z-index:20;
+    left:0;
+    right:0;
+    top:calc(100% + 6px);
+    border:1px solid var(--home-border-strong);
+    border-radius:10px;
+    background:var(--home-surface);
+    box-shadow:0 10px 24px rgba(27,40,64,.14);
+    overflow:hidden;
+  }
+  .home-candidate-suggest button {
+    display:flex;
+    width:100%;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    border:0;
+    background:var(--home-surface);
+    padding:.7rem .85rem;
+    text-align:left;
+    color:var(--home-text);
+  }
+  .home-candidate-suggest button + button { border-top:1px solid color-mix(in srgb, var(--home-border) 82%, transparent 18%); }
+  .home-candidate-suggest button:hover,
+  .home-candidate-suggest button.is-active { background:var(--home-hover-bg); }
+  .home-compact-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(230px, 1fr));
+    gap:.75rem;
+  }
+  .home-tool-card {
+    display:flex;
+    min-height:84px;
+    gap:.75rem;
+    align-items:flex-start;
+    padding:.9rem;
+    background:var(--home-surface);
+    border:1px solid color-mix(in srgb, var(--home-border) 88%, #4a69bd 12%);
+    border-radius:10px;
+    color:var(--home-text);
+    text-decoration:none;
+    box-shadow:var(--home-shadow-soft);
+  }
+  .home-tool-card strong {
+    display:block;
+    line-height:1.2;
+    margin-bottom:.25rem;
+  }
+  .home-tool-card small {
+    display:block;
+    color:var(--home-text-muted);
+    line-height:1.25;
+  }
+  .home-tool-icon {
+    display:grid;
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+    place-items:center;
+    border-radius:8px;
+    background:var(--home-icon-bg);
+    color:var(--home-icon-fg);
+  }
+  .home-secondary-section {
+    opacity:1;
+  }
+  .home-admin-tools {
+    background:var(--home-surface);
+    border:1px solid color-mix(in srgb, var(--home-border) 88%, #4a69bd 12%);
+    border-radius:10px;
+    box-shadow:var(--home-shadow-soft);
+  }
+  .home-admin-tools > summary {
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    padding:1rem 1.1rem;
+    cursor:pointer;
+    color:var(--home-text);
+    list-style:none;
+  }
+  .home-admin-tools > summary::-webkit-details-marker { display:none; }
+  .home-admin-tools > summary span {
+    font-weight:700;
+  }
+  .home-admin-tools > summary small {
+    color:var(--home-text-muted);
+  }
+  .home-admin-tools[open] > summary {
+    border-bottom:1px solid var(--home-border);
+  }
+  .home-admin-tools-body {
+    display:grid;
+    gap:1.25rem;
+    padding:1rem;
+  }
+  .home-admin-tools-body h2 {
+    font-size:1rem;
+    font-weight:700;
+    color:var(--home-section-title);
+    margin:0 0 .75rem;
+  }
+  .section-title-danger { border-left-color:#dc3545; }
+  .home-tool-danger {
+    border-color:rgba(220,53,69,.28);
+    max-width:420px;
+  }
+  .home-tool-danger .home-tool-icon {
+    background:#fff1f2;
+    color:#dc3545;
+  }
+
   .home-notif-wrap {
     position:relative;
-    color:#1b2840;
+    color:var(--home-text);
   }
-  .home-notif-wrap .fw-semibold { color:#1b2840; }
-  .home-notif-wrap .text-muted { color:#5f6e85 !important; }
+  .home-notif-wrap .fw-semibold { color:var(--home-text); }
+  .home-notif-wrap .text-muted { color:var(--home-text-muted) !important; }
   .home-notif-toggle { min-width:190px; }
   .home-notif-badge { min-width:22px; height:22px; line-height:14px; }
-  .home-notif-list { color:#1b2840; }
+  .home-notif-list { color:var(--home-text); }
   .home-notif-tray {
-    border:1px solid rgba(74,105,189,.18);
+    border:1px solid color-mix(in srgb, var(--home-border) 84%, #4a69bd 16%);
     border-radius:14px;
-    background:#f4f8ff;
+    background:var(--home-surface-soft);
     padding:12px;
     max-height:420px;
     overflow:auto;
@@ -432,28 +647,28 @@
     font-size:.84rem;
     font-weight:700;
     letter-spacing:.02em;
-    color:#3f4f6e;
+    color:var(--home-section-title);
     text-transform:uppercase;
     margin:8px 0;
   }
   .home-notif-item {
-    background:#fff;
-    border-color:#d8e2f3 !important;
-    color:#1b2840;
+    background:var(--home-surface);
+    border-color:var(--home-border) !important;
+    color:var(--home-text);
     box-shadow:0 2px 8px rgba(27,40,64,.06);
   }
-  .home-notif-title { color:#1b2840; font-weight:700; }
-  .home-notif-message { color:#334155; line-height:1.35; }
-  .home-notif-date { color:#6b7280; }
+  .home-notif-title { color:var(--home-text); font-weight:700; }
+  .home-notif-message { color:var(--home-text-soft); line-height:1.35; }
+  .home-notif-date { color:var(--home-text-muted); }
   .home-notif-mark-read-btn {
-    background:#ffffff !important;
-    color:#334155 !important;
-    border:1px solid #c6d2e6 !important;
+    background:var(--home-surface) !important;
+    color:var(--home-text-soft) !important;
+    border:1px solid var(--home-border-strong) !important;
     box-shadow:none !important;
   }
   .home-notif-mark-read-btn:hover {
-    background:#eef4ff !important;
-    color:#1f2f4a !important;
+    background:var(--home-hover-bg) !important;
+    color:var(--home-heading) !important;
     border-color:#9fb5d9 !important;
   }
   .home-notif-mark-read-btn:focus {
@@ -462,14 +677,14 @@
   .home-notif-item-unread { border-left:4px solid #dc3545; }
   .home-notif-item-read {
     border-left:4px solid #adb5bd;
-    opacity:.92;
+    opacity:1;
   }
   .home-notif-empty {
-    border:1px dashed #ced4da;
+    border:1px dashed var(--home-border-strong);
     border-radius:10px;
     padding:10px;
-    background:#fff;
-    color:#546277;
+    background:var(--home-surface);
+    color:var(--home-text-soft);
   }
   .animate-fade { animation: fadeIn 1.4s ease forwards; }
   .animate-slide { animation: slideUp 1.2s ease forwards; }
@@ -501,9 +716,119 @@
   body.home-perf .animate-slide {
     animation-duration:.45s;
   }
+  @media (max-width: 991.98px) {
+    .home-primary-card { grid-template-columns:1fr; }
+  }
+  @media (max-width: 575.98px) {
+    .container.py-5 { padding-top:1.5rem !important; }
+    .home-primary-card { padding:1rem; }
+    .home-kpi-grid { grid-template-columns:1fr; }
+    .home-primary-copy h2 { font-size:1.35rem; }
+  }
 </style>
 {% endblock %}
 {% block scripts %}
   {{ super() }}
   <script src="{{ url_for('static', filename='js/home_public_notifications.js') }}" defer></script>
+  <script>
+    (function () {
+      const form = document.querySelector('[data-home-candidate-search]');
+      if (!form) return;
+      const input = form.querySelector('input[name="q"]');
+      const box = form.querySelector('#homeCandidateSuggest');
+      const searchUrl = form.dataset.searchUrl || '';
+      let timer = null;
+      let items = [];
+      let active = 0;
+      let controller = null;
+      let requestSeq = 0;
+
+      function hide() {
+        box.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+      }
+
+      function openItem(index) {
+        const item = items[index];
+        if (item && item.detail_url) window.location.href = item.detail_url;
+      }
+
+      function render() {
+        box.innerHTML = '';
+        if (!items.length) {
+          hide();
+          return;
+        }
+        items.forEach((item, index) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = index === active ? 'is-active' : '';
+          btn.setAttribute('role', 'option');
+          btn.setAttribute('aria-selected', index === active ? 'true' : 'false');
+          const meta = [item.codigo || 'sin código', item.telefono || '', item.estado_label || ''].filter(Boolean).join(' · ');
+          btn.innerHTML = '<span><strong></strong><div class="small text-muted"></div></span><span class="small text-muted">Abrir</span>';
+          btn.querySelector('strong').textContent = item.nombre || 'Sin nombre';
+          btn.querySelector('.small').textContent = meta;
+          btn.addEventListener('click', () => openItem(index));
+          box.appendChild(btn);
+        });
+        box.hidden = false;
+        input.setAttribute('aria-expanded', 'true');
+      }
+
+      function fetchItems() {
+        const q = input.value.trim();
+        const seq = ++requestSeq;
+        if (q.length < 2 || !searchUrl) {
+          if (controller) controller.abort();
+          items = [];
+          render();
+          return;
+        }
+        if (controller) controller.abort();
+        controller = new AbortController();
+        const url = new URL(searchUrl, window.location.origin);
+        url.searchParams.set('q', q);
+        url.searchParams.set('limit', '7');
+        fetch(url.toString(), { headers: { Accept: 'application/json' }, signal: controller.signal })
+          .then((resp) => resp.ok ? resp.json() : Promise.reject(new Error('search_failed')))
+          .then((payload) => {
+            if (seq !== requestSeq) return;
+            items = Array.isArray(payload.items) ? payload.items : [];
+            active = 0;
+            render();
+          })
+          .catch((err) => {
+            if (err && err.name === 'AbortError') return;
+            if (seq !== requestSeq) return;
+            items = [];
+            render();
+          });
+      }
+
+      input.addEventListener('input', () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(fetchItems, 220);
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          hide();
+        } else if (event.key === 'ArrowDown' && items.length) {
+          event.preventDefault();
+          active = Math.min(items.length - 1, active + 1);
+          render();
+        } else if (event.key === 'ArrowUp' && items.length) {
+          event.preventDefault();
+          active = Math.max(0, active - 1);
+          render();
+        } else if (event.key === 'Enter' && items.length && !box.hidden) {
+          event.preventDefault();
+          openItem(active);
+        }
+      });
+      document.addEventListener('click', (event) => {
+        if (!form.contains(event.target)) hide();
+      });
+    })();
+  </script>
 {% endblock %}

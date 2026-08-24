@@ -64,6 +64,24 @@ def home():
             reemplazos_badge = dict(admin_routes.reemplazos_badge_counts() or {})
         except Exception:
             reemplazos_badge = {"activos": 0, "criticos": 0}
+    domesticas_home = {"counts": {}, "dashboard": {}}
+    if admin_routes is not None:
+        try:
+            counts = dict(admin_routes._candidata_center_queue_counts() or {})
+            domesticas_home = {
+                "counts": counts,
+                "dashboard": dict(admin_routes._candidata_center_dashboard_summary(counts) or {}),
+            }
+        except Exception:
+            try:
+                legacy.current_app.logger.exception("HOME_DOMESTICAS_DASHBOARD_ERROR")
+            except Exception:
+                pass
+            domesticas_home = {"counts": {}, "dashboard": {}}
+            try:
+                legacy.db.session.rollback()
+            except Exception:
+                pass
     # Blindaje transaccional para render de /home:
     # si algún helper previo dejó la sesión abortada, limpiamos antes de evaluar badges en template.
     try:
@@ -75,6 +93,7 @@ def home():
         usuario=legacy.session['usuario'],
         current_year=legacy.rd_today().year,
         reemplazos_badge=reemplazos_badge,
+        domesticas_home=domesticas_home,
     )
 
 

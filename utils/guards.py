@@ -33,6 +33,16 @@ def is_candidata_descalificada(candidata) -> bool:
     return candidata_esta_descalificada(candidata)
 
 
+def candidata_can_create_interview(candidata) -> dict:
+    """Capacidad canónica para crear entrevistas nuevas."""
+    if candidata_esta_descalificada(candidata):
+        return {
+            "can_create": False,
+            "reason": "No se puede crear una entrevista mientras la candidata esté descalificada.",
+        }
+    return {"can_create": True, "reason": ""}
+
+
 def candidatas_activas_filter(model_cls):
     """Filtro SQL reutilizable: excluye descalificadas sin asumir NOT NULL."""
     return or_(model_cls.estado.is_(None), model_cls.estado != _DESCALIFICADA_ESTADO)
@@ -64,6 +74,25 @@ def assert_candidata_no_descalificada(
     nombre = (getattr(candidata, "nombre_completo", None) or "").strip() or f"#{getattr(candidata, 'fila', '?')}"
     mensaje = f"La candidata {nombre} está descalificada y no puede usarse para {action_norm or 'esta acción'}."
 
+    if redirect_endpoint:
+        flash(mensaje, "warning")
+        return redirect(url_for(redirect_endpoint, **(redirect_kwargs or {})))
+
+    abort(403, description=mensaje)
+
+
+def assert_candidata_can_create_interview(
+    candidata,
+    *,
+    redirect_endpoint: Optional[str] = None,
+    redirect_kwargs: Optional[dict] = None,
+):
+    """Bloquea la creación de entrevistas usando la capacidad canónica."""
+    capability = candidata_can_create_interview(candidata)
+    if capability.get("can_create"):
+        return None
+
+    mensaje = capability.get("reason") or "No se puede crear una entrevista para esta candidata."
     if redirect_endpoint:
         flash(mensaje, "warning")
         return redirect(url_for(redirect_endpoint, **(redirect_kwargs or {})))

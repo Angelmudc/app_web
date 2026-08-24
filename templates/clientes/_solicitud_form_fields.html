@@ -5,6 +5,7 @@
   'envejeciente_tipo_cuidado', 'envejeciente_responsabilidades', 'envejeciente_solo_acompanamiento', 'envejeciente_nota',
   'tipo_lugar', 'tipo_lugar_otro', 'habitaciones', 'banos', 'dos_pisos',
   'areas_comunes', 'area_otro', 'adultos', 'ninos', 'edades_ninos',
+  'ayuda_cuidado_ninos',
   'mascota', 'sueldo', 'pasaje_aporte', 'nota_cliente'
 ] %}
 {% set _pasaje_is_radio = (form.pasaje_aporte is defined and form.pasaje_aporte.type == 'RadioField') %}
@@ -48,6 +49,7 @@
 {% set _horario_hora_out_val = request.form.get('horario_hora_salida', (_hs.get('hora_salida', '') if _hs else '')) %}
 {% set _horario_dormida_in_val = request.form.get('horario_dormida_entrada', (_hs.get('dormida_entrada', '') if _hs else '')) %}
 {% set _horario_dormida_out_val = request.form.get('horario_dormida_salida', (_hs.get('dormida_salida', '') if _hs else '')) %}
+{% set _ayuda_ninos_val = request.form.get('ayuda_cuidado_ninos', (_hs.get('ayuda_cuidado_ninos', '') if _hs else '')) %}
 {% set _ciudad_sector_raw = request.form.get(form.ciudad_sector.name, (form.ciudad_sector.data if form.ciudad_sector is defined and form.ciudad_sector.data else '')) %}
 {% set _ciudad_sector_city = (_ciudad_sector_raw or '').strip() %}
 {% set _ciudad_sector_sector = '' %}
@@ -127,6 +129,84 @@
   .public-form-sections {
     display: grid;
     gap: 12px;
+  }
+
+  .atractivo-preview-sticky {
+    position: sticky;
+    top: 14px;
+    z-index: 20;
+    border: 1px solid #d7e5ef;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 18px 38px rgba(30, 58, 90, 0.08);
+    padding: 12px 14px;
+    transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+  }
+
+  .atractivo-preview-sticky.is-hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .atractivo-preview-sticky-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .atractivo-preview-sticky-kicker {
+    margin: 0;
+    font-size: .76rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: #6b8198;
+  }
+
+  .atractivo-preview-sticky-score {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .atractivo-preview-sticky-percent {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #183b5b;
+    line-height: 1;
+  }
+
+  .atractivo-preview-sticky-label {
+    font-size: .82rem;
+    font-weight: 700;
+    color: #52718f;
+  }
+
+  .atractivo-preview-sticky-bar {
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e7eef5;
+    margin-bottom: 8px;
+  }
+
+  .atractivo-preview-sticky-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #58c5a2 0%, #7fd8bc 100%);
+    transition: width .28s ease, background .28s ease;
+  }
+
+  .atractivo-preview-sticky-reason {
+    margin: 0;
+    font-size: .82rem;
+    color: #496581;
+    line-height: 1.35;
   }
 
   .public-form-card {
@@ -713,6 +793,9 @@
   }
 
   @media (max-width: 767.98px) {
+    body {
+      padding-bottom: 88px;
+    }
     .public-fields-grid { grid-template-columns: 1fr; }
     .public-home-structure-grid {
       grid-template-columns: 1fr;
@@ -760,6 +843,34 @@
       justify-content: center;
       text-align: center;
     }
+
+    .atractivo-preview-sticky {
+      position: fixed;
+      left: 10px;
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      top: auto;
+      z-index: 1040;
+      border-radius: 16px;
+      padding: 10px 12px;
+      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
+    }
+
+    .atractivo-preview-sticky-head {
+      margin-bottom: 6px;
+    }
+
+    .atractivo-preview-sticky-kicker {
+      font-size: .7rem;
+    }
+
+    .atractivo-preview-sticky-percent {
+      font-size: 1.02rem;
+    }
+
+    .atractivo-preview-sticky-reason {
+      font-size: .76rem;
+    }
   }
 
   @media (max-width: 460px) {
@@ -771,6 +882,24 @@
 </style>
 
 <div class="public-form-sections">
+  {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
+  <div id="atractivoPreviewSticky" class="atractivo-preview-sticky is-hidden" aria-live="polite" aria-hidden="true">
+    <div class="atractivo-preview-sticky-head">
+      <div>
+        <p class="atractivo-preview-sticky-kicker">Atractivo estimado</p>
+        <div class="atractivo-preview-sticky-score">
+          <span id="atractivoPreviewStickyPercent" class="atractivo-preview-sticky-percent">0%</span>
+          <span id="atractivoPreviewStickyLabel" class="atractivo-preview-sticky-label">Completa el formulario</span>
+        </div>
+      </div>
+    </div>
+    <div class="atractivo-preview-sticky-bar" aria-hidden="true">
+      <div id="atractivoPreviewStickyBar" class="atractivo-preview-sticky-fill"></div>
+    </div>
+    <p id="atractivoPreviewStickyReason" class="atractivo-preview-sticky-reason">El preview se calcula con los datos actuales del backend.</p>
+  </div>
+  {% endif %}
+
   <section class="public-form-card public-form-card--service">
     <header class="public-form-card-header">
       <span class="public-form-card-step">Paso 1</span>
@@ -1082,6 +1211,10 @@
       {{ render_field(form.adultos, wrapper_id='wrap_adultos') }}
       {{ render_field(form.ninos, wrapper_id='wrap_ninos') }}
       {{ render_field(form.edades_ninos, wrapper_id='wrap_edades_ninos') }}
+      {% if form.ayuda_cuidado_ninos is defined %}
+        {% set _ = form.ayuda_cuidado_ninos.process_data(_ayuda_ninos_val) %}
+        {{ render_field(form.ayuda_cuidado_ninos, wrapper_id='wrap_ayuda_cuidado_ninos', wrapper_class='public-full d-none') }}
+      {% endif %}
       <div class="public-field public-full public-smart-warning d-none" id="wrap_ninos_limpieza_smart_alert" aria-live="polite" aria-hidden="true">
         <p class="public-smart-warning-title">Esta solicitud puede requerir aclaración.</p>
         <p class="public-smart-warning-text">
@@ -1129,6 +1262,7 @@
         </div>
       </div>
       {% endif %}
+      {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
       <div class="public-field public-full">
         <div id="atractivoPreviewBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
           <p class="public-smart-warning-title">Atractivo de la solicitud</p>
@@ -1143,6 +1277,7 @@
           <ul class="salary-suggest-list mb-0" id="atractivoPreviewReasons"></ul>
         </div>
       </div>
+      {% endif %}
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
@@ -1949,6 +2084,40 @@
       }
     }
 
+    var childAgeSummarySeq = 0;
+
+    function setChildCareHelpVisible(visible, fromUserEvent) {
+      var ayudaInput = byId('{{ form.ayuda_cuidado_ninos.id if form.ayuda_cuidado_ninos is defined else "" }}');
+      var wrapAyuda = byId('wrap_ayuda_cuidado_ninos');
+      if (wrapAyuda) {
+        wrapAyuda.style.display = visible ? '' : 'none';
+        wrapAyuda.classList.toggle('d-none', !visible);
+      }
+      if (ayudaInput && !visible && fromUserEvent) ayudaInput.value = '';
+    }
+
+    function refreshChildCareHelpVisibility(ninosCnt, edadesText, fromUserEvent) {
+      var seq = ++childAgeSummarySeq;
+      setChildCareHelpVisible(false, fromUserEvent);
+      if (!window.fetch) return;
+      var params = new URLSearchParams();
+      params.set('ninos', String(ninosCnt || ''));
+      params.set('edades_ninos', edadesText || '');
+      fetch('{{ url_for("clientes.api_child_age_summary") }}?' + params.toString(), {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      }).then(function (response) {
+        if (!response.ok) throw new Error('child-age-summary');
+        return response.json();
+      }).then(function (data) {
+        if (seq !== childAgeSummarySeq) return;
+        setChildCareHelpVisible(!!(data && data.has_confirmed_small_child), fromUserEvent);
+      }).catch(function () {
+        if (seq === childAgeSummarySeq) setChildCareHelpVisible(false, fromUserEvent);
+      });
+    }
+
     function syncNinosRules(fromUserEvent) {
       var ninosInput = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
       var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
@@ -1971,6 +2140,14 @@
         if (!showEdades && fromUserEvent && !norm(edadesInput.value)) {
           edadesInput.value = '';
         }
+      }
+
+      var edadesTxt = edadesInput ? norm(edadesInput.value) : '';
+      if (showEdades) {
+        refreshChildCareHelpVisibility(ninosCnt, edadesTxt, fromUserEvent);
+      } else {
+        childAgeSummarySeq++;
+        setChildCareHelpVisible(false, fromUserEvent);
       }
     }
 
@@ -2627,8 +2804,12 @@
         return {
           modalidad_trabajo: selectedModalidad ? (selectedModalidad.value || '') : '',
           horario: getVal('horario'),
+          horario_tipo: getVal('horario_tipo'),
+          dias_trabajo: getVal('dias_trabajo') || getVal('horario_dias_trabajo'),
           horario_hora_entrada: getVal('horario_hora_entrada'),
           horario_hora_salida: getVal('horario_hora_salida'),
+          dormida_entrada: getVal('dormida_entrada') || getVal('horario_dormida_entrada'),
+          dormida_salida: getVal('dormida_salida') || getVal('horario_dormida_salida'),
           tipo_lugar: getVal('tipo_lugar'),
           habitaciones: getVal('habitaciones'),
           banos: getVal('banos'),
@@ -2636,8 +2817,11 @@
           dos_pisos: getVal('dos_pisos'),
           ninos: getVal('ninos'),
           edades_ninos: getVal('edades_ninos'),
+          ayuda_cuidado_ninos: getVal('ayuda_cuidado_ninos'),
           adultos: getVal('adultos'),
           sueldo: sueldoInput.value || '',
+          pasaje_aporte: getVal('pasaje_aporte'),
+          pasaje_mode: checkedValue('pasaje_mode'),
           envejeciente_tipo_cuidado: checkedValue('envejeciente_tipo_cuidado'),
           envejeciente_responsabilidades: getAll('envejeciente_responsabilidades'),
           funciones: getAll('funciones'),
@@ -2740,6 +2924,7 @@
       return { sync: function () {} };
     }
 
+    {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
     function setupAtractivoPreview(sharedPayloadBuilder) {
       var box = byId('atractivoPreviewBox');
       var percentNode = byId('atractivoPreviewPercent');
@@ -2747,6 +2932,11 @@
       var barNode = byId('atractivoPreviewBar');
       var statusNode = byId('atractivoPreviewStatus');
       var reasonsNode = byId('atractivoPreviewReasons');
+      var stickyBox = byId('atractivoPreviewSticky');
+      var stickyPercentNode = byId('atractivoPreviewStickyPercent');
+      var stickyLabelNode = byId('atractivoPreviewStickyLabel');
+      var stickyBarNode = byId('atractivoPreviewStickyBar');
+      var stickyReasonNode = byId('atractivoPreviewStickyReason');
       var payloadBuilder = sharedPayloadBuilder || function () {
         var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
         var sueldoNode = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
@@ -2767,8 +2957,12 @@
         return {
           modalidad_trabajo: selectedModalidad ? (selectedModalidad.value || '') : '',
           horario: getVal('horario'),
+          horario_tipo: getVal('horario_tipo'),
+          dias_trabajo: getVal('dias_trabajo') || getVal('horario_dias_trabajo'),
           horario_hora_entrada: getVal('horario_hora_entrada'),
           horario_hora_salida: getVal('horario_hora_salida'),
+          dormida_entrada: getVal('dormida_entrada') || getVal('horario_dormida_entrada'),
+          dormida_salida: getVal('dormida_salida') || getVal('horario_dormida_salida'),
           tipo_lugar: getVal('tipo_lugar'),
           habitaciones: getVal('habitaciones'),
           banos: getVal('banos'),
@@ -2776,38 +2970,49 @@
           dos_pisos: getVal('dos_pisos'),
           ninos: getVal('ninos'),
           edades_ninos: getVal('edades_ninos'),
+          ayuda_cuidado_ninos: getVal('ayuda_cuidado_ninos'),
           adultos: getVal('adultos'),
           sueldo: sueldoNode ? (sueldoNode.value || '') : '',
+          pasaje_aporte: getVal('pasaje_aporte'),
+          pasaje_mode: checkedValue('pasaje_mode'),
           envejeciente_tipo_cuidado: checkedValue('envejeciente_tipo_cuidado'),
           envejeciente_responsabilidades: getAll('envejeciente_responsabilidades'),
           funciones: getAll('funciones'),
           areas_comunes: getAll('areas_comunes')
         };
       };
-      if (!box || !percentNode || !labelNode || !barNode || !statusNode || !reasonsNode) {
+      if (!box || !percentNode || !labelNode || !barNode || !statusNode || !reasonsNode || !stickyBox || !stickyPercentNode || !stickyLabelNode || !stickyBarNode || !stickyReasonNode) {
         return { sync: function () {} };
       }
 
       var timer = null;
+      var activeRequestSeq = 0;
+      var currentController = null;
+      function scoreTone(score) {
+        if (score >= 90) return { barClass: 'bg-success', fill: 'linear-gradient(90deg, #2db784 0%, #7ad7b1 100%)' };
+        if (score >= 70) return { barClass: 'bg-info', fill: 'linear-gradient(90deg, #28a9cf 0%, #7ad5ef 100%)' };
+        if (score >= 60) return { barClass: 'bg-warning text-dark', fill: 'linear-gradient(90deg, #e6b44c 0%, #f5d78f 100%)' };
+        return { barClass: 'bg-danger', fill: 'linear-gradient(90deg, #d95a5a 0%, #f39b9b 100%)' };
+      }
       function showBox() {
         box.classList.remove('d-none');
         box.setAttribute('aria-hidden', 'false');
+        stickyBox.classList.remove('is-hidden');
+        stickyBox.setAttribute('aria-hidden', 'false');
       }
       function render(result) {
         if (!result) return;
-        var score = parseInt(result.score || 0, 10);
+        var score = parseFloat(result.score || 0);
+        var scoreText = score.toFixed(1);
         var motivos = Array.isArray(result.motivos) ? result.motivos.slice(0, 4) : [];
+        var tone = scoreTone(score);
+        var mainReason = motivos.length && motivos[0] && motivos[0].label ? motivos[0].label : 'El preview se calcula con los datos actuales del backend.';
         showBox();
-        percentNode.textContent = String(score) + '%';
+        percentNode.textContent = scoreText + '%';
         labelNode.textContent = result.label || '—';
-        barNode.style.width = String(score) + '%';
-        barNode.setAttribute('aria-valuenow', String(score));
-        barNode.className = 'progress-bar ' + (
-          score >= 85 ? 'bg-success' :
-          score >= 70 ? 'bg-info' :
-          score >= 55 ? 'bg-warning text-dark' :
-          score >= 35 ? 'bg-warning' : 'bg-danger'
-        );
+        barNode.style.width = scoreText + '%';
+        barNode.setAttribute('aria-valuenow', scoreText);
+        barNode.className = 'progress-bar ' + tone.barClass;
         statusNode.textContent = 'Score calculado por backend.';
         reasonsNode.innerHTML = '';
         for (var i = 0; i < motivos.length; i++) {
@@ -2817,10 +3022,19 @@
           li.textContent = txt;
           reasonsNode.appendChild(li);
         }
+        stickyPercentNode.textContent = scoreText + '%';
+        stickyLabelNode.textContent = result.label || '—';
+        stickyBarNode.style.width = scoreText + '%';
+        stickyBarNode.style.background = tone.fill;
+        stickyReasonNode.textContent = mainReason;
       }
       function sync() {
         if (timer) clearTimeout(timer);
         timer = setTimeout(function () {
+          activeRequestSeq += 1;
+          var requestId = activeRequestSeq;
+          if (currentController && currentController.abort) currentController.abort();
+          currentController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
           var d = payloadBuilder();
           var q = new URLSearchParams();
           Object.keys(d).forEach(function (k) {
@@ -2833,16 +3047,24 @@
           });
           fetch('/clientes/api/solicitud-atractivo-preview?' + q.toString(), {
             method: 'GET',
-            credentials: 'same-origin'
+            credentials: 'same-origin',
+            cache: 'no-store',
+            signal: currentController ? currentController.signal : undefined
           })
             .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (json) { render(json); })
-            .catch(function () {});
+            .then(function (json) {
+              if (requestId !== activeRequestSeq) return;
+              render(json);
+            })
+            .catch(function (err) {
+              if (err && err.name === 'AbortError') return;
+            });
         }, 260);
       }
       sync();
       return { sync: sync };
     }
+    {% endif %}
 
     function setupEdadSingleChoice() {
       var wrap = byId('wrap_edad_requerida');
@@ -2922,7 +3144,7 @@
     var mascotaGuidanceCtrl = setupMascotaGuidance();
     var homeStructureCtrl = setupHomeStructureVisibility();
     var salarySuggestionCtrl = setupSalarySuggestion();
-    var atractivoPreviewCtrl = setupAtractivoPreview(salarySuggestionCtrl.buildPayload);
+    var atractivoPreviewCtrl = {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}setupAtractivoPreview(salarySuggestionCtrl.buildPayload){% else %}{ sync: function () {} }{% endif %};
     syncOtherFields(false);
     setupAreasTodas();
     syncFromExistingMarkers();
@@ -2976,6 +3198,9 @@
       if (name === '{{ form.ninos.name if form.ninos is defined else "" }}') {
         syncNinosRules(true);
       }
+      if (name === '{{ form.edades_ninos.name if form.edades_ninos is defined else "" }}') {
+        syncNinosRules(true);
+      }
       if (name === '{{ form.mascota.name if form.mascota is defined else "" }}') {
         if (mascotaGuidanceCtrl && mascotaGuidanceCtrl.sync) mascotaGuidanceCtrl.sync();
       }
@@ -3004,6 +3229,7 @@
     var edadesInputNode = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
     if (edadesInputNode && ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) {
       edadesInputNode.addEventListener('input', function () {
+        syncNinosRules(true);
         ninosLimpiezaSmartAlertCtrl.sync();
         if (atractivoPreviewCtrl && atractivoPreviewCtrl.sync) atractivoPreviewCtrl.sync();
       });

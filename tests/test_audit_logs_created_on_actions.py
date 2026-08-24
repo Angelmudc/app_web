@@ -45,14 +45,18 @@ def test_audit_logs_created_on_actions():
         areas_experiencia='limpieza',
         contactos_referencias_laborales='',
         referencias_familiares_detalle='',
+        referencias_laboral='',
+        referencias_familiares='',
         cedula='001-0000000-1',
         sabe_planchar=False,
         acepta_porcentaje_sueldo=False,
     )
 
     with flask_app.app_context():
-        with patch('core.legacy_handlers.get_candidata_by_id', return_value=candidata_stub), \
-             patch('core.legacy_handlers.execute_robust_save', return_value=SimpleNamespace(ok=True, attempts=1, error_message='')):
+        with patch('core.handlers.buscar_candidata_handlers.get_candidata_by_id', return_value=candidata_stub), \
+             patch('core.legacy_handlers.execute_robust_save', return_value=SimpleNamespace(ok=True, attempts=1, error_message='')), \
+             patch('core.legacy_handlers._query_candidata_snapshot_session', return_value={}), \
+             patch('core.legacy_handlers._query_candidata_snapshot_fresh_connection', return_value={}):
             resp_edit = client.post(
                 '/buscar',
                 data={
@@ -95,6 +99,15 @@ def test_audit_logs_created_on_actions():
         def first(self):
             return None
 
+    matching_audit_calls = []
+    matching_candidata_calls = []
+
+    def _capture_matching_audit(**kwargs):
+        matching_audit_calls.append(kwargs)
+
+    def _capture_matching_candidata_action(**kwargs):
+        matching_candidata_calls.append(kwargs)
+
     with flask_app.app_context():
         with patch('admin.routes.Solicitud.query', _SolicitudQuery()), \
              patch('admin.routes.Candidata.query', _CandidataQuery()), \
@@ -104,9 +117,22 @@ def test_audit_logs_created_on_actions():
              patch('admin.routes.candidata_esta_descalificada', return_value=False), \
              patch('admin.routes.candidata_is_ready_to_send', return_value=(True, [])), \
              patch('admin.routes._upsert_cliente_notificacion_candidatas'), \
+             patch('admin.routes._audit_log', side_effect=_capture_matching_audit), \
+             patch('admin.routes.log_candidata_action', side_effect=_capture_matching_candidata_action), \
              patch('admin.routes.db.session.commit'):
             resp_send = client.post('/admin/matching/solicitudes/10/enviar', data={'candidata_ids': ['101']}, follow_redirects=False)
     assert resp_send.status_code in (302, 303)
+    assert any(
+        call.get('action_type') == 'MATCHING_SEND'
+        and call.get('entity_type') == 'Solicitud'
+        and str(call.get('entity_id')) == '10'
+        for call in matching_audit_calls
+    )
+    assert any(
+        call.get('action_type') == 'MATCHING_SEND'
+        and getattr(call.get('candidata'), 'fila', None) == 101
+        for call in matching_candidata_calls
+    )
 
     cand_desc = SimpleNamespace(
         fila=88,
@@ -131,30 +157,18 @@ def test_audit_logs_created_on_actions():
     assert resp_desc.status_code in (302, 303)
 
     with flask_app.app_context():
+        db.session.remove()
         edit_log = StaffAuditLog.query.filter_by(action_type='CANDIDATA_EDIT').order_by(StaffAuditLog.id.desc()).first()
-        send_log = StaffAuditLog.query.filter_by(action_type='MATCHING_SEND').order_by(StaffAuditLog.id.desc()).first()
-        send_log_solicitud = (
-            StaffAuditLog.query
-            .filter_by(action_type='MATCHING_SEND', entity_type='Solicitud')
-            .order_by(StaffAuditLog.id.desc())
-            .first()
-        )
         desc_log = StaffAuditLog.query.filter_by(action_type='CANDIDATA_DESCALIFICAR').order_by(StaffAuditLog.id.desc()).first()
 
         assert edit_log is not None
-        assert send_log is not None
         assert desc_log is not None
 
         assert int(edit_log.actor_user_id) == int(actor_id)
-        assert int(send_log.actor_user_id) == int(actor_id)
         assert int(desc_log.actor_user_id) == int(actor_id)
 
         assert (edit_log.entity_type or '').lower() == 'candidata'
         assert str(edit_log.entity_id) == '15'
-
-        assert send_log_solicitud is not None
-        assert send_log_solicitud.entity_type == 'Solicitud'
-        assert str(send_log_solicitud.entity_id) == '10'
 
         assert desc_log.entity_type == 'Candidata'
         assert str(desc_log.entity_id) == '88'

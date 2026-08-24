@@ -651,11 +651,11 @@ body[data-theme="light"] pre{
   border-bottom: 1px solid rgba(255,255,255,.10);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  padding: .9rem 1.2rem;
+  padding: .46rem .9rem;
   box-shadow: 0 10px 40px rgba(0,0,0,.25);
   position: sticky;
   top:0;
-  z-index: 50;
+  z-index: 1000;
 }
 body[data-theme="light"] .navbar{
   background: rgba(255,255,255,.75) !important;
@@ -671,25 +671,62 @@ body[data-theme="light"] .navbar{
 }
 
 .navbar-brand{
-  font-size:1.05rem;
+  font-size:.95rem;
   font-weight: 950;
   color: var(--text-strong) !important;
-  letter-spacing:.6px;
+  letter-spacing:.2px;
   text-transform: uppercase;
   position:relative;
   z-index:1;
   text-decoration:none !important;
+  white-space: nowrap;
 }
 
 .navbar-brand img{ height: 34px; width:auto; filter: drop-shadow(0 10px 20px rgba(0,0,0,.25)); }
 
-.navbar-nav{ position:relative; z-index:1; }
+.navbar-nav{
+  position:relative;
+  z-index:1;
+}
+@media (min-width: 992px){
+  .navbar .container{
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    max-width: min(100% - 32px, 1440px);
+    flex-wrap: nowrap;
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+  .navbar .navbar-collapse{
+    display: flex !important;
+    flex-basis: auto;
+    flex-grow: 1;
+  }
+  .navbar > .container > .d-flex{
+    display: flex;
+    align-items: center;
+  }
+  .navbar-nav{
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    margin-left: auto;
+    margin-bottom: 0;
+    padding-left: 0;
+    list-style: none;
+  }
+}
 
 .nav-link{
   color: rgba(255,255,255,.88) !important;
   font-weight: 780;
-  margin-right: .95rem;
+  margin-right: .35rem;
+  padding: .38rem .58rem;
+  font-size: .92rem;
   position:relative;
+  white-space: nowrap;
   transition:
     transform var(--transition-duration) var(--transition-ease),
     color var(--transition-duration) var(--transition-ease);
@@ -709,6 +746,16 @@ body[data-theme="light"] .nav-link{ color: rgba(10,16,36,.82) !important; }
   border-radius:2px;
 }
 .nav-link:hover::after{ width:100%; }
+
+.navbar .btn-sm{
+  padding: .28rem .48rem;
+}
+.navbar .dropdown-menu{
+  min-width: 16rem;
+}
+.navbar .dropdown-item{
+  white-space: nowrap;
+}
 
 /* =========================
    5) HERO
@@ -1522,8 +1569,8 @@ body[data-theme="light"] .modal-header, body[data-theme="light"] .modal-footer{ 
    17) RESPONSIVE
 ========================= */
 @media (max-width: 991px){
-  .navbar{ padding:.75rem 1rem; }
-  .nav-link{ margin-right:.65rem; }
+  .navbar{ padding:.58rem .85rem; }
+  .nav-link{ margin-right:0; }
   .hero-section{ padding: 2.6rem 1rem; }
 }
 @media (max-width: 576px){

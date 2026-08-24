@@ -9,7 +9,9 @@ from flask_login import current_user
 from config_app import db
 from decorators import roles_required
 from core.services.candidatas_shared import get_candidata_by_id
-from core.services.date_utils import parse_date, parse_decimal
+from core.services.date_utils import parse_date
+from core.services.candidata_finance import configure_candidate_finance, register_candidate_payment
+from core.services.candidata_quick_edit import update_candidate_inscription
 from core.services.search import search_candidatas_limited
 from utils.candidata_readiness import maybe_update_estado_por_completitud
 from utils.timezone import utc_now_naive
@@ -37,48 +39,30 @@ def inscripcion():
                 flash("⚠️ Candidata no encontrada.", "error")
                 return redirect(url_for("inscripcion"))
 
-            if not obj.codigo:
-                try:
-                    obj.codigo = legacy_h.generar_codigo_unico()
-                except Exception:
-                    legacy_h.app.logger.exception("❌ Error generando código único")
-                    flash("❌ No se pudo generar el código.", "error")
-                    return redirect(url_for("inscripcion"))
-
-            obj.medio_inscripcion = (request.form.get("medio") or "").strip()[:60] or obj.medio_inscripcion
-            obj.inscripcion = request.form.get("estado") == "si"
-            obj.monto = parse_decimal(request.form.get("monto") or "") or obj.monto
-            obj.fecha = parse_date(request.form.get("fecha") or "") or obj.fecha
-
-            if obj.inscripcion:
-                if obj.monto and obj.fecha:
-                    obj.estado = "inscrita"
-                else:
-                    obj.estado = "inscrita_incompleta"
-            else:
-                obj.estado = "proceso_inscripcion"
-
-            obj.fecha_cambio_estado = utc_now_naive()
-            obj.usuario_cambio_estado = session.get("usuario", "desconocido")[:64]
-            try:
-                actor = (
-                    getattr(current_user, "username", None)
-                    or getattr(current_user, "id", None)
-                    or session.get("usuario")
-                    or "sistema"
-                )
-                maybe_update_estado_por_completitud(obj, actor=str(actor))
-            except Exception:
-                pass
-
-            try:
-                db.session.commit()
+            actor = (
+                getattr(current_user, "username", None)
+                or getattr(current_user, "id", None)
+                or session.get("usuario")
+                or "sistema"
+            )
+            result = update_candidate_inscription(
+                obj,
+                dict(request.form or {}),
+                actor=str(actor),
+                code_generator=legacy_h.generar_codigo_unico,
+                now_fn=utc_now_naive,
+                readiness_updater=maybe_update_estado_por_completitud,
+            )
+            if result.ok:
                 flash(f"✅ Inscripción guardada. Código: {obj.codigo}", "success")
                 candidata = obj
-            except Exception:
-                db.session.rollback()
-                legacy_h.app.logger.exception("❌ Error al guardar inscripción")
-                flash("❌ Error al guardar inscripción.", "error")
+            else:
+                if result.error_code == "code_generation_error":
+                    legacy_h.app.logger.error("❌ Error generando código único")
+                    flash("❌ No se pudo generar el código.", "error")
+                else:
+                    legacy_h.app.logger.error("❌ Error al guardar inscripción: %s", result.error_code or result.message)
+                    flash("❌ Error al guardar inscripción.", "error")
                 return redirect(url_for("inscripcion"))
         else:
             q = (request.form.get("buscar") or "").strip()[:128]
@@ -132,24 +116,17 @@ def porciento():
             flash("⚠️ Candidata no encontrada.", "warning")
             return redirect(url_for("porciento"))
 
-        fecha_pago = parse_date(request.form.get("fecha_pago") or "")
-        fecha_inicio = parse_date(request.form.get("fecha_inicio") or "")
-        monto_total = parse_decimal(request.form.get("monto_total") or "")
-
-        if None in (fecha_pago, fecha_inicio, monto_total):
-            flash("❌ Datos incompletos o inválidos.", "danger")
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        result = configure_candidate_finance(obj, dict(request.form or {}), actor=str(actor), now_fn=utc_now_naive)
+        if not result.ok:
+            legacy_h.app.logger.error("❌ Error al actualizar porciento: %s", result.error_code or result.message)
+            flash(f"❌ {result.message}", "danger")
             return redirect(url_for("porciento", candidata=fila_id))
-
-        try:
-            porcentaje = (monto_total * Decimal("0.25")).quantize(Decimal("0.01"))
-        except Exception:
-            flash("❌ Monto inválido.", "danger")
-            return redirect(url_for("porciento", candidata=fila_id))
-
-        obj.fecha_de_pago = fecha_pago
-        obj.inicio = fecha_inicio
-        obj.monto_total = monto_total
-        obj.porciento = porcentaje
         assignment_guard = validate_candidata_assignment_context(candidata_id=int(obj.fila))
         marked_working = False
         try:
@@ -169,13 +146,13 @@ def porciento():
             db.session.commit()
             if marked_working:
                 flash(
-                    f"✅ Se guardó correctamente. 25 % de {monto_total} es {porcentaje}. Estado: Trabajando.",
+                    f"✅ Se guardó correctamente. 25 % de {obj.monto_total} es {obj.porciento}. Estado: Trabajando.",
                     "success",
                 )
             else:
                 detail = assignment_guard.reason_message if assignment_guard else "No hay contexto operativo válido."
                 flash(
-                    f"✅ Se guardó el 25 % ({porcentaje}) sin forzar estado trabajando. Motivo: {detail}",
+                    f"✅ Se guardó el 25 % ({obj.porciento}) sin forzar estado trabajando. Motivo: {detail}",
                     "warning",
                 )
             candidata = obj
@@ -319,24 +296,22 @@ def pagos():
         if not assignment_guard.can_charge:
             flash(f"❌ Cobro bloqueado ({assignment_guard.reason_code}): {assignment_guard.reason_message}", "danger")
             return redirect(url_for("pagos", candidata=int(obj.fila)))
-
-        actual = obj.porciento if obj.porciento is not None else Decimal("0.00")
-        try:
-            actual = Decimal(str(actual))
-        except Exception:
-            actual = Decimal("0.00")
-
-        nuevo = actual - monto_pagado
-        if nuevo < Decimal("0"):
-            nuevo = Decimal("0.00")
-
-        obj.porciento = nuevo.quantize(Decimal("0.01"))
-        obj.calificacion = calificacion
-
-        try:
-            obj.fecha_de_pago = legacy_h.rd_today()
-        except Exception:
-            pass
+        actor = (
+            getattr(current_user, "username", None)
+            or getattr(current_user, "id", None)
+            or session.get("usuario")
+            or "sistema"
+        )
+        result = register_candidate_payment(
+            obj,
+            {"monto_pagado": monto_pagado, "calificacion": calificacion},
+            actor=str(actor),
+            now_fn=utc_now_naive,
+        )
+        if not result.ok:
+            legacy_h.app.logger.error("❌ Error al registrar pago: %s", result.error_code or result.message)
+            flash(f"❌ {result.message}", "danger")
+            return redirect(url_for("pagos", candidata=int(obj.fila)))
 
         try:
             db.session.commit()

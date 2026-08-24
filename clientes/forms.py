@@ -18,6 +18,7 @@ import re
 from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
+from utils.child_age_parser import parse_child_age_summary
 
 def _solo_texto(valor):
     """
@@ -300,6 +301,16 @@ class SolicitudForm(FlaskForm):
         filters=STRIP,
         render_kw={"placeholder": "Ej. 2 y 6 años"}
     )
+    ayuda_cuidado_ninos = SelectField(
+        "¿La empleada tendrá ayuda con el cuidado de los niños?",
+        choices=[
+            ("", "Selecciona una opción"),
+            ("sin_ayuda", "No tendrá ayuda"),
+            ("con_ayuda", "Sí tendrá ayuda"),
+        ],
+        validators=[Optional()],
+        coerce=str,
+    )
 
     # Mascota (NUEVO)
     mascota = StringField(
@@ -453,6 +464,11 @@ class SolicitudForm(FlaskForm):
             if not (self.edades_ninos.data and str(self.edades_ninos.data).strip()):
                 self.edades_ninos.errors.append("Debes indicar las edades de los niños.")
                 ok = False
+            else:
+                age_summary = parse_child_age_summary(self.edades_ninos.data, declared_count=ninos_cnt)
+                if int(age_summary.get("unknown_count") or 0) > 0:
+                    self.edades_ninos.errors.append("Debes indicar una edad por cada niño.")
+                    ok = False
         requiere_envejeciente = "envejeciente" in _clean_list_envejeciente(funciones)
         tipo_cuidado = (self.envejeciente_tipo_cuidado.data or "").strip().lower()
         responsabilidades = _clean_list_envejeciente(self.envejeciente_responsabilidades.data or [])

@@ -2,7 +2,8 @@
 {% set _score = (_atr.score if _atr and _atr.score is defined else none) %}
 {% set _label = (_atr.label if _atr and _atr.label is defined else none) %}
 {% set _motivos = (_atr.motivos if _atr and _atr.motivos is defined else []) %}
-{% if _score is not none and _label %}
+{% set _score_text = ('%d'|format(_score|int)) if _score is not none else '' %}
+{% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) and _score is not none and _label %}
 <div class="kard mb-3 solicitud-block">
   <div class="kard-h d-flex align-items-center justify-content-between">
     <span class="fw-semibold">{{ title if title is defined else 'Atractivo de la solicitud' }}</span>
@@ -10,11 +11,11 @@
   </div>
   <div class="kard-b">
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-      <div class="fw-semibold">{{ _score }}%</div>
+      <div class="fw-semibold">{{ _score_text }}%</div>
       <div class="small text-muted">{{ _label }}</div>
     </div>
     <div class="progress mb-3" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ _score }}">
-      <div class="progress-bar {% if _score >= 85 %}bg-success{% elif _score >= 70 %}bg-info{% elif _score >= 55 %}bg-warning text-dark{% elif _score >= 35 %}bg-warning{% else %}bg-danger{% endif %}" style="width: {{ _score }}%;"></div>
+      <div class="progress-bar {% if _score >= 90 %}bg-success{% elif _score >= 70 %}bg-info{% elif _score >= 60 %}bg-warning text-dark{% else %}bg-danger{% endif %}" style="width: {{ _score }}%;"></div>
     </div>
     {% if _motivos %}
     <ul class="mb-0 small text-muted">

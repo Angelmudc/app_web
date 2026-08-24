@@ -8,7 +8,7 @@ from datetime import timedelta
 
 from app import app as flask_app
 from config_app import db
-from models import Candidata, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud
+from models import Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.timezone import utc_now_naive
 
@@ -22,7 +22,7 @@ def _token_hash(token: str) -> str:
 
 def _ensure_tables() -> None:
     ensure_sqlite_compat_tables(
-        [Candidata, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud],
+        [Candidata, CandidataWeb, CatalogoPrivado, CatalogoPrivadoItem, Cliente, Solicitud],
         reset=False,
     )
 

@@ -201,13 +201,6 @@ def test_registrar_llamada_persistencia_y_redirect():
     client = flask_app.test_client()
     assert _login_secretaria(client).status_code in (302, 303)
 
-    added = {}
-    fake_session = SimpleNamespace(
-        add=lambda obj: added.setdefault("obj", obj),
-        commit=lambda: None,
-        rollback=lambda: None,
-    )
-    fake_db = SimpleNamespace(session=fake_session)
     candidata = SimpleNamespace(fila=15, nombre_completo="Ana Demo")
     fake_query = SimpleNamespace(get_or_404=lambda _fila: candidata)
     fake_candidata_model = SimpleNamespace(query=fake_query)
@@ -218,20 +211,24 @@ def test_registrar_llamada_persistencia_y_redirect():
         notas=SimpleNamespace(data="seguimiento"),
     )
 
-    with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
-         patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
+    captured = {}
+
+    def _register_candidate_call(cand, data, *, actor):
+        captured["cand"] = cand
+        captured["data"] = data
+        captured["actor"] = actor
+        return SimpleNamespace(ok=True, error_code=None, message="")
+
+    with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
          patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", side_effect=lambda **kw: SimpleNamespace(**kw)), \
-         patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
-         patch("core.handlers.llamadas_candidatas_handlers.utc_now_naive", return_value="NOWUTC"):
+         patch("core.handlers.llamadas_candidatas_handlers.register_candidate_call", side_effect=_register_candidate_call):
         resp = client.post("/candidatas/15/llamar", data={"resultado": "contestada"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert "/candidatas/llamadas" in (resp.headers.get("Location") or "")
-    assert added["obj"].candidata_id == 15
-    assert added["obj"].duracion_segundos == 120
-    assert added["obj"].resultado == "contestada"
-    assert added["obj"].notas == "seguimiento"
+    assert captured["cand"] is candidata
+    assert captured["data"]["resultado"] == "contestada"
+    assert captured["actor"] == "Karla"
 
 
 def test_registrar_llamada_fallback_rollback_y_redirect():
@@ -240,17 +237,6 @@ def test_registrar_llamada_fallback_rollback_y_redirect():
     client = flask_app.test_client()
     assert _login_secretaria(client).status_code in (302, 303)
 
-    rollback_calls = {"n": 0}
-
-    def _rollback():
-        rollback_calls["n"] += 1
-
-    fake_session = SimpleNamespace(
-        add=lambda _obj: None,
-        commit=lambda: (_ for _ in ()).throw(RuntimeError("db fail")),
-        rollback=_rollback,
-    )
-    fake_db = SimpleNamespace(session=fake_session)
     candidata = SimpleNamespace(fila=21, nombre_completo="Bea Demo")
     fake_query = SimpleNamespace(get_or_404=lambda _fila: candidata)
     fake_candidata_model = SimpleNamespace(query=fake_query)
@@ -261,17 +247,16 @@ def test_registrar_llamada_fallback_rollback_y_redirect():
         notas=SimpleNamespace(data=""),
     )
 
-    with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
-         patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
+    with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
          patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", side_effect=lambda **kw: SimpleNamespace(**kw)), \
-         patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
-         patch("core.handlers.llamadas_candidatas_handlers.utc_now_naive", return_value="NOWUTC"):
+         patch(
+             "core.handlers.llamadas_candidatas_handlers.register_candidate_call",
+             return_value=SimpleNamespace(ok=False, error_code="persist_error", message="db fail"),
+         ):
         resp = client.post("/candidatas/21/llamar", data={"resultado": "sin respuesta"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert "/candidatas/llamadas" in (resp.headers.get("Location") or "")
-    assert rollback_calls["n"] == 1
 
 
 def test_reporte_llamadas_render_basico_y_metricas():

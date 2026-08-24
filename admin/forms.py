@@ -499,6 +499,16 @@ class AdminSolicitudForm(FlaskForm):
         validators=[Optional(), Length(max=100)],
         render_kw={"placeholder": "Ej. 2 y 6 años (opcional)"}
     )
+    ayuda_cuidado_ninos = SelectField(
+        '¿La empleada tendrá ayuda con el cuidado de los niños?',
+        choices=[
+            ("", "Selecciona una opción"),
+            ("sin_ayuda", "No tendrá ayuda"),
+            ("con_ayuda", "Sí tendrá ayuda"),
+        ],
+        validators=[Optional()],
+        coerce=str,
+    )
 
     mascota = StringField(
         'Mascota',

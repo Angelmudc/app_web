@@ -46,6 +46,7 @@
       "keydown",
       (e) => {
         if (!isTypingTarget(e.target)) return;
+        if (e.key === "Escape") return;
         // OJO: NO usamos preventDefault() para no romper el typing.
         // Solo evitamos que otros listeners globales intercepten.
         e.stopImmediatePropagation();

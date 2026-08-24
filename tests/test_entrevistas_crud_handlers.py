@@ -110,7 +110,7 @@ def test_entrevista_nueva_respeta_guarda_descalificacion():
     cand = SimpleNamespace(fila=1, estado='descalificada', entrevista='')
 
     with patch('core.handlers.entrevistas_handlers.legacy_h._get_candidata_safe_by_pk', return_value=cand), \
-         patch('core.handlers.entrevistas_handlers.assert_candidata_no_descalificada', return_value=redirect('/bloqueada')), \
+         patch('core.handlers.entrevistas_handlers.assert_candidata_can_create_interview', return_value=redirect('/bloqueada')), \
          patch('core.handlers.entrevistas_handlers.execute_robust_save') as save_mock:
         resp = client.post(
             '/entrevistas/nueva/1/domestica',
