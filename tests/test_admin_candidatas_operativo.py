@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import re
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -1482,10 +1483,15 @@ def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
     html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
     assert "Entrevista histórica" in html
     assert "Registro del sistema anterior" in html
+    assert html.count("Descargar PDF") >= 2
+    assert '/generar_pdf_entrevista?fila=990583' in html
     assert "Pregunta 1" in html
     assert "Respuesta 1" in html
     assert "Pregunta 2" in html
     assert "Respuesta 2" in html
+    assert "Leer respuestas" in html
+    assert "Editar" in html
+    assert re.search(r"<dt>Total</dt>\s*<dd>1</dd>", html)
 
     _set_legacy("Nombre completo: Ana Perez\nExperiencia: 5 años\nObservacion libre")
     html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
@@ -1505,6 +1511,30 @@ def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
     html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
     assert "Entrevista histórica" in html
     assert "{bad json" in html
+
+
+def test_admin_candidata_pdf_entrevista_historica_usa_solo_legacy_y_respeta_permisos():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990584)
+
+    anon_resp = client.get("/generar_pdf_entrevista?fila=990584", follow_redirects=False)
+    assert anon_resp.status_code in (302, 403)
+
+    assert _login(client).status_code in (302, 303)
+
+    with flask_app.app_context():
+        cand = Candidata.query.get(990584)
+        cand.entrevista = "Historia: solo texto legado"
+        db.session.commit()
+
+    pdf_resp = client.get("/generar_pdf_entrevista?fila=990584", follow_redirects=False)
+    assert pdf_resp.status_code == 200
+    assert pdf_resp.mimetype == "application/pdf"
 
 
 def test_admin_candidatas_operativo_async_forms_limpian_loader_y_bloquean_doble_submit():

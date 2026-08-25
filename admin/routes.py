@@ -22831,6 +22831,7 @@ def _candidata_center_legacy_urls(fila: int) -> dict:
         "edit": url_for("buscar_candidata", candidata_id=fila, next=next_url),
         "references": url_for("referencias", candidata=fila, next=next_url),
         "interviews": url_for("entrevistas_de_candidata", fila=fila, next=next_url),
+        "historical_pdf": url_for("generar_pdf_entrevista", fila=fila),
         "new_interview": url_for("entrevista_nueva_db", fila=fila, tipo="domestica", next=next_url),
         "new_interview_by_type": {
             key: url_for("entrevista_nueva_db", fila=fila, tipo=key, next=next_url)

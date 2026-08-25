@@ -497,6 +497,7 @@
                   <span class="d-flex gap-2">
                     <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Leer respuestas</a>
                     <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Editar</a>
+                    <a href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=item.id) }}">Descargar PDF</a>
                   </span>
                 </div>
                 {% if interview_refs %}
@@ -521,18 +522,24 @@
         {% endif %}
 
         {% if legacy_entrevista_display.has_content %}
-          <details class="small mb-3">
-            <summary class="cand-muted">Entrevista histórica</summary>
-            <div class="mt-2">
-              <div class="small cand-muted mb-2">Registro del sistema anterior</div>
-              <dl class="cand-kv cand-kv-tight mb-0">
-                {% for item in legacy_entrevista_display.entries %}
-                  <dt>{{ item.label }}</dt>
-                  <dd class="white-space-pre-line">{{ item.value }}</dd>
-                {% endfor %}
-              </dl>
+          <section class="cand-display cand-display-legacy mb-3" id="legacy-entrevista">
+            <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+              <div>
+                <h3 class="h6 mb-1">Entrevista histórica</h3>
+                <div class="small cand-muted">Registro del sistema anterior</div>
+              </div>
+              <div class="d-flex gap-2 flex-wrap">
+                <a class="btn btn-outline-secondary btn-sm" href="#legacy-entrevista">Ver</a>
+                <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.historical_pdf }}">Descargar PDF</a>
+              </div>
             </div>
-          </details>
+            <dl class="cand-kv cand-kv-tight mb-0 mt-3">
+              {% for item in legacy_entrevista_display.entries %}
+                <dt>{{ item.label }}</dt>
+                <dd class="white-space-pre-line">{{ item.value }}</dd>
+              {% endfor %}
+            </dl>
+          </section>
         {% endif %}
         <div class="d-flex gap-2 flex-wrap mt-2">
           <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.interviews }}">Ver entrevistas</a>
