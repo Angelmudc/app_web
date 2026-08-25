@@ -123,6 +123,12 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id)", solicitud_summary_txt)
         self.assertIn('data-admin-nav="true"', solicitud_summary_txt)
 
+        registrar_pago_tpl = os.path.join(os.getcwd(), "templates", "admin", "_registrar_pago_form_region.html")
+        with open(registrar_pago_tpl, "r", encoding="utf-8") as f:
+            registrar_pago_txt = f.read()
+        self.assertIn("url_for('admin.listar_clientes')", registrar_pago_txt)
+        self.assertNotIn("url_for('admin.clientes')", registrar_pago_txt)
+
     def test_bandeja_operativa_incluye_vista_rapida_mvp(self):
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")
         with open(solicitudes_tpl, "r", encoding="utf-8") as f:
