@@ -6,6 +6,7 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import patch
+from typing import Optional
 
 from flask import session
 from sqlalchemy import event
@@ -1454,6 +1455,56 @@ def test_admin_candidatas_operativo_visual_markup_legible_y_sin_badges_duplicado
     assert "Ver datos secundarios" in html
     assert "2026-05-25 19:35:08.894047" not in html
     assert ".000000" not in html
+
+
+def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990583)
+
+    assert _login(client).status_code in (302, 303)
+
+    def _set_legacy(value: Optional[str]) -> None:
+        with flask_app.app_context():
+            cand = Candidata.query.get(990583)
+            cand.entrevista = value
+            db.session.commit()
+
+    _set_legacy("")
+    html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+    assert "Entrevista histórica" not in html
+
+    _set_legacy('{"pregunta_1": "Respuesta 1", "pregunta_2": "Respuesta 2"}')
+    html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+    assert "Entrevista histórica" in html
+    assert "Registro del sistema anterior" in html
+    assert "Pregunta 1" in html
+    assert "Respuesta 1" in html
+    assert "Pregunta 2" in html
+    assert "Respuesta 2" in html
+
+    _set_legacy("Nombre completo: Ana Perez\nExperiencia: 5 años\nObservacion libre")
+    html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+    assert "Entrevista histórica" in html
+    assert "Nombre completo" in html
+    assert "Ana Perez" in html
+    assert "Experiencia" in html
+    assert "5 años" in html
+    assert "Observacion libre" in html
+
+    for placeholder in ("{}", "[]", "   "):
+        _set_legacy(placeholder)
+        html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+        assert "Entrevista histórica" not in html
+
+    _set_legacy("{bad json")
+    html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+    assert "Entrevista histórica" in html
+    assert "{bad json" in html
 
 
 def test_admin_candidatas_operativo_async_forms_limpian_loader_y_bloquean_doble_submit():

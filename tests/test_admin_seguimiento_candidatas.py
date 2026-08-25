@@ -17,6 +17,7 @@ from models import (
     SeguimientoCandidataContacto,
     SeguimientoCandidataEvento,
 )
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def _csrf_token_from_html(html: str) -> str:
@@ -53,10 +54,14 @@ def _crear_caso(client, **extra):
 
 def _ensure_tracking_tables():
     with flask_app.app_context():
-        bind = db.session.get_bind()
-        SeguimientoCandidataContacto.__table__.create(bind=bind, checkfirst=True)
-        SeguimientoCandidataCaso.__table__.create(bind=bind, checkfirst=True)
-        SeguimientoCandidataEvento.__table__.create(bind=bind, checkfirst=True)
+        ensure_sqlite_compat_tables(
+            [
+                SeguimientoCandidataContacto,
+                SeguimientoCandidataCaso,
+                SeguimientoCandidataEvento,
+            ],
+            reset=False,
+        )
 
 
 def _ensure_client_table():

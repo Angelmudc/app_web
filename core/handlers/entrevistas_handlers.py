@@ -306,7 +306,7 @@ def entrevista_nueva_db(fila, tipo):
             flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
             return redirect(url_for('entrevista_nueva_db', fila=fila, tipo=tipo, next=next_url or None))
 
-        state = {"entrevista_id": 0, "legacy_text": ""}
+        state = {"entrevista_id": 0}
 
         def _persist_interview(_attempt: int):
             entrevista = Entrevista(candidata_id=fila)
@@ -328,10 +328,6 @@ def entrevista_nueva_db(fila, tipo):
                 _safe_setattr(r, 'creada_en', utc_now_naive())
                 db.session.add(r)
 
-            state["legacy_text"] = _build_legacy_interview_text(preguntas, respuestas_payload)
-            if legacy_text_is_useful(state["legacy_text"]):
-                candidata.entrevista = state["legacy_text"]
-
             try:
                 maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
             except Exception:
@@ -347,7 +343,7 @@ def entrevista_nueva_db(fila, tipo):
             metadata_ok = {
                 "candidata_id": int(fila),
                 "entrevista_nueva": True,
-                "entrevista_legacy": bool(legacy_text_is_useful(state.get("legacy_text") or "")),
+                "entrevista_legacy": False,
                 "attempt_count": int(result.attempts),
                 "bytes_length": {},
             }
@@ -383,7 +379,7 @@ def entrevista_nueva_db(fila, tipo):
             metadata={
                 "candidata_id": int(fila),
                 "entrevista_nueva": True,
-                "entrevista_legacy": bool(legacy_text_is_useful(state.get("legacy_text") or "")),
+                "entrevista_legacy": False,
                 "attempt_count": int(result.attempts),
                 "error_message": (result.error_message or "")[:200],
                 "bytes_length": {},
@@ -500,10 +496,6 @@ def entrevista_editar_db(entrevista_id):
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
 
-            legacy_text = _build_legacy_interview_text(preguntas, respuestas_payload)
-            if legacy_text_is_useful(legacy_text):
-                candidata.entrevista = legacy_text
-
             try:
                 maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
             except Exception:
@@ -524,7 +516,7 @@ def entrevista_editar_db(entrevista_id):
                     "candidata_id": int(fila),
                     "entrevista_id": int(getattr(entrevista, "id", 0) or 0),
                     "entrevista_nueva": True,
-                    "entrevista_legacy": True,
+                    "entrevista_legacy": False,
                     "attempt_count": int(result.attempts),
                     "bytes_length": {},
                 },
@@ -556,7 +548,7 @@ def entrevista_editar_db(entrevista_id):
                 "candidata_id": int(fila),
                 "entrevista_id": int(getattr(entrevista, "id", 0) or 0),
                 "entrevista_nueva": True,
-                "entrevista_legacy": True,
+                "entrevista_legacy": False,
                 "attempt_count": int(result.attempts),
                 "error_message": (result.error_message or "")[:200],
                 "bytes_length": {},

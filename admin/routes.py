@@ -187,6 +187,7 @@ from utils.audit_entity import (
     candidata_entity_meta,
     log_candidata_action,
 )
+from utils.legacy_interview_display import build_legacy_interview_display
 from utils.candidata_readiness import maybe_update_estado_por_completitud
 from utils.robust_save import execute_robust_save, safe_bytes_length
 from utils.upload_limits import MAX_FILE_BYTES, file_too_large, get_filestorage_size, human_size
@@ -22862,9 +22863,10 @@ def _candidata_center_seek_upload(file_storage) -> None:
 
 def _candidata_center_snapshot(candidata, entrevistas_count: int, doc_flags: dict[str, bool]):
     return SimpleNamespace(
+        fila=getattr(candidata, "fila", None),
         estado=getattr(candidata, "estado", None),
         codigo=getattr(candidata, "codigo", None),
-        entrevista=getattr(candidata, "entrevista", None),
+        entrevista=None,
         referencias_laboral=getattr(candidata, "referencias_laboral", None),
         referencias_familiares=getattr(candidata, "referencias_familiares", None),
         contactos_referencias_laborales=getattr(candidata, "contactos_referencias_laborales", None),
@@ -23164,9 +23166,10 @@ def _candidata_center_detail_context(fila: int) -> dict:
         .all()
     )
 
+    center_snapshot = _candidata_center_snapshot(candidata, entrevistas_count, doc_flags)
     readiness = _candidata_center_build_readiness(candidata, entrevistas_count, doc_flags)
     state_capabilities = build_candidata_state_capabilities(
-        candidata,
+        center_snapshot,
         entrevistas_count=entrevistas_count,
         doc_flags=doc_flags,
     )
@@ -23250,6 +23253,7 @@ def _candidata_center_detail_context(fila: int) -> dict:
         "laboral": bool(secretary_references["laboral_full"]),
         "familiar": bool(secretary_references["familiar_full"]),
     }
+    legacy_entrevista_display = build_legacy_interview_display(getattr(candidata, "entrevista", None))
     edit_values = {
         "personal": {
             "nombre": candidata.nombre_completo or "",
@@ -23343,6 +23347,7 @@ def _candidata_center_detail_context(fila: int) -> dict:
             "recent": recent_interviews,
             "reference_map": interview_references,
         },
+        "legacy_entrevista_display": legacy_entrevista_display,
         "recent_calls": recent_calls,
         "calls_count": int(calls_count or 0),
         "seguimiento": seguimiento,
@@ -30724,9 +30729,85 @@ def _seg_tables_ready_uncached() -> bool:
         if not missing:
             return True
         if bool(current_app.config.get("TESTING")):
-            SeguimientoCandidataContacto.__table__.create(bind=bind, checkfirst=True)
-            SeguimientoCandidataCaso.__table__.create(bind=bind, checkfirst=True)
-            SeguimientoCandidataEvento.__table__.create(bind=bind, checkfirst=True)
+            if bind.dialect.name == "sqlite":
+                with bind.begin() as conn:
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS seguimiento_candidatas_contactos (
+                              id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              telefono_norm VARCHAR(32),
+                              nombre_reportado VARCHAR(200),
+                              canal_preferido VARCHAR(20),
+                              created_at DATETIME NOT NULL,
+                              updated_at DATETIME NOT NULL
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS seguimiento_candidatas_casos (
+                              id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              public_id VARCHAR(40) NOT NULL,
+                              candidata_id INTEGER NOT NULL,
+                              solicitud_id INTEGER,
+                              contacto_id INTEGER,
+                              nombre_contacto VARCHAR(200),
+                              telefono_norm VARCHAR(32),
+                              canal_origen VARCHAR(20) NOT NULL DEFAULT 'otro',
+                              estado VARCHAR(30) NOT NULL DEFAULT 'nuevo',
+                              prioridad VARCHAR(20) NOT NULL DEFAULT 'normal',
+                              owner_staff_user_id INTEGER,
+                              created_by_staff_user_id INTEGER NOT NULL,
+                              taken_at DATETIME,
+                              proxima_accion_tipo VARCHAR(40),
+                              proxima_accion_detalle VARCHAR(300),
+                              due_at DATETIME,
+                              waiting_since_at DATETIME,
+                              status_changed_at DATETIME,
+                              last_inbound_at DATETIME,
+                              last_outbound_at DATETIME,
+                              last_movement_at DATETIME NOT NULL,
+                              closed_at DATETIME,
+                              closed_by_staff_user_id INTEGER,
+                              close_reason VARCHAR(255),
+                              merge_into_case_id INTEGER,
+                              is_merged BOOLEAN NOT NULL DEFAULT 0,
+                              row_version INTEGER NOT NULL DEFAULT 1,
+                              created_at DATETIME NOT NULL,
+                              updated_at DATETIME NOT NULL
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            """
+                            CREATE TABLE IF NOT EXISTS seguimiento_candidatas_eventos (
+                              id INTEGER PRIMARY KEY AUTOINCREMENT,
+                              caso_id INTEGER NOT NULL,
+                              event_type VARCHAR(60) NOT NULL,
+                              actor_staff_user_id INTEGER,
+                              old_value JSON,
+                              new_value JSON,
+                              note TEXT,
+                              created_at DATETIME NOT NULL
+                            )
+                            """
+                        )
+                    )
+                    conn.execute(
+                        text(
+                            "CREATE INDEX IF NOT EXISTS ix_seg_evento_caso_created "
+                            "ON seguimiento_candidatas_eventos (caso_id, created_at)"
+                        )
+                    )
+            else:
+                SeguimientoCandidataContacto.__table__.create(bind=bind, checkfirst=True)
+                SeguimientoCandidataCaso.__table__.create(bind=bind, checkfirst=True)
+                SeguimientoCandidataEvento.__table__.create(bind=bind, checkfirst=True)
             return True
         return False
     except Exception:

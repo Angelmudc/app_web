@@ -516,10 +516,22 @@
               </li>
             {% endfor %}
           </ul>
-        {% elif candidata.entrevista %}
-          <details class="small mb-2" open>
-            <summary class="cand-muted">Entrevista legacy</summary>
-            <div class="mt-2 white-space-pre-line">{{ candidata.entrevista }}</div>
+        {% else %}
+          <div class="cand-muted small mb-2">Sin entrevistas nuevas.</div>
+        {% endif %}
+
+        {% if legacy_entrevista_display.has_content %}
+          <details class="small mb-3">
+            <summary class="cand-muted">Entrevista histórica</summary>
+            <div class="mt-2">
+              <div class="small cand-muted mb-2">Registro del sistema anterior</div>
+              <dl class="cand-kv cand-kv-tight mb-0">
+                {% for item in legacy_entrevista_display.entries %}
+                  <dt>{{ item.label }}</dt>
+                  <dd class="white-space-pre-line">{{ item.value }}</dd>
+                {% endfor %}
+              </dl>
+            </div>
           </details>
         {% endif %}
         <div class="d-flex gap-2 flex-wrap mt-2">

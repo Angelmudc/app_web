@@ -59,16 +59,30 @@ def ensure_sqlite_compat_tables(models: list[type], *, reset: bool = False) -> N
             table = model.__table__
             table_name = table.name
             exists = inspector.has_table(table_name)
-            if exists and reset:
-                conn.execute(text(f'DROP TABLE IF EXISTS \"{table_name}\"'))
-                exists = False
-            if exists:
-                continue
-
             pk_cols = [c for c in table.columns if c.primary_key]
             single_int_pk = (
                 len(pk_cols) == 1 and isinstance(pk_cols[0].type, (Integer, BigInteger, SmallInteger))
             )
+            needs_recreate = False
+            if exists and bind.dialect.name == "sqlite" and single_int_pk:
+                info = conn.execute(text(f'PRAGMA table_info("{table_name}")')).fetchall()
+                pk_name = str(pk_cols[0].name)
+                for col in info:
+                    if str(col[1]) == pk_name:
+                        col_type = str(col[2] or "").strip().upper()
+                        col_pk = int(col[5] or 0)
+                        needs_recreate = not (col_type == "INTEGER" and col_pk == 1)
+                        break
+                else:
+                    needs_recreate = True
+            if exists and reset:
+                conn.execute(text(f'DROP TABLE IF EXISTS \"{table_name}\"'))
+                exists = False
+            if exists and needs_recreate:
+                conn.execute(text(f'DROP TABLE IF EXISTS \"{table_name}\"'))
+                exists = False
+            if exists:
+                continue
 
             col_defs: list[str] = []
             composite_pk: list[str] = []
