@@ -4,7 +4,12 @@ from unittest.mock import patch
 from flask import Response, url_for
 
 from app import app as flask_app
+from config_app import db
+from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta
 from core.services import pdf as pdf_service
+from core.services.interview_references import collect_entrevista_reference_items, sync_entrevista_referencias_from_answers
+from tests.t1_testkit import ensure_sqlite_compat_tables
+from utils.timezone import utc_now_naive
 
 
 def _login_secretaria(client):
@@ -72,6 +77,144 @@ def test_generar_pdf_entrevista_respuesta_pdf_binaria():
 
     assert resp.status_code == 200
     assert resp.mimetype == 'application/pdf'
+
+
+def test_pdf_referencias_entrevista_prioriza_referencias_explicitas_sobre_respuestas_estructuradas():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991101).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991101).delete(synchronize_session=False)
+        cand = Candidata(
+            fila=991101,
+            nombre_completo='Ana PDF',
+            referencias_laboral='CAND-LAB',
+            referencias_familiares='CAND-FAM',
+        )
+        db.session.add(cand)
+        db.session.add_all([
+            EntrevistaPregunta(clave='domestica.referencia_laboral', texto='Referencia laboral mencionada', tipo='texto', orden=1, activa=True),
+            EntrevistaPregunta(clave='domestica.referencia_familiar', texto='Referencia familiar mencionada', tipo='texto', orden=2, activa=True),
+        ])
+        db.session.flush()
+        entrevista = Entrevista(candidata_id=991101, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.flush()
+        qlab = EntrevistaPregunta.query.filter_by(clave='domestica.referencia_laboral').first()
+        qfam = EntrevistaPregunta.query.filter_by(clave='domestica.referencia_familiar').first()
+        db.session.add_all([
+            EntrevistaReferencia(
+                entrevista_id=entrevista.id,
+                tipo='laboral',
+                texto='LAB-EXPLICITA',
+                datos_json={'texto': 'LAB-EXPLICITA', 'origen': 'explicita'},
+                creada_en=utc_now_naive(),
+            ),
+            EntrevistaReferencia(
+                entrevista_id=entrevista.id,
+                tipo='familiar',
+                texto='FAM-EXPLICITA',
+                datos_json={'texto': 'FAM-EXPLICITA', 'origen': 'explicita'},
+                creada_en=utc_now_naive(),
+            ),
+            EntrevistaRespuesta(entrevista_id=entrevista.id, pregunta_id=qlab.id, respuesta='INT-LAB', creada_en=utc_now_naive()),
+            EntrevistaRespuesta(entrevista_id=entrevista.id, pregunta_id=qfam.id, respuesta='INT-FAM', creada_en=utc_now_naive()),
+        ])
+        db.session.commit()
+        collected = collect_entrevista_reference_items(entrevista)
+
+    assert [(item["tipo"], item["respuesta"]) for item in collected] == [('laboral', 'LAB-EXPLICITA'), ('familiar', 'FAM-EXPLICITA')]
+
+
+def test_pdf_referencias_entrevista_fallback_historico_usa_respuestas_estructuradas_si_no_hay_explicitas():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991102).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991102).delete(synchronize_session=False)
+        cand = Candidata(
+            fila=991102,
+            nombre_completo='Ana PDF Fallback',
+            referencias_laboral='CAND-LAB',
+            referencias_familiares='CAND-FAM',
+        )
+        db.session.add(cand)
+        db.session.add(
+            EntrevistaPregunta(
+                clave='domestica.referencia_laboral',
+                texto='Referencia laboral mencionada',
+                tipo='texto',
+                orden=1,
+                activa=True,
+            )
+        )
+        entrevista = Entrevista(candidata_id=991102, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.flush()
+        pregunta = EntrevistaPregunta.query.filter_by(clave='domestica.referencia_laboral').first()
+        db.session.add(
+            EntrevistaRespuesta(
+                entrevista_id=entrevista.id,
+                pregunta_id=pregunta.id,
+                respuesta='Cinco años en casa de familia.',
+                creada_en=utc_now_naive(),
+            )
+        )
+        db.session.commit()
+        collected = collect_entrevista_reference_items(entrevista)
+
+    assert [(item["tipo"], item["respuesta"]) for item in collected] == [('laboral', 'Cinco años en casa de familia.')]
+
+
+def test_sync_entrevista_referencias_crea_actualiza_y_borra_sin_duplicar():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991103).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991103).delete(synchronize_session=False)
+        cand = Candidata(fila=991103, nombre_completo='Ana Sync')
+        db.session.add(cand)
+        db.session.add_all([
+            EntrevistaPregunta(clave='domestica.referencia_laboral', texto='Referencia laboral', tipo='texto', orden=1, activa=True),
+            EntrevistaPregunta(clave='domestica.referencia_familiar', texto='Referencia familiar', tipo='texto', orden=2, activa=True),
+        ])
+        entrevista = Entrevista(candidata_id=991103, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.flush()
+        preguntas = EntrevistaPregunta.query.order_by(EntrevistaPregunta.orden.asc()).all()
+
+        sync_entrevista_referencias_from_answers(
+            session=db.session,
+            entrevista=entrevista,
+            preguntas=preguntas,
+            respuestas_payload={int(preguntas[0].id): 'LAB-1', int(preguntas[1].id): 'FAM-1'},
+        )
+        db.session.flush()
+        sync_entrevista_referencias_from_answers(
+            session=db.session,
+            entrevista=entrevista,
+            preguntas=preguntas,
+            respuestas_payload={int(preguntas[0].id): 'LAB-2'},
+        )
+        db.session.commit()
+        rows = EntrevistaReferencia.query.filter_by(entrevista_id=entrevista.id).order_by(EntrevistaReferencia.tipo.asc()).all()
+
+    assert [(row.tipo, row.texto) for row in rows] == [('laboral', 'LAB-2')]
 
 
 def test_pdf_nuevo_alias_delega_en_pdf_db():

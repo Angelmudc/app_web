@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Optional, Dict
 
 from flask_login import UserMixin
-from sqlalchemy import CheckConstraint, Enum as SAEnum, LargeBinary, event, inspect as sa_inspect, text
+from sqlalchemy import CheckConstraint, Enum as SAEnum, LargeBinary, UniqueConstraint, event, inspect as sa_inspect, text
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import synonym
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -346,6 +346,12 @@ class Entrevista(db.Model):
         cascade='all, delete-orphan'
     )
 
+    referencias = db.relationship(
+        'EntrevistaReferencia',
+        back_populates='entrevista',
+        cascade='all, delete-orphan'
+    )
+
     def __repr__(self):
         return f"<Entrevista {self.id} candidata_id={self.candidata_id} tipo={getattr(self, 'tipo', None)}>"
 
@@ -453,6 +459,65 @@ class EntrevistaRespuesta(db.Model):
 
     def __repr__(self):
         return f"<EntrevistaRespuesta entrevista={self.entrevista_id} pregunta={self.pregunta_id}>"
+
+
+class EntrevistaReferencia(db.Model):
+    __tablename__ = 'entrevista_referencias'
+
+    __table_args__ = (
+        CheckConstraint("tipo IN ('laboral', 'familiar')", name='ck_entrevista_referencia_tipo'),
+        UniqueConstraint('entrevista_id', 'tipo', name='uq_entrevista_referencia_entrevista_tipo'),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    entrevista_id = db.Column(
+        db.Integer,
+        db.ForeignKey('entrevistas.id', ondelete='CASCADE'),
+        nullable=False,
+        index=True
+    )
+
+    tipo = db.Column(
+        db.String(20),
+        nullable=False,
+        index=True,
+        comment="laboral o familiar"
+    )
+
+    texto = db.Column(
+        db.Text,
+        nullable=True,
+        comment="Texto libre de la referencia"
+    )
+
+    datos_json = db.Column(
+        db.JSON,
+        nullable=False,
+        default=dict,
+        server_default=text("'{}'"),
+        comment="Payload estructurado de la referencia"
+    )
+
+    creada_en = db.Column(
+        db.DateTime,
+        nullable=False,
+        default=utc_now_naive
+    )
+
+    actualizada_en = db.Column(
+        db.DateTime,
+        nullable=True,
+        onupdate=utc_now_naive
+    )
+
+    entrevista = db.relationship(
+        'Entrevista',
+        back_populates='referencias'
+    )
+
+    def __repr__(self):
+        return f"<EntrevistaReferencia entrevista={self.entrevista_id} tipo={self.tipo}>"
 
 
 

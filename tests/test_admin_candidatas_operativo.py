@@ -23,6 +23,7 @@ from models import (
     DomainOutbox,
     Entrevista,
     EntrevistaPregunta,
+    EntrevistaReferencia,
     EntrevistaRespuesta,
     LlamadaCandidata,
     SeguimientoCandidataCaso,
@@ -47,6 +48,7 @@ def _ensure_tables() -> None:
             Candidata,
             Entrevista,
             EntrevistaPregunta,
+            EntrevistaReferencia,
             EntrevistaRespuesta,
             LlamadaCandidata,
             SeguimientoCandidataCaso,
@@ -77,6 +79,7 @@ def _seed_center_candidate(fila: int = 990501) -> Candidata:
     LlamadaCandidata.query.filter_by(candidata_id=fila).delete(synchronize_session=False)
     entrevistas_ids = [row.id for row in Entrevista.query.filter_by(candidata_id=fila).all()]
     if entrevistas_ids:
+        EntrevistaReferencia.query.filter(EntrevistaReferencia.entrevista_id.in_(entrevistas_ids)).delete(synchronize_session=False)
         EntrevistaRespuesta.query.filter(EntrevistaRespuesta.entrevista_id.in_(entrevistas_ids)).delete(synchronize_session=False)
     Entrevista.query.filter_by(candidata_id=fila).delete(synchronize_session=False)
     Candidata.query.filter_by(fila=fila).delete(synchronize_session=False)

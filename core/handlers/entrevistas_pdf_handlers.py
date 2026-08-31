@@ -11,7 +11,7 @@ from flask import current_app, redirect, request, send_file, url_for
 from decorators import roles_required
 
 from core import legacy_handlers as legacy_h
-from core.services.interview_references import is_interview_reference_question
+from core.services.interview_references import collect_entrevista_reference_items
 
 
 @roles_required('admin', 'secretaria')
@@ -29,6 +29,11 @@ def generar_pdf_entrevista_db(entrevista_id: int):
     candidata = legacy_h._get_candidata_safe_by_pk(int(fila)) if fila else None
     if not candidata:
         return "Candidata no encontrada", 404
+
+    referencias_entrevista = [
+        (item["label"], item["respuesta"])
+        for item in collect_entrevista_reference_items(entrevista)
+    ]
 
     respuestas = (
         legacy_h.EntrevistaRespuesta.query
@@ -48,18 +53,6 @@ def generar_pdf_entrevista_db(entrevista_id: int):
 
     respuestas_por_pregunta = {r.pregunta_id: (r.respuesta or "").strip() for r in respuestas}
     tipo = (getattr(entrevista, 'tipo', None) or '').strip().lower()
-
-    referencias_entrevista = []
-    for pregunta in preguntas:
-        value = (respuestas_por_pregunta.get(pregunta.id) or "").strip()
-        if not value or not is_interview_reference_question(pregunta):
-            continue
-        label = (
-            getattr(pregunta, "texto", None)
-            or getattr(pregunta, "clave", None)
-            or "Referencia en entrevista"
-        )
-        referencias_entrevista.append((label, value))
 
     BRAND = (0, 102, 204)
     FAINT = (120, 120, 120)

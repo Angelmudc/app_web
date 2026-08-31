@@ -12,7 +12,7 @@ from werkzeug.serving import make_server
 
 from app import app as flask_app
 from config_app import db
-from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaRespuesta, StaffUser
+from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta, StaffUser
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 playwright = pytest.importorskip("playwright.sync_api")
@@ -310,26 +310,54 @@ def test_candidata_sin_entrevista_crea_domestica_desde_ficha_y_regresa(candidata
             lambda: EntrevistaRespuesta.query.filter_by(entrevista_id=int(persisted.id)).count()
         )
         assert respuestas_count == 5
+        referencias_count = _wait_for_db_value(
+            lambda: EntrevistaReferencia.query.filter_by(entrevista_id=int(persisted.id)).count()
+        )
+        assert referencias_count == 2
 
         entrevistas_panel = page.locator("#entrevistas")
         text = entrevistas_panel.inner_text()
         assert re.search(r"Total\s+1", text)
         assert "domestica" in text
         assert "completa" in text
-        assert "Leer respuestas" in text
-        assert "Información declarada por la candidata" in page.locator("#referencias").inner_text()
-        assert "Referencias del formulario" in page.locator("#referencias").inner_text()
-        assert "FORM-LAB-111" in page.locator("#referencias").inner_text()
-        assert "FORM-FAM-222" in page.locator("#referencias").inner_text()
-        assert "Referencias registradas durante entrevista" in text
-        assert "INT-LAB-333" in text
-        assert "INT-FAM-444" in text
+        assert "Cargando entrevistas recientes..." in text
+        fragment = page.locator("#candidataInterviewsRecentAsyncRegion")
+        fragment.scroll_into_view_if_needed()
+        fragment_url = fragment.get_attribute("data-admin-lazy-fragment-url")
+        assert fragment_url
+        fragment_html = page.evaluate(
+            """async (url) => {
+              const resp = await fetch(url, {
+                credentials: 'same-origin',
+                headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html,*/*'}
+              });
+              return await resp.text();
+            }""",
+            fragment_url,
+        )
+        fragment_text = fragment_html
+        assert "Leer respuestas" in fragment_text
+        referencias_text = page.locator("#referencias").inner_text()
+        assert "Referencias y entrevista" in referencias_text
+        assert "Formulario, entrevista y respuestas registradas." in referencias_text
+        assert "Referencias del formulario" in referencias_text
+        assert "Referencias de entrevista" in referencias_text
+        assert "FORM-LAB-111" in referencias_text
+        assert "FORM-FAM-222" in referencias_text
+        assert "Referencias registradas durante entrevista" in fragment_text
+        assert "INT-LAB-333" in fragment_text
+        assert "INT-FAM-444" in fragment_text
 
         with flask_app.app_context():
             db.session.remove()
             cand = Candidata.query.get(fila)
             assert cand.contactos_referencias_laborales == "FORM-LAB-111"
             assert cand.referencias_familiares_detalle == "FORM-FAM-222"
+            refs = [
+                (r.tipo, r.texto)
+                for r in EntrevistaReferencia.query.filter_by(entrevista_id=int(persisted.id)).order_by(EntrevistaReferencia.tipo.asc()).all()
+            ]
+            assert refs == [("familiar", "INT-FAM-444"), ("laboral", "INT-LAB-333")]
             ref_answers = [
                 r.respuesta
                 for r in EntrevistaRespuesta.query.join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
@@ -340,21 +368,28 @@ def test_candidata_sin_entrevista_crea_domestica_desde_ficha_y_regresa(candidata
             ]
             assert ref_answers == ["INT-LAB-333", "INT-FAM-444"]
 
-        page.get_by_role("button", name=re.compile(r"Editar referencias", re.I)).click()
-        page.fill("#cand_ref_lab", "FORM-LAB-555")
-        page.fill("#cand_ref_fam", "FORM-FAM-666")
+        page.get_by_role("button", name=re.compile(r"Editar entrevista", re.I)).click()
+        page.fill("#cand_ref_int_lab", "FORM-LAB-555")
+        page.fill("#cand_ref_int_fam", "FORM-FAM-666")
         with page.expect_response(
             lambda resp: resp.request.method == "POST" and f"/admin/candidatas/{fila}/referencias" in resp.url,
             timeout=12000,
         ):
-            page.locator('#referencias button[type="submit"]').click()
+            page.get_by_role("button", name=re.compile(r"Guardar entrevista", re.I)).click()
         page.wait_for_timeout(250)
 
         with flask_app.app_context():
             db.session.remove()
             cand = Candidata.query.get(fila)
-            assert cand.contactos_referencias_laborales == "FORM-LAB-555"
-            assert cand.referencias_familiares_detalle == "FORM-FAM-666"
+            assert cand.contactos_referencias_laborales == "FORM-LAB-111"
+            assert cand.referencias_familiares_detalle == "FORM-FAM-222"
+            assert cand.referencias_laboral == "FORM-LAB-555"
+            assert cand.referencias_familiares == "FORM-FAM-666"
+            refs_after_form_edit = [
+                (r.tipo, r.texto)
+                for r in EntrevistaReferencia.query.filter_by(entrevista_id=int(persisted.id)).order_by(EntrevistaReferencia.tipo.asc()).all()
+            ]
+            assert refs_after_form_edit == [("familiar", "INT-FAM-444"), ("laboral", "INT-LAB-333")]
             ref_answers_after_form_edit = [
                 r.respuesta
                 for r in EntrevistaRespuesta.query.join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
@@ -392,8 +427,15 @@ def test_candidata_sin_entrevista_crea_domestica_desde_ficha_y_regresa(candidata
         with flask_app.app_context():
             db.session.remove()
             cand = Candidata.query.get(fila)
-            assert cand.contactos_referencias_laborales == "FORM-LAB-555"
-            assert cand.referencias_familiares_detalle == "FORM-FAM-666"
+            assert cand.contactos_referencias_laborales == "FORM-LAB-111"
+            assert cand.referencias_familiares_detalle == "FORM-FAM-222"
+            assert cand.referencias_laboral == "FORM-LAB-555"
+            assert cand.referencias_familiares == "FORM-FAM-666"
+            refs_after_edit = [
+                (r.tipo, r.texto)
+                for r in EntrevistaReferencia.query.filter_by(entrevista_id=int(persisted.id)).order_by(EntrevistaReferencia.tipo.asc()).all()
+            ]
+            assert refs_after_edit == [("familiar", "INT-FAM-888"), ("laboral", "INT-LAB-777")]
             ref_answers_after_interview_edit = [
                 r.respuesta
                 for r in EntrevistaRespuesta.query.join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
@@ -444,18 +486,15 @@ def test_candidata_sin_entrevista_crea_domestica_desde_ficha_y_regresa(candidata
         final_interviews_text = page.locator("#entrevistas").inner_text()
         assert "FORM-LAB-555" in final_refs_text
         assert "FORM-FAM-666" in final_refs_text
-        assert "INT-LAB-777" in final_interviews_text
-        assert "INT-FAM-888" in final_interviews_text
-        assert "INT2-LAB-999" in final_interviews_text
-        assert "INT2-FAM-000" in final_interviews_text
-        assert "FORM-LAB-555" not in final_interviews_text
-        assert "FORM-FAM-666" not in final_interviews_text
+        assert re.search(r"Total\s+2", final_interviews_text)
+        assert "domestica" in final_interviews_text
+        assert "completa" in final_interviews_text
 
         with flask_app.app_context():
             db.session.remove()
             cand = Candidata.query.get(fila)
-            assert cand.contactos_referencias_laborales == "FORM-LAB-555"
-            assert cand.referencias_familiares_detalle == "FORM-FAM-666"
+            assert cand.contactos_referencias_laborales == "FORM-LAB-111"
+            assert cand.referencias_familiares_detalle == "FORM-FAM-222"
             interviews = (
                 Entrevista.query
                 .filter_by(candidata_id=fila, tipo="domestica")

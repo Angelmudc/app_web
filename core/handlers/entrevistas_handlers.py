@@ -14,6 +14,7 @@ from decorators import roles_required
 from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaRespuesta
 from utils.audit_entity import log_candidata_action
 from utils.candidata_readiness import maybe_update_estado_por_completitud
+from core.services.interview_references import sync_entrevista_referencias_from_answers
 from utils.guards import (
     assert_candidata_can_create_interview,
     assert_candidata_no_descalificada,
@@ -328,6 +329,13 @@ def entrevista_nueva_db(fila, tipo):
                 _safe_setattr(r, 'creada_en', utc_now_naive())
                 db.session.add(r)
 
+            sync_entrevista_referencias_from_answers(
+                session=db.session,
+                entrevista=entrevista,
+                preguntas=preguntas,
+                respuestas_payload=respuestas_payload,
+            )
+
             try:
                 maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())
             except Exception:
@@ -491,6 +499,13 @@ def entrevista_editar_db(entrevista_id):
 
                 r.respuesta = valor if valor else None
                 _safe_setattr(r, 'actualizada_en', utc_now_naive())
+
+            sync_entrevista_referencias_from_answers(
+                session=db.session,
+                entrevista=entrevista,
+                preguntas=preguntas,
+                respuestas_payload=respuestas_payload,
+            )
 
             _safe_setattr(entrevista, 'actualizada_en', utc_now_naive())
             _safe_setattr(entrevista, 'estado', 'completa')

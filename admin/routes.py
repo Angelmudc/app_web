@@ -356,7 +356,7 @@ from core.services.candidata_quick_edit import (
     update_candidate_references,
 )
 from core.services.candidata_finance import build_candidate_finance_snapshot, configure_candidate_finance, register_candidate_payment
-from core.services.interview_references import is_interview_reference_question
+from core.services.interview_references import collect_entrevista_reference_map
 
 from . import admin_bp
 from .decorators import admin_required, staff_required
@@ -22816,40 +22816,21 @@ def _candidata_center_interview_types() -> list[dict]:
         if key in found
     ]
 
-
-def _candidata_center_is_interview_reference_question(pregunta) -> bool:
-    return is_interview_reference_question(pregunta)
-
-
 def _candidata_center_interview_reference_map(entrevista_ids: list[int]) -> dict[int, list[dict]]:
-    ids = [int(eid) for eid in entrevista_ids if int(eid or 0)]
-    if not ids:
-        return {}
-    rows = (
-        db.session.query(EntrevistaRespuesta, EntrevistaPregunta)
-        .join(EntrevistaPregunta, EntrevistaPregunta.id == EntrevistaRespuesta.pregunta_id)
-        .filter(EntrevistaRespuesta.entrevista_id.in_(ids))
-        .order_by(
-            EntrevistaRespuesta.entrevista_id.asc(),
-            EntrevistaPregunta.orden.asc(),
-            EntrevistaPregunta.id.asc(),
-            EntrevistaRespuesta.id.asc(),
-        )
-        .all()
-    )
-    refs: dict[int, list[dict]] = {}
-    for respuesta, pregunta in rows:
-        value = _center_text(getattr(respuesta, "respuesta", ""))
-        if not value or not _candidata_center_is_interview_reference_question(pregunta):
-            continue
-        refs.setdefault(int(respuesta.entrevista_id), []).append(
+    refs = collect_entrevista_reference_map(entrevista_ids)
+    normalized: dict[int, list[dict]] = {}
+    for entrevista_id, items in refs.items():
+        normalized[int(entrevista_id)] = [
             {
-                "label": getattr(pregunta, "texto", None) or getattr(pregunta, "clave", None) or "Referencia en entrevista",
-                "clave": getattr(pregunta, "clave", "") or "",
-                "respuesta": value,
+                "label": item.get("label") or "Referencia en entrevista",
+                "clave": item.get("tipo") or "",
+                "respuesta": item.get("respuesta") or "",
+                "source": item.get("source") or "",
             }
-        )
-    return refs
+            for item in items
+            if _center_text(item.get("respuesta"))
+        ]
+    return normalized
 
 
 def _candidata_center_recent_interviews(fila: int) -> list:
