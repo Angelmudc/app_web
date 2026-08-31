@@ -22820,16 +22820,28 @@ def _candidata_center_interview_reference_map(entrevista_ids: list[int]) -> dict
     refs = collect_entrevista_reference_map(entrevista_ids)
     normalized: dict[int, list[dict]] = {}
     for entrevista_id, items in refs.items():
-        normalized[int(entrevista_id)] = [
-            {
-                "label": item.get("label") or "Referencia en entrevista",
-                "clave": item.get("tipo") or "",
-                "respuesta": item.get("respuesta") or "",
-                "source": item.get("source") or "",
-            }
-            for item in items
-            if _center_text(item.get("respuesta"))
-        ]
+        compact_items: list[dict] = []
+        for item in items:
+            respuesta = _center_text(item.get("respuesta"))
+            if not respuesta:
+                continue
+            datos_json = item.get("datos_json") if isinstance(item.get("datos_json"), dict) else {}
+            meta = []
+            for key in ("nombre", "telefono", "parentesco", "relacion"):
+                value = _center_text((datos_json or {}).get(key))
+                if value and value not in meta:
+                    meta.append(value)
+            compact_items.append(
+                {
+                    "label": item.get("label") or "Referencia en entrevista",
+                    "clave": item.get("tipo") or "",
+                    "respuesta": respuesta,
+                    "source": item.get("source") or "",
+                    "datos_json": datos_json or {},
+                    "meta": meta,
+                }
+            )
+        normalized[int(entrevista_id)] = compact_items
     return normalized
 
 

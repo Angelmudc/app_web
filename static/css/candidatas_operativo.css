@@ -211,6 +211,98 @@ html[data-theme="light"] .cand-docs {
   outline: none;
 }
 
+.cand-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+}
+
+.cand-ref-card {
+  border: 1px solid var(--cand-border);
+  border-radius: var(--cand-radius);
+  background: var(--cand-surface-soft);
+  padding: .58rem .68rem .7rem;
+}
+
+.cand-ref-card[open] {
+  background: color-mix(in srgb, var(--cand-surface) 90%, var(--cand-surface-soft));
+}
+
+.cand-ref-card--empty {
+  min-height: 4.2rem;
+}
+
+.cand-ref-card__summary {
+  display: flex;
+  justify-content: space-between;
+  gap: .6rem;
+  align-items: flex-start;
+  cursor: pointer;
+  list-style: none;
+}
+
+.cand-ref-card__summary::-webkit-details-marker {
+  display: none;
+}
+
+.cand-ref-card__summary-main {
+  display: grid;
+  gap: .12rem;
+  min-width: 0;
+}
+
+.cand-ref-card__title {
+  color: var(--cand-text-strong);
+  font-size: .92rem;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.cand-ref-card__meta {
+  color: var(--cand-muted);
+  font-size: .78rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.cand-ref-card__toggle {
+  flex: 0 0 auto;
+  color: var(--cand-link);
+  font-size: .8rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.cand-ref-card__toggle-open {
+  display: none;
+}
+
+.cand-ref-card[open] .cand-ref-card__toggle-open {
+  display: inline;
+}
+
+.cand-ref-card[open] .cand-ref-card__toggle-closed {
+  display: none;
+}
+
+.cand-ref-card__body {
+  display: block;
+  margin-top: .45rem;
+}
+
+.cand-ref-card__text {
+  color: var(--cand-text);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.cand-ref-card:not([open]) .cand-ref-card__text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .cand-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -1064,5 +1156,9 @@ html[data-theme="light"] #candDisqualifyModal .modal-content {
 
   .cand-identity-sticky__actions .btn {
     justify-content: center;
+  }
+
+  .cand-ref-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -636,10 +636,10 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
         "Resumen y estado",
         "Referencias y entrevista",
         "Referencias del formulario",
-        "Laborales",
-        "Familiares",
-        "Referencia laboral declarada completa",
-        "Referencia familiar declarada completa",
+        "Laboral ✓",
+        "Familiar ✓",
+        "Ver completa",
+        "Ver menos",
         "Cargando entrevistas recientes...",
         "Documentos",
         "Inscripción y Porciento",
@@ -759,6 +759,12 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "Referencias de entrevista" in html
     assert "INT-LAB-REAL" in html
     assert "INT-FAM-REAL" in html
+    assert "Referencia laboral declarada completa" not in html
+    assert "Referencia familiar declarada completa" not in html
+    assert "Referencia laboral de entrevista completa" not in html
+    assert "Referencia familiar de entrevista completa" not in html
+    assert "Ver completa" in html
+    assert html.count("cand-ref-card") >= 4
     assert 'class="cand-grid cand-section-grid"' in html
     assert html.count('cand-span-6') >= 2
     entrevista_fragment = client.get("/admin/candidatas/990540/_entrevistas", follow_redirects=False)
@@ -770,6 +776,8 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "INT-REF-REAL" in entrevista_html
     assert "Referencia familiar mencionada" in entrevista_html
     assert "INT-FAM-REAL-ENTREVISTA" in entrevista_html
+    assert "Ver completa" in entrevista_html
+    assert entrevista_html.count("cand-ref-card") >= 2
 
     with flask_app.app_context():
         db.session.expire_all()

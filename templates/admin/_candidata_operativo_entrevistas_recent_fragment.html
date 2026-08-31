@@ -16,12 +16,27 @@
             <div class="mt-2">
               <strong>Referencias registradas durante entrevista</strong>
               <div class="cand-muted small">Información registrada por el entrevistador durante esta entrevista.</div>
-              <dl class="cand-kv cand-kv-tight mt-1 mb-0">
+              <div class="cand-ref-grid mt-2">
                 {% for ref in interview_refs %}
-                  <dt>{{ ref.label }}</dt>
-                  <dd class="white-space-pre-line">{{ ref.respuesta }}</dd>
+                  <details class="cand-ref-card">
+                    <summary class="cand-ref-card__summary">
+                      <div class="cand-ref-card__summary-main">
+                        <strong class="cand-ref-card__title">{{ ref.label or 'Referencia en entrevista' }}</strong>
+                        {% if ref.meta %}
+                          <span class="cand-ref-card__meta">{{ ref.meta|join(' · ') }}</span>
+                        {% endif %}
+                      </div>
+                      <span class="cand-ref-card__toggle" aria-hidden="true">
+                        <span class="cand-ref-card__toggle-closed">Ver completa</span>
+                        <span class="cand-ref-card__toggle-open">Ver menos</span>
+                      </span>
+                    </summary>
+                    <div class="cand-ref-card__body">
+                      <div class="cand-ref-card__text white-space-pre-line">{{ ref.respuesta }}</div>
+                    </div>
+                  </details>
                 {% endfor %}
-              </dl>
+              </div>
             </div>
           {% else %}
             <div class="cand-muted small mt-2">No se registraron referencias en esta entrevista.</div>

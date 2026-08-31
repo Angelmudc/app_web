@@ -5,6 +5,37 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/candidatas_operativo.css') }}">
 {% endblock %}
 
+{% macro compact_reference_card(title, full_text, meta_items=None, empty_label='No informado') -%}
+  {% set meta_items = meta_items or [] %}
+  {% set text = (full_text or '')|trim %}
+  {% if text %}
+    <details class="cand-ref-card">
+      <summary class="cand-ref-card__summary">
+        <div class="cand-ref-card__summary-main">
+          <strong class="cand-ref-card__title">{{ title }}</strong>
+          {% if meta_items %}
+            <span class="cand-ref-card__meta">{{ meta_items|join(' · ') }}</span>
+          {% endif %}
+        </div>
+        <span class="cand-ref-card__toggle" aria-hidden="true">
+          <span class="cand-ref-card__toggle-closed">Ver completa</span>
+          <span class="cand-ref-card__toggle-open">Ver menos</span>
+        </span>
+      </summary>
+      <div class="cand-ref-card__body">
+        <div class="cand-ref-card__text white-space-pre-line">{{ text }}</div>
+      </div>
+    </details>
+  {% else %}
+    <article class="cand-ref-card cand-ref-card--empty">
+      <div class="cand-ref-card__summary-main">
+        <strong class="cand-ref-card__title">{{ title }}</strong>
+      </div>
+      <div class="cand-muted small">{{ empty_label }}</div>
+    </article>
+  {% endif %}
+{%- endmacro %}
+
 {% block content %}
 <div class="container py-4 cand-center"
      data-candidata-center
@@ -585,14 +616,6 @@
             </div>
             <div class="detail-info-grid" data-display="references">
               <div class="detail-info-item">
-                <small>Laborales</small>
-                <span>{{ form_references.laboral or 'No informado' }}</span>
-              </div>
-              <div class="detail-info-item">
-                <small>Familiares</small>
-                <span>{{ form_references.familiar or 'No informado' }}</span>
-              </div>
-              <div class="detail-info-item">
                 <small>Estado</small>
                 <span>
                   {% if references_summary.laboral and references_summary.familiar %}
@@ -603,22 +626,10 @@
                 </span>
               </div>
             </div>
-            {% if form_references.laboral_full or form_references.familiar_full %}
-              <div class="detail-info-grid mt-0">
-                {% if form_references.laboral_full %}
-                  <div class="detail-info-item">
-                    <small>Referencia laboral declarada completa</small>
-                    <div class="white-space-pre-line">{{ form_references.laboral_full }}</div>
-                  </div>
-                {% endif %}
-                {% if form_references.familiar_full %}
-                  <div class="detail-info-item">
-                    <small>Referencia familiar declarada completa</small>
-                    <div class="white-space-pre-line">{{ form_references.familiar_full }}</div>
-                  </div>
-                {% endif %}
-              </div>
-            {% endif %}
+            <div class="cand-ref-grid mt-2">
+              {{ compact_reference_card('Laboral', form_references.laboral_full, []) }}
+              {{ compact_reference_card('Familiar', form_references.familiar_full, []) }}
+            </div>
             <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias_formulario', fila=candidata.fila) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
@@ -662,14 +673,6 @@
             </div>
             <div class="detail-info-grid" data-display="secretary-references">
               <div class="detail-info-item">
-                <small>Laborales</small>
-                <span>{{ secretary_references.laboral or 'No informado' }}</span>
-              </div>
-              <div class="detail-info-item">
-                <small>Familiares</small>
-                <span>{{ secretary_references.familiar or 'No informado' }}</span>
-              </div>
-              <div class="detail-info-item">
                 <small>Estado</small>
                 <span>
                   {% if secretary_references_summary.laboral and secretary_references_summary.familiar %}
@@ -680,22 +683,10 @@
                 </span>
               </div>
             </div>
-            {% if secretary_references.laboral_full or secretary_references.familiar_full %}
-              <div class="detail-info-grid mt-0">
-                {% if secretary_references.laboral_full %}
-                  <div class="detail-info-item">
-                    <small>Referencia laboral de entrevista completa</small>
-                    <div class="white-space-pre-line">{{ secretary_references.laboral_full }}</div>
-                  </div>
-                {% endif %}
-                {% if secretary_references.familiar_full %}
-                  <div class="detail-info-item">
-                    <small>Referencia familiar de entrevista completa</small>
-                    <div class="white-space-pre-line">{{ secretary_references.familiar_full }}</div>
-                  </div>
-                {% endif %}
-              </div>
-            {% endif %}
+            <div class="cand-ref-grid mt-2">
+              {{ compact_reference_card('Laboral', secretary_references.laboral_full, []) }}
+              {{ compact_reference_card('Familiar', secretary_references.familiar_full, []) }}
+            </div>
             <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias', fila=candidata.fila) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
