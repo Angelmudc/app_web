@@ -10,7 +10,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 from typing import Optional
 
-from flask import session
+from flask import session, url_for
 from sqlalchemy import event
 from sqlalchemy.exc import IntegrityError
 
@@ -721,12 +721,21 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
         cand.referencias_laboral = "INT-LAB-REAL"
         cand.referencias_familiares = "INT-FAM-REAL"
         pregunta = EntrevistaPregunta.query.filter_by(clave="domestica.referencia_laboral").first()
+        pregunta_familiar = EntrevistaPregunta.query.filter_by(clave="domestica.referencia_familiar").first()
         entrevista = Entrevista.query.filter_by(candidata_id=990540, tipo="domestica").first()
         db.session.add(
             EntrevistaRespuesta(
                 entrevista_id=entrevista.id,
                 pregunta_id=pregunta.id,
                 respuesta="INT-REF-REAL",
+                creada_en=utc_now_naive(),
+            )
+        )
+        db.session.add(
+            EntrevistaRespuesta(
+                entrevista_id=entrevista.id,
+                pregunta_id=pregunta_familiar.id,
+                respuesta="INT-FAM-REAL-ENTREVISTA",
                 creada_en=utc_now_naive(),
             )
         )
@@ -747,6 +756,8 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "Referencias de entrevista" in html
     assert "INT-LAB-REAL" in html
     assert "INT-FAM-REAL" in html
+    assert 'class="cand-grid cand-section-grid"' in html
+    assert html.count('cand-span-6') >= 2
     entrevista_fragment = client.get("/admin/candidatas/990540/_entrevistas", follow_redirects=False)
     assert entrevista_fragment.status_code == 200
     entrevista_html = entrevista_fragment.get_data(as_text=True)
@@ -754,6 +765,8 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "Información registrada por el entrevistador durante esta entrevista." in entrevista_html
     assert "Referencia laboral mencionada" in entrevista_html
     assert "INT-REF-REAL" in entrevista_html
+    assert "Referencia familiar mencionada" in entrevista_html
+    assert "INT-FAM-REAL-ENTREVISTA" in entrevista_html
 
     with flask_app.app_context():
         db.session.expire_all()
@@ -1515,7 +1528,15 @@ def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
     html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
     assert "Entrevista histórica" in html
     assert "Registro del sistema anterior" in html
-    assert '/generar_pdf_entrevista?fila=990583' in html
+    assert '<details' in html
+    assert 'id="legacy-entrevista"' in html
+    assert 'href="#legacy-entrevista"' not in html
+    assert 'open' not in html.split('id="legacy-entrevista"', 1)[1].split('</details>', 1)[0]
+    with flask_app.test_request_context():
+        legacy_interviews_url = url_for("entrevistas_de_candidata", fila=990583)
+        legacy_pdf_url = url_for("generar_pdf_entrevista", fila=990583)
+    assert legacy_interviews_url in html
+    assert legacy_pdf_url in html
     assert "Pregunta 1" in html
     assert "Respuesta 1" in html
     assert "Pregunta 2" in html
