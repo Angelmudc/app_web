@@ -1614,6 +1614,21 @@ def test_admin_candidatas_operativo_async_forms_limpian_loader_y_bloquean_doble_
     assert "setFormBusy(form, false, submitter);" in template
 
 
+def test_admin_candidata_detalle_tiene_identidad_sticky_compacta():
+    template = Path("templates/admin/candidatas_operativo_detail.html").read_text(encoding="utf-8")
+
+    assert 'data-cand-identity-sticky' in template
+    assert 'data-cand-identity-name' in template
+    assert 'data-cand-identity-code' in template
+    assert 'data-cand-identity-state' in template
+    assert 'data-cand-identity-call' in template
+    assert '<header class="detail-hero">' in template
+    assert 'data-cand-header="nombre"' in template
+    assert 'setupStickyIdentityBar' in template
+    assert 'IntersectionObserver' in template
+    assert 'admin:navigation-complete' in template
+
+
 def test_admin_candidata_ficha_no_selecciona_columnas_blob():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

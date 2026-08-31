@@ -82,6 +82,19 @@
       </div>
     </header>
 
+    <div class="cand-identity-sticky" data-cand-identity-sticky hidden aria-hidden="true">
+      <div class="cand-identity-sticky__inner">
+        <div class="cand-identity-sticky__identity">
+          <strong class="cand-identity-sticky__name" data-cand-identity-name>{{ candidata.nombre_completo }}</strong>
+          <span class="badge text-bg-light border cand-code" data-cand-identity-code>{{ candidata.codigo or 'sin código' }}</span>
+          <span class="badge text-bg-secondary cand-identity-sticky__state" data-cand-identity-state>{{ estado_label }}</span>
+        </div>
+        <div class="cand-identity-sticky__actions">
+          <button class="btn btn-primary btn-sm" type="button" data-cand-identity-call>Llamada</button>
+        </div>
+      </div>
+    </div>
+
     <nav class="cand-tabs mb-3" aria-label="Secciones de candidata">
       <a href="#resumen">Resumen</a>
       <a href="#informacion">Información</a>
@@ -1114,6 +1127,71 @@
     const root = document.querySelector('[data-candidata-center]');
     if (!root) return;
 
+    (function setupStickyIdentityBar(scope) {
+      const detailRoot = scope && scope.querySelector ? scope : document.querySelector('[data-candidata-center]');
+      if (!detailRoot) return;
+
+      const sticky = detailRoot.querySelector('[data-cand-identity-sticky]');
+      const hero = detailRoot.querySelector('.detail-hero');
+      if (!sticky || !hero) return;
+
+      const cleanup = typeof window.__candIdentityStickyCleanup === 'function' ? window.__candIdentityStickyCleanup : null;
+      if (cleanup) cleanup();
+
+      let observer = null;
+      let scrollHandler = null;
+      let resizeHandler = null;
+      let rafId = 0;
+      let hidden = true;
+
+      function setVisible(visible) {
+        const nextVisible = !!visible;
+        if (hidden === !nextVisible) return;
+        hidden = !nextVisible;
+        sticky.hidden = !nextVisible;
+        sticky.setAttribute('aria-hidden', nextVisible ? 'false' : 'true');
+        sticky.classList.toggle('is-visible', nextVisible);
+      }
+
+      function updateFromHero() {
+        const rect = hero.getBoundingClientRect();
+        const heroVisible = rect.bottom > 0 && rect.top < window.innerHeight;
+        setVisible(!heroVisible);
+      }
+
+      if (typeof window.IntersectionObserver === 'function') {
+        observer = new IntersectionObserver((entries) => {
+          const entry = entries && entries[0] ? entries[0] : null;
+          if (!entry) return;
+          setVisible(!entry.isIntersecting);
+        }, { threshold: 0 });
+        observer.observe(hero);
+        updateFromHero();
+      } else {
+        scrollHandler = function () {
+          if (rafId) return;
+          rafId = window.requestAnimationFrame(function () {
+            rafId = 0;
+            updateFromHero();
+          });
+        };
+        resizeHandler = scrollHandler;
+        window.addEventListener('scroll', scrollHandler, { passive: true });
+        window.addEventListener('resize', resizeHandler);
+        updateFromHero();
+      }
+
+      window.__candIdentityStickyCleanup = function () {
+        if (observer) observer.disconnect();
+        if (scrollHandler) window.removeEventListener('scroll', scrollHandler);
+        if (resizeHandler) window.removeEventListener('resize', resizeHandler);
+        if (rafId) window.cancelAnimationFrame(rafId);
+        sticky.hidden = true;
+        sticky.setAttribute('aria-hidden', 'true');
+        sticky.classList.remove('is-visible');
+      };
+    })();
+
     (function setupInlineSearch() {
       const shell = document.querySelector('[data-cand-inline-search]');
       if (!shell) return;
@@ -1211,6 +1289,13 @@
         if (!shell.contains(event.target)) hide();
       });
     })();
+
+    if (!document.__candIdentityStickyNavBound) {
+      document.__candIdentityStickyNavBound = true;
+      document.addEventListener('admin:navigation-complete', function () {
+        setupStickyIdentityBar();
+      });
+    }
 
     function csrfToken() {
       const meta = document.querySelector('meta[name="csrf-token"]');

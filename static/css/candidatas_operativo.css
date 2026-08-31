@@ -137,6 +137,59 @@ html[data-theme="light"] .cand-docs {
   scrollbar-width: thin;
 }
 
+.cand-identity-sticky[hidden] {
+  display: none !important;
+}
+
+.cand-identity-sticky {
+  position: sticky;
+  top: calc(var(--navbar-h, 64px) + .55rem);
+  z-index: 25;
+  margin: .6rem 0 .85rem;
+  border: 1px solid var(--cand-border);
+  border-radius: var(--cand-radius);
+  background: color-mix(in srgb, var(--cand-surface) 82%, transparent);
+  box-shadow: var(--cand-shadow);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.cand-identity-sticky__inner {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: .55rem .8rem;
+  padding: .6rem .75rem;
+}
+
+.cand-identity-sticky__identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: .35rem .55rem;
+  min-width: 0;
+}
+
+.cand-identity-sticky__name {
+  color: var(--cand-text-strong);
+  font-size: .98rem;
+  font-weight: 900;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.cand-identity-sticky__state {
+  white-space: nowrap;
+}
+
+.cand-identity-sticky__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .45rem;
+  margin-inline-start: auto;
+}
+
 .cand-tabs a {
   flex: 0 0 auto;
   padding: .48rem .62rem;
@@ -995,8 +1048,21 @@ html[data-theme="light"] #candDisqualifyModal .modal-content {
     display: block;
   }
 
-  .cand-table td[data-label="Nombre"]::before,
-  .cand-table td[data-label=""]::before {
+.cand-table td[data-label="Nombre"]::before,
+.cand-table td[data-label=""]::before {
     display: none;
+  }
+
+  .cand-identity-sticky__inner {
+    padding: .55rem .65rem;
+  }
+
+  .cand-identity-sticky__actions,
+  .cand-identity-sticky__actions .btn {
+    width: 100%;
+  }
+
+  .cand-identity-sticky__actions .btn {
+    justify-content: center;
   }
 }
