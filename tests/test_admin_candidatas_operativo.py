@@ -6,11 +6,13 @@ import re
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from typing import Optional
 
 from flask import session
 from sqlalchemy import event
+from sqlalchemy.exc import IntegrityError
 
 from app import app as flask_app
 from config_app import db
@@ -498,7 +500,9 @@ def test_admin_candidata_ficha_readonly_flags_limites_legacy_y_sin_blobs():
     assert "Lista para trabajar" in html
     assert "Patrona anterior" in html
     assert "Hermana" in html
-    assert "9/9 requisitos" in html
+    preparacion_html = html.split('aria-label="Preparación"', 1)[1].split("</section>", 1)[0]
+    assert "Requisitos completos" in preparacion_html
+    assert "9/9" in preparacion_html
     assert "Depuración" in html and "Disponible" in html
     assert "domestica" in html and "completa" in html
     assert "Confirmar disponibilidad" in html
@@ -631,9 +635,9 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
         "Referencias del formulario",
         "Laborales",
         "Familiares",
-        "Ver referencia laboral declarada completa",
-        "Ver referencia familiar declarada completa",
-        "Leer respuestas",
+        "Referencia laboral declarada completa",
+        "Referencia familiar declarada completa",
+        "Cargando entrevistas recientes...",
         "Documentos",
         "Inscripción y Porciento",
         "Información pública y actividad laboral",
@@ -645,6 +649,10 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
         "Grupos de empleo",
     ):
         assert expected in html
+
+    assert "Cargando información pública..." in html
+    assert "data-admin-lazy-fragment-url" in html
+    assert "Leer respuestas" not in html
 
     assert html.index("Empleo anterior") < html.index("Ver datos secundarios")
     assert html.index("Información personal") < html.index('data-summary-section="inscription"')
@@ -661,6 +669,19 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
     assert "/admin/seguimiento-candidatas/casos/" in html
     assert "depuracion-binary-not-html" not in html
     assert "perfil-binary-not-html" not in html
+
+    entrevistas_fragment = client.get("/admin/candidatas/990539/_entrevistas", follow_redirects=False)
+    assert entrevistas_fragment.status_code == 200
+    entrevistas_html = entrevistas_fragment.get_data(as_text=True)
+    assert "Leer respuestas" in entrevistas_html
+    assert "Editar" in entrevistas_html
+    assert "Descargar PDF" in entrevistas_html
+    assert "Referencias registradas durante entrevista" in entrevistas_html or "No se registraron referencias en esta entrevista." in entrevistas_html
+
+    actividad_fragment = client.get("/admin/candidatas/990539/_actividad-publica", follow_redirects=False)
+    assert actividad_fragment.status_code == 200
+    actividad_html = actividad_fragment.get_data(as_text=True)
+    assert "Perfil público" in actividad_html or "No existe perfil público." in actividad_html
 
     assert 'data-summary-section="inscription"' in html
     assert 'data-summary-section="porciento"' in html
@@ -726,10 +747,13 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "Referencias de entrevista" in html
     assert "INT-LAB-REAL" in html
     assert "INT-FAM-REAL" in html
-    assert "Referencias registradas durante entrevista" in html
-    assert "Información registrada por el entrevistador durante esta entrevista." in html
-    assert "Referencia laboral mencionada" in html
-    assert "INT-REF-REAL" in html
+    entrevista_fragment = client.get("/admin/candidatas/990540/_entrevistas", follow_redirects=False)
+    assert entrevista_fragment.status_code == 200
+    entrevista_html = entrevista_fragment.get_data(as_text=True)
+    assert "Referencias registradas durante entrevista" in entrevista_html
+    assert "Información registrada por el entrevistador durante esta entrevista." in entrevista_html
+    assert "Referencia laboral mencionada" in entrevista_html
+    assert "INT-REF-REAL" in entrevista_html
 
     with flask_app.app_context():
         db.session.expire_all()
@@ -807,7 +831,10 @@ def test_admin_candidata_ficha_no_usa_referencias_formulario_como_fallback_de_en
     assert "Referencias de entrevista" in html
     assert "SECRETARIA-LAB" in html
     assert "SECRETARIA-FAM" in html
-    assert "No se registraron referencias en esta entrevista." in html
+    entrevista_fragment = client.get("/admin/candidatas/990541/_entrevistas", follow_redirects=False)
+    assert entrevista_fragment.status_code == 200
+    entrevista_html = entrevista_fragment.get_data(as_text=True)
+    assert "No se registraron referencias en esta entrevista." in entrevista_html
 
 
 def test_admin_candidata_ficha_no_usa_entrevista_como_fallback_de_formulario():
@@ -846,9 +873,12 @@ def test_admin_candidata_ficha_no_usa_entrevista_como_fallback_de_formulario():
     assert "Referencias del formulario" in html
     assert "No informado" in html
     assert "Referencias de entrevista" in html
-    assert "Referencias registradas durante entrevista" in html
-    assert "Sra. Laura 809-777-1212." in html
-    assert "No se registraron referencias en esta entrevista." not in html
+    entrevista_fragment = client.get("/admin/candidatas/990542/_entrevistas", follow_redirects=False)
+    assert entrevista_fragment.status_code == 200
+    entrevista_html = entrevista_fragment.get_data(as_text=True)
+    assert "Referencias registradas durante entrevista" in entrevista_html
+    assert "Sra. Laura 809-777-1212." in entrevista_html
+    assert "No se registraron referencias en esta entrevista." not in entrevista_html
 
 
 def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
@@ -1391,7 +1421,9 @@ def test_admin_candidatas_jornada_operativa_busqueda_contexto_y_recientes():
     assert "Volver a Domésticas" in detail_html
     assert "/admin/candidatas?q=Maria&amp;filtro=todas&amp;page=1" in detail_html
     assert "Información de la candidata" in detail_html or "Información personal" in detail_html
-    assert "8/9 requisitos" in detail_html or "9/9 requisitos" in detail_html
+    preparacion_html = detail_html.split('aria-label="Preparación"', 1)[1].split("</section>", 1)[0]
+    assert "Requisitos completos" in preparacion_html
+    assert "9/9" in preparacion_html
     assert "Editar formulario" in detail_html
     assert "Editar entrevista" in detail_html
     assert "lista_para_trabajar" not in detail_html.split("<header", 1)[1].split("</header>", 1)[0]
@@ -1483,14 +1515,20 @@ def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
     html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
     assert "Entrevista histórica" in html
     assert "Registro del sistema anterior" in html
-    assert html.count("Descargar PDF") >= 2
     assert '/generar_pdf_entrevista?fila=990583' in html
     assert "Pregunta 1" in html
     assert "Respuesta 1" in html
     assert "Pregunta 2" in html
     assert "Respuesta 2" in html
-    assert "Leer respuestas" in html
-    assert "Editar" in html
+    assert "Cargando entrevistas recientes..." in html
+    assert "Leer respuestas" not in html
+
+    fragment = client.get("/admin/candidatas/990583/_entrevistas", follow_redirects=False)
+    assert fragment.status_code == 200
+    fragment_html = fragment.get_data(as_text=True)
+    assert "Leer respuestas" in fragment_html
+    assert "Editar" in fragment_html
+    assert "Descargar PDF" in fragment_html
     assert re.search(r"<dt>Total</dt>\s*<dd>1</dd>", html)
 
     _set_legacy("Nombre completo: Ana Perez\nExperiencia: 5 años\nObservacion libre")
@@ -1662,6 +1700,7 @@ def test_admin_candidata_update_datos_rechaza_cedula_invalida_o_duplicada_sin_pi
         _seed_center_candidate(fila=990506)
         _seed_center_candidate(fila=990507)
         dup = Candidata.query.get(990507)
+        dup.nombre_completo = "Duplicada Antigua"
         dup.cedula = "402-9905070-7"
         db.session.commit()
 
@@ -1676,16 +1715,131 @@ def test_admin_candidata_update_datos_rechaza_cedula_invalida_o_duplicada_sin_pi
 
     duplicate = client.post(
         "/admin/candidatas/990506/datos",
-        data={"nombre": "Ana Centro Operativo", "cedula": "40299050707"},
+        data={"nombre": "Ana Centro Operativo Cambiada", "cedula": "40299050707"},
         follow_redirects=False,
     )
-    assert duplicate.status_code == 400
-    assert "Ya existe" in ((duplicate.get_json() or {}).get("errors") or {}).get("cedula", "")
+    duplicate_payload = duplicate.get_json() or {}
+    assert duplicate.status_code == 409
+    assert duplicate_payload["ok"] is False
+    assert duplicate_payload["error_code"] == "conflict"
+    assert "Esta cédula ya está registrada" in duplicate_payload["message"]
+    assert "Duplicada Antigua" in duplicate_payload["message"]
+    assert "ficha #990507" in duplicate_payload["message"]
+    assert "Esta cédula ya está registrada" in duplicate_payload["errors"]["cedula"]
 
     with flask_app.app_context():
         db.session.expire_all()
         cand = Candidata.query.get(990506)
+        assert cand.nombre_completo == "Ana Centro Operativo"
         assert cand.cedula == "402-9905060-6"
+
+
+def test_admin_candidata_update_datos_permitemisma_cedula_de_la_misma_candidata():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990509)
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990509/datos",
+        data={
+            "nombre": "Ana Centro Misma Cédula",
+            "cedula": "402-9905090-9",
+        },
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["message"] == "Guardado."
+
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990509)
+        assert cand.nombre_completo == "Ana Centro Misma Cédula"
+        assert cand.cedula == "402-9905090-9"
+
+
+def test_admin_candidata_update_datos_integrityerror_constraint_devuelve_409_sin_500():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990510)
+
+    assert _login(client).status_code in (302, 303)
+    with flask_app.app_context():
+        with patch(
+            "core.services.candidata_quick_edit.execute_robust_save",
+            return_value=SimpleNamespace(
+                ok=False,
+                attempts=1,
+                error_message="duplicate key value violates unique constraint ux_candidatas_cedula_norm_digits",
+                exception=IntegrityError(
+                    "stmt",
+                    "params",
+                    Exception("duplicate key value violates unique constraint ux_candidatas_cedula_norm_digits"),
+                ),
+            ),
+        ):
+            resp = client.post(
+                "/admin/candidatas/990510/datos",
+                data={"nombre": "Ana Centro Operativo", "cedula": "40299051009"},
+                follow_redirects=False,
+            )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 409
+    assert payload["ok"] is False
+    assert payload["error_code"] == "conflict"
+    assert "Esta cédula ya está registrada" in payload["message"]
+
+
+def test_admin_candidata_update_datos_other_integrityerror_no_se_disfraza_como_duplicado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990511)
+
+    assert _login(client).status_code in (302, 303)
+    with flask_app.app_context():
+        with patch(
+            "core.services.candidata_quick_edit.execute_robust_save",
+            return_value=SimpleNamespace(
+                ok=False,
+                attempts=1,
+                error_message="check constraint violation on otro_constraint",
+                exception=IntegrityError(
+                    "stmt",
+                    "params",
+                    Exception("check constraint violation on otro_constraint"),
+                ),
+            ),
+        ):
+            resp = client.post(
+                "/admin/candidatas/990511/datos",
+                data={"nombre": "Ana Centro Operativo Cambiada", "cedula": "40299051101"},
+                follow_redirects=False,
+            )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 500
+    assert payload["ok"] is False
+    assert payload["error_code"] == "persist_error"
+    assert "Intenta de nuevo" in payload["message"]
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990511)
+        assert cand.nombre_completo == "Ana Centro Operativo"
 
 
 def test_admin_candidata_update_perfil_laboral_limpia_opcionales_y_bool_null():

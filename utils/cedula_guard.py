@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 
 from sqlalchemy import func
 
+from config_app import db
 from models import Candidata
 from utils.cedula_normalizer import normalize_cedula_for_compare
 
@@ -21,27 +22,41 @@ def _with_exclude_fila(query, exclude_fila: Optional[int]):
 def _find_by_digits_11(digits: str, exclude_fila: Optional[int] = None):
     query = _with_exclude_fila(Candidata.query, exclude_fila)
 
-    dup = query.filter(Candidata.cedula_norm_digits == digits).first()
-    if dup:
-        return dup
+    with db.session.no_autoflush:
+        dup = query.filter(Candidata.cedula_norm_digits == digits).first()
+        if dup:
+            return dup
 
-    # Fallback defensivo por filas históricas sin cedula_norm_digits.
-    try:
-        clean_expr = func.regexp_replace(Candidata.cedula, r"[^0-9]", "", "g")
-        return query.filter(clean_expr == digits).first()
-    except Exception:
+        # Fallback defensivo por filas históricas sin cedula_norm_digits.
         try:
-            clean_expr = Candidata.cedula
-            for token in ("-", " ", "/", ".", ",", ":", ";", "_", "\\"):
-                clean_expr = func.replace(clean_expr, token, "")
+            clean_expr = func.regexp_replace(Candidata.cedula, r"[^0-9]", "", "g")
             return query.filter(clean_expr == digits).first()
         except Exception:
-            return None
+            try:
+                clean_expr = Candidata.cedula
+                for token in ("-", " ", "/", ".", ",", ":", ";", "_", "\\"):
+                    clean_expr = func.replace(clean_expr, token, "")
+                return query.filter(clean_expr == digits).first()
+            except Exception:
+                return None
 
 
 def _find_by_exact_text(raw: str, exclude_fila: Optional[int] = None):
     query = _with_exclude_fila(Candidata.query, exclude_fila)
-    return query.filter(Candidata.cedula == (raw or "").strip()).first()
+    with db.session.no_autoflush:
+        return query.filter(Candidata.cedula == (raw or "").strip()).first()
+
+
+def _candidate_descriptor(existing: Candidata) -> str | None:
+    nombre = (getattr(existing, "nombre_completo", None) or "").strip()
+    fila = getattr(existing, "fila", None)
+    if nombre and fila is not None:
+        return f"{nombre} (ficha #{fila})"
+    if nombre:
+        return nombre
+    if fila is not None:
+        return f"ficha #{fila}"
+    return None
 
 
 def find_duplicate_candidata_by_cedula(
@@ -61,10 +76,7 @@ def find_duplicate_candidata_by_cedula(
 
 
 def duplicate_cedula_message(existing: Candidata) -> str:
-    estado = (getattr(existing, "estado", None) or "").strip().lower()
-    if estado == "descalificada":
-        return (
-            "Ya existe una candidata con esta cédula (aunque esté escrita diferente) "
-            "y está descalificada. Contacte a la agencia."
-        )
-    return "Ya existe una candidata con esta cédula (aunque esté escrita diferente)."
+    descriptor = _candidate_descriptor(existing)
+    if descriptor:
+        return f"Esta cédula ya está registrada en {descriptor}. Verifique cuál expediente debe conservarse."
+    return "Esta cédula ya está registrada en otra candidata. Verifique el expediente duplicado antes de continuar."

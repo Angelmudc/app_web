@@ -148,6 +148,8 @@
      GLOBAL LOADER (ANTI-FREEZE)
   ───────────────────────────────────────────── */
   const LOADER_ID = "globalLoader";
+  const LOADER_DELAY_MS = 180;
+  let loaderTimer = null;
 
   function ensureLoader() {
     let el = document.getElementById(LOADER_ID);
@@ -184,11 +186,30 @@
     return el;
   }
 
+  function clearLoaderTimer() {
+    if (!loaderTimer) return;
+    window.clearTimeout(loaderTimer);
+    loaderTimer = null;
+  }
+
   function showLoader() {
+    clearLoaderTimer();
     ensureLoader().style.display = "flex";
   }
 
+  function scheduleLoader() {
+    const existing = document.getElementById(LOADER_ID);
+    if (existing && existing.style.display === "flex") return;
+
+    clearLoaderTimer();
+    loaderTimer = window.setTimeout(() => {
+      loaderTimer = null;
+      ensureLoader().style.display = "flex";
+    }, LOADER_DELAY_MS);
+  }
+
   function hideLoader() {
+    clearLoaderTimer();
     const el = document.getElementById(LOADER_ID);
     if (el) el.style.display = "none";
   }
@@ -227,7 +248,7 @@
         if (target && target !== "_self") return;
         if (a.hasAttribute("data-confirm")) return;
 
-        showLoader();
+        scheduleLoader();
       },
       true
     );
@@ -248,7 +269,7 @@
         }
         if (btn?.closest?.('[data-no-loader="true"]')) return;
         if (btn?.closest?.("[data-admin-async-link]")) return;
-        showLoader();
+        scheduleLoader();
       },
       true
     );

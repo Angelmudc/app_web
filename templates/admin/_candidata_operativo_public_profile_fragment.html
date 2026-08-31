@@ -1,0 +1,12 @@
+<div id="candidataPublicProfileAsyncRegion">
+  {% if public_profile %}
+    <dl class="cand-kv">
+      <dt>Perfil público</dt><dd>Existe</dd>
+      <dt>Visible</dt><dd>{{ 'Sí' if public_profile.visible else 'No' }}</dd>
+      <dt>Estado público</dt><dd>{{ public_profile.estado_publico }}</dd>
+      <dt>Destacado</dt><dd>{{ 'Sí' if public_profile.es_destacada else 'No' }}</dd>
+    </dl>
+  {% else %}
+    <div class="cand-muted">No existe perfil público.</div>
+  {% endif %}
+</div>

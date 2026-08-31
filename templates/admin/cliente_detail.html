@@ -2,6 +2,7 @@
 {% block title %}Detalle Cliente{% endblock %}
 
 {% block content %}
+{% set _can_generate_public_link = ((current_user.role|default('')|lower) in ['owner', 'admin']) %}
 <div class="container py-3 py-md-5"
      style="max-width: 1200px;"
      data-admin-focus-anchor
@@ -11,87 +12,84 @@
      data-live-invalidation-poll-url="{{ url_for('admin.live_invalidation_poll') }}"
      data-live-invalidation-source-url="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}"
      data-live-region-summary-url="{{ url_for('admin.cliente_detail_summary_fragment', cliente_id=cliente.id) }}"
-     data-live-region-solicitudes-url="{{ url_for('admin.cliente_detail_solicitudes_fragment', cliente_id=cliente.id) }}"
+     data-live-region-solicitudes-url="{{ url_for('admin.cliente_detail_solicitudes_fragment', cliente_id=cliente.id, page=page, per_page=per_page) }}"
      data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}">
-  <style>
-    .cliente-detail-page-flow {
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-    }
-    #clienteSummaryAsyncScope,
-    #clienteSummaryAsyncRegion {
-      display: contents;
-    }
-    .cliente-detail-section-order-hero {
-      order: 10;
-    }
-    .cliente-detail-section-order-danger {
-      order: 15;
-    }
-    .cliente-detail-section-order-solicitudes {
-      order: 20;
-    }
-    .cliente-detail-section-order-summary {
-      order: 30;
-      margin-top: 2rem;
-    }
-    .cliente-detail-section-order-notes {
-      order: 40;
-    }
-    .cliente-detail-section-order-tasks {
-      order: 50;
-    }
-    .cliente-detail-section-order-history {
-      order: 60;
-    }
-    @media (max-width: 575.98px) {
-      .cliente-detail-section-order-summary {
-        margin-top: 1.5rem;
-      }
-    }
-  </style>
-  <div class="d-none" aria-hidden="true">
-    <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja operativa</a>
-  </div>
-  <div class="cliente-detail-page-flow">
+  <div class="page-stack">
+    <div class="d-none" aria-hidden="true">
+      <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja operativa</a>
+    </div>
+
+    <section class="page-header">
+      <div class="page-header__content">
+        <p class="page-header__eyebrow">Ficha administrativa</p>
+        <h1 class="page-header__title">{{ cliente.nombre_completo | default('—') }}</h1>
+        <p class="page-header__description">
+          Código {{ cliente.codigo | default('—') }}
+          · Registrado {{ cliente.fecha_registro and cliente.fecha_registro|rd_datetime('%Y-%m-%d') or '—' }}
+        </p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary" data-admin-nav="true">
+          <i class="bi bi-arrow-left-short me-1"></i> Volver a clientes
+        </a>
+        {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}
+        <form method="post" action="{{ url_for('admin.chat_staff_open') }}" class="d-inline">
+          {% if csrf_token %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endif %}
+          <input type="hidden" name="cliente_id" value="{{ cliente.id }}">
+          <button type="submit" class="btn btn-success">
+            <i class="bi bi-chat-dots me-1"></i> Abrir chat
+          </button>
+        </form>
+        {% endif %}
+        {% if _can_generate_public_link %}
+        <a href="{{ url_for('admin.generar_link_publico_solicitud', cliente_id=cliente.id) }}"
+           class="btn btn-info">
+          <i class="bi bi-link-45deg me-1"></i> Generar link público
+        </a>
+        {% endif %}
+        <a href="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}" class="btn btn-warning">
+          <i class="bi bi-pencil-fill me-1"></i> Editar cliente
+        </a>
+      </div>
+    </section>
+
     <div id="clienteSummaryAsyncScope" data-admin-async-scope>
       <div id="clienteSummaryAsyncRegion" data-async-preserve-scroll="true">
         {% include 'admin/_cliente_detail_summary_region.html' %}
       </div>
     </div>
 
-    <div id="clienteSolicitudesAsyncScope" class="cliente-detail-section-order-solicitudes mt-4" data-admin-async-scope>
+    <div id="clienteSolicitudesAsyncScope" data-admin-async-scope>
       <div id="clienteSolicitudesAsyncRegion" data-async-preserve-scroll="true">
         {% include 'admin/_cliente_detail_solicitudes_region.html' %}
       </div>
     </div>
 
-    <!-- ===== Notas ===== -->
-    <div class="glass-card mt-4 cliente-detail-section-order-notes">
-      <div class="glass-header bg-secondary">
-        <i class="bi bi-sticky-fill"></i>
-        Notas Administrativas
+    <section class="detail-section">
+      <div class="detail-section__header">
+        <div>
+          <h2 class="detail-section__title">Notas administrativas</h2>
+          <p class="detail-section__subtitle">Observaciones internas para el equipo.</p>
+        </div>
       </div>
-      <div class="card-body py-3">
+      <div class="detail-section__body">
         {% if cliente.notas_admin %}
           <p class="mb-0 small" style="white-space: pre-wrap;">{{ cliente.notas_admin }}</p>
         {% else %}
           <p class="text-muted small mb-0">No hay notas registradas.</p>
         {% endif %}
       </div>
-    </div>
+    </section>
 
-    <!-- ===== Tareas de seguimiento ===== -->
-    <details class="glass-card mt-4 cliente-detail-section-order-tasks">
-      <summary class="glass-header bg-warning d-flex align-items-center justify-content-between" style="cursor: pointer; list-style: none;">
-        <span>
-          <i class="bi bi-flag-fill"></i>
-          Tareas de seguimiento
-        </span>
+    <details class="detail-section">
+      <summary class="detail-section__header">
+        <div>
+          <h2 class="detail-section__title">Tareas de seguimiento</h2>
+          <p class="detail-section__subtitle">Tareas abiertas y pendientes por revisar.</p>
+        </div>
         <span class="badge text-bg-light">{{ tareas|length if tareas else 0 }}</span>
       </summary>
-      <div class="card-body">
+      <div class="detail-section__body">
         {% if tareas %}
           <ul class="list-group list-group-flush mt-1">
             {% for t in tareas %}
@@ -121,13 +119,14 @@
       </div>
     </details>
 
-    <!-- ===== Historial de actividad (Timeline) ===== -->
-    <div class="glass-card mt-4 cliente-detail-section-order-history">
-      <div class="glass-header bg-dark">
-        <i class="bi bi-clock-history"></i>
-        Historial de actividad
+    <section class="detail-section">
+      <div class="detail-section__header">
+        <div>
+          <h2 class="detail-section__title">Historial de actividad</h2>
+          <p class="detail-section__subtitle">Eventos recientes y movimientos relevantes.</p>
+        </div>
       </div>
-      <div class="card-body">
+      <div class="detail-section__body">
         {% if timeline %}
           <ul class="list-unstyled mb-0 timeline">
             {% for e in timeline %}
@@ -153,7 +152,7 @@
           </p>
         {% endif %}
       </div>
-    </div>
+    </section>
   </div>
 </div>
 

@@ -12,146 +12,270 @@
      data-presence-entity-id="{{ candidata.fila }}"
      data-presence-entity-name="{{ candidata.nombre_completo }}"
      data-presence-entity-code="{{ candidata.codigo or '' }}">
-  <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-3">
+  <div class="page-stack">
     <nav class="small" aria-label="breadcrumb">
       <a href="{{ center_back_url }}">Domésticas</a>
       <span class="cand-muted"> &gt; </span>
       <span>{{ candidata.nombre_completo }}</span>
     </nav>
-    <a href="{{ center_back_url }}" class="btn btn-outline-secondary btn-sm">Volver a Domésticas</a>
-  </div>
 
-  <header class="cand-header mb-3">
-    <div class="cand-header-main">
-      <div>
-        <h1 class="h4 mb-1" data-cand-header="nombre">{{ candidata.nombre_completo }}</h1>
-        <div class="cand-muted small cand-header-meta">
-          <span class="cand-code" data-cand-header="codigo">{{ candidata.codigo or 'sin código' }}</span>
-          <span data-cand-header="edad">{{ candidata.edad or 'edad no informada' }}</span>
+    <section class="page-header">
+      <div class="page-header__content">
+        <p class="page-header__eyebrow">Ficha operativa</p>
+        <h1 class="page-header__title">Detalle de candidata</h1>
+        <p class="page-header__description">
+          Estado, acciones rápidas y navegación principal de la ficha.
+        </p>
+      </div>
+      <div class="page-header__actions">
+        <a href="{{ center_back_url }}" class="btn btn-outline-secondary btn-sm">Volver a Domésticas</a>
+      </div>
+    </section>
+
+    <header class="detail-hero">
+      <div class="detail-hero__top">
+          <div class="detail-hero__identity">
+          <div class="detail-hero__avatar" aria-hidden="true">
+            {{ ((candidata.nombre_completo or 'C')|trim)[:1]|upper }}
+          </div>
+          <div class="detail-hero__heading">
+            <div class="detail-badges" data-status-badges>
+              <span class="badge text-bg-light border">{{ estado_label }}</span>
+              {% if status_badges.inscrita and estado_label != 'Inscrita' %}<span class="badge text-bg-primary">Inscrita</span>{% endif %}
+              {% if status_badges.lista %}<span class="badge text-bg-success">Lista</span>{% endif %}
+              {% if status_badges.trabajando and estado_label != 'Trabajando' %}<span class="badge text-bg-info">Trabajando</span>{% endif %}
+              {% if status_badges.descalificada and estado_label != 'Descalificada' %}<span class="badge text-bg-danger">Descalificada</span>{% endif %}
+            </div>
+            <h2 class="h3 mb-1" data-cand-header="nombre">{{ candidata.nombre_completo }}</h2>
+            <p class="detail-meta mb-0">
+              Registro operativo de la candidata en Domésticas.
+            </p>
+          </div>
+        </div>
+        <div class="detail-actions" data-header-actions>
+          <button class="btn btn-primary btn-sm" type="button">Llamada</button>
+          <div class="cand-inline-search" data-cand-inline-search data-search-url="{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}">
+            <label class="visually-hidden" for="candOtherSearch">Buscar otra candidata</label>
+            <input id="candOtherSearch" class="form-control form-control-sm" autocomplete="off" placeholder="Buscar otra candidata..." aria-controls="candOtherResults">
+            <div id="candOtherResults" class="cand-inline-search-results" role="listbox" hidden></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="detail-chip-list">
+        <div class="detail-chip">
+          <i class="bi bi-hash detail-chip__icon"></i>
+          <span class="detail-chip__text cand-code" data-cand-header="codigo">{{ candidata.codigo or 'sin código' }}</span>
+        </div>
+        <div class="detail-chip">
+          <i class="bi bi-person-lines-fill detail-chip__icon"></i>
+          <span class="detail-chip__text" data-cand-header="edad">{{ candidata.edad or 'edad no informada' }}</span>
+        </div>
+        <div class="detail-chip">
+          <i class="bi bi-telephone detail-chip__icon"></i>
           {% if candidata.numero_telefono %}
-            <a href="tel:{{ candidata.numero_telefono }}" data-cand-header="telefono">{{ candidata.numero_telefono }}</a>
+            <a href="tel:{{ candidata.numero_telefono }}" class="detail-chip__text" data-cand-header="telefono">{{ candidata.numero_telefono }}</a>
           {% else %}
-            <span data-cand-header="telefono">sin teléfono</span>
+            <span class="detail-chip__text" data-cand-header="telefono">sin teléfono</span>
           {% endif %}
         </div>
       </div>
-      <div class="d-flex gap-1 flex-wrap justify-content-end" data-status-badges>
-        <span class="badge text-bg-light border">{{ estado_label }}</span>
-        {% if status_badges.inscrita and estado_label != 'Inscrita' %}<span class="badge text-bg-primary">Inscrita</span>{% endif %}
-        {% if status_badges.lista %}<span class="badge text-bg-success">Lista</span>{% endif %}
-        {% if status_badges.trabajando and estado_label != 'Trabajando' %}<span class="badge text-bg-info">Trabajando</span>{% endif %}
-        {% if status_badges.descalificada and estado_label != 'Descalificada' %}<span class="badge text-bg-danger">Descalificada</span>{% endif %}
-      </div>
-    </div>
-    <div class="cand-header-tools mt-3">
-      <div class="cand-actions-primary" data-header-actions>
-        <button class="btn btn-primary btn-sm" type="button">Llamada</button>
-      </div>
-      <div class="cand-inline-search" data-cand-inline-search data-search-url="{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}">
-        <label class="visually-hidden" for="candOtherSearch">Buscar otra candidata</label>
-        <input id="candOtherSearch" class="form-control form-control-sm" autocomplete="off" placeholder="Buscar otra candidata..." aria-controls="candOtherResults">
-        <div id="candOtherResults" class="cand-inline-search-results" role="listbox" hidden></div>
-      </div>
-    </div>
-  </header>
+    </header>
 
-  <nav class="cand-tabs mb-3" aria-label="Secciones de candidata">
-    <a href="#resumen">Resumen</a>
-    <a href="#informacion">Información</a>
-    <a href="#referencias">Referencias</a>
-    <a href="#entrevistas">Entrevistas</a>
-    <a href="#documentos">Documentos</a>
-    <a href="#finanzas">Inscripción y Porciento</a>
-    <a href="#actividad">Actividad</a>
-    <a href="#historial">Historial</a>
-  </nav>
+    <nav class="cand-tabs mb-3" aria-label="Secciones de candidata">
+      <a href="#resumen">Resumen</a>
+      <a href="#informacion">Información</a>
+      <a href="#referencias">Referencias</a>
+      <a href="#entrevistas">Entrevistas</a>
+      <a href="#documentos">Documentos</a>
+      <a href="#finanzas">Inscripción y Porciento</a>
+      <a href="#actividad">Actividad</a>
+      <a href="#historial">Historial</a>
+    </nav>
 
-  <div class="cand-section" id="resumen">
-    <div class="cand-section-heading">
-      <h2>Resumen y estado</h2>
-      <div class="small cand-muted">Estado operativo, próximos pasos e inscripción.</div>
-    </div>
-    <div class="cand-grid cand-section-grid">
-      <section class="cand-panel cand-panel-compact cand-span-4">
-        <h2>Próxima acción</h2>
-        <div class="fw-semibold">{{ next_action.title }}</div>
-        <div class="small cand-muted mb-2">{{ next_action.detail }}</div>
-        {% if next_action.url %}
-          <a class="btn btn-primary btn-sm" href="{{ next_action.url }}">{{ next_action.label }}</a>
-        {% endif %}
-      </section>
-
-      <section class="cand-panel cand-panel-compact cand-span-4">
-        <div class="d-flex justify-content-between align-items-start gap-2">
+    <div class="page-stack" id="resumen">
+      <section class="detail-section" aria-label="Resumen y estado">
+        <div class="detail-section__header">
           <div>
-            <h2>Preparación</h2>
-            <div class="fw-semibold">{{ readiness_completed }}/{{ readiness_total }} requisitos</div>
-            <div class="small cand-muted">
-              {% if readiness_missing_labels %}
-                Falta {{ readiness_missing_labels[:2]|join(', ') }}{% if readiness_missing_labels|length > 2 %} y {{ readiness_missing_labels|length - 2 }} más{% endif %}
+            <h2 class="detail-section__title">Resumen y estado</h2>
+            <p class="detail-section__subtitle">Estado operativo, próximos pasos e inscripción.</p>
+          </div>
+        </div>
+        <div class="detail-section__body">
+          <div class="detail-metric-grid">
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Proceso</span>
+              <span class="detail-metric__value" data-state-process>{{ state_capabilities.process.label }}</span>
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Preparación</span>
+              <span class="detail-metric__value" data-state-preparation>{{ state_capabilities.preparation.label }} materiales</span>
+              {% if state_capabilities.preparation.missing %}
+                <span class="small cand-muted mt-1" data-state-missing>
+                  Falta
+                  {% for key in state_capabilities.preparation.missing[:2] %}
+                    {{ state_capabilities.preparation.labels.get(key, key) }}{% if not loop.last %}, {% endif %}
+                  {% endfor %}
+                </span>
               {% else %}
-                Requisitos completos
+                <span class="small cand-muted mt-1" data-state-missing>Requisitos materiales completos</span>
               {% endif %}
             </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Situación laboral</span>
+              <span class="detail-metric__value" data-state-situation>{{ state_capabilities.situation.label }}</span>
+              {% if state_capabilities.situation.nota_descalificacion %}
+                <span class="small cand-muted mt-1" data-state-note>Motivo: {{ state_capabilities.situation.nota_descalificacion }}</span>
+              {% else %}
+                <span class="small cand-muted mt-1" data-state-note></span>
+              {% endif %}
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Seguimiento</span>
+              <span class="detail-metric__value">{% if seguimiento %}Activo{% else %}Sin caso{% endif %}</span>
+              <span class="small cand-muted mt-1">
+                {% if seguimiento %}
+                  {{ seguimiento.public_id }} · {{ seguimiento.estado }}
+                {% else %}
+                  Sin caso abierto.
+                {% endif %}
+              </span>
+            </div>
           </div>
-          <span class="badge {% if readiness.ready %}text-bg-success{% else %}text-bg-warning{% endif %}" data-readiness-badge>
-            {% if readiness.ready %}Lista{% else %}Pendiente{% endif %}
-          </span>
         </div>
       </section>
 
-      <section class="cand-panel cand-panel-compact cand-span-4">
-        <h2>Seguimiento pendiente</h2>
-        {% if seguimiento %}
-          <div class="d-flex justify-content-between gap-2 flex-wrap">
-            <div>
-              <div class="fw-semibold">{{ seguimiento.proxima_accion_detalle or seguimiento.proxima_accion_tipo or 'Caso abierto' }}</div>
-              <div class="small cand-muted">
-                {{ seguimiento.public_id }} · {{ seguimiento.estado }} · vence {{ seguimiento.due_at or 'sin fecha' }}
-              </div>
-            </div>
-            <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.tracking }}">Abrir seguimiento</a>
+      <section class="detail-section" aria-label="Próxima acción">
+        <div class="detail-section__header">
+          <div>
+            <h2 class="detail-section__title">Próxima acción</h2>
+            <p class="detail-section__subtitle">Siguiente paso operativo disponible para la ficha.</p>
           </div>
-        {% else %}
-          <div class="cand-muted small">Sin caso abierto.</div>
-        {% endif %}
+          <div class="detail-actions">
+            {% if next_action.url %}
+              <a class="btn btn-primary btn-sm" href="{{ next_action.url }}">{{ next_action.label }}</a>
+            {% endif %}
+          </div>
+        </div>
+        <div class="detail-section__body">
+          <div class="detail-info-grid">
+            <div class="detail-info-item">
+              <small>Acción</small>
+              <strong>{{ next_action.title }}</strong>
+            </div>
+            <div class="detail-info-item">
+              <small>Detalle</small>
+              <span>{{ next_action.detail }}</span>
+            </div>
+            <div class="detail-info-item">
+              <small>CTA</small>
+              <span>
+                {% if next_action.url %}
+                  Acción lista para ejecutar.
+                {% else %}
+                  Sin enlace disponible.
+                {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section class="cand-panel cand-span-12" data-state-card>
-        <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+      <section class="detail-section" aria-label="Preparación">
+        <div class="detail-section__header">
           <div>
-            <h2>Estado</h2>
-            <div class="cand-state-summary">
-              <div class="cand-state-cell">
-                <span class="label">Proceso</span>
-                <span class="value" data-state-process>{{ state_capabilities.process.label }}</span>
-              </div>
-              <div class="cand-state-cell">
-                <span class="label">Preparación</span>
-                <span class="value" data-state-preparation>{{ state_capabilities.preparation.label }} materiales</span>
-                {% if state_capabilities.preparation.missing %}
-                  <span class="small cand-muted" data-state-missing>
-                    Falta
-                    {% for key in state_capabilities.preparation.missing[:2] %}
-                      {{ state_capabilities.preparation.labels.get(key, key) }}{% if not loop.last %}, {% endif %}
-                    {% endfor %}
-                  </span>
-                {% else %}
-                  <span class="small cand-muted" data-state-missing>Requisitos materiales completos</span>
-                {% endif %}
-              </div>
-              <div class="cand-state-cell">
-                <span class="label">Situación laboral</span>
-                <span class="value" data-state-situation>{{ state_capabilities.situation.label }}</span>
-                {% if state_capabilities.situation.nota_descalificacion %}
-                  <span class="small cand-muted" data-state-note>Motivo: {{ state_capabilities.situation.nota_descalificacion }}</span>
-                {% else %}
-                  <span class="small cand-muted" data-state-note></span>
-                {% endif %}
-              </div>
+            <h2 class="detail-section__title">Preparación</h2>
+            <p class="detail-section__subtitle">Requisitos y estado de listo para trabajar.</p>
+          </div>
+          <div class="detail-badges">
+            <span class="badge {% if readiness.ready %}text-bg-success{% else %}text-bg-warning{% endif %}" data-readiness-badge>
+              {% if readiness.ready %}Lista{% else %}Pendiente{% endif %}
+            </span>
+          </div>
+        </div>
+        <div class="detail-section__body">
+          <div class="detail-metric-grid">
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Requisitos completos</span>
+              <span class="detail-metric__value">{{ readiness_completed }}/{{ readiness_total }}</span>
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Estado</span>
+              <span class="detail-metric__value">{% if readiness.ready %}Lista{% else %}Pendiente{% endif %}</span>
             </div>
           </div>
-          <div class="d-flex gap-2 flex-wrap align-items-start" data-state-actions>
+          <div class="detail-info-grid">
+            <div class="detail-info-item">
+              <small>Faltantes</small>
+              <span>
+                {% if readiness_missing_labels %}
+                  Falta {{ readiness_missing_labels[:2]|join(', ') }}{% if readiness_missing_labels|length > 2 %} y {{ readiness_missing_labels|length - 2 }} más{% endif %}
+                {% else %}
+                  Requisitos completos
+                {% endif %}
+              </span>
+            </div>
+            <div class="detail-info-item">
+              <small>Señal operativa</small>
+              <span>
+                {% if readiness.ready %}
+                  Puede avanzar a trabajo.
+                {% else %}
+                  Conviene revisar la preparación antes de avanzar.
+                {% endif %}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-section" aria-label="Caso de seguimiento">
+        <div class="detail-section__header">
+          <div>
+            <h2 class="detail-section__title">Caso de seguimiento</h2>
+            <p class="detail-section__subtitle">Seguimiento activo y acciones disponibles.</p>
+          </div>
+          {% if seguimiento %}
+            <div class="detail-actions">
+              <a class="btn btn-outline-primary btn-sm" href="{{ legacy_urls.tracking }}">Abrir seguimiento</a>
+            </div>
+          {% endif %}
+        </div>
+        <div class="detail-section__body">
+          {% if seguimiento %}
+            <div class="detail-info-grid">
+              <div class="detail-info-item">
+                <small>Próxima acción</small>
+                <strong>{{ seguimiento.proxima_accion_detalle or seguimiento.proxima_accion_tipo or 'Caso abierto' }}</strong>
+              </div>
+              <div class="detail-info-item">
+                <small>Estado</small>
+                <span>{{ seguimiento.public_id }} · {{ seguimiento.estado }}</span>
+              </div>
+              <div class="detail-info-item">
+                <small>Vence</small>
+                <span>{{ seguimiento.due_at or 'sin fecha' }}</span>
+              </div>
+            </div>
+          {% else %}
+            <div class="empty-state" role="status">
+              <div class="empty-state__icon" aria-hidden="true">
+                <i class="bi bi-inbox"></i>
+              </div>
+              <p class="empty-state__title">Sin caso abierto</p>
+              <p class="empty-state__text">La candidata no tiene seguimiento pendiente.</p>
+            </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="detail-section" aria-label="Estado de la candidata" data-state-card>
+        <div class="detail-section__header">
+          <div>
+            <h2 class="detail-section__title">Estado de la candidata</h2>
+            <p class="detail-section__subtitle">Estados operativos, bloqueos y acciones disponibles.</p>
+          </div>
+          <div class="detail-actions" data-state-actions>
             <form data-state-action data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_estado_lista', fila=candidata.fila) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="btn btn-outline-success btn-sm" type="submit" data-no-loader="true" {% if not state_capabilities.actions.can_mark_ready %}disabled{% endif %}>Marcar lista</button>
@@ -167,10 +291,49 @@
             </form>
           </div>
         </div>
-        <div class="row g-3 mt-2">
-          <div class="col-lg-6">
-            <div class="small">
-              <strong>Bloqueos operativos</strong>
+        <div class="detail-section__body">
+          <div class="detail-metric-grid">
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Proceso</span>
+              <span class="detail-metric__value" data-state-process>{{ state_capabilities.process.label }}</span>
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Preparación</span>
+              <span class="detail-metric__value" data-state-preparation>{{ state_capabilities.preparation.label }} materiales</span>
+              {% if state_capabilities.preparation.missing %}
+                <span class="small cand-muted mt-1" data-state-missing>
+                  Falta
+                  {% for key in state_capabilities.preparation.missing[:2] %}
+                    {{ state_capabilities.preparation.labels.get(key, key) }}{% if not loop.last %}, {% endif %}
+                  {% endfor %}
+                </span>
+              {% else %}
+                <span class="small cand-muted mt-1" data-state-missing>Requisitos materiales completos</span>
+              {% endif %}
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Situación laboral</span>
+              <span class="detail-metric__value" data-state-situation>{{ state_capabilities.situation.label }}</span>
+              {% if state_capabilities.situation.nota_descalificacion %}
+                <span class="small cand-muted mt-1" data-state-note>Motivo: {{ state_capabilities.situation.nota_descalificacion }}</span>
+              {% else %}
+                <span class="small cand-muted mt-1" data-state-note></span>
+              {% endif %}
+            </div>
+            <div class="detail-metric detail-metric--center">
+              <span class="detail-metric__label">Asignación activa</span>
+              <span class="detail-metric__value">
+                {% if state_capabilities.assignment.solicitud %}
+                  Activa
+                {% else %}
+                  Sin asignación
+                {% endif %}
+              </span>
+            </div>
+          </div>
+          <div class="detail-info-grid mt-0">
+            <div class="detail-info-item">
+              <small>Bloqueos operativos</small>
               <ul class="mb-0" data-state-blockers>
                 {% for reason in state_capabilities.preparation.operational_blockers %}
                   <li>{{ reason }}</li>
@@ -179,10 +342,8 @@
                 {% endfor %}
               </ul>
             </div>
-          </div>
-          <div class="col-lg-6">
-            <div class="small">
-              <strong>Asignación activa</strong>
+            <div class="detail-info-item">
+              <small>Asignación activa</small>
               <div data-state-assignment>
                 {% if state_capabilities.assignment.solicitud %}
                   Solicitud: {{ state_capabilities.assignment.solicitud.codigo }} · Estado: {{ state_capabilities.assignment.solicitud.estado }}{% if state_capabilities.assignment.solicitud.status %} · {{ state_capabilities.assignment.solicitud.status }}{% endif %}
@@ -191,289 +352,362 @@
                 {% endif %}
               </div>
             </div>
+            <div class="detail-info-item">
+              <small>Motivos y restricciones</small>
+              <div class="small text-warning{% if state_capabilities.actions.can_mark_ready and state_capabilities.actions.can_mark_working and state_capabilities.actions.can_disqualify %} d-none{% endif %}" data-state-action-reasons>
+                {% for action, reasons in state_capabilities.reasons.items() %}
+                  {% if reasons %}
+                    <div data-action-reason="{{ action }}">{{ reasons|join(' ') }}</div>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
           </div>
+          <div class="small mt-2 cand-feedback" data-state-feedback></div>
         </div>
-        <div class="small mt-2 text-warning{% if state_capabilities.actions.can_mark_ready and state_capabilities.actions.can_mark_working and state_capabilities.actions.can_disqualify %} d-none{% endif %}" data-state-action-reasons>
-          {% for action, reasons in state_capabilities.reasons.items() %}
-            {% if reasons %}
-              <div data-action-reason="{{ action }}">{{ reasons|join(' ') }}</div>
-            {% endif %}
-          {% endfor %}
-        </div>
-        <div class="small mt-2 cand-feedback" data-state-feedback></div>
       </section>
-
     </div>
-  </div>
 
-  <div class="cand-section" id="informacion">
-    <div class="cand-section-heading">
-      <h2>Información de la candidata</h2>
-      <div class="small cand-muted">Datos personales y laborales en una sola vista.</div>
+  <section class="detail-section" id="informacion" aria-label="Información de la candidata">
+    <div class="detail-section__header">
+      <div>
+        <h2 class="detail-section__title">Información de la candidata</h2>
+        <p class="detail-section__subtitle">Datos personales y laborales en una sola vista.</p>
+      </div>
     </div>
-    <div class="cand-grid cand-section-grid">
-      <section class="cand-panel cand-span-6" data-edit-section="personal">
-        <div class="d-flex justify-content-between align-items-center gap-2">
-          <h2>Información personal</h2>
-          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
-        </div>
-        <dl class="cand-kv cand-display" data-display="personal">
-          {% for label, value in personal_fields %}
-            <dt>{{ label }}</dt>
-            <dd>
-              {% if label in ['Marca temporal', 'Último cambio de estado'] and value is not string %}
-                {{ value|rd_datetime('%d/%m/%Y %I:%M %p') }}
-              {% else %}
-                {{ value }}
-              {% endif %}
-            </dd>
-          {% endfor %}
-        </dl>
-        <form class="cand-edit-form" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_datos', fila=candidata.fila) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
-          <div class="row g-2">
-            <div class="col-md-6">
-              <label class="form-label small" for="cand_nombre">Nombre completo</label>
-              <input class="form-control form-control-sm" id="cand_nombre" name="nombre" value="{{ edit_values.personal.nombre }}">
-              <div class="text-danger small cand-field-error" data-error-for="nombre"></div>
+    <div class="detail-section__body">
+      <div class="page-stack">
+        <section class="detail-section" data-edit-section="personal" aria-label="Información personal">
+          <div class="detail-section__header">
+            <div>
+              <h3 class="detail-section__title">Información personal</h3>
+              <p class="detail-section__subtitle">Datos generales y de contacto registrados.</p>
             </div>
-            <div class="col-md-3">
-              <label class="form-label small" for="cand_edad">Edad</label>
-              <input class="form-control form-control-sm" id="cand_edad" name="edad" value="{{ edit_values.personal.edad }}">
-              <div class="text-danger small cand-field-error" data-error-for="edad"></div>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small" for="cand_telefono">Teléfono</label>
-              <input class="form-control form-control-sm" id="cand_telefono" name="telefono" value="{{ edit_values.personal.telefono }}">
-              <div class="text-danger small cand-field-error" data-error-for="telefono"></div>
-            </div>
-            <div class="col-md-7">
-              <label class="form-label small" for="cand_direccion">Dirección</label>
-              <input class="form-control form-control-sm" id="cand_direccion" name="direccion" value="{{ edit_values.personal.direccion }}">
-              <div class="text-danger small cand-field-error" data-error-for="direccion"></div>
-            </div>
-            <div class="col-md-5">
-              <label class="form-label small" for="cand_cedula">Cédula</label>
-              <input class="form-control form-control-sm" id="cand_cedula" name="cedula" value="{{ edit_values.personal.cedula }}">
-              <div class="text-danger small cand-field-error" data-error-for="cedula"></div>
-            </div>
+            <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
           </div>
-          <div class="d-flex gap-2 align-items-center mt-3">
-            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
-            <a class="btn btn-link btn-sm" href="{{ legacy_urls.edit }}">Abrir flujo anterior</a>
-            <span class="small cand-feedback" data-feedback></span>
-          </div>
-        </form>
-      </section>
-
-      <section id="trabajo" class="cand-panel cand-span-6" data-edit-section="labor">
-        <div class="d-flex justify-content-between align-items-center gap-2">
-          <h2>Información laboral</h2>
-          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
-        </div>
-        {% if labor_primary_fields %}
-          <dl class="cand-kv cand-display" data-display="labor">
-            {% for label, value in labor_primary_fields %}
-              <dt>{{ label }}</dt>
-              <dd>
-                {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
-                  {{ value|rd_datetime('%d/%m/%Y') }}
-                {% else %}
-                  {{ value }}
-                {% endif %}
-              </dd>
-            {% endfor %}
-          </dl>
-          {% if labor_secondary_fields %}
-            <details class="small mt-2 cand-display">
-              <summary class="cand-muted">Ver datos secundarios</summary>
-              <dl class="cand-kv cand-kv-tight mt-2">
-                {% for label, value in labor_secondary_fields %}
-                  <dt>{{ label }}</dt>
-                  <dd>
-                    {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
-                      {{ value|rd_datetime('%d/%m/%Y') }}
+          <div class="detail-section__body">
+            <div class="detail-info-grid cand-display" data-display="personal">
+              {% for label, value in personal_fields %}
+                <div class="detail-info-item">
+                  <small>{{ label }}</small>
+                  <span>
+                    {% if label in ['Marca temporal', 'Último cambio de estado'] and value is not string %}
+                      {{ value|rd_datetime('%d/%m/%Y %I:%M %p') }}
                     {% else %}
                       {{ value }}
                     {% endif %}
-                  </dd>
-                {% endfor %}
-              </dl>
-            </details>
-          {% endif %}
-        {% else %}
-          <div class="cand-muted cand-display" data-display="labor">Sin información laboral registrada.</div>
-        {% endif %}
-        <form class="cand-edit-form" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_perfil_laboral', fila=candidata.fila) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
-          <div class="row g-2">
-            {% set labor_text_fields = [
-              ('modalidad', 'Modalidad preferida'), ('rutas', 'Rutas cercanas'),
-              ('disponibilidad_inicio', 'Disponibilidad de inicio'), ('empleo_anterior', 'Empleo anterior'),
-              ('anos_experiencia', 'Años de experiencia'), ('areas_experiencia', 'Áreas de experiencia'),
-              ('sueldo_esperado', 'Sueldo esperado')
-            ] %}
-            {% for name, label in labor_text_fields %}
-              <div class="col-md-6">
-                <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
-                <input class="form-control form-control-sm" id="cand_{{ name }}" name="{{ name }}" value="{{ edit_values.labor.get(name) }}">
-                <div class="text-danger small cand-field-error" data-error-for="{{ name }}"></div>
-              </div>
-            {% endfor %}
-            <div class="col-12">
-              <label class="form-label small" for="cand_motivacion_trabajo">Motivo para trabajar</label>
-              <textarea class="form-control form-control-sm" id="cand_motivacion_trabajo" name="motivacion_trabajo" rows="2">{{ edit_values.labor.motivacion_trabajo }}</textarea>
-              <div class="text-danger small cand-field-error" data-error-for="motivacion_trabajo"></div>
+                  </span>
+                </div>
+              {% endfor %}
             </div>
-            {% set bool_fields = [
-              ('sabe_planchar', 'Sabe planchar'), ('trabaja_con_ninos', 'Trabaja con niños'),
-              ('trabaja_con_mascotas', 'Trabaja con mascotas'), ('puede_dormir_fuera', 'Puede dormir fuera'),
-              ('acepta_porcentaje_sueldo', 'Acepta porcentaje')
-            ] %}
-            {% for name, label in bool_fields %}
-              <div class="col-md-3">
-                <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
-                <select class="form-select form-select-sm" id="cand_{{ name }}" name="{{ name }}">
-                  <option value="" {% if edit_values.labor.get(name) == '' %}selected{% endif %}>No informado</option>
-                  <option value="si" {% if edit_values.labor.get(name) == 'si' %}selected{% endif %}>Sí</option>
-                  <option value="no" {% if edit_values.labor.get(name) == 'no' %}selected{% endif %}>No</option>
-                </select>
+            <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_datos', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+              <div class="row g-2">
+                <div class="col-md-6">
+                  <label class="form-label small" for="cand_nombre">Nombre completo</label>
+                  <input class="form-control form-control-sm" id="cand_nombre" name="nombre" value="{{ edit_values.personal.nombre }}">
+                  <div class="text-danger small cand-field-error" data-error-for="nombre"></div>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small" for="cand_edad">Edad</label>
+                  <input class="form-control form-control-sm" id="cand_edad" name="edad" value="{{ edit_values.personal.edad }}">
+                  <div class="text-danger small cand-field-error" data-error-for="edad"></div>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small" for="cand_telefono">Teléfono</label>
+                  <input class="form-control form-control-sm" id="cand_telefono" name="telefono" value="{{ edit_values.personal.telefono }}">
+                  <div class="text-danger small cand-field-error" data-error-for="telefono"></div>
+                </div>
+                <div class="col-md-7">
+                  <label class="form-label small" for="cand_direccion">Dirección</label>
+                  <input class="form-control form-control-sm" id="cand_direccion" name="direccion" value="{{ edit_values.personal.direccion }}">
+                  <div class="text-danger small cand-field-error" data-error-for="direccion"></div>
+                </div>
+                <div class="col-md-5">
+                  <label class="form-label small" for="cand_cedula">Cédula</label>
+                  <input class="form-control form-control-sm" id="cand_cedula" name="cedula" value="{{ edit_values.personal.cedula }}">
+                  <div class="text-danger small cand-field-error" data-error-for="cedula"></div>
+                </div>
               </div>
-            {% endfor %}
+              <div class="d-flex gap-2 align-items-center mt-3">
+                <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+                <a class="btn btn-link btn-sm" href="{{ legacy_urls.edit }}">Abrir flujo anterior</a>
+                <span class="small cand-feedback" data-feedback></span>
+              </div>
+            </form>
           </div>
-          <div class="d-flex gap-2 align-items-center mt-3">
-            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
-            <span class="small cand-feedback" data-feedback></span>
+        </section>
+
+        <section id="trabajo" class="detail-section" data-edit-section="labor" aria-label="Información laboral">
+          <div class="detail-section__header">
+            <div>
+              <h3 class="detail-section__title">Información laboral</h3>
+              <p class="detail-section__subtitle">Experiencia, disponibilidad y preferencias registradas.</p>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
           </div>
-        </form>
-      </section>
+          <div class="detail-section__body">
+            {% if labor_primary_fields %}
+              <div class="detail-info-grid cand-display" data-display="labor">
+                {% for label, value in labor_primary_fields %}
+                  <div class="detail-info-item">
+                    <small>{{ label }}</small>
+                    <span>
+                      {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
+                        {{ value|rd_datetime('%d/%m/%Y') }}
+                      {% else %}
+                        {{ value }}
+                      {% endif %}
+                    </span>
+                  </div>
+                {% endfor %}
+              </div>
+              {% if labor_secondary_fields %}
+                <details class="mt-2 cand-display">
+                  <summary class="cand-muted">Ver datos secundarios</summary>
+                  <div class="detail-info-grid mt-2">
+                    {% for label, value in labor_secondary_fields %}
+                      <div class="detail-info-item">
+                        <small>{{ label }}</small>
+                        <span>
+                          {% if label in ['Disponibilidad/inicio', 'Fecha finalización proceso'] and value is not string %}
+                            {{ value|rd_datetime('%d/%m/%Y') }}
+                          {% else %}
+                            {{ value }}
+                          {% endif %}
+                        </span>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </details>
+              {% endif %}
+            {% else %}
+              <div class="empty-state cand-display" data-display="labor" role="status">
+                <div class="empty-state__icon" aria-hidden="true">
+                  <i class="bi bi-clipboard-x"></i>
+                </div>
+                <p class="empty-state__title">Sin información laboral registrada</p>
+                <p class="empty-state__text">No hay datos laborales cargados todavía.</p>
+              </div>
+            {% endif %}
+            <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_perfil_laboral', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+              <div class="row g-2">
+                {% set labor_text_fields = [
+                  ('modalidad', 'Modalidad preferida'), ('rutas', 'Rutas cercanas'),
+                  ('disponibilidad_inicio', 'Disponibilidad de inicio'), ('empleo_anterior', 'Empleo anterior'),
+                  ('anos_experiencia', 'Años de experiencia'), ('areas_experiencia', 'Áreas de experiencia'),
+                  ('sueldo_esperado', 'Sueldo esperado')
+                ] %}
+                {% for name, label in labor_text_fields %}
+                  <div class="col-md-6">
+                    <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
+                    <input class="form-control form-control-sm" id="cand_{{ name }}" name="{{ name }}" value="{{ edit_values.labor.get(name) }}">
+                    <div class="text-danger small cand-field-error" data-error-for="{{ name }}"></div>
+                  </div>
+                {% endfor %}
+                <div class="col-12">
+                  <label class="form-label small" for="cand_motivacion_trabajo">Motivo para trabajar</label>
+                  <textarea class="form-control form-control-sm" id="cand_motivacion_trabajo" name="motivacion_trabajo" rows="2">{{ edit_values.labor.motivacion_trabajo }}</textarea>
+                  <div class="text-danger small cand-field-error" data-error-for="motivacion_trabajo"></div>
+                </div>
+                {% set bool_fields = [
+                  ('sabe_planchar', 'Sabe planchar'), ('trabaja_con_ninos', 'Trabaja con niños'),
+                  ('trabaja_con_mascotas', 'Trabaja con mascotas'), ('puede_dormir_fuera', 'Puede dormir fuera'),
+                  ('acepta_porcentaje_sueldo', 'Acepta porcentaje')
+                ] %}
+                {% for name, label in bool_fields %}
+                  <div class="col-md-3">
+                    <label class="form-label small" for="cand_{{ name }}">{{ label }}</label>
+                    <select class="form-select form-select-sm" id="cand_{{ name }}" name="{{ name }}">
+                      <option value="" {% if edit_values.labor.get(name) == '' %}selected{% endif %}>No informado</option>
+                      <option value="si" {% if edit_values.labor.get(name) == 'si' %}selected{% endif %}>Sí</option>
+                      <option value="no" {% if edit_values.labor.get(name) == 'no' %}selected{% endif %}>No</option>
+                    </select>
+                  </div>
+                {% endfor %}
+              </div>
+              <div class="d-flex gap-2 align-items-center mt-3">
+                <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+                <span class="small cand-feedback" data-feedback></span>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <div class="cand-section" id="referencias">
-    <div class="cand-section-heading">
-      <h2>Referencias y entrevista</h2>
-      <div class="small cand-muted">Formulario, entrevista y respuestas registradas.</div>
+  <section class="detail-section" id="referencias" aria-label="Referencias y entrevista">
+    <div class="detail-section__header">
+      <div>
+        <h2 class="detail-section__title">Referencias y entrevista</h2>
+        <p class="detail-section__subtitle">Formulario, entrevista y respuestas registradas.</p>
+      </div>
     </div>
-    <div class="cand-grid cand-section-grid">
-      <section class="cand-panel cand-span-6" data-edit-section="form_references">
-        <div class="d-flex justify-content-between align-items-center gap-2">
-          <div>
-            <h2>Referencias del formulario</h2>
-            <p class="cand-muted small mb-0">Fuente exclusiva: formulario de la doméstica.</p>
+    <div class="detail-section__body">
+      <div class="page-stack">
+        <section class="detail-section" data-edit-section="form_references" aria-label="Referencias del formulario">
+          <div class="detail-section__header">
+            <div>
+              <h3 class="detail-section__title">Referencias del formulario</h3>
+              <p class="detail-section__subtitle">Fuente exclusiva: formulario de la doméstica.</p>
+            </div>
+            <div class="detail-actions">
+              <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar formulario</button>
+            </div>
           </div>
-          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar formulario</button>
-        </div>
-        <div class="d-flex gap-2 flex-wrap mb-2 small mt-3">
-          <span class="badge {% if references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
-            Laboral {% if references_summary.laboral %}✓{% else %}pendiente{% endif %}
-          </span>
-          <span class="badge {% if references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
-            Familiar {% if references_summary.familiar %}✓{% else %}pendiente{% endif %}
-          </span>
-        </div>
-        <dl class="cand-kv cand-display" data-display="references">
-          <dt>Laborales</dt><dd>{{ form_references.laboral or 'No informado' }}</dd>
-          <dt>Familiares</dt><dd>{{ form_references.familiar or 'No informado' }}</dd>
-        </dl>
-        {% if form_references.laboral_full or form_references.familiar_full %}
-          <div class="cand-display">
-            {% if form_references.laboral_full %}
-              <details class="small mb-2">
-                <summary class="cand-muted">Ver referencia laboral declarada completa</summary>
-                <div class="mt-2 white-space-pre-line">{{ form_references.laboral_full }}</div>
-              </details>
+          <div class="detail-section__body">
+            <div class="detail-badges">
+              <span class="badge {% if references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                Laboral {% if references_summary.laboral %}✓{% else %}pendiente{% endif %}
+              </span>
+              <span class="badge {% if references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                Familiar {% if references_summary.familiar %}✓{% else %}pendiente{% endif %}
+              </span>
+            </div>
+            <div class="detail-info-grid" data-display="references">
+              <div class="detail-info-item">
+                <small>Laborales</small>
+                <span>{{ form_references.laboral or 'No informado' }}</span>
+              </div>
+              <div class="detail-info-item">
+                <small>Familiares</small>
+                <span>{{ form_references.familiar or 'No informado' }}</span>
+              </div>
+              <div class="detail-info-item">
+                <small>Estado</small>
+                <span>
+                  {% if references_summary.laboral and references_summary.familiar %}
+                    Referencias del formulario completas.
+                  {% else %}
+                    Referencias del formulario pendientes.
+                  {% endif %}
+                </span>
+              </div>
+            </div>
+            {% if form_references.laboral_full or form_references.familiar_full %}
+              <div class="detail-info-grid mt-0">
+                {% if form_references.laboral_full %}
+                  <div class="detail-info-item">
+                    <small>Referencia laboral declarada completa</small>
+                    <div class="white-space-pre-line">{{ form_references.laboral_full }}</div>
+                  </div>
+                {% endif %}
+                {% if form_references.familiar_full %}
+                  <div class="detail-info-item">
+                    <small>Referencia familiar declarada completa</small>
+                    <div class="white-space-pre-line">{{ form_references.familiar_full }}</div>
+                  </div>
+                {% endif %}
+              </div>
             {% endif %}
-            {% if form_references.familiar_full %}
-              <details class="small">
-                <summary class="cand-muted">Ver referencia familiar declarada completa</summary>
-                <div class="mt-2 white-space-pre-line">{{ form_references.familiar_full }}</div>
-              </details>
-            {% endif %}
+            <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias_formulario', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+              <div class="mb-2">
+                <label class="form-label small" for="cand_ref_form_lab">Referencias laborales del formulario</label>
+                <textarea class="form-control form-control-sm" id="cand_ref_form_lab" name="contactos_referencias_laborales" rows="4">{{ edit_values.form_references.contactos_referencias_laborales }}</textarea>
+                <div class="text-danger small cand-field-error" data-error-for="contactos_referencias_laborales"></div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label small" for="cand_ref_form_fam">Referencias familiares del formulario</label>
+                <textarea class="form-control form-control-sm" id="cand_ref_form_fam" name="referencias_familiares_detalle" rows="4">{{ edit_values.form_references.referencias_familiares_detalle }}</textarea>
+                <div class="text-danger small cand-field-error" data-error-for="referencias_familiares_detalle"></div>
+              </div>
+              <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+                <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar formulario</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+                <span class="small cand-feedback" data-feedback></span>
+              </div>
+            </form>
           </div>
-        {% endif %}
-        <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias_formulario', fila=candidata.fila) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
-          <div class="mb-2">
-            <label class="form-label small" for="cand_ref_form_lab">Referencias laborales del formulario</label>
-            <textarea class="form-control form-control-sm" id="cand_ref_form_lab" name="contactos_referencias_laborales" rows="4">{{ edit_values.form_references.contactos_referencias_laborales }}</textarea>
-            <div class="text-danger small cand-field-error" data-error-for="contactos_referencias_laborales"></div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small" for="cand_ref_form_fam">Referencias familiares del formulario</label>
-            <textarea class="form-control form-control-sm" id="cand_ref_form_fam" name="referencias_familiares_detalle" rows="4">{{ edit_values.form_references.referencias_familiares_detalle }}</textarea>
-            <div class="text-danger small cand-field-error" data-error-for="referencias_familiares_detalle"></div>
-          </div>
-          <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
-            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar formulario</button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
-            <span class="small cand-feedback" data-feedback></span>
-          </div>
-        </form>
-      </section>
+        </section>
 
-      <section class="cand-panel cand-span-6" data-edit-section="secretary_references">
-        <div class="d-flex justify-content-between align-items-center gap-2">
-          <div>
-            <h2>Referencias de entrevista</h2>
-            <p class="cand-muted small mb-0">Fuente exclusiva: entrevista o secretaría.</p>
+        <section class="detail-section" data-edit-section="secretary_references" aria-label="Referencias de entrevista">
+          <div class="detail-section__header">
+            <div>
+              <h3 class="detail-section__title">Referencias de entrevista</h3>
+              <p class="detail-section__subtitle">Fuente exclusiva: entrevista o secretaría.</p>
+            </div>
+            <div class="detail-actions">
+              <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar entrevista</button>
+            </div>
           </div>
-          <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar entrevista</button>
-        </div>
-        <div class="d-flex gap-2 flex-wrap mb-2 small mt-3">
-          <span class="badge {% if secretary_references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
-            Laboral {% if secretary_references_summary.laboral %}✓{% else %}pendiente{% endif %}
-          </span>
-          <span class="badge {% if secretary_references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
-            Familiar {% if secretary_references_summary.familiar %}✓{% else %}pendiente{% endif %}
-          </span>
-        </div>
-        <dl class="cand-kv cand-display" data-display="secretary-references">
-          <dt>Laborales</dt><dd>{{ secretary_references.laboral or 'No informado' }}</dd>
-          <dt>Familiares</dt><dd>{{ secretary_references.familiar or 'No informado' }}</dd>
-        </dl>
-        {% if secretary_references.laboral_full or secretary_references.familiar_full %}
-          <div class="cand-display">
-            {% if secretary_references.laboral_full %}
-              <details class="small mb-2">
-                <summary class="cand-muted">Ver referencia laboral de entrevista completa</summary>
-                <div class="mt-2 white-space-pre-line">{{ secretary_references.laboral_full }}</div>
-              </details>
+          <div class="detail-section__body">
+            <div class="detail-badges">
+              <span class="badge {% if secretary_references_summary.laboral %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                Laboral {% if secretary_references_summary.laboral %}✓{% else %}pendiente{% endif %}
+              </span>
+              <span class="badge {% if secretary_references_summary.familiar %}text-bg-success{% else %}text-bg-warning{% endif %}">
+                Familiar {% if secretary_references_summary.familiar %}✓{% else %}pendiente{% endif %}
+              </span>
+            </div>
+            <div class="detail-info-grid" data-display="secretary-references">
+              <div class="detail-info-item">
+                <small>Laborales</small>
+                <span>{{ secretary_references.laboral or 'No informado' }}</span>
+              </div>
+              <div class="detail-info-item">
+                <small>Familiares</small>
+                <span>{{ secretary_references.familiar or 'No informado' }}</span>
+              </div>
+              <div class="detail-info-item">
+                <small>Estado</small>
+                <span>
+                  {% if secretary_references_summary.laboral and secretary_references_summary.familiar %}
+                    Referencias de entrevista completas.
+                  {% else %}
+                    Referencias de entrevista pendientes.
+                  {% endif %}
+                </span>
+              </div>
+            </div>
+            {% if secretary_references.laboral_full or secretary_references.familiar_full %}
+              <div class="detail-info-grid mt-0">
+                {% if secretary_references.laboral_full %}
+                  <div class="detail-info-item">
+                    <small>Referencia laboral de entrevista completa</small>
+                    <div class="white-space-pre-line">{{ secretary_references.laboral_full }}</div>
+                  </div>
+                {% endif %}
+                {% if secretary_references.familiar_full %}
+                  <div class="detail-info-item">
+                    <small>Referencia familiar de entrevista completa</small>
+                    <div class="white-space-pre-line">{{ secretary_references.familiar_full }}</div>
+                  </div>
+                {% endif %}
+              </div>
             {% endif %}
-            {% if secretary_references.familiar_full %}
-              <details class="small">
-                <summary class="cand-muted">Ver referencia familiar de entrevista completa</summary>
-                <div class="mt-2 white-space-pre-line">{{ secretary_references.familiar_full }}</div>
-              </details>
-            {% endif %}
+            <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias', fila=candidata.fila) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
+              <div class="mb-2">
+                <label class="form-label small" for="cand_ref_int_lab">Referencia laboral de entrevista</label>
+                <textarea class="form-control form-control-sm" id="cand_ref_int_lab" name="referencias_laboral" rows="4">{{ edit_values.secretary_references.referencias_laboral }}</textarea>
+                <div class="text-danger small cand-field-error" data-error-for="referencias_laboral"></div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label small" for="cand_ref_int_fam">Referencia familiar de entrevista</label>
+                <textarea class="form-control form-control-sm" id="cand_ref_int_fam" name="referencias_familiares" rows="4">{{ edit_values.secretary_references.referencias_familiares }}</textarea>
+                <div class="text-danger small cand-field-error" data-error-for="referencias_familiares"></div>
+              </div>
+              <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
+                <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar entrevista</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
+                <span class="small cand-feedback" data-feedback></span>
+              </div>
+            </form>
           </div>
-        {% endif %}
-        <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias', fila=candidata.fila) }}">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
-          <div class="mb-2">
-            <label class="form-label small" for="cand_ref_int_lab">Referencia laboral de entrevista</label>
-            <textarea class="form-control form-control-sm" id="cand_ref_int_lab" name="referencias_laboral" rows="4">{{ edit_values.secretary_references.referencias_laboral }}</textarea>
-            <div class="text-danger small cand-field-error" data-error-for="referencias_laboral"></div>
-          </div>
-          <div class="mb-2">
-            <label class="form-label small" for="cand_ref_int_fam">Referencia familiar de entrevista</label>
-            <textarea class="form-control form-control-sm" id="cand_ref_int_fam" name="referencias_familiares" rows="4">{{ edit_values.secretary_references.referencias_familiares }}</textarea>
-            <div class="text-danger small cand-field-error" data-error-for="referencias_familiares"></div>
-          </div>
-          <div class="d-flex gap-2 align-items-center mt-3 flex-wrap">
-            <button class="btn btn-primary btn-sm" type="submit" data-no-loader="true">Guardar entrevista</button>
-            <button class="btn btn-outline-secondary btn-sm" type="button" data-edit-cancel>Cancelar</button>
-            <span class="small cand-feedback" data-feedback></span>
-          </div>
-        </form>
-      </section>
+        </section>
+      </div>
+    </div>
 
+    <div>
       <section id="entrevistas" class="cand-panel cand-span-12">
         <h2>Entrevistas</h2>
         <dl class="cand-kv">
@@ -487,39 +721,15 @@
             {% endif %}
           </dd>
         </dl>
-        {% if entrevista_summary.recent %}
-          <ul class="cand-list small mb-2">
-            {% for item in entrevista_summary.recent %}
-              {% set interview_refs = entrevista_summary.reference_map.get(item.id, []) %}
-              <li>
-                <div class="d-flex justify-content-between gap-2 flex-wrap">
-                  <span>{{ item.tipo or 'sin tipo' }} · {{ (item.creada_en or item.actualizada_en)|rd_datetime('%d/%m/%Y %I:%M %p') if (item.creada_en or item.actualizada_en) else 'sin fecha' }} · {{ item.estado or 'sin estado' }}</span>
-                  <span class="d-flex gap-2">
-                    <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Leer respuestas</a>
-                    <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Editar</a>
-                    <a href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=item.id) }}">Descargar PDF</a>
-                  </span>
-                </div>
-                {% if interview_refs %}
-                  <div class="mt-2">
-                    <strong>Referencias registradas durante entrevista</strong>
-                    <div class="cand-muted small">Información registrada por el entrevistador durante esta entrevista.</div>
-                    <dl class="cand-kv cand-kv-tight mt-1 mb-0">
-                      {% for ref in interview_refs %}
-                        <dt>{{ ref.label }}</dt>
-                        <dd class="white-space-pre-line">{{ ref.respuesta }}</dd>
-                      {% endfor %}
-                    </dl>
-                  </div>
-                {% else %}
-                  <div class="cand-muted small mt-2">No se registraron referencias en esta entrevista.</div>
-                {% endif %}
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <div class="cand-muted small mb-2">Sin entrevistas nuevas.</div>
-        {% endif %}
+        <div id="candidataInterviewsRecentAsyncRegion"
+             class="cand-lazy-fragment"
+             data-async-preserve-scroll="true"
+             data-admin-lazy-fragment-url="{{ url_for('admin.candidatas_operativo_entrevistas_fragment', fila=candidata.fila) }}"
+             data-lazy-state="loading"
+             role="status"
+             aria-live="polite">
+          <div class="cand-muted small mb-2" data-admin-lazy-status>Cargando entrevistas recientes...</div>
+        </div>
 
         {% if legacy_entrevista_display.has_content %}
           <section class="cand-display cand-display-legacy mb-3" id="legacy-entrevista">
@@ -775,17 +985,16 @@
     <div class="cand-grid cand-section-grid">
       <section class="cand-panel cand-span-6">
         <h2>Información pública</h2>
-        {% if public_profile %}
-          <dl class="cand-kv">
-            <dt>Perfil público</dt><dd>Existe</dd>
-            <dt>Visible</dt><dd>{{ 'Sí' if public_profile.visible else 'No' }}</dd>
-            <dt>Estado público</dt><dd>{{ public_profile.estado_publico }}</dd>
-            <dt>Destacado</dt><dd>{{ 'Sí' if public_profile.es_destacada else 'No' }}</dd>
-          </dl>
-        {% else %}
-          <div class="cand-muted">No existe perfil público.</div>
-        {% endif %}
         <a class="btn btn-outline-primary btn-sm mt-2" href="{{ legacy_urls.public_profile }}">Editar perfil público</a>
+        <div id="candidataPublicProfileAsyncRegion"
+             class="cand-lazy-fragment mt-3"
+             data-async-preserve-scroll="true"
+             data-admin-lazy-fragment-url="{{ url_for('admin.candidatas_operativo_actividad_publica_fragment', fila=candidata.fila) }}"
+             data-lazy-state="loading"
+             role="status"
+             aria-live="polite">
+          <div class="cand-muted small">Cargando información pública...</div>
+        </div>
       </section>
 
       <section class="cand-panel cand-span-6">

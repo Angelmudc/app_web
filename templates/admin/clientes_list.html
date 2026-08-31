@@ -2,181 +2,171 @@
 {% block title %}Clientes{% endblock %}
 
 {% block content %}
+<div class="page-stack py-1">
+  <section class="page-header">
+    <div class="page-header__content">
+      <p class="page-header__eyebrow">Operaciones de clientes</p>
+      <h1 class="page-header__title">Panel de Clientes</h1>
+      <p class="page-header__description">Busca, revisa y gestiona clientes sin cargar listados innecesarios.</p>
+    </div>
+    <div class="page-header__actions">
+      <span class="badge text-bg-light border">Búsqueda diferida activa</span>
+      <a href="{{ url_for('admin.nuevo_cliente') }}" class="btn btn-primary">Crear cliente</a>
+    </div>
+  </section>
 
-<div class="clientes-panel-page py-1">
-  <div class="clientes-panel-shell glass-card p-3 p-md-4">
-    <section class="clientes-panel-hero mb-4">
-      <div class="clientes-panel-hero-head">
-        <span class="clientes-panel-kicker">Operaciones de clientes</span>
-        <h1 class="h2 mb-2">Panel de Clientes</h1>
-        <p class="text-muted mb-0">Busca, revisa y gestiona clientes sin cargar listados innecesarios.</p>
+  <section class="clientes-quick-actions mb-4" aria-label="Acciones rápidas">
+    <a href="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}" target="_blank" rel="noopener noreferrer" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-link"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Generar link cliente nuevo</strong>
+        <small>Formulario público de un solo uso</small>
+      </span>
+    </a>
+    <a href="{{ url_for('admin.copiar_solicitudes') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-rectangle-list"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Solicitudes</strong>
+        <small>Flujo operativo de solicitudes</small>
+      </span>
+    </a>
+    <a href="{{ url_for('admin.listar_solicitudes') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-table-list"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Bandeja solicitudes</strong>
+        <small>Panel general de solicitudes</small>
+      </span>
+    </a>
+    <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-arrow-rotate-right"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Panel de reemplazos</strong>
+        <small>Casos activos y gestión operativa</small>
+      </span>
+    </a>
+    <a href="{{ url_for('admin.catalogos_privados_list') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-book-open"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Catálogos privados</strong>
+        <small>Gestionar enlaces y catálogos</small>
+      </span>
+    </a>
+    {% if has_endpoint('admin.tienda_intereses_list') %}
+    <a href="{{ url_for('admin.tienda_intereses_list') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-user-check"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Solicitudes de entrevistas</strong>
+        <small>
+          {% if tienda_intereses_badge_count is defined %}
+            {{ tienda_intereses_badge_count() }} nuevas
+          {% else %}
+            Acceso a solicitudes de tienda
+          {% endif %}
+        </small>
+      </span>
+    </a>
+    {% endif %}
+    {% if can_manage_public_intake %}
+    <a href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-inbox"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Bandeja de solicitudes nuevas</strong>
+        <small>
+          {% if public_intake_new_count > 0 %}
+            {{ public_intake_new_count }} nuevas
+          {% else %}
+            Sin nuevas pendientes
+          {% endif %}
+        </small>
+      </span>
+    </a>
+    {% endif %}
+    <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-bolt"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Pendientes</strong>
+        <small>Acciones de proceso urgentes</small>
+      </span>
+    </a>
+    <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Prioritarias</strong>
+        <small>Solicitudes por prioridad</small>
+      </span>
+    </a>
+    {% if has_endpoint('admin.seguimiento_candidatas_cola') %}
+    <a href="{{ url_for('admin.seguimiento_candidatas_cola') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-route"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Seguimiento</strong>
+        <small>Casos y próximas acciones</small>
+      </span>
+    </a>
+    {% endif %}
+    {% if has_endpoint('admin.resumen_diario_clientes') %}
+    <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-calendar-day"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Resumen diario</strong>
+        <small>Actividad de clientes de hoy</small>
+      </span>
+    </a>
+    {% endif %}
+    <a href="{{ url_for('home') }}" class="clientes-quick-card">
+      <span class="clientes-quick-icon"><i class="fa-solid fa-house"></i></span>
+      <span class="clientes-quick-copy">
+        <strong>Volver al home</strong>
+        <small>Regresar a la vista principal</small>
+      </span>
+    </a>
+  </section>
+
+  <section class="filter-bar mb-3" aria-label="Filtros de clientes">
+    <form id="clientesSearchForm"
+          class="filter-bar__form row g-2 g-md-3 align-items-end"
+          method="get"
+          action="{{ url_for('admin.listar_clientes') }}"
+          data-admin-async-form
+          data-async-target="#clientesAsyncRegion"
+          data-async-busy-container="#clientesAsyncScope"
+          data-async-preserve-scroll="true"
+          data-async-fallback="native">
+      <div class="filter-bar__group col-12 col-lg">
+        <label for="clientesSearchInput" class="form-label mb-1 fw-semibold">Buscar cliente</label>
+        <input id="clientesSearchInput"
+               name="q"
+               class="form-control"
+               placeholder="Buscar por nombre, teléfono, código o email..."
+               value="{{ q }}"
+               autocomplete="off">
       </div>
-      <div class="clientes-panel-hero-meta">
-        <span class="badge text-bg-light border">Búsqueda diferida activa</span>
+      <div class="filter-bar__group filter-bar__group--compact col-6 col-md-4 col-lg-2">
+        <label for="clientesPerPage" class="form-label mb-1 fw-semibold">Resultados</label>
+        <select id="clientesPerPage" name="per_page" class="form-select">
+          {% for n in [10,25,50,100] %}
+            <option value="{{n}}" {% if per_page==n %}selected{% endif %}>{{n}} por página</option>
+          {% endfor %}
+        </select>
       </div>
-    </section>
-
-    <section class="clientes-quick-actions mb-4" aria-label="Acciones rápidas">
-      <a href="{{ url_for('admin.nuevo_cliente') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-user-plus"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Crear cliente</strong>
-          <small>Registrar un nuevo cliente</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.generar_link_publico_cliente_nuevo') }}" target="_blank" rel="noopener noreferrer" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-link"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Generar link cliente nuevo</strong>
-          <small>Formulario público de un solo uso</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.copiar_solicitudes') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-rectangle-list"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Solicitudes</strong>
-          <small>Flujo operativo de solicitudes</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-table-list"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Bandeja solicitudes</strong>
-          <small>Panel general de solicitudes</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-arrow-rotate-right"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Panel de reemplazos</strong>
-          <small>Casos activos y gestión operativa</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.catalogos_privados_list') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-book-open"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Catálogos privados</strong>
-          <small>Gestionar enlaces y catálogos</small>
-        </span>
-      </a>
-      {% if has_endpoint('admin.tienda_intereses_list') %}
-      <a href="{{ url_for('admin.tienda_intereses_list') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-user-check"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Solicitudes de entrevistas</strong>
-          <small>
-            {% if tienda_intereses_badge_count is defined %}
-              {{ tienda_intereses_badge_count() }} nuevas
-            {% else %}
-              Acceso a solicitudes de tienda
-            {% endif %}
-          </small>
-        </span>
-      </a>
-      {% endif %}
-      {% if can_manage_public_intake %}
-      <a href="{{ url_for('admin.bandeja_formularios_publicos_nuevos') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-inbox"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Bandeja de solicitudes nuevas</strong>
-          <small>
-            {% if public_intake_new_count > 0 %}
-              {{ public_intake_new_count }} nuevas
-            {% else %}
-              Sin nuevas pendientes
-            {% endif %}
-          </small>
-        </span>
-      </a>
-      {% endif %}
-      <a href="{{ url_for('admin.acciones_solicitudes_proceso') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-bolt"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Pendientes</strong>
-          <small>Acciones de proceso urgentes</small>
-        </span>
-      </a>
-      <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Prioritarias</strong>
-          <small>Solicitudes por prioridad</small>
-        </span>
-      </a>
-      {% if has_endpoint('admin.seguimiento_candidatas_cola') %}
-      <a href="{{ url_for('admin.seguimiento_candidatas_cola') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-route"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Seguimiento</strong>
-          <small>Casos y próximas acciones</small>
-        </span>
-      </a>
-      {% endif %}
-      {% if has_endpoint('admin.resumen_diario_clientes') %}
-      <a href="{{ url_for('admin.resumen_diario_clientes') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-calendar-day"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Resumen diario</strong>
-          <small>Actividad de clientes de hoy</small>
-        </span>
-      </a>
-      {% endif %}
-      <a href="{{ url_for('home') }}" class="clientes-quick-card">
-        <span class="clientes-quick-icon"><i class="fa-solid fa-house"></i></span>
-        <span class="clientes-quick-copy">
-          <strong>Volver al home</strong>
-          <small>Regresar a la vista principal</small>
-        </span>
-      </a>
-    </section>
-
-    <section class="clientes-search-panel mb-3">
-      <form id="clientesSearchForm"
-            class="row g-2 g-md-3 align-items-center"
-            method="get"
-            action="{{ url_for('admin.listar_clientes') }}"
-            data-admin-async-form
-            data-async-target="#clientesAsyncRegion"
-            data-async-busy-container="#clientesAsyncScope"
-            data-async-preserve-scroll="true"
-            data-async-fallback="native">
-        <div class="col-12 col-lg">
-          <label for="clientesSearchInput" class="form-label mb-1 fw-semibold">Buscar cliente</label>
-          <input id="clientesSearchInput"
-                 name="q"
-                 class="form-control form-control-lg"
-                 placeholder="Buscar por nombre, teléfono, código o email..."
-                 value="{{ q }}"
-                 autocomplete="off">
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <label for="clientesPerPage" class="form-label mb-1 fw-semibold">Resultados</label>
-          <select id="clientesPerPage" name="per_page" class="form-select form-select-lg">
-            {% for n in [10,25,50,100] %}
-              <option value="{{n}}" {% if per_page==n %}selected{% endif %}>{{n}} por página</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <label class="form-label mb-1 d-none d-md-block">&nbsp;</label>
-          <button class="btn btn-primary btn-lg w-100" data-loading-text="Buscando...">
-            <i class="fa-solid fa-magnifying-glass me-1"></i> Buscar
-          </button>
-        </div>
-      </form>
-      {% if not has_search %}
-      <p class="clientes-search-hint mb-0 mt-2">Escribe al menos 2 caracteres para buscar un cliente.</p>
-      {% endif %}
-    </section>
-
-    <div id="clientesAsyncScope" data-admin-async-scope>
-      <div id="clientesAsyncRegion" data-async-preserve-scroll="true">
-        {% include 'admin/_clientes_list_results.html' %}
+      <div class="filter-bar__actions col-6 col-md-4 col-lg-2">
+        <label class="form-label mb-1 d-none d-md-block">&nbsp;</label>
+        <button class="btn btn-primary w-100" data-loading-text="Buscando...">
+          <i class="fa-solid fa-magnifying-glass me-1"></i> Buscar
+        </button>
       </div>
+    </form>
+    {% if not has_search %}
+    <p class="filter-bar__help mb-0 mt-2">Escribe al menos 2 caracteres para buscar un cliente.</p>
+    {% endif %}
+  </section>
+
+  <div id="clientesAsyncScope" data-admin-async-scope>
+    <div id="clientesAsyncRegion" data-async-preserve-scroll="true">
+      {% include 'admin/_clientes_list_results.html' %}
     </div>
   </div>
 </div>
-
 {% set can_delete_cliente = ((current_user.role|default('')|lower) == 'owner') %}
 {% if can_delete_cliente %}
 <div class="modal fade" id="deleteClienteFromListModalShared" tabindex="-1" aria-labelledby="deleteClienteFromListModalSharedLabel" aria-hidden="true">
@@ -240,92 +230,9 @@
     </div>
   </div>
 </div>
-<script>
-  (function () {
-    if (window.__deleteClienteListSharedModalBound) return;
-    window.__deleteClienteListSharedModalBound = true;
-
-    var modal = document.getElementById("deleteClienteFromListModalShared");
-    if (!modal) return;
-    if (modal.parentElement !== document.body) {
-      document.body.appendChild(modal);
-    }
-    var form = document.getElementById("deleteClienteFromListSharedForm");
-    var input = document.getElementById("delete_cliente_list_confirm_input_shared");
-    var cleanupInput = document.getElementById("delete_cliente_list_full_cleanup_shared");
-    var cleanupCodeInput = document.getElementById("delete_cliente_list_cleanup_code_shared");
-    var nextInput = document.getElementById("deleteClienteFromListSharedNext");
-    var nameNode = document.getElementById("deleteClienteFromListSharedNombre");
-    var codeNode = document.getElementById("deleteClienteFromListSharedCodigo");
-    var codeHelpNode = document.getElementById("deleteClienteFromListSharedCodeHelp");
-    var segBackdrop = document.getElementById("segCandidatasBackdrop");
-    var segDrawer = document.getElementById("segCandidatasDrawer");
-    var segBodyOpenClass = "seg-drawer-open";
-
-    function buildCleanupCodeHelp(rawCode) {
-      var compact = String(rawCode || "").replace(/[\s,.]/g, "");
-      if (/^\d+$/.test(compact)) {
-        var visible = Number(compact).toLocaleString("en-US");
-        if (visible !== compact) {
-          return "Código requerido: " + visible + " o el código exacto visible. También se acepta " + compact + ".";
-        }
-        return "Código requerido: " + visible + " o el código exacto visible.";
-      }
-      return "Código requerido: " + String(rawCode || "—") + " o el código exacto visible.";
-    }
-
-    modal.addEventListener("show.bs.modal", function (ev) {
-      var trigger = ev && ev.relatedTarget ? ev.relatedTarget : null;
-      if (!trigger) return;
-
-      var actionUrl = String(trigger.getAttribute("data-delete-action-url") || "").trim();
-      var nextUrl = String(trigger.getAttribute("data-delete-next-url") || "").trim();
-      var clienteNombre = String(trigger.getAttribute("data-delete-cliente-nombre") || "—");
-      var clienteCodigo = String(trigger.getAttribute("data-delete-cliente-codigo") || "—");
-
-      if (form && actionUrl) form.setAttribute("action", actionUrl);
-      if (nextInput && nextUrl) nextInput.value = nextUrl;
-      if (nameNode) nameNode.textContent = clienteNombre;
-      if (codeNode) codeNode.textContent = clienteCodigo;
-      if (codeHelpNode) codeHelpNode.textContent = buildCleanupCodeHelp(clienteCodigo);
-      if (input) input.value = "";
-      if (cleanupInput) cleanupInput.checked = false;
-      if (cleanupCodeInput) cleanupCodeInput.value = "";
-
-      // Evita que overlays flotantes de seguimiento queden capturando clics sobre el modal.
-      if (segBackdrop && segBackdrop.hidden === false) segBackdrop.hidden = true;
-      if (segDrawer && segDrawer.hidden === false) segDrawer.hidden = true;
-      if (document.body) document.body.classList.remove(segBodyOpenClass);
-
-      // Refuerza stacking del modal/backdrop activo.
-      modal.style.setProperty("z-index", "2000");
-      window.setTimeout(function () {
-        var backdrops = Array.prototype.slice.call(document.querySelectorAll(".modal-backdrop"));
-        if (!backdrops.length) return;
-        var activeBackdrop = backdrops[backdrops.length - 1];
-        if (!activeBackdrop) return;
-        activeBackdrop.style.setProperty("z-index", "1990");
-        activeBackdrop.style.setProperty("pointer-events", "auto");
-      }, 0);
-    });
-
-    modal.addEventListener("shown.bs.modal", function () {
-      if (input) input.focus();
-    });
-
-    // Refuerzo: en algunos estados async, data-bs-dismiss no cierra en re-aperturas.
-    modal.addEventListener("click", function (ev) {
-      var dismissBtn = ev && ev.target && ev.target.closest
-        ? ev.target.closest('[data-bs-dismiss="modal"]')
-        : null;
-      if (!dismissBtn) return;
-      if (!(window.bootstrap && window.bootstrap.Modal)) return;
-      ev.preventDefault();
-      var instance = window.bootstrap.Modal.getInstance(modal) || new window.bootstrap.Modal(modal);
-      instance.hide();
-    });
-  })();
-</script>
 {% endif %}
+{% endblock %}
 
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/core/admin_nav.js') }}" defer></script>
 {% endblock %}

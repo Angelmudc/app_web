@@ -28,6 +28,248 @@
     }
     return window.setTimeout(cb, 60);
   };
+  const candidatasIndexState = new WeakMap();
+  let candidatasIndexBound = false;
+
+  function getCandidatasIndexForm(node) {
+    if (!node || !node.closest) return null;
+    return node.closest("[data-cand-index-search]");
+  }
+
+  function getCandidatasIndexState(form) {
+    if (!form) return null;
+    let state = candidatasIndexState.get(form);
+    if (!state) {
+      state = {
+        timer: null,
+        controller: null,
+        requestSeq: 0,
+        active: 0,
+        items: [],
+      };
+      candidatasIndexState.set(form, state);
+    }
+    return state;
+  }
+
+  function clearCandidatasIndexTimer(state) {
+    if (!state || !state.timer) return;
+    window.clearTimeout(state.timer);
+    state.timer = null;
+  }
+
+  function stopCandidatasIndexRequest(state) {
+    if (!state || !state.controller) return;
+    try {
+      state.controller.abort();
+    } catch (_) {}
+    state.controller = null;
+  }
+
+  function hideCandidatasIndexSuggestions(form, state) {
+    if (!form) return;
+    const box = form.querySelector("#candSuggest");
+    const input = form.querySelector('input[name="q"]');
+    if (box) box.hidden = true;
+    if (input) input.setAttribute("aria-expanded", "false");
+    if (state) state.active = 0;
+  }
+
+  function renderCandidatasIndexSuggestions(form, state) {
+    if (!form || !state) return;
+    const input = form.querySelector('input[name="q"]');
+    const box = form.querySelector("#candSuggest");
+    if (!input || !box) return;
+
+    box.innerHTML = "";
+    if (!Array.isArray(state.items) || !state.items.length) {
+      hideCandidatasIndexSuggestions(form, state);
+      return;
+    }
+
+    state.items.forEach((item, index) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = index === state.active ? "is-active" : "";
+      btn.setAttribute("role", "option");
+      btn.setAttribute("aria-selected", index === state.active ? "true" : "false");
+      const meta = [
+        item.codigo || "sin código",
+        item.edad ? `${item.edad} años` : "",
+        item.telefono || "",
+        item.estado_label || "",
+      ].filter(Boolean).join(" · ");
+      btn.innerHTML = '<span><strong></strong><div class="small cand-muted"></div></span><span class="small cand-muted">Abrir</span>';
+      btn.querySelector("strong").textContent = item.nombre || "Sin nombre";
+      btn.querySelector(".small").textContent = meta;
+      btn.addEventListener("click", () => {
+        if (item.detail_url) window.location.href = item.detail_url;
+      });
+      box.appendChild(btn);
+    });
+
+    box.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+  }
+
+  function scheduleCandidatasIndexFetch(form, state) {
+    if (!form || !state) return;
+    const input = form.querySelector('input[name="q"]');
+    if (!input) return;
+    clearCandidatasIndexTimer(state);
+    state.timer = window.setTimeout(() => {
+      state.timer = null;
+
+      const q = String(input.value || "").trim();
+      const searchUrl = String(form.dataset.searchUrl || "").trim();
+      if (q.length < 2 || !searchUrl) {
+        stopCandidatasIndexRequest(state);
+        state.items = [];
+        state.active = 0;
+        renderCandidatasIndexSuggestions(form, state);
+        return;
+      }
+
+      stopCandidatasIndexRequest(state);
+      state.controller = new AbortController();
+      const requestSeq = ++state.requestSeq;
+      const url = new URL(searchUrl, window.location.origin);
+      url.searchParams.set("q", q);
+      url.searchParams.set("limit", "7");
+
+      fetch(url.toString(), {
+        headers: { Accept: "application/json" },
+        signal: state.controller.signal,
+      })
+        .then((resp) => (resp && resp.ok ? resp.json() : Promise.reject(new Error("search_failed"))))
+        .then((payload) => {
+          if (requestSeq !== state.requestSeq || !form.isConnected) return;
+          state.items = Array.isArray(payload && payload.items) ? payload.items : [];
+          state.active = 0;
+          renderCandidatasIndexSuggestions(form, state);
+        })
+        .catch((err) => {
+          if (err && err.name === "AbortError") return;
+          if (requestSeq !== state.requestSeq || !form.isConnected) return;
+          state.items = [];
+          state.active = 0;
+          renderCandidatasIndexSuggestions(form, state);
+        })
+        .finally(() => {
+          if (requestSeq === state.requestSeq) {
+            state.controller = null;
+          }
+        });
+    }, 220);
+  }
+
+  function syncCandidatasOperativoIndex(root) {
+    const scope = root && root.querySelector ? root : document;
+    const form = scope.querySelector("[data-cand-index-search]");
+    if (!form) return;
+
+    form.dataset.candIndexBound = "1";
+    const state = getCandidatasIndexState(form);
+    if (!state) return;
+
+    if (form.dataset.candIndexPrevBound !== "1") {
+      form.dataset.candIndexPrevBound = "1";
+    }
+
+    const box = form.querySelector("#candSuggest");
+    const input = form.querySelector('input[name="q"]');
+    if (box) box.hidden = true;
+    if (input) input.setAttribute("aria-expanded", "false");
+
+    scope.querySelectorAll("[data-row-url]").forEach((row) => {
+      if (row.dataset.candRowBound === "1") return;
+      row.dataset.candRowBound = "1";
+      row.style.cursor = "pointer";
+    });
+  }
+
+  function handleCandidatasOperativoInput(ev) {
+    const input = ev && ev.target ? ev.target : null;
+    if (!input || String(input.name || "") !== "q") return;
+    const form = getCandidatasIndexForm(input);
+    if (!form) return;
+    const state = getCandidatasIndexState(form);
+    if (!state) return;
+    scheduleCandidatasIndexFetch(form, state);
+  }
+
+  function handleCandidatasOperativoKeydown(ev) {
+    const input = ev && ev.target ? ev.target : null;
+    if (!input || String(input.name || "") !== "q") return;
+    const form = getCandidatasIndexForm(input);
+    if (!form) return;
+    const state = getCandidatasIndexState(form);
+    if (!state) return;
+    const box = form.querySelector("#candSuggest");
+
+    if (ev.key === "Escape") {
+      hideCandidatasIndexSuggestions(form, state);
+      return;
+    }
+    if (!Array.isArray(state.items) || !state.items.length || !box || box.hidden) return;
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      state.active = Math.min(state.items.length - 1, state.active + 1);
+      renderCandidatasIndexSuggestions(form, state);
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      state.active = Math.max(0, state.active - 1);
+      renderCandidatasIndexSuggestions(form, state);
+      return;
+    }
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      const selected = state.items[state.active] || state.items[0];
+      if (selected && selected.detail_url) {
+        window.location.href = selected.detail_url;
+      }
+    }
+  }
+
+  function handleCandidatasOperativoClick(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    if (!target) return;
+
+    const row = target.closest ? target.closest("[data-row-url]") : null;
+    if (row) {
+      if (target.closest && target.closest("a, button, input, select, textarea")) return;
+      const url = String(row.getAttribute("data-row-url") || "").trim();
+      if (url) window.location.href = url;
+      return;
+    }
+
+    if (target.closest && target.closest("[data-cand-index-search]")) return;
+    document.querySelectorAll("[data-cand-index-search]").forEach((form) => {
+      const state = candidatasIndexState.get(form);
+      hideCandidatasIndexSuggestions(form, state || null);
+    });
+  }
+
+  function bindCandidatasOperativoIndexRuntime() {
+    if (candidatasIndexBound) return;
+    candidatasIndexBound = true;
+
+    document.addEventListener("input", handleCandidatasOperativoInput, true);
+    document.addEventListener("keydown", handleCandidatasOperativoKeydown, true);
+    document.addEventListener("click", handleCandidatasOperativoClick, true);
+    document.addEventListener("admin:content-updated", (ev) => {
+      const detail = ev && ev.detail && typeof ev.detail === "object" ? ev.detail : {};
+      syncCandidatasOperativoIndex(detail.container || document);
+    });
+    document.addEventListener("admin:navigation-complete", (ev) => {
+      const detail = ev && ev.detail && typeof ev.detail === "object" ? ev.detail : {};
+      syncCandidatasOperativoIndex(detail.viewport || document);
+    });
+
+    syncCandidatasOperativoIndex(document);
+  }
 
   function wantsJsonHeaders(extra) {
     const headers = {
@@ -1582,6 +1824,7 @@
 
   function init() {
     bindSecondaryListeners();
+    bindCandidatasOperativoIndexRuntime();
     syncCollapseToggleLabels(document);
     syncRegistrarPagoManualFields(document);
     bindManagedModalGuards();

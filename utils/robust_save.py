@@ -33,6 +33,7 @@ class RobustSaveResult:
     ok: bool
     attempts: int
     error_message: str = ""
+    exception: Exception | None = None
 
 
 def safe_bytes_length(value) -> int:
@@ -81,6 +82,7 @@ def execute_robust_save(
     retryable = tuple(retryable_exceptions) + (SaveVerificationError,)
     total_attempts = max(1, int(max_retries) + 1)
     last_error = ""
+    last_exception: Exception | None = None
 
     for attempt in range(1, total_attempts + 1):
         try:
@@ -89,17 +91,18 @@ def execute_robust_save(
             session.commit()
             if not bool(verify_fn()):
                 raise SaveVerificationError("No se pudo verificar la escritura en base de datos.")
-            return RobustSaveResult(ok=True, attempts=attempt, error_message="")
+            return RobustSaveResult(ok=True, attempts=attempt, error_message="", exception=None)
         except Exception as exc:
             try:
                 session.rollback()
             except Exception:
                 pass
             last_error = str(exc) or exc.__class__.__name__
+            last_exception = exc
             should_retry = (attempt < total_attempts) and isinstance(exc, retryable)
             if not should_retry:
-                return RobustSaveResult(ok=False, attempts=attempt, error_message=last_error)
+                return RobustSaveResult(ok=False, attempts=attempt, error_message=last_error, exception=last_exception)
             if attempt == 2 and retry_sleep_seconds > 0:
                 time.sleep(float(retry_sleep_seconds))
 
-    return RobustSaveResult(ok=False, attempts=total_attempts, error_message=last_error)
+    return RobustSaveResult(ok=False, attempts=total_attempts, error_message=last_error, exception=last_exception)

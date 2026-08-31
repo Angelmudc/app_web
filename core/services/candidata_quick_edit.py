@@ -6,13 +6,15 @@ from datetime import date
 from decimal import Decimal
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from config_app import db
 from models import Candidata, LlamadaCandidata
 from core.services.date_utils import parse_date, parse_decimal
 from utils.audit_entity import log_candidata_action
 from utils.audit_logger import diff_snapshots, snapshot_model_fields
 from utils.candidata_readiness import maybe_update_estado_por_completitud
-from utils.cedula_guard import find_duplicate_candidata_by_cedula
+from utils.cedula_guard import duplicate_cedula_message, find_duplicate_candidata_by_cedula
 from utils.cedula_normalizer import normalize_cedula_for_compare, normalize_cedula_for_store
 from utils.robust_save import execute_robust_save, legacy_text_is_useful
 from utils.timezone import utc_now_naive
@@ -159,6 +161,25 @@ def _expected_basic_values(candidata: Candidata, changed_fields: set[str]) -> di
     return expected
 
 
+def _integrity_error_mentions_constraint(error: Exception, *constraint_names: str) -> bool:
+    haystack_parts = [str(error or "")]
+    orig = getattr(error, "orig", None)
+    if orig is not None:
+        haystack_parts.append(str(orig))
+        if getattr(orig, "diag", None) is not None:
+            haystack_parts.append(str(getattr(orig.diag, "constraint_name", "") or ""))
+    for arg in getattr(error, "args", ()) or ():
+        haystack_parts.append(str(arg))
+    haystack = " ".join(part for part in haystack_parts if part).lower()
+    return any((constraint or "").strip().lower() in haystack for constraint in constraint_names)
+
+
+def _duplicate_cedula_error_message(existing: Candidata | None) -> str:
+    if existing is not None:
+        return duplicate_cedula_message(existing)
+    return "Esta cédula ya está registrada en otra candidata. Verifique el expediente duplicado antes de continuar."
+
+
 def update_candidate_basic_fields(
     candidata: Candidata,
     data: dict[str, Any],
@@ -184,6 +205,40 @@ def update_candidate_basic_fields(
 
     before = snapshot_model_fields(candidata, BASIC_AUDIT_FIELDS)
     changed_fields: set[str] = set()
+    cedula_normalized_store: str | None = None
+
+    if section == "personal" and "cedula" in submitted:
+        cedula_raw = _clean_text(submitted.get("cedula"), 50)
+        if not cedula_raw:
+            errors["cedula"] = "La cédula es obligatoria."
+        else:
+            digits = normalize_cedula_for_compare(cedula_raw)
+            if len(digits) != 11:
+                errors["cedula"] = "Cédula inválida."
+            else:
+                with db.session.no_autoflush:
+                    duplicate, _ = find_duplicate_candidata_by_cedula(
+                        cedula_raw,
+                        exclude_fila=getattr(candidata, "fila", None),
+                    )
+                if duplicate:
+                    message = _duplicate_cedula_error_message(duplicate)
+                    log_candidata_action(
+                        action_type=audit_action,
+                        candidata=candidata,
+                        summary=f"Fallo edición rápida de candidata {getattr(candidata, 'fila', '')}",
+                        metadata={"section": section, "fields": sorted(submitted.keys()), "duplicate_fila": getattr(duplicate, "fila", None)},
+                        success=False,
+                        error="Conflicto de cédula duplicada.",
+                    )
+                    return CandidateEditResult(
+                        False,
+                        message,
+                        errors={"cedula": message},
+                        status_code=409,
+                        error_code="conflict",
+                    )
+                cedula_normalized_store = normalize_cedula_for_store(cedula_raw)
 
     for form_key, (attr, max_len, required) in specs.items():
         if form_key not in submitted:
@@ -211,23 +266,10 @@ def update_candidate_basic_fields(
                 setattr(candidata, attr, parsed)
                 changed_fields.add(attr)
 
-    if section == "personal" and "cedula" in submitted:
-        cedula_raw = _clean_text(submitted.get("cedula"), 50)
-        if not cedula_raw:
-            errors["cedula"] = "La cédula es obligatoria."
-        else:
-            digits = normalize_cedula_for_compare(cedula_raw)
-            if len(digits) != 11:
-                errors["cedula"] = "Cédula inválida."
-            else:
-                duplicate, _ = find_duplicate_candidata_by_cedula(cedula_raw, exclude_fila=getattr(candidata, "fila", None))
-                if duplicate:
-                    errors["cedula"] = "Ya existe una candidata con esta cédula."
-                else:
-                    normalized = normalize_cedula_for_store(cedula_raw)
-                    if getattr(candidata, "cedula", None) != normalized:
-                        candidata.cedula = normalized
-                        changed_fields.add("cedula")
+    if section == "personal" and cedula_normalized_store is not None:
+        if getattr(candidata, "cedula", None) != cedula_normalized_store:
+            candidata.cedula = cedula_normalized_store
+            changed_fields.add("cedula")
 
     if errors:
         db.session.rollback()
@@ -244,7 +286,41 @@ def update_candidate_basic_fields(
     if not changed_fields:
         return CandidateEditResult(True, "Sin cambios.", {}, status_code=200)
 
-    db.session.flush()
+    try:
+        db.session.flush()
+    except IntegrityError as exc:
+        db.session.rollback()
+        if _integrity_error_mentions_constraint(
+            exc,
+            "ux_candidatas_cedula_norm_digits",
+            "candidatas_cedula_key",
+        ):
+            message = _duplicate_cedula_error_message(None)
+            log_candidata_action(
+                action_type=audit_action,
+                candidata=candidata,
+                summary=f"Fallo edición rápida de candidata {getattr(candidata, 'fila', '')}",
+                metadata={"section": section, "constraint": "ux_candidatas_cedula_norm_digits"},
+                success=False,
+                error="Conflicto de cédula duplicada por flush.",
+            )
+            return CandidateEditResult(
+                False,
+                message,
+                errors={"cedula": message},
+                status_code=409,
+                error_code="conflict",
+            )
+        log_candidata_action(
+            action_type=audit_action,
+            candidata=candidata,
+            summary=f"Fallo edición rápida de candidata {getattr(candidata, 'fila', '')}",
+            metadata={"section": section, "error_type": "IntegrityError"},
+            success=False,
+            error=str(exc),
+        )
+        return CandidateEditResult(False, "No se pudo guardar. Intenta de nuevo.", {}, status_code=500, error_code="persist_error")
+
     expected = _expected_basic_values(candidata, changed_fields)
     result = execute_robust_save(
         session=db.session,
@@ -253,6 +329,27 @@ def update_candidate_basic_fields(
     )
     if not result.ok:
         db.session.rollback()
+        if isinstance(result.exception, IntegrityError) and _integrity_error_mentions_constraint(
+            result.exception,
+            "ux_candidatas_cedula_norm_digits",
+            "candidatas_cedula_key",
+        ):
+            message = _duplicate_cedula_error_message(None)
+            log_candidata_action(
+                action_type=audit_action,
+                candidata=candidata,
+                summary=f"Fallo edición rápida de candidata {getattr(candidata, 'fila', '')}",
+                metadata={"section": section, "attempt_count": int(result.attempts), "constraint": "ux_candidatas_cedula_norm_digits"},
+                success=False,
+                error="Conflicto de cédula duplicada por constraint.",
+            )
+            return CandidateEditResult(
+                False,
+                message,
+                errors={"cedula": message},
+                status_code=409,
+                error_code="conflict",
+            )
         log_candidata_action(
             action_type=audit_action,
             candidata=candidata,

@@ -18,9 +18,10 @@
 {% endif %}
 
 {% if has_search and clientes %}
-<div class="clientes-results-wrap mt-3">
-  <div class="table-responsive clientes-results-table-wrap d-none d-lg-block">
-    <table class="table table-hover align-middle mb-0 clientes-results-table">
+<div class="data-table-shell mt-3">
+  <div class="data-table-shell__body">
+    <div class="table-responsive data-table-shell__scroll d-none d-lg-block">
+      <table class="table table-hover align-middle data-table">
       <thead>
         <tr>
           <th>Código</th>
@@ -65,12 +66,12 @@
               {% endif %}
             </div>
             <div class="d-flex flex-wrap gap-2">
-              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">Ver</a>
+              <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}" data-admin-nav="true">Ver</a>
               <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">Editar</a>
               {% if has_endpoint('admin.listar_solicitudes_de_cliente_proceso') %}
               <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes_de_cliente_proceso', cliente_id=c.id) }}">Solicitudes</a>
               {% else %}
-              <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
+              <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}" data-admin-nav="true">Solicitudes</a>
               {% endif %}
               <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">Reemplazos</a>
               <a class="btn btn-sm btn-info text-white" href="{{ url_for('admin.reemplazo_nuevo_panel', cliente_id=c.id) }}">Nuevo reemplazo</a>
@@ -103,87 +104,88 @@
         </tr>
         {% endfor %}
       </tbody>
-    </table>
-  </div>
+      </table>
+    </div>
 
-  <div class="d-grid gap-2 d-lg-none">
-    {% for c in slice %}
-    <article class="clientes-result-card">
-      {% set _repl_act = (reemplazos_activos_por_cliente.get(c.id, 0) if reemplazos_activos_por_cliente is defined else 0) %}
-      {% set _repl_total = (reemplazos_total_por_cliente.get(c.id, 0) if reemplazos_total_por_cliente is defined else 0) %}
-      <div class="d-flex align-items-start justify-content-between gap-2">
-        <div>
-          <h3 class="h6 mb-1">{{ c.nombre_completo }}</h3>
-          <div class="small text-muted">Código: {{ c.codigo or '—' }}</div>
-          <div class="small mt-1">
-            <strong>Reemplazos:</strong> {{ _repl_act }} activos / {{ _repl_total }} total
-            {% if _repl_act > 0 %}
-              <span class="badge text-bg-danger ms-1">{{ _repl_act }} activos</span>
-            {% endif %}
-            {% if _repl_total >= 5 %}
-              <span class="badge text-bg-danger ms-1">Riesgo crítico</span>
-            {% elif _repl_total >= 3 %}
-              <span class="badge text-bg-warning ms-1">Riesgo alto</span>
-            {% elif _repl_total >= 2 %}
-              <span class="badge text-bg-info ms-1">Riesgo medio</span>
-            {% endif %}
+    <div class="d-grid gap-2 d-lg-none p-3">
+      {% for c in slice %}
+      <article class="card p-3">
+        {% set _repl_act = (reemplazos_activos_por_cliente.get(c.id, 0) if reemplazos_activos_por_cliente is defined else 0) %}
+        {% set _repl_total = (reemplazos_total_por_cliente.get(c.id, 0) if reemplazos_total_por_cliente is defined else 0) %}
+        <div class="d-flex align-items-start justify-content-between gap-2">
+          <div>
+            <h3 class="h6 mb-1">{{ c.nombre_completo }}</h3>
+            <div class="small text-muted">Código: {{ c.codigo or '—' }}</div>
+            <div class="small mt-1">
+              <strong>Reemplazos:</strong> {{ _repl_act }} activos / {{ _repl_total }} total
+              {% if _repl_act > 0 %}
+                <span class="badge text-bg-danger ms-1">{{ _repl_act }} activos</span>
+              {% endif %}
+              {% if _repl_total >= 5 %}
+                <span class="badge text-bg-danger ms-1">Riesgo crítico</span>
+              {% elif _repl_total >= 3 %}
+                <span class="badge text-bg-warning ms-1">Riesgo alto</span>
+              {% elif _repl_total >= 2 %}
+                <span class="badge text-bg-info ms-1">Riesgo medio</span>
+              {% endif %}
+            </div>
           </div>
+          {% set estado_cliente = (c.estado if c.estado is defined else None) %}
+          {% if estado_cliente %}
+            <span class="badge text-bg-secondary">{{ estado_cliente|replace('_', ' ')|capitalize }}</span>
+          {% else %}
+            <span class="badge text-bg-light border">Sin estado</span>
+          {% endif %}
         </div>
-        {% set estado_cliente = (c.estado if c.estado is defined else None) %}
-        {% if estado_cliente %}
-          <span class="badge text-bg-secondary">{{ estado_cliente|replace('_', ' ')|capitalize }}</span>
-        {% else %}
-          <span class="badge text-bg-light border">Sin estado</span>
-        {% endif %}
-      </div>
-      <div class="clientes-result-meta mt-2">
-        <div><span class="text-muted">Tel:</span> {{ c.telefono or '—' }}</div>
-        <div><span class="text-muted">Email:</span> {{ c.email or '—' }}</div>
-      </div>
-      <div class="d-flex flex-wrap gap-2 mt-3">
-        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}">Ver</a>
-        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">Editar</a>
-        {% if has_endpoint('admin.listar_solicitudes_de_cliente_proceso') %}
-        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes_de_cliente_proceso', cliente_id=c.id) }}">Solicitudes</a>
-        {% else %}
-        <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}">Solicitudes</a>
-        {% endif %}
-        <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">Reemplazos</a>
-        <a class="btn btn-sm btn-info text-white" href="{{ url_for('admin.reemplazo_nuevo_panel', cliente_id=c.id) }}">Nuevo reemplazo</a>
-        <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
-        {% if has_endpoint('admin.tienda_intereses_list') %}
-        {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}
-        {% set _tienda_nuevos = (tienda_intereses_nuevos_counts.get(c.id, 0) if tienda_intereses_nuevos_counts is defined and tienda_intereses_nuevos_counts else 0) %}
-        <a class="btn btn-sm btn-outline-warning" href="{{ url_for('admin.tienda_intereses_list', cliente_id=c.id) }}">
-          Ver solicitudes tienda{% if _tienda_total > 0 %} ({{ _tienda_total }}){% endif %}
-          {% if _tienda_nuevos > 0 %}<span class="badge rounded-pill text-bg-danger ms-1">{{ _tienda_nuevos }}</span>{% endif %}
-        </a>
-        {% endif %}
-        {% if can_delete_cliente %}
-        <button
-          type="button"
-          class="btn btn-sm btn-danger"
-          data-bs-toggle="modal"
-          data-bs-target="#deleteClienteFromListModalShared"
-          data-delete-cliente-id="{{ c.id }}"
-          data-delete-cliente-codigo="{{ c.codigo or c.id }}"
-          data-delete-cliente-nombre="{{ c.nombre_completo or '—' }}"
-          data-delete-next-url="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}"
-          data-delete-action-url="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
-        >
-          Eliminar
-        </button>
-        {% endif %}
-      </div>
-    </article>
-    {% endfor %}
+        <div class="d-grid gap-1 mt-2 small text-muted">
+          <div><span class="text-muted">Tel:</span> {{ c.telefono or '—' }}</div>
+          <div><span class="text-muted">Email:</span> {{ c.email or '—' }}</div>
+        </div>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+          <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}" data-admin-nav="true">Ver</a>
+          <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">Editar</a>
+          {% if has_endpoint('admin.listar_solicitudes_de_cliente_proceso') %}
+          <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes_de_cliente_proceso', cliente_id=c.id) }}">Solicitudes</a>
+          {% else %}
+          <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}" data-admin-nav="true">Solicitudes</a>
+          {% endif %}
+          <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">Reemplazos</a>
+          <a class="btn btn-sm btn-info text-white" href="{{ url_for('admin.reemplazo_nuevo_panel', cliente_id=c.id) }}">Nuevo reemplazo</a>
+          <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
+          {% if has_endpoint('admin.tienda_intereses_list') %}
+          {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}
+          {% set _tienda_nuevos = (tienda_intereses_nuevos_counts.get(c.id, 0) if tienda_intereses_nuevos_counts is defined and tienda_intereses_nuevos_counts else 0) %}
+          <a class="btn btn-sm btn-outline-warning" href="{{ url_for('admin.tienda_intereses_list', cliente_id=c.id) }}">
+            Ver solicitudes tienda{% if _tienda_total > 0 %} ({{ _tienda_total }}){% endif %}
+            {% if _tienda_nuevos > 0 %}<span class="badge rounded-pill text-bg-danger ms-1">{{ _tienda_nuevos }}</span>{% endif %}
+          </a>
+          {% endif %}
+          {% if can_delete_cliente %}
+          <button
+            type="button"
+            class="btn btn-sm btn-danger"
+            data-bs-toggle="modal"
+            data-bs-target="#deleteClienteFromListModalShared"
+            data-delete-cliente-id="{{ c.id }}"
+            data-delete-cliente-codigo="{{ c.codigo or c.id }}"
+            data-delete-cliente-nombre="{{ c.nombre_completo or '—' }}"
+            data-delete-next-url="{{ url_for('admin.listar_clientes', q=q, per_page=per_page, page=page) }}"
+            data-delete-action-url="{{ url_for('admin.eliminar_cliente', cliente_id=c.id) }}"
+          >
+            Eliminar
+          </button>
+          {% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
   </div>
 
-  <div class="d-flex justify-content-between align-items-center mt-3 flex-wrap gap-2">
-    <small class="text-muted">
+  <div class="data-table-shell__footer flex-column flex-md-row">
+    <small class="data-table-shell__summary">
       Mostrando {{ start+1 if total>0 else 0 }}–{{ [end, total]|min }} de {{ total }}
     </small>
-    <nav>
+    <nav aria-label="Paginación de clientes">
       <ul class="pagination pagination-sm mb-0">
         {% set q_current = request.args.get('q','') %}
         {% set per = per_page %}
@@ -211,15 +213,17 @@
   </div>
 </div>
 {% else %}
-<div class="clientes-empty-state py-5 text-center text-muted">
-  <div class="mb-2"><i class="bi bi-search fs-2"></i></div>
+<div class="empty-state">
+  <div class="empty-state__icon" aria-hidden="true">
+    <i class="bi bi-search fs-4"></i>
+  </div>
   {% if not has_search %}
-    <div class="fw-semibold">Busca un cliente para comenzar</div>
-    <div class="small mt-1">Escribe al menos 2 caracteres para buscar un cliente.</div>
-    <div class="small mt-1">Busca un cliente por nombre, teléfono o cédula.</div>
+    <div class="empty-state__title">Busca un cliente para comenzar</div>
+    <p class="empty-state__text">Escribe al menos 2 caracteres para buscar un cliente.</p>
+    <p class="empty-state__text">Busca un cliente por nombre, teléfono o cédula.</p>
   {% else %}
-    <div class="fw-semibold">No hay clientes para mostrar</div>
-    <div class="small mt-1">Prueba ajustando o limpiando la búsqueda.</div>
+    <div class="empty-state__title">No hay clientes para mostrar</div>
+    <p class="empty-state__text">Prueba ajustando o limpiando la búsqueda.</p>
     <a class="btn btn-sm btn-outline-secondary mt-2"
        href="{{ url_for('admin.listar_clientes') }}"
        data-admin-async-link

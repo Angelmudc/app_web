@@ -93,7 +93,57 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("js/core/admin_nav.js", txt)
         self.assertIn("js/admin/solicitud_detail_ui.js", txt)
 
+    def test_candidatas_listado_es_pilot_idempotente_y_sin_inline(self):
+        base_path = os.path.join(os.getcwd(), "templates", "base.html")
+        with open(base_path, "r", encoding="utf-8") as f:
+            base_txt = f.read()
+        self.assertIn("url_for('admin.candidatas_operativo_index')", base_txt)
+        self.assertIn('data-admin-nav="true"', base_txt)
+
+        nav_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_nav.js")
+        with open(nav_path, "r", encoding="utf-8") as f:
+            nav_txt = f.read()
+        self.assertIn("^\\/admin\\/candidatas\\/?$", nav_txt)
+
+        async_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_async.js")
+        with open(async_path, "r", encoding="utf-8") as f:
+            async_txt = f.read()
+        self.assertIn("function bindCandidatasOperativoIndexRuntime()", async_txt)
+        self.assertIn("data-cand-index-search", async_txt)
+        self.assertIn("admin:navigation-complete", async_txt)
+        self.assertIn("admin:content-updated", async_txt)
+        self.assertIn("candIndexBound", async_txt)
+        self.assertIn("candRowBound", async_txt)
+
+        index_tpl = os.path.join(os.getcwd(), "templates", "admin", "candidatas_operativo_index.html")
+        with open(index_tpl, "r", encoding="utf-8") as f:
+            index_txt = f.read()
+        self.assertIn('data-cand-index-search', index_txt)
+        self.assertIn('data-row-url="{{ row.detail_url }}"', index_txt)
+        self.assertNotIn("DOMContentLoaded", index_txt)
+        self.assertNotIn("window.location.href = item.detail_url", index_txt)
+        self.assertNotIn("row.addEventListener('click'", index_txt)
+
     def test_links_piloto_opt_in_en_templates_objetivo(self):
+        clientes_tpl = os.path.join(os.getcwd(), "templates", "admin", "clientes_list.html")
+        with open(clientes_tpl, "r", encoding="utf-8") as f:
+            clientes_txt = f.read()
+        self.assertIn("js/core/admin_nav.js", clientes_txt)
+        self.assertNotIn("__deleteClienteListSharedModalBound", clientes_txt)
+
+        clientes_results_tpl = os.path.join(os.getcwd(), "templates", "admin", "_clientes_list_results.html")
+        with open(clientes_results_tpl, "r", encoding="utf-8") as f:
+            clientes_results_txt = f.read()
+        self.assertIn('data-admin-nav="true"', clientes_results_txt)
+        self.assertIn("url_for('admin.detalle_cliente', cliente_id=c.id)", clientes_results_txt)
+        self.assertIn("url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or ''))", clientes_results_txt)
+
+        cliente_detail_tpl_for_back = os.path.join(os.getcwd(), "templates", "admin", "cliente_detail.html")
+        with open(cliente_detail_tpl_for_back, "r", encoding="utf-8") as f:
+            cliente_detail_back_txt = f.read()
+        self.assertIn('data-admin-nav="true"', cliente_detail_back_txt)
+        self.assertIn("url_for('admin.listar_clientes')", cliente_detail_back_txt)
+
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")
         with open(solicitudes_tpl, "r", encoding="utf-8") as f:
             solicitudes_txt = f.read()
@@ -116,6 +166,12 @@ class AdminPjaxPilotTest(unittest.TestCase):
             cliente_detail_solicitudes_txt = f.read()
         self.assertIn("url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id)", cliente_detail_solicitudes_txt)
         self.assertIn('data-admin-nav="true"', cliente_detail_solicitudes_txt)
+
+        solicitudes_list_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
+        with open(solicitudes_list_tpl, "r", encoding="utf-8") as f:
+            solicitudes_list_txt = f.read()
+        self.assertIn("url_for('admin.solicitudes_prioridad')", solicitudes_list_txt)
+        self.assertIn('data-admin-nav="true"', solicitudes_list_txt)
 
         solicitud_summary_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_detail_summary_region.html")
         with open(solicitud_summary_tpl, "r", encoding="utf-8") as f:
@@ -160,7 +216,9 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("resp.status === 401 || resp.status === 403", txt)
         self.assertIn("if (!nextViewport)", txt)
         self.assertIn("if (!currentViewport)", txt)
+        self.assertIn("^\\/admin\\/clientes\\/?$", txt)
         self.assertIn("^\\/admin\\/solicitudes\\/?$", txt)
+        self.assertIn("^\\/admin\\/solicitudes\\/prioridad\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/?$", txt)
         self.assertIn("updateCurrentHistoryScrollY", txt)
@@ -170,6 +228,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("is-admin-nav-loading", txt)
         self.assertIn("h1, h2", txt)
         self.assertIn("[data-admin-focus-anchor]", txt)
+        self.assertIn("^\\/admin\\/candidatas\\/?$", txt)
 
     def test_feedback_visual_minimo_css_para_pjax(self):
         css_path = os.path.join(os.getcwd(), "static", "css", "base.css")
@@ -178,6 +237,20 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("#adminNavProgressBar", css_txt)
         self.assertIn("#adminNavProgressBar.is-active", css_txt)
         self.assertIn("is-admin-nav-loading", css_txt)
+
+    def test_clientes_list_modal_y_lifecycle_idempotente(self):
+        js_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_lazy_scripts.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            txt = f.read()
+
+        self.assertIn("function hasClientesListMarkers", txt)
+        self.assertIn("function bindClientesListDeleteModal", txt)
+        self.assertIn("deleteClienteFromListModalShared", txt)
+        self.assertIn("clientesSearchForm", txt)
+        self.assertIn("admin:navigation-complete", txt)
+        self.assertIn("modal.dataset.clientesListModalBound = \"1\";", txt)
+        self.assertIn("buildClientesListCleanupCodeHelp", txt)
+        self.assertNotIn("__deleteClienteListSharedModalBound", txt)
 
     def test_templates_piloto_tienen_focus_anchor(self):
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")

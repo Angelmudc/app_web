@@ -357,6 +357,7 @@
           {% if has_endpoint('admin.candidatas_operativo_index') and _staff_authenticated and (_staff_role in ['owner', 'admin', 'secretaria']) %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint in ['admin.candidatas_operativo_index', 'admin.candidatas_operativo_detail'] %}active{% endif %}"
+               data-admin-nav="true"
                href="{{ url_for('admin.candidatas_operativo_index') }}">Domésticas</a>
           </li>
           {% endif %}

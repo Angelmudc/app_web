@@ -29,6 +29,9 @@
   function isPilotPath(pathname) {
     const path = String(pathname || "");
     if (/^\/admin\/solicitudes\/?$/.test(path)) return true;
+    if (/^\/admin\/solicitudes\/prioridad\/?$/.test(path)) return true;
+    if (/^\/admin\/clientes\/?$/.test(path)) return true;
+    if (/^\/admin\/candidatas\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/?$/.test(path)) return true;
     return false;

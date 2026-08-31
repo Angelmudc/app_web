@@ -1,0 +1,35 @@
+<div id="candidataInterviewsRecentAsyncRegion">
+  {% if entrevista_summary.recent %}
+    <ul class="cand-list small mb-2">
+      {% for item in entrevista_summary.recent %}
+        {% set interview_refs = entrevista_summary.reference_map.get(item.id, []) %}
+        <li>
+          <div class="d-flex justify-content-between gap-2 flex-wrap">
+            <span>{{ item.tipo or 'sin tipo' }} · {{ (item.creada_en or item.actualizada_en)|rd_datetime('%d/%m/%Y %I:%M %p') if (item.creada_en or item.actualizada_en) else 'sin fecha' }} · {{ item.estado or 'sin estado' }}</span>
+            <span class="d-flex gap-2">
+              <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Leer respuestas</a>
+              <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Editar</a>
+              <a href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=item.id) }}">Descargar PDF</a>
+            </span>
+          </div>
+          {% if interview_refs %}
+            <div class="mt-2">
+              <strong>Referencias registradas durante entrevista</strong>
+              <div class="cand-muted small">Información registrada por el entrevistador durante esta entrevista.</div>
+              <dl class="cand-kv cand-kv-tight mt-1 mb-0">
+                {% for ref in interview_refs %}
+                  <dt>{{ ref.label }}</dt>
+                  <dd class="white-space-pre-line">{{ ref.respuesta }}</dd>
+                {% endfor %}
+              </dl>
+            </div>
+          {% else %}
+            <div class="cand-muted small mt-2">No se registraron referencias en esta entrevista.</div>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="cand-muted small mb-2">Sin entrevistas nuevas.</div>
+  {% endif %}
+</div>

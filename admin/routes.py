@@ -10867,6 +10867,17 @@ def _cliente_detail_regions_context(
     include_timeline: bool = True,
 ) -> dict:
     cliente = Cliente.query.get_or_404(cliente_id)
+    try:
+        page = int(request.args.get("page", 1) or 1)
+    except Exception:
+        page = 1
+    page = max(1, page)
+    try:
+        per_page = int(request.args.get("per_page", 25) or 25)
+    except Exception:
+        per_page = 25
+    per_page = max(10, min(per_page, 100))
+
     solicitud_attrs = []
     for attr in (
         "id",
@@ -10941,6 +10952,14 @@ def _cliente_detail_regions_context(
         .order_by(Solicitud.fecha_solicitud.desc())
         .all()
     )
+    total_solicitudes = len(solicitudes or [])
+    total_pages = max(1, ((total_solicitudes - 1) // per_page) + 1) if total_solicitudes > 0 else 1
+    if page > total_pages:
+        page = total_pages
+    start = max(0, (page - 1) * per_page)
+    end = start + per_page
+    solicitudes_page = (solicitudes or [])[start:end]
+    has_more = page < total_pages
     solicitud_pago_habilitado: dict[int, bool] = {}
     solicitud_whatsapp_activation: dict[int, dict] = {}
     for s in (solicitudes or []):
@@ -11015,6 +11034,12 @@ def _cliente_detail_regions_context(
     return {
         "cliente": cliente,
         "solicitudes": solicitudes,
+        "solicitudes_page": solicitudes_page,
+        "page": page,
+        "per_page": per_page,
+        "total": total_solicitudes,
+        "total_pages": total_pages,
+        "has_more": has_more,
         "solicitud_pago_habilitado": solicitud_pago_habilitado,
         "solicitud_whatsapp_activation": solicitud_whatsapp_activation,
         "kpi_cliente": kpi_cliente,
@@ -11178,9 +11203,8 @@ def detalle_cliente(cliente_id):
                 .all()
             )
         with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
-            solicitudes_render = _cliente_detail_solicitudes_render_rows(solicitudes)
             render_ctx = dict(region_ctx)
-            render_ctx["solicitudes"] = solicitudes_render
+            render_ctx["solicitudes"] = _cliente_detail_solicitudes_render_rows(region_ctx["solicitudes_page"])
             html = render_template(
                 'admin/cliente_detail.html',
                 timeline=timeline,
@@ -11227,7 +11251,11 @@ def cliente_detail_solicitudes_fragment(cliente_id):
             html = render_template(
                 'admin/_cliente_detail_solicitudes_region.html',
                 cliente=region_ctx["cliente"],
-                solicitudes=region_ctx["solicitudes"],
+                solicitudes=region_ctx["solicitudes_page"],
+                page=region_ctx["page"],
+                per_page=region_ctx["per_page"],
+                total=region_ctx["total"],
+                has_more=region_ctx["has_more"],
                 solicitud_pago_habilitado=region_ctx["solicitud_pago_habilitado"],
                 reemplazos_activos=region_ctx["reemplazos_activos"],
                 is_admin_role=region_ctx["is_admin_role"],
@@ -22824,6 +22852,55 @@ def _candidata_center_interview_reference_map(entrevista_ids: list[int]) -> dict
     return refs
 
 
+def _candidata_center_recent_interviews(fila: int) -> list:
+    return (
+        Entrevista.query.options(
+            load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+        )
+        .filter(Entrevista.candidata_id == int(fila))
+        .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
+        .limit(4)
+        .all()
+    )
+
+
+def _candidata_center_public_profile(fila: int):
+    return (
+        CandidataWeb.query.options(
+            load_only(
+                CandidataWeb.id,
+                CandidataWeb.candidata_id,
+                CandidataWeb.visible,
+                CandidataWeb.estado_publico,
+                CandidataWeb.es_destacada,
+                CandidataWeb.fecha_ultima_actualizacion,
+            )
+        )
+        .filter(CandidataWeb.candidata_id == int(fila))
+        .first()
+    )
+
+
+def _candidata_center_recent_calls(fila: int):
+    return (
+        LlamadaCandidata.query.options(
+            load_only(
+                LlamadaCandidata.id,
+                LlamadaCandidata.fecha_llamada,
+                LlamadaCandidata.agente,
+                LlamadaCandidata.resultado,
+                LlamadaCandidata.duracion_segundos,
+                LlamadaCandidata.notas,
+                LlamadaCandidata.proxima_llamada,
+            )
+        )
+        .filter(LlamadaCandidata.candidata_id == int(fila))
+        .order_by(LlamadaCandidata.fecha_llamada.desc(), LlamadaCandidata.id.desc())
+        .limit(5)
+        .all()
+    )
+
+
 def _candidata_center_legacy_urls(fila: int) -> dict:
     next_url = _candidata_center_return_path(fila)
     return {
@@ -23016,41 +23093,6 @@ def _candidata_center_detail_context(fila: int) -> dict:
         .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
         .first()
     )
-    recent_interviews = (
-        Entrevista.query.options(
-            load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
-        )
-        .filter(Entrevista.candidata_id == int(fila))
-        .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
-        .limit(4)
-        .all()
-    )
-    interview_references = _candidata_center_interview_reference_map(
-        [int(item.id) for item in recent_interviews if getattr(item, "id", None)]
-    )
-    recent_calls = (
-        LlamadaCandidata.query.options(
-            load_only(
-                LlamadaCandidata.id,
-                LlamadaCandidata.fecha_llamada,
-                LlamadaCandidata.agente,
-                LlamadaCandidata.resultado,
-                LlamadaCandidata.duracion_segundos,
-                LlamadaCandidata.notas,
-                LlamadaCandidata.proxima_llamada,
-            )
-        )
-        .filter(LlamadaCandidata.candidata_id == int(fila))
-        .order_by(LlamadaCandidata.fecha_llamada.desc(), LlamadaCandidata.id.desc())
-        .limit(5)
-        .all()
-    )
-    calls_count = (
-        db.session.query(func.count(LlamadaCandidata.id))
-        .filter(LlamadaCandidata.candidata_id == int(fila))
-        .scalar()
-        or 0
-    )
     seguimiento = (
         SeguimientoCandidataCaso.query.options(
             load_only(
@@ -23074,38 +23116,6 @@ def _candidata_center_detail_context(fila: int) -> dict:
         .order_by(SeguimientoCandidataCaso.last_movement_at.desc(), SeguimientoCandidataCaso.id.desc())
         .first()
     )
-    seguimiento_events = []
-    seguimiento_events_ready = False
-    try:
-        seguimiento_events_ready = bool(sa_inspect(db.engine).has_table("seguimiento_candidatas_eventos"))
-    except Exception:
-        seguimiento_events_ready = False
-    if seguimiento and seguimiento_events_ready:
-        seguimiento_events = (
-            SeguimientoCandidataEvento.query.options(
-                load_only(
-                    SeguimientoCandidataEvento.id,
-                    SeguimientoCandidataEvento.caso_id,
-                    SeguimientoCandidataEvento.event_type,
-                    SeguimientoCandidataEvento.note,
-                    SeguimientoCandidataEvento.created_at,
-                ),
-            )
-            .filter(SeguimientoCandidataEvento.caso_id == int(seguimiento.id))
-            .order_by(SeguimientoCandidataEvento.created_at.desc(), SeguimientoCandidataEvento.id.desc())
-            .limit(5)
-            .all()
-        )
-    public_profile = CandidataWeb.query.options(
-        load_only(
-            CandidataWeb.id,
-            CandidataWeb.candidata_id,
-            CandidataWeb.visible,
-            CandidataWeb.estado_publico,
-            CandidataWeb.es_destacada,
-            CandidataWeb.fecha_ultima_actualizacion,
-        )
-    ).filter(CandidataWeb.candidata_id == int(fila)).first()
     active_assignment = Solicitud.query.options(
         load_only(Solicitud.id, Solicitud.codigo_solicitud, Solicitud.estado, Solicitud.candidata_id, Solicitud.fecha_solicitud)
     ).filter(
@@ -23345,16 +23355,12 @@ def _candidata_center_detail_context(fila: int) -> dict:
             "count": entrevistas_count,
             "last": ultima_entrevista,
             "last_date": getattr(entrevista_stats, "last_date", None),
-            "recent": recent_interviews,
-            "reference_map": interview_references,
+            "recent": [],
+            "reference_map": {},
         },
         "legacy_entrevista_display": legacy_entrevista_display,
-        "recent_calls": recent_calls,
-        "calls_count": int(calls_count or 0),
         "seguimiento": seguimiento,
-        "seguimiento_events": seguimiento_events,
         "next_action": next_action,
-        "public_profile": public_profile,
         "active_assignment": active_assignment,
         "solicitud_links": solicitud_links,
         "audit_logs": audit_logs,
@@ -23461,7 +23467,7 @@ def _candidata_center_response_payload(
                 "resultado": call.resultado or "",
                 "notas": _center_text(call.notas, 180),
             }
-            for call in ctx["recent_calls"]
+            for call in _candidata_center_recent_calls(int(fila))
         ],
         "values": ctx["edit_values"],
         "display": {
@@ -23727,9 +23733,76 @@ def candidatas_operativo_index():
 @login_required
 @staff_required
 def candidatas_operativo_detail(fila: int):
-    ctx = _candidata_center_detail_context(int(fila))
-    _candidata_center_touch_recent(int(fila))
-    return render_template("admin/candidatas_operativo_detail.html", **ctx)
+    with _p1c1_perf_scope("candidatas_operativo_detail") as perf_done:
+        ctx = _candidata_center_detail_context(int(fila))
+        _candidata_center_touch_recent(int(fila))
+        html = render_template("admin/candidatas_operativo_detail.html", **ctx)
+        return perf_done(html, html_bytes=len(html.encode("utf-8")), extra={"mode": "full"})
+
+
+@admin_bp.route("/candidatas/<int:fila>/_entrevistas", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_entrevistas_fragment(fila: int):
+    with _p1c1_perf_scope("candidatas_operativo_entrevistas_fragment") as perf_done:
+        candidata = Candidata.query.options(load_only(Candidata.fila, Candidata.nombre_completo, Candidata.codigo, Candidata.entrevista, Candidata.estado)).filter(Candidata.fila == int(fila)).first_or_404()
+        entrevista_stats = (
+            db.session.query(
+                func.count(Entrevista.id).label("count"),
+                func.max(Entrevista.creada_en).label("last_date"),
+            )
+            .filter(Entrevista.candidata_id == int(fila))
+            .first()
+        )
+        entrevistas_count = int(getattr(entrevista_stats, "count", 0) or 0)
+        recent_interviews = _candidata_center_recent_interviews(int(fila))
+        interview_references = _candidata_center_interview_reference_map(
+            [int(item.id) for item in recent_interviews if getattr(item, "id", None)]
+        )
+        ultima_entrevista = recent_interviews[0] if recent_interviews else (
+            Entrevista.query.options(
+                load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+            )
+            .filter(Entrevista.candidata_id == int(fila))
+            .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
+            .first()
+        )
+        legacy_entrevista_display = build_legacy_interview_display(getattr(candidata, "entrevista", None))
+        html = render_template(
+            "admin/_candidata_operativo_entrevistas_recent_fragment.html",
+            candidata=candidata,
+            entrevista_summary={
+                "count": entrevistas_count,
+                "last": ultima_entrevista,
+                "recent": recent_interviews,
+                "reference_map": interview_references,
+            },
+            legacy_entrevista_display=legacy_entrevista_display,
+            center_next_url=_candidata_center_return_path(int(fila)),
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "candidataInterviewsRecentAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_entrevistas"})
+
+
+@admin_bp.route("/candidatas/<int:fila>/_actividad-publica", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_actividad_publica_fragment(fila: int):
+    with _p1c1_perf_scope("candidatas_operativo_actividad_publica_fragment") as perf_done:
+        candidata = Candidata.query.options(load_only(Candidata.fila, Candidata.nombre_completo, Candidata.codigo)).filter(Candidata.fila == int(fila)).first_or_404()
+        public_profile = _candidata_center_public_profile(int(fila))
+        html = render_template(
+            "admin/_candidata_operativo_public_profile_fragment.html",
+            candidata=candidata,
+            public_profile=public_profile,
+            legacy_urls=_candidata_center_legacy_urls(int(fila)),
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "candidataPublicProfileAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_public_profile"})
 
 
 @admin_bp.route("/candidatas/busqueda-rapida.json", methods=["GET"])
