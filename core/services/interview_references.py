@@ -242,6 +242,55 @@ def collect_entrevista_reference_items(entrevista: Any) -> list[dict[str, Any]]:
     return list(refs.get(entrevista_id, []))
 
 
+def collect_candidata_reference_items(candidata: Any) -> list[dict[str, Any]]:
+    if not candidata:
+        return []
+
+    items: list[dict[str, Any]] = []
+    for tipo, label, attr in (
+        ("laboral", "Laboral", "referencias_laboral"),
+        ("familiar", "Familiar", "referencias_familiares"),
+    ):
+        texto = _clean_text(getattr(candidata, attr, None))
+        if not texto:
+            continue
+        items.append(
+            {
+                "tipo": tipo,
+                "label": label,
+                "respuesta": texto,
+                "texto": texto,
+                "datos_json": {},
+                "source": "candidate_legacy",
+            }
+        )
+    return items
+
+
+def collect_pdf_reference_section(entrevista: Any, candidata: Any) -> dict[str, Any]:
+    entrevista_items = collect_entrevista_reference_items(entrevista)
+    if entrevista_items:
+        return {
+            "title": "Referencias de la entrevista",
+            "items": entrevista_items,
+            "source": "entrevista",
+        }
+
+    candidata_items = collect_candidata_reference_items(candidata)
+    if candidata_items:
+        return {
+            "title": "Referencias verificadas de la candidata",
+            "items": candidata_items,
+            "source": "candidata",
+        }
+
+    return {
+        "title": "Referencias de la entrevista",
+        "items": [],
+        "source": "none",
+    }
+
+
 def is_interview_reference_question(pregunta: Any) -> bool:
     clave = str(getattr(pregunta, "clave", "") or "").strip().lower()
     return clave in INTERVIEW_REFERENCE_QUESTION_KEYS

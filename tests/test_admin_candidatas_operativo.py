@@ -532,7 +532,7 @@ def test_admin_candidata_ficha_readonly_flags_limites_legacy_y_sin_blobs():
     assert "/admin/candidatas/990502/referencias-formulario" in html
     assert "/admin/candidatas/990502/referencias" in html
     assert "Editar formulario" in html
-    assert "Editar entrevista" in html
+    assert "Editar referencias" in html
     assert "Editar inscripción" in html
     assert "Ver entrevistas" in html
     assert "Abrir seguimiento" in html
@@ -756,7 +756,7 @@ def test_admin_candidata_ficha_separa_referencias_formulario_y_entrevista():
     assert "Referencias del formulario" in html
     assert "FORM-LAB-REAL" in html
     assert "FORM-FAM-REAL" in html
-    assert "Referencias de entrevista" in html
+    assert "Referencias verificadas" in html
     assert "INT-LAB-REAL" in html
     assert "INT-FAM-REAL" in html
     assert "Referencia laboral declarada completa" not in html
@@ -852,7 +852,7 @@ def test_admin_candidata_ficha_no_usa_referencias_formulario_como_fallback_de_en
     assert "Referencias y entrevista" in html
     assert "Referencias del formulario" in html
     assert "Patrona anterior 809-111-1111" in html
-    assert "Referencias de entrevista" in html
+    assert "Referencias verificadas" in html
     assert "SECRETARIA-LAB" in html
     assert "SECRETARIA-FAM" in html
     entrevista_fragment = client.get("/admin/candidatas/990541/_entrevistas", follow_redirects=False)
@@ -896,7 +896,7 @@ def test_admin_candidata_ficha_no_usa_entrevista_como_fallback_de_formulario():
     assert "Referencias y entrevista" in html
     assert "Referencias del formulario" in html
     assert "No informado" in html
-    assert "Referencias de entrevista" in html
+    assert "Referencias verificadas" in html
     entrevista_fragment = client.get("/admin/candidatas/990542/_entrevistas", follow_redirects=False)
     assert entrevista_fragment.status_code == 200
     entrevista_html = entrevista_fragment.get_data(as_text=True)
@@ -1449,7 +1449,7 @@ def test_admin_candidatas_jornada_operativa_busqueda_contexto_y_recientes():
     assert "Requisitos completos" in preparacion_html
     assert "9/9" in preparacion_html
     assert "Editar formulario" in detail_html
-    assert "Editar entrevista" in detail_html
+    assert "Editar referencias" in detail_html
     assert "lista_para_trabajar" not in detail_html.split("<header", 1)[1].split("</header>", 1)[0]
 
     assert client.get("/admin/candidatas/990581", follow_redirects=False).status_code == 200

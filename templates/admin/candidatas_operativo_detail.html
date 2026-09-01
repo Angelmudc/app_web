@@ -652,14 +652,14 @@
           </div>
         </section>
 
-        <section class="detail-section cand-panel cand-span-6" data-edit-section="secretary_references" aria-label="Referencias de entrevista">
+        <section class="detail-section cand-panel cand-span-6" data-edit-section="secretary_references" aria-label="Referencias verificadas">
           <div class="detail-section__header">
             <div>
-              <h3 class="detail-section__title">Referencias de entrevista</h3>
-              <p class="detail-section__subtitle">Fuente exclusiva: entrevista o secretaría.</p>
+              <h3 class="detail-section__title">Referencias verificadas</h3>
+              <p class="detail-section__subtitle">Fuente: candidata verificada.</p>
             </div>
             <div class="detail-actions">
-              <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar entrevista</button>
+              <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar referencias</button>
             </div>
           </div>
           <div class="detail-section__body">
@@ -676,9 +676,9 @@
                 <small>Estado</small>
                 <span>
                   {% if secretary_references_summary.laboral and secretary_references_summary.familiar %}
-                    Referencias de entrevista completas.
+                    Referencias verificadas completas.
                   {% else %}
-                    Referencias de entrevista pendientes.
+                    Referencias verificadas pendientes.
                   {% endif %}
                 </span>
               </div>
@@ -691,12 +691,12 @@
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <input type="hidden" name="candidata_id" value="{{ candidata.fila }}">
               <div class="mb-2">
-                <label class="form-label small" for="cand_ref_int_lab">Referencia laboral de entrevista</label>
+                <label class="form-label small" for="cand_ref_int_lab">Referencia laboral verificada</label>
                 <textarea class="form-control form-control-sm" id="cand_ref_int_lab" name="referencias_laboral" rows="4">{{ edit_values.secretary_references.referencias_laboral }}</textarea>
                 <div class="text-danger small cand-field-error" data-error-for="referencias_laboral"></div>
               </div>
               <div class="mb-2">
-                <label class="form-label small" for="cand_ref_int_fam">Referencia familiar de entrevista</label>
+                <label class="form-label small" for="cand_ref_int_fam">Referencia familiar verificada</label>
                 <textarea class="form-control form-control-sm" id="cand_ref_int_fam" name="referencias_familiares" rows="4">{{ edit_values.secretary_references.referencias_familiares }}</textarea>
                 <div class="text-danger small cand-field-error" data-error-for="referencias_familiares"></div>
               </div>

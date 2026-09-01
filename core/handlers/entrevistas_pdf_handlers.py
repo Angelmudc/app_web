@@ -11,7 +11,7 @@ from flask import current_app, redirect, request, send_file, url_for
 from decorators import roles_required
 
 from core import legacy_handlers as legacy_h
-from core.services.interview_references import collect_entrevista_reference_items
+from core.services.interview_references import collect_pdf_reference_section
 
 
 @roles_required('admin', 'secretaria')
@@ -30,9 +30,10 @@ def generar_pdf_entrevista_db(entrevista_id: int):
     if not candidata:
         return "Candidata no encontrada", 404
 
-    referencias_entrevista = [
+    reference_section = collect_pdf_reference_section(entrevista, candidata)
+    reference_items = [
         (item["label"], item["respuesta"])
-        for item in collect_entrevista_reference_items(entrevista)
+        for item in (reference_section.get("items") or [])
     ]
 
     respuestas = (
@@ -267,13 +268,32 @@ def generar_pdf_entrevista_db(entrevista_id: int):
         except Exception:
             pdf.set_font("Arial", "B", 13)
 
-        pdf.set_text_color(*BRAND)
-        pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias registradas durante entrevista", ln=True)
-        pdf.set_text_color(0, 0, 0)
-        pdf.ln(2)
-
-        if referencias_entrevista:
-            for label, value in referencias_entrevista:
+        if reference_items and reference_section.get("source") == "entrevista":
+            pdf.set_text_color(*BRAND)
+            pdf.cell(0, 9, ("📌 " if unicode_ok else "") + str(reference_section.get("title") or "Referencias de la entrevista"), ln=True)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(2)
+            for label, value in reference_items:
+                try:
+                    pdf.set_font(base_font, "B" if has_bold else "", 12)
+                except Exception:
+                    pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 7, _ascii_if_needed(_collapse_ws(label), unicode_ok) + ":", ln=True)
+                safe_multicell(
+                    pdf,
+                    _wrap_unbreakables(_ascii_if_needed(value, unicode_ok), 60),
+                    base_font,
+                    "",
+                    12,
+                    color=BRAND,
+                    align="J",
+                )
+        elif reference_items and reference_section.get("source") == "candidata":
+            pdf.set_text_color(*BRAND)
+            pdf.cell(0, 9, ("📌 " if unicode_ok else "") + str(reference_section.get("title") or "Referencias verificadas de la candidata"), ln=True)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(2)
+            for label, value in reference_items:
                 try:
                     pdf.set_font(base_font, "B" if has_bold else "", 12)
                 except Exception:
@@ -289,6 +309,10 @@ def generar_pdf_entrevista_db(entrevista_id: int):
                     align="J",
                 )
         else:
+            pdf.set_text_color(*BRAND)
+            pdf.cell(0, 9, ("📌 " if unicode_ok else "") + "Referencias de la entrevista", ln=True)
+            pdf.set_text_color(0, 0, 0)
+            pdf.ln(2)
             safe_multicell(
                 pdf,
                 "No se registraron referencias en esta entrevista.",

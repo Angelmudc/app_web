@@ -7,7 +7,11 @@ from app import app as flask_app
 from config_app import db
 from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta
 from core.services import pdf as pdf_service
-from core.services.interview_references import collect_entrevista_reference_items, sync_entrevista_referencias_from_answers
+from core.services.interview_references import (
+    collect_entrevista_reference_items,
+    collect_pdf_reference_section,
+    sync_entrevista_referencias_from_answers,
+)
 from tests.t1_testkit import ensure_sqlite_compat_tables
 from utils.timezone import utc_now_naive
 
@@ -174,6 +178,152 @@ def test_pdf_referencias_entrevista_fallback_historico_usa_respuestas_estructura
         collected = collect_entrevista_reference_items(entrevista)
 
     assert [(item["tipo"], item["respuesta"]) for item in collected] == [('laboral', 'Cinco años en casa de familia.')]
+
+
+def test_pdf_referencias_entrevista_usa_referencias_verificadas_de_la_candidata_si_no_hay_explicitas():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991104).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991104).delete(synchronize_session=False)
+        cand = Candidata(
+            fila=991104,
+            nombre_completo='Ana PDF Candidate',
+            referencias_laboral='CAND-LAB-ONLY',
+            referencias_familiares='CAND-FAM-ONLY',
+        )
+        db.session.add(cand)
+        pregunta = EntrevistaPregunta(
+            clave='domestica.saludo_inicial',
+            texto='Saludo inicial',
+            tipo='texto',
+            orden=1,
+            activa=True,
+        )
+        db.session.add(pregunta)
+        entrevista = Entrevista(candidata_id=991104, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.flush()
+        db.session.add(
+            EntrevistaRespuesta(
+                entrevista_id=entrevista.id,
+                pregunta_id=pregunta.id,
+                respuesta='Respuesta no relacionada con referencias.',
+                creada_en=utc_now_naive(),
+            )
+        )
+        db.session.commit()
+        section = collect_pdf_reference_section(entrevista, cand)
+        before = EntrevistaReferencia.query.filter_by(entrevista_id=entrevista.id).count()
+
+    assert section["source"] == "candidata"
+    assert section["title"] == "Referencias verificadas de la candidata"
+    assert [(item["tipo"], item["respuesta"]) for item in section["items"]] == [
+        ('laboral', 'CAND-LAB-ONLY'),
+        ('familiar', 'CAND-FAM-ONLY'),
+    ]
+    assert before == 0
+
+
+def test_pdf_referencias_entrevista_sin_fuente_mantiene_seccion_vacia():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991105).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991105).delete(synchronize_session=False)
+        cand = Candidata(
+            fila=991105,
+            nombre_completo='Ana PDF Empty',
+        )
+        db.session.add(cand)
+        pregunta = EntrevistaPregunta(
+            clave='domestica.saludo_inicial',
+            texto='Saludo inicial',
+            tipo='texto',
+            orden=1,
+            activa=True,
+        )
+        db.session.add(pregunta)
+        entrevista = Entrevista(candidata_id=991105, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.add(
+            EntrevistaRespuesta(
+                entrevista_id=entrevista.id,
+                pregunta_id=pregunta.id,
+                respuesta='Respuesta general sin referencias.',
+                creada_en=utc_now_naive(),
+            )
+        )
+        db.session.commit()
+        section = collect_pdf_reference_section(entrevista, cand)
+
+    assert section["source"] == "none"
+    assert section["items"] == []
+    assert section["title"] == "Referencias de la entrevista"
+
+
+def test_pdf_generar_no_persiste_referencias_entrevista_al_usar_fallback_de_candidata():
+    flask_app.config['TESTING'] = True
+    flask_app.config['WTF_CSRF_ENABLED'] = False
+    client = flask_app.test_client()
+    assert _login_secretaria(client).status_code in (302, 303)
+
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([Candidata, Entrevista, EntrevistaPregunta, EntrevistaReferencia, EntrevistaRespuesta], reset=False)
+        db.session.query(EntrevistaRespuesta).delete(synchronize_session=False)
+        db.session.query(EntrevistaReferencia).delete(synchronize_session=False)
+        db.session.query(EntrevistaPregunta).filter(EntrevistaPregunta.clave.like('domestica.%')).delete(synchronize_session=False)
+        db.session.query(Entrevista).filter(Entrevista.candidata_id == 991106).delete(synchronize_session=False)
+        db.session.query(Candidata).filter(Candidata.fila == 991106).delete(synchronize_session=False)
+        cand = Candidata(
+            fila=991106,
+            nombre_completo='Ana PDF Persist',
+            referencias_laboral='CAND-LAB-PERSIST',
+            referencias_familiares='CAND-FAM-PERSIST',
+        )
+        db.session.add(cand)
+        pregunta = EntrevistaPregunta(
+            clave='domestica.saludo_inicial',
+            texto='Saludo inicial',
+            tipo='texto',
+            orden=1,
+            activa=True,
+        )
+        db.session.add(pregunta)
+        entrevista = Entrevista(candidata_id=991106, tipo='domestica', estado='completa', creada_en=utc_now_naive())
+        db.session.add(entrevista)
+        db.session.flush()
+        db.session.add(
+            EntrevistaRespuesta(
+                entrevista_id=entrevista.id,
+                pregunta_id=pregunta.id,
+                respuesta='Respuesta general sin referencias.',
+                creada_en=utc_now_naive(),
+            )
+        )
+        db.session.commit()
+        entrevista_id = entrevista.id
+        before = EntrevistaReferencia.query.filter_by(entrevista_id=entrevista_id).count()
+
+    with flask_app.app_context():
+        with patch('core.handlers.entrevistas_pdf_handlers.send_file', return_value=Response(b'%PDF-demo', mimetype='application/pdf')):
+            resp = client.get(f'/entrevistas/pdf/{entrevista_id}', follow_redirects=False)
+        after = EntrevistaReferencia.query.filter_by(entrevista_id=entrevista_id).count()
+
+    assert resp.status_code == 200
+    assert resp.mimetype == 'application/pdf'
+    assert before == 0
+    assert after == 0
 
 
 def test_sync_entrevista_referencias_crea_actualiza_y_borra_sin_duplicar():
