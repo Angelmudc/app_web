@@ -22903,6 +22903,271 @@ def _candidata_center_recent_calls(fila: int):
     )
 
 
+def _candidata_center_doc_flags(candidata) -> dict[str, bool]:
+    return {
+        "depuracion": bool(getattr(candidata, "depuracion", None)),
+        "perfil": bool(getattr(candidata, "perfil", None)),
+        "cedula1": bool(getattr(candidata, "cedula1", None)),
+        "cedula2": bool(getattr(candidata, "cedula2", None)),
+    }
+
+
+def _candidata_center_personal_display(candidata) -> dict[str, str]:
+    fields = [
+        ("Nombre", candidata.nombre_completo),
+        ("Edad", candidata.edad),
+        ("Teléfono", candidata.numero_telefono),
+        ("Dirección", candidata.direccion_completa),
+        ("Cédula", candidata.cedula),
+        ("Código", candidata.codigo),
+        ("Marca temporal", candidata.marca_temporal),
+        ("Origen de registro", candidata.origen_registro),
+        ("Registrada por", candidata.creado_por_staff),
+        ("Ruta de creación", candidata.creado_desde_ruta),
+        ("Último cambio de estado", candidata.fecha_cambio_estado),
+        ("Usuario cambio estado", candidata.usuario_cambio_estado),
+    ]
+    return {label: str(value or "") for label, value in fields if _center_text(value)}
+
+
+def _candidata_center_labor_display(candidata) -> dict[str, str]:
+    fields = [
+        ("Modalidad preferida", candidata.modalidad_trabajo_preferida),
+        ("Rutas", candidata.rutas_cercanas),
+        ("Disponibilidad/inicio", candidata.disponibilidad_inicio or candidata.inicio),
+        ("Empleo anterior", candidata.empleo_anterior),
+        ("Años de experiencia", candidata.anos_experiencia),
+        ("Áreas de experiencia", candidata.areas_experiencia),
+        ("Sabe planchar", _center_bool_label(candidata.sabe_planchar)),
+        ("Trabaja con niños", _center_bool_label(candidata.trabaja_con_ninos)),
+        ("Trabaja con mascotas", _center_bool_label(candidata.trabaja_con_mascotas)),
+        ("Puede dormir fuera", _center_bool_label(candidata.puede_dormir_fuera)),
+        ("Sueldo esperado", candidata.sueldo_esperado),
+        ("Motivo para trabajar", candidata.motivacion_trabajo),
+        ("Acepta porcentaje sueldo", _center_bool_label(candidata.acepta_porcentaje_sueldo)),
+        ("Fecha finalización proceso", candidata.fecha_finalizacion_proceso),
+        ("Grupos de empleo", ", ".join(candidata.grupos_empleo or [])),
+    ]
+    return {label: str(value or "") for label, value in fields if _center_text(value)}
+
+
+def _candidata_center_reference_display(candidata) -> dict[str, dict[str, str]]:
+    form_references = {
+        "laboral": _center_text(getattr(candidata, "contactos_referencias_laborales", ""), 160),
+        "familiar": _center_text(getattr(candidata, "referencias_familiares_detalle", ""), 160),
+        "laboral_full": _center_text(getattr(candidata, "contactos_referencias_laborales", "")),
+        "familiar_full": _center_text(getattr(candidata, "referencias_familiares_detalle", "")),
+    }
+    secretary_references = {
+        "laboral": _center_text(getattr(candidata, "referencias_laboral", ""), 160),
+        "familiar": _center_text(getattr(candidata, "referencias_familiares", ""), 160),
+        "laboral_full": _center_text(getattr(candidata, "referencias_laboral", "")),
+        "familiar_full": _center_text(getattr(candidata, "referencias_familiares", "")),
+    }
+    return {
+        "form_references": form_references,
+        "secretary_references": secretary_references,
+        "references": form_references,
+        "references_summary": {
+            "laboral": bool(form_references["laboral_full"]),
+            "familiar": bool(form_references["familiar_full"]),
+        },
+        "secretary_references_summary": {
+            "laboral": bool(secretary_references["laboral_full"]),
+            "familiar": bool(secretary_references["familiar_full"]),
+        },
+    }
+
+
+def _candidata_center_inscription_display(candidata) -> dict[str, dict[str, str]]:
+    return {
+        "display": {
+            "inscription": {
+                "Código": candidata.codigo or "",
+                "Estado": "Inscrita" if bool(candidata.inscripcion) else "No inscrita",
+                "Medio de pago": candidata.medio_inscripcion or "",
+                "Pago de inscripción": str(candidata.monto or ""),
+                "Fecha de inscripción": candidata.fecha.isoformat() if candidata.fecha else "",
+                "Inscrita por": (getattr(candidata, "usuario_cambio_estado", None) or getattr(candidata, "creado_por_staff", None) or ""),
+            }
+        },
+        "values": {
+            "inscription": {
+                "medio": candidata.medio_inscripcion or "",
+                "estado": "si" if bool(candidata.inscripcion) else "no",
+                "monto": str(candidata.monto or ""),
+                "fecha": candidata.fecha.isoformat() if candidata.fecha else "",
+            }
+        },
+    }
+
+
+def _candidata_center_state_snapshot_payload(candidata, *, include_readiness: bool, include_state_capabilities: bool) -> dict[str, dict]:
+    payload: dict[str, dict] = {}
+    if not include_readiness and not include_state_capabilities:
+        return payload
+    entrevistas_count = int(
+        Entrevista.query.filter(Entrevista.candidata_id == int(candidata.fila)).count() or 0
+    )
+    doc_flags = _candidata_center_doc_flags(candidata)
+    if include_readiness:
+        readiness = _candidata_center_build_readiness(candidata, entrevistas_count, doc_flags)
+        completed = sum(1 for ok in readiness["flags"].values() if ok)
+        payload["readiness"] = {
+            "ready": bool(readiness["ready"]),
+            "completed": completed,
+            "total": len(readiness["flags"]),
+            "label": f"{completed}/{len(readiness['flags'])}",
+            "flags": readiness["flags"],
+            "labels": readiness["labels"],
+            "reasons": readiness["reasons"],
+        }
+    if include_state_capabilities:
+        state_capabilities = build_candidata_state_capabilities(
+            candidata,
+            entrevistas_count=entrevistas_count,
+            doc_flags=doc_flags,
+        )
+        payload["state_capabilities"] = state_capabilities
+        payload["active_assignment"] = state_capabilities.get("assignment")
+    return payload
+
+
+def _candidata_center_partial_response_payload(
+    candidata,
+    message: str,
+    changes: dict | None = None,
+    finance_event: dict | None = None,
+    *,
+    include_personal: bool = False,
+    include_labor: bool = False,
+    include_form_references: bool = False,
+    include_secretary_references: bool = False,
+    include_inscription: bool = False,
+    include_readiness: bool = False,
+    include_state_capabilities: bool = False,
+    include_recent_calls: bool = False,
+) -> dict:
+    payload = {
+        "ok": True,
+        "message": message,
+        "changes": changes or {},
+        "header": {
+            "nombre": candidata.nombre_completo or "",
+            "edad": candidata.edad or "",
+            "telefono": candidata.numero_telefono or "",
+            "codigo": candidata.codigo or "",
+            "estado": candidata.estado or "",
+            "estado_label": _center_state_label(candidata.estado),
+        },
+        "candidate": {
+            "codigo": candidata.codigo or "",
+            "estado": candidata.estado or "",
+        },
+        "status_badges": {
+            "inscrita": bool(candidata.inscripcion),
+            "lista": str(candidata.estado or "") == "lista_para_trabajar",
+            "trabajando": str(candidata.estado or "") == "trabajando",
+            "descalificada": str(candidata.estado or "") == "descalificada",
+        },
+    }
+    if include_personal:
+        payload.setdefault("display", {})["personal"] = _candidata_center_personal_display(candidata)
+        payload.setdefault("values", {})["personal"] = {
+            "nombre": candidata.nombre_completo or "",
+            "edad": candidata.edad or "",
+            "telefono": candidata.numero_telefono or "",
+            "direccion": candidata.direccion_completa or "",
+            "cedula": candidata.cedula or "",
+        }
+    if include_labor:
+        labor_display = {
+            "Modalidad preferida": candidata.modalidad_trabajo_preferida or "",
+            "Rutas": candidata.rutas_cercanas or "",
+            "Disponibilidad/inicio": candidata.disponibilidad_inicio or candidata.inicio or "",
+            "Empleo anterior": candidata.empleo_anterior or "",
+            "Años de experiencia": candidata.anos_experiencia or "",
+            "Áreas de experiencia": candidata.areas_experiencia or "",
+            "Sabe planchar": _center_bool_label(candidata.sabe_planchar),
+            "Trabaja con niños": _center_bool_label(candidata.trabaja_con_ninos),
+            "Trabaja con mascotas": _center_bool_label(candidata.trabaja_con_mascotas),
+            "Puede dormir fuera": _center_bool_label(candidata.puede_dormir_fuera),
+            "Sueldo esperado": candidata.sueldo_esperado or "",
+            "Motivo para trabajar": candidata.motivacion_trabajo or "",
+            "Acepta porcentaje sueldo": _center_bool_label(candidata.acepta_porcentaje_sueldo),
+            "Fecha finalización proceso": candidata.fecha_finalizacion_proceso or "",
+            "Grupos de empleo": ", ".join(candidata.grupos_empleo or []),
+        }
+        payload.setdefault("display", {})["labor"] = {label: str(value or "") for label, value in labor_display.items() if _center_text(value)}
+        payload.setdefault("values", {})["labor"] = {
+            "modalidad": candidata.modalidad_trabajo_preferida or "",
+            "rutas": candidata.rutas_cercanas or "",
+            "disponibilidad_inicio": candidata.disponibilidad_inicio or "",
+            "empleo_anterior": candidata.empleo_anterior or "",
+            "anos_experiencia": candidata.anos_experiencia or "",
+            "areas_experiencia": candidata.areas_experiencia or "",
+            "sabe_planchar": _center_form_value(candidata.sabe_planchar),
+            "trabaja_con_ninos": _center_form_value(candidata.trabaja_con_ninos),
+            "trabaja_con_mascotas": _center_form_value(candidata.trabaja_con_mascotas),
+            "puede_dormir_fuera": _center_form_value(candidata.puede_dormir_fuera),
+            "sueldo_esperado": candidata.sueldo_esperado or "",
+            "motivacion_trabajo": candidata.motivacion_trabajo or "",
+            "acepta_porcentaje_sueldo": _center_form_value(candidata.acepta_porcentaje_sueldo),
+        }
+    if include_form_references or include_secretary_references:
+        refs = _candidata_center_reference_display(candidata)
+        if include_form_references:
+            payload.setdefault("display", {})["references"] = refs["references"]
+            payload.setdefault("values", {})["form_references"] = {
+                "contactos_referencias_laborales": getattr(candidata, "contactos_referencias_laborales", "") or "",
+                "referencias_familiares_detalle": getattr(candidata, "referencias_familiares_detalle", "") or "",
+            }
+        if include_secretary_references:
+            payload.setdefault("display", {})["secretary_references"] = refs["secretary_references"]
+            payload.setdefault("values", {})["secretary_references"] = {
+                "referencias_laboral": getattr(candidata, "referencias_laboral", "") or "",
+                "referencias_familiares": getattr(candidata, "referencias_familiares", "") or "",
+            }
+    if include_inscription:
+        inscription_payload = _candidata_center_inscription_display(candidata)
+        payload.setdefault("display", {}).update(inscription_payload["display"])
+        payload.setdefault("values", {}).update(inscription_payload["values"])
+        payload["inscription"] = {
+            "codigo": candidata.codigo or "",
+            "medio": candidata.medio_inscripcion or "",
+            "inscrita": bool(candidata.inscripcion),
+            "monto": str(candidata.monto or ""),
+            "fecha": candidata.fecha.isoformat() if candidata.fecha else "",
+            "estado": candidata.estado or "",
+            "inscrita_por": (getattr(candidata, "usuario_cambio_estado", None) or getattr(candidata, "creado_por_staff", None) or ""),
+        }
+    if include_readiness or include_state_capabilities:
+        payload.update(_candidata_center_state_snapshot_payload(
+            candidata,
+            include_readiness=include_readiness,
+            include_state_capabilities=include_state_capabilities,
+        ))
+    if include_recent_calls:
+        payload["recent_calls"] = [
+            {
+                "fecha": str(call.fecha_llamada or ""),
+                "agente": call.agente or "",
+                "resultado": call.resultado or "",
+                "notas": _center_text(call.notas, 180),
+            }
+            for call in _candidata_center_recent_calls(int(candidata.fila))
+        ]
+    if finance_event:
+        payload["finance_event"] = {
+            "fecha": _center_text(finance_event.get("fecha") or ""),
+            "monto": _center_text(finance_event.get("monto") or ""),
+            "metodo": _center_text(finance_event.get("metodo") or ""),
+            "actor": _center_text(finance_event.get("actor") or "staff"),
+            "detalle": _center_text(finance_event.get("detalle") or message or ""),
+        }
+    return payload
+
+
 def _candidata_center_legacy_urls(fila: int) -> dict:
     next_url = _candidata_center_return_path(fila)
     return {
@@ -23994,7 +24259,12 @@ def candidatas_operativo_update_datos(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
+        result.message,
+        result.changes,
+        include_personal=True,
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/perfil-laboral", methods=["POST"])
@@ -24019,7 +24289,11 @@ def candidatas_operativo_update_perfil_laboral(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+    return jsonify(_candidata_center_response_payload(
+        int(fila),
+        result.message,
+        result.changes,
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/referencias", methods=["POST"])
@@ -24038,7 +24312,14 @@ def candidatas_operativo_update_referencias(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
+        result.message,
+        result.changes,
+        include_secretary_references=True,
+        include_readiness=True,
+        include_state_capabilities=True,
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/referencias-formulario", methods=["POST"])
@@ -24057,7 +24338,11 @@ def candidatas_operativo_update_referencias_formulario(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+    return jsonify(_candidata_center_response_payload(
+        int(fila),
+        result.message,
+        result.changes,
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/inscripcion", methods=["POST"])
@@ -24089,16 +24374,13 @@ def candidatas_operativo_update_inscripcion(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(
-        int(fila),
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
         result.message,
         result.changes,
-        finance_event={
-            "fecha": utc_now_naive().isoformat(),
-            "monto": result.changes.get("monto_total", ""),
-            "actor": actor,
-            "detalle": result.message,
-        },
+        include_inscription=True,
+        include_readiness=True,
+        include_state_capabilities=True,
     ))
 
 
@@ -24264,7 +24546,12 @@ def candidatas_operativo_registrar_llamada(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(int(fila), result.message, result.changes))
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
+        result.message,
+        result.changes,
+        include_recent_calls=True,
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/estado/lista", methods=["POST"])

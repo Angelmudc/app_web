@@ -1630,11 +1630,18 @@ def test_admin_candidata_detalle_tiene_identidad_sticky_compacta():
     assert 'data-cand-identity-code' in template
     assert 'data-cand-identity-state' in template
     assert 'data-cand-identity-call' in template
+    assert 'data-cand-breadcrumb-name' in template
+    assert "card_key='form-laboral'" in template
+    assert "card_key='secretary-laboral'" in template
     assert '<header class="detail-hero">' in template
     assert 'data-cand-header="nombre"' in template
     assert 'setupStickyIdentityBar' in template
     assert 'IntersectionObserver' in template
     assert 'admin:navigation-complete' in template
+    assert "syncIdentity(payload)" in template
+    assert "refreshReferenceCards(display)" in template
+    assert "Object.prototype.hasOwnProperty.call(display, 'personal')" in template
+    assert "Object.prototype.hasOwnProperty.call(display, 'references')" in template
 
 
 def test_admin_candidata_ficha_no_selecciona_columnas_blob():
@@ -1735,6 +1742,36 @@ def test_admin_candidata_update_datos_personales_json_telefono_cedula_y_auditori
         assert audit.action_type == "CANDIDATA_CENTER_EDIT"
         assert audit.success is True
         assert "numero_telefono" in (audit.changes_json or {})
+
+
+def test_admin_candidata_update_datos_devuelve_payload_parcial_sin_ficha_completa():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990525)
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990525/datos",
+            data={"nombre": "Ana Centro Parcial", "telefono": "809-888-0000"},
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["header"]["nombre"] == "Ana Centro Parcial"
+    assert payload["header"]["telefono"] == "809-888-0000"
+    assert payload["candidate"]["codigo"] == "CTR-990501"
+    assert payload["status_badges"]["inscrita"] is True
+    assert payload["display"]["personal"]["Nombre"] == "Ana Centro Parcial"
+    assert payload["values"]["personal"]["telefono"] == "809-888-0000"
+    for forbidden in ("readiness", "state_capabilities", "recent_calls", "inscription", "finance_event", "doc_flags"):
+        assert forbidden not in payload
 
 
 def test_admin_candidata_update_datos_rechaza_cedula_invalida_o_duplicada_sin_pisarla():
@@ -1974,6 +2011,123 @@ def test_admin_candidata_update_referencias_mantiene_independencia_entrevista_y_
         assert audit.action_type == "CANDIDATA_REFERENCES_EDIT"
         assert audit.success is True
         assert "referencias_laboral" in (audit.changes_json or {})
+
+
+def test_admin_candidata_update_referencias_devuelve_solo_regiones_necesarias():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990526)
+        cand = Candidata.query.get(990526)
+        cand.referencias_laboral = "INT-LAB-ORIGINAL"
+        cand.referencias_familiares = "INT-FAM-ORIGINAL"
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990526/referencias",
+            data={
+                "referencias_laboral": "INT-LAB-RENOVADA",
+                "referencias_familiares": "INT-FAM-RENOVADA",
+            },
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["display"]["secretary_references"]["laboral"] == "INT-LAB-RENOVADA"
+    assert payload["display"]["secretary_references"]["familiar"] == "INT-FAM-RENOVADA"
+    assert payload["readiness"]["flags"]["referencias_laboral"] is True
+    assert payload["readiness"]["flags"]["referencias_familiares"] is True
+    assert payload["state_capabilities"]["assignment"]
+    assert "personal" not in payload.get("display", {})
+    assert "labor" not in payload.get("display", {})
+    assert "references" not in payload.get("display", {})
+    assert "inscription" not in payload.get("display", {})
+    assert "recent_calls" not in payload
+    assert "finance_event" not in payload
+    assert "doc_flags" not in payload
+
+
+def test_admin_candidata_update_inscripcion_devuelve_payload_parcial_con_readiness():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990527)
+        cand = Candidata.query.get(990527)
+        cand.codigo = None
+        cand.inscripcion = False
+        cand.monto = None
+        cand.fecha = None
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        with patch("core.legacy_handlers.generar_codigo_unico", return_value="CTR-PARCIAL-527"):
+            resp = client.post(
+                "/admin/candidatas/990527/inscripcion",
+                data={
+                    "medio": "WhatsApp",
+                    "estado": "si",
+                    "monto": "1750.50",
+                    "fecha": "2026-08-18",
+                },
+                follow_redirects=False,
+            )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["inscription"]["codigo"] == "CTR-PARCIAL-527"
+    assert payload["inscription"]["inscrita"] is True
+    assert payload["readiness"]["flags"]["inscripcion"] is True
+    assert payload["state_capabilities"]["process"]["label"]
+    assert payload["display"]["inscription"]["Código"] == "CTR-PARCIAL-527"
+    assert payload["values"]["inscription"]["medio"] == "WhatsApp"
+    assert "personal" not in payload.get("display", {})
+    assert "labor" not in payload.get("display", {})
+    assert "references" not in payload.get("display", {})
+    assert "secretary_references" not in payload.get("display", {})
+    assert "recent_calls" not in payload
+    assert "finance_event" not in payload
+    assert "doc_flags" not in payload
+
+
+def test_admin_candidata_registrar_llamada_devuelve_payload_minimo_sin_ficha_completa():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990528)
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990528/llamadas",
+            data={"resultado": "exitosa", "duracion_minutos": "3", "notas": "Seguimiento parcial"},
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["recent_calls"][0]["resultado"] == "exitosa"
+    assert payload["recent_calls"][0]["notas"] == "Seguimiento parcial"
+    assert "display" not in payload
+    assert "readiness" not in payload
+    assert "state_capabilities" not in payload
+    assert "inscription" not in payload
+    assert "finance_event" not in payload
 
 
 def test_admin_candidata_update_referencias_formulario_mantiene_independencia_de_entrevista():

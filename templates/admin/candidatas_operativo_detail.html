@@ -5,11 +5,11 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/candidatas_operativo.css') }}">
 {% endblock %}
 
-{% macro compact_reference_card(title, full_text, meta_items=None, empty_label='No informado') -%}
+{% macro compact_reference_card(title, full_text, meta_items=None, empty_label='No informado', card_key='') -%}
   {% set meta_items = meta_items or [] %}
   {% set text = (full_text or '')|trim %}
   {% if text %}
-    <details class="cand-ref-card">
+    <details class="cand-ref-card" data-cand-ref-card="{{ card_key }}">
       <summary class="cand-ref-card__summary">
         <div class="cand-ref-card__summary-main">
           <strong class="cand-ref-card__title">{{ title }}</strong>
@@ -27,7 +27,7 @@
       </div>
     </details>
   {% else %}
-    <article class="cand-ref-card cand-ref-card--empty">
+    <article class="cand-ref-card cand-ref-card--empty" data-cand-ref-card="{{ card_key }}">
       <div class="cand-ref-card__summary-main">
         <strong class="cand-ref-card__title">{{ title }}</strong>
       </div>
@@ -47,7 +47,7 @@
     <nav class="small" aria-label="breadcrumb">
       <a href="{{ center_back_url }}">Domésticas</a>
       <span class="cand-muted"> &gt; </span>
-      <span>{{ candidata.nombre_completo }}</span>
+      <span data-cand-breadcrumb-name>{{ candidata.nombre_completo }}</span>
     </nav>
 
     <section class="page-header">
@@ -627,8 +627,8 @@
               </div>
             </div>
             <div class="cand-ref-grid mt-2">
-              {{ compact_reference_card('Laboral', form_references.laboral_full, []) }}
-              {{ compact_reference_card('Familiar', form_references.familiar_full, []) }}
+              {{ compact_reference_card('Laboral', form_references.laboral_full, [], card_key='form-laboral') }}
+              {{ compact_reference_card('Familiar', form_references.familiar_full, [], card_key='form-familiar') }}
             </div>
             <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias_formulario', fila=candidata.fila) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -684,8 +684,8 @@
               </div>
             </div>
             <div class="cand-ref-grid mt-2">
-              {{ compact_reference_card('Laboral', secretary_references.laboral_full, []) }}
-              {{ compact_reference_card('Familiar', secretary_references.familiar_full, []) }}
+              {{ compact_reference_card('Laboral', secretary_references.laboral_full, [], card_key='secretary-laboral') }}
+              {{ compact_reference_card('Familiar', secretary_references.familiar_full, [], card_key='secretary-familiar') }}
             </div>
             <form class="cand-edit-form mt-3" data-quick-form data-no-loader="true" data-endpoint="{{ url_for('admin.candidatas_operativo_update_referencias', fila=candidata.fila) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -1408,6 +1408,91 @@
       });
     }
 
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, (ch) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      }[ch] || ch));
+    }
+
+    function renderReferenceCardHtml(title, fullText, emptyLabel, cardKey) {
+      const text = String(fullText || '').trim();
+      if (text) {
+        return [
+          `<details class="cand-ref-card" data-cand-ref-card="${escapeHtml(cardKey || '')}">`,
+          '<summary class="cand-ref-card__summary">',
+          '<div class="cand-ref-card__summary-main">',
+          `<strong class="cand-ref-card__title">${escapeHtml(title)}</strong>`,
+          '</div>',
+          '<span class="cand-ref-card__toggle" aria-hidden="true">',
+          '<span class="cand-ref-card__toggle-closed">Ver completa</span>',
+          '<span class="cand-ref-card__toggle-open">Ver menos</span>',
+          '</span>',
+          '</summary>',
+          '<div class="cand-ref-card__body">',
+          `<div class="cand-ref-card__text white-space-pre-line">${escapeHtml(text)}</div>`,
+          '</div>',
+          '</details>',
+        ].join('');
+      }
+      return [
+        `<article class="cand-ref-card cand-ref-card--empty" data-cand-ref-card="${escapeHtml(cardKey || '')}">`,
+        '<div class="cand-ref-card__summary-main">',
+        `<strong class="cand-ref-card__title">${escapeHtml(title)}</strong>`,
+        '</div>',
+        `<div class="cand-muted small">${escapeHtml(emptyLabel || 'No informado')}</div>`,
+        '</article>',
+      ].join('');
+    }
+
+    function refreshReferenceCards(display) {
+      const refs = display || {};
+      if (Object.prototype.hasOwnProperty.call(refs, 'references')) {
+        [
+          ['form-laboral', (refs.references || {}).laboral_full || '', 'Laboral'],
+          ['form-familiar', (refs.references || {}).familiar_full || '', 'Familiar'],
+        ].forEach(([key, fullText, title]) => {
+          const card = root.querySelector('[data-cand-ref-card="' + key + '"]');
+          if (!card) return;
+          card.outerHTML = renderReferenceCardHtml(title, fullText, 'No informado', key);
+        });
+      }
+      if (Object.prototype.hasOwnProperty.call(refs, 'secretary_references')) {
+        [
+          ['secretary-laboral', (refs.secretary_references || {}).laboral_full || '', 'Laboral'],
+          ['secretary-familiar', (refs.secretary_references || {}).familiar_full || '', 'Familiar'],
+        ].forEach(([key, fullText, title]) => {
+          const card = root.querySelector('[data-cand-ref-card="' + key + '"]');
+          if (!card) return;
+          card.outerHTML = renderReferenceCardHtml(title, fullText, 'No informado', key);
+        });
+      }
+    }
+
+    function syncIdentity(payload) {
+      const header = payload.header || {};
+      const name = root.querySelector('[data-cand-header="nombre"]');
+      const age = root.querySelector('[data-cand-header="edad"]');
+      const phone = root.querySelector('[data-cand-header="telefono"]');
+      const code = root.querySelector('[data-cand-header="codigo"]');
+      const stickyName = root.querySelector('[data-cand-identity-name]');
+      const stickyCode = root.querySelector('[data-cand-identity-code]');
+      const stickyState = root.querySelector('[data-cand-identity-state]');
+      const breadcrumbName = root.querySelector('[data-cand-breadcrumb-name]');
+      if (name) name.textContent = header.nombre || '';
+      if (age) age.textContent = header.edad || 'edad no informada';
+      if (phone) phone.textContent = header.telefono || 'sin teléfono';
+      if (code) code.textContent = header.codigo || 'sin código';
+      if (stickyName) stickyName.textContent = header.nombre || '';
+      if (stickyCode) stickyCode.textContent = header.codigo || 'sin código';
+      if (stickyState) stickyState.textContent = header.estado_label || header.estado || '';
+      if (breadcrumbName) breadcrumbName.textContent = header.nombre || '';
+      if (header.nombre) document.title = header.nombre + ' · Domésticas';
+    }
+
     function refreshFinance(payload) {
       const finance = payload.porciento || {};
       renderKv(root.querySelector('[data-display="porciento"]'), {
@@ -1680,42 +1765,46 @@
     }
 
     function applyPayload(payload) {
-      const header = payload.header || {};
-      const name = root.querySelector('[data-cand-header="nombre"]');
-      const age = root.querySelector('[data-cand-header="edad"]');
-      const phone = root.querySelector('[data-cand-header="telefono"]');
-      const code = root.querySelector('[data-cand-header="codigo"]');
-      if (name) name.textContent = header.nombre || '';
-      if (age) age.textContent = header.edad || 'edad no informada';
-      if (phone) phone.textContent = header.telefono || 'sin teléfono';
-      if (code) code.textContent = header.codigo || 'sin código';
+      syncIdentity(payload);
 
       const display = payload.display || {};
-      renderKv(root.querySelector('[data-display="personal"]'), display.personal, '');
-      renderKv(root.querySelector('[data-display="labor"]'), display.labor, 'Sin información laboral registrada.');
-      renderKv(root.querySelector('[data-display="references"]'), {
-        Laborales: (display.references || {}).laboral || 'No informado',
-        Familiares: (display.references || {}).familiar || 'No informado',
-      }, '');
-      renderKv(root.querySelector('[data-display="secretary-references"]'), {
-        Laborales: (display.secretary_references || {}).laboral || 'No informado',
-        Familiares: (display.secretary_references || {}).familiar || 'No informado',
-      }, '');
-      const inscription = payload.inscription || {};
-      renderKv(root.querySelector('[data-display="inscription"]'), {
-        Código: inscription.codigo || '—',
-        Estado: inscription.inscrita ? 'Inscrita' : 'No inscrita',
-        'Medio de pago': inscription.medio || '—',
-        'Pago de inscripción': inscription.monto || '—',
-        'Fecha de inscripción': inscription.fecha || '—',
-        'Inscrita por': inscription.inscrita_por || '—',
-      }, '');
-      refreshFinance(payload);
-      refreshDocuments(payload);
-      refreshReadiness(payload.readiness);
-      refreshStateCapabilities(payload);
-      refreshStatusBadges(payload);
-      refreshRecentCalls(payload.recent_calls);
+      if (Object.prototype.hasOwnProperty.call(display, 'personal')) {
+        renderKv(root.querySelector('[data-display="personal"]'), display.personal, '');
+      }
+      if (Object.prototype.hasOwnProperty.call(display, 'labor')) {
+        renderKv(root.querySelector('[data-display="labor"]'), display.labor, 'Sin información laboral registrada.');
+      }
+      if (Object.prototype.hasOwnProperty.call(display, 'references')) {
+        renderKv(root.querySelector('[data-display="references"]'), {
+          Laborales: (display.references || {}).laboral || 'No informado',
+          Familiares: (display.references || {}).familiar || 'No informado',
+        }, '');
+        refreshReferenceCards(display);
+      }
+      if (Object.prototype.hasOwnProperty.call(display, 'secretary_references')) {
+        renderKv(root.querySelector('[data-display="secretary-references"]'), {
+          Laborales: (display.secretary_references || {}).laboral || 'No informado',
+          Familiares: (display.secretary_references || {}).familiar || 'No informado',
+        }, '');
+        refreshReferenceCards(display);
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'inscription')) {
+        const inscription = payload.inscription || {};
+        renderKv(root.querySelector('[data-display="inscription"]'), {
+          Código: inscription.codigo || '—',
+          Estado: inscription.inscrita ? 'Inscrita' : 'No inscrita',
+          'Medio de pago': inscription.medio || '—',
+          'Pago de inscripción': inscription.monto || '—',
+          'Fecha de inscripción': inscription.fecha || '—',
+          'Inscrita por': inscription.inscrita_por || '—',
+        }, '');
+      }
+      if (Object.prototype.hasOwnProperty.call(payload, 'porciento')) refreshFinance(payload);
+      if (Object.prototype.hasOwnProperty.call(payload, 'doc_flags')) refreshDocuments(payload);
+      if (Object.prototype.hasOwnProperty.call(payload, 'readiness')) refreshReadiness(payload.readiness);
+      if (Object.prototype.hasOwnProperty.call(payload, 'state_capabilities')) refreshStateCapabilities(payload);
+      if (Object.prototype.hasOwnProperty.call(payload, 'status_badges')) refreshStatusBadges(payload);
+      if (Object.prototype.hasOwnProperty.call(payload, 'recent_calls')) refreshRecentCalls(payload.recent_calls);
       refreshFormValues(payload);
     }
 
