@@ -5,8 +5,10 @@ import importlib.util
 import tempfile
 from pathlib import Path
 
+from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from alembic.script import ScriptDirectory
 from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, MetaData, String, Table, Text, create_engine, inspect, text
 
 
@@ -19,6 +21,18 @@ def _load_migration_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_revision_id_contract_and_graph_single_head():
+    migration = _load_migration_module()
+    assert migration.revision == "20260831_1200_refs"
+    assert len(migration.revision) <= 32
+    assert migration.down_revision == "20260709_1200"
+
+    script = ScriptDirectory.from_config(Config("alembic.ini"))
+    heads = script.get_heads()
+    assert heads == ["20260831_1200_refs"]
+    assert all(rev.revision != "20260831_1200_create_entrevista_referencias" for rev in script.walk_revisions())
 
 
 def _create_base_schema(conn):
