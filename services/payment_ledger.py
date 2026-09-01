@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from decimal import Decimal
 
 from flask import current_app
 
 from config_app import db
-from models import PagoSolicitud
+from models import PagoSolicitud, StaffUser
 from services.payment_rules import format_money, get_plan_price, get_required_deposit, normalize_plan
 from utils.timezone import utc_now_naive
+from sqlalchemy.orm import load_only
 
 
 POSITIVE_TYPES = {"abono", "pago", "ajuste", "correccion"}
@@ -219,6 +221,122 @@ def _compute_payment_totals_from_movimientos(movimientos) -> tuple[Decimal, Deci
         total_pagado.quantize(Decimal("0.01")),
         total_abonado.quantize(Decimal("0.01")),
     )
+
+
+def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
+    ids = sorted({int(uid) for uid in (user_ids or []) if int(uid or 0) > 0})
+    if not ids:
+        return {}
+    try:
+        rows = (
+            StaffUser.query
+            .options(load_only(StaffUser.id, StaffUser.username))
+            .filter(StaffUser.id.in_(ids))
+            .all()
+        )
+    except Exception:
+        return {}
+    out: dict[int, str] = {}
+    for row in (rows or []):
+        rid = int(getattr(row, "id", 0) or 0)
+        if rid <= 0:
+            continue
+        out[rid] = str(getattr(row, "username", "") or f"Staff #{rid}")
+    return out
+
+
+def build_payment_summary_map(solicitudes, *, include_movimientos: bool = False) -> dict[int, dict]:
+    solicitud_rows = []
+    for solicitud in (solicitudes or []):
+        solicitud_id = int(getattr(solicitud, "id", 0) or 0)
+        if solicitud_id <= 0:
+            continue
+        solicitud_rows.append((solicitud_id, solicitud))
+    if not solicitud_rows:
+        return {}
+
+    solicitud_ids = sorted({solicitud_id for solicitud_id, _solicitud in solicitud_rows})
+    pagos = (
+        PagoSolicitud.query
+        .filter(PagoSolicitud.solicitud_id.in_(solicitud_ids))
+        .order_by(
+            PagoSolicitud.solicitud_id.asc(),
+            PagoSolicitud.created_at.asc(),
+            PagoSolicitud.id.asc(),
+        )
+        .all()
+    )
+    pagos_por_solicitud: dict[int, list] = defaultdict(list)
+    pagos_activos_por_solicitud: dict[int, list] = defaultdict(list)
+    for mov in (pagos or []):
+        sid = int(getattr(mov, "solicitud_id", 0) or 0)
+        if sid <= 0:
+            continue
+        pagos_por_solicitud[sid].append(mov)
+        if getattr(mov, "anulado_at", None) is None:
+            pagos_activos_por_solicitud[sid].append(mov)
+
+    summary_by_id: dict[int, dict] = {}
+    for solicitud_id, solicitud in solicitud_rows:
+        cycle = get_current_payment_cycle_readonly(solicitud)
+        cycle_num = int(cycle["numero_ciclo"])
+        precio_plan = Decimal(cycle["precio_total_requerido"])
+        abono_requerido = Decimal(cycle["abono_requerido"])
+        movimientos_activos = pagos_activos_por_solicitud.get(solicitud_id, [])
+        movimientos_ciclo = [
+            mov
+            for mov in movimientos_activos
+            if int(getattr(mov, "ciclo_numero", 1) or 1) == cycle_num
+        ]
+        total_pagado, total_abonado = _compute_payment_totals_from_movimientos(movimientos_ciclo)
+        total_historico, _total_abonado_historico = _compute_payment_totals_from_movimientos(movimientos_activos)
+
+        legacy_abono = Decimal("0.00")
+        legacy_abono_fallback = False
+        if cycle_num == 1:
+            legacy_abono = _legacy_abono_value(solicitud)
+            if legacy_abono > Decimal("0.00"):
+                legacy_abono_usable = min(legacy_abono, abono_requerido).quantize(Decimal("0.01"))
+                if total_abonado < legacy_abono_usable:
+                    legacy_diff = (legacy_abono_usable - total_abonado).quantize(Decimal("0.01"))
+                    total_abonado = (total_abonado + legacy_diff).quantize(Decimal("0.01"))
+                    total_pagado = (total_pagado + legacy_diff).quantize(Decimal("0.01"))
+                    if total_pagado > precio_plan:
+                        total_pagado = precio_plan
+                    legacy_abono_fallback = True
+
+        saldo_pendiente = (precio_plan - total_pagado).quantize(Decimal("0.01"))
+        if saldo_pendiente < Decimal("0.00"):
+            saldo_pendiente = Decimal("0.00")
+        abono_pagado = min(total_abonado, abono_requerido).quantize(Decimal("0.01"))
+
+        summary: dict = {
+            "numero_ciclo": cycle_num,
+            "precio_plan": precio_plan,
+            "abono_requerido": abono_requerido,
+            "abono_pagado": abono_pagado,
+            "total_pagado": total_pagado,
+            "total_abonado": total_abonado,
+            "total_pagado_historico": total_historico,
+            "saldo_pendiente": saldo_pendiente,
+            "saldo_restante": saldo_pendiente,
+            "plan_norm": str(cycle["plan"]),
+            "legacy_abono_fallback": legacy_abono_fallback,
+            "legacy_abono": legacy_abono,
+            "ciclo_estado": str(cycle["estado_pago"]),
+        }
+        if include_movimientos:
+            movimientos_visible = list(reversed(pagos_por_solicitud.get(solicitud_id, [])))[:20]
+            user_ids = [
+                int(m.registrado_por_id)
+                for m in movimientos_visible
+                if getattr(m, "registrado_por_id", None)
+            ]
+            summary["payment_movimientos"] = movimientos_visible
+            summary["payment_staff_map"] = _staff_username_map(user_ids)
+        summary_by_id[solicitud_id] = summary
+
+    return summary_by_id
 
 
 def has_recorded_payments(solicitud_id: int, *, ciclo_numero: int | None = None) -> bool:

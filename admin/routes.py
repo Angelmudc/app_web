@@ -247,6 +247,7 @@ from services.payment_rules import (
 from services.phone_identity_service import normalize_phone_to_e164
 from services.payment_ledger import (
     apply_payment_state_from_summary,
+    build_payment_summary_map,
     open_new_payment_cycle,
     calcular_saldo_pendiente,
     calcular_total_abonado,
@@ -10833,7 +10834,7 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 # 🔍 Detalle de cliente
 # ─────────────────────────────────────────────────────────────
-def solicitud_puede_registrar_pago(solicitud) -> bool:
+def solicitud_puede_registrar_pago(solicitud, *, summary: dict | None = None) -> bool:
     candidata_id = int(getattr(solicitud, "candidata_id", 0) or 0)
     if candidata_id > 0:
         guard = validate_candidata_assignment_context(
@@ -10852,9 +10853,9 @@ def solicitud_puede_registrar_pago(solicitud) -> bool:
     if estado == "espera_pago":
         # En espera de pago debe permitirse gestionar cobro, aunque exista desalineación temporal de resumen.
         return True
-    summary = get_payment_summary_readonly(solicitud)
-    saldo_pendiente = Decimal(summary["saldo_pendiente"])
-    estado_pago = str(summary.get("ciclo_estado", "") or "").strip().lower()
+    summary_data = summary or get_payment_summary_readonly(solicitud)
+    saldo_pendiente = Decimal(summary_data["saldo_pendiente"])
+    estado_pago = str(summary_data.get("ciclo_estado", "") or "").strip().lower()
     if saldo_pendiente <= Decimal("0.00") or estado_pago == "pagado":
         return False
     return True
@@ -10960,14 +10961,20 @@ def _cliente_detail_regions_context(
     end = start + per_page
     solicitudes_page = (solicitudes or [])[start:end]
     has_more = page < total_pages
+    payment_summary_by_solicitud_id = build_payment_summary_map(solicitudes)
     solicitud_pago_habilitado: dict[int, bool] = {}
     solicitud_whatsapp_activation: dict[int, dict] = {}
     for s in (solicitudes or []):
         sid = int(getattr(s, "id", 0) or 0)
         if sid <= 0:
             continue
-        solicitud_pago_habilitado[sid] = solicitud_puede_registrar_pago(s)
-        payment_ctx = _build_payment_summary_ctx(s, readonly=True)
+        payment_ctx = payment_summary_by_solicitud_id.get(sid)
+        if payment_ctx is None:
+            payment_ctx = _build_payment_summary_ctx(s, readonly=True)
+        can_register_payment = solicitud_puede_registrar_pago(s, summary=payment_ctx)
+        payment_ctx = dict(payment_ctx)
+        payment_ctx["solicitud_can_register_payment"] = can_register_payment
+        solicitud_pago_habilitado[sid] = can_register_payment
         solicitud_whatsapp_activation[sid] = _build_whatsapp_activation_ctx(
             s,
             cliente=cliente,
@@ -16248,34 +16255,29 @@ def _staff_username_map(user_ids: list[int]) -> dict[int, str]:
     return out
 
 
-def _build_payment_summary_ctx(solicitud, *, readonly: bool = False) -> dict:
+def _build_payment_summary_ctx(solicitud, *, readonly: bool = False, summary: dict | None = None) -> dict:
     solicitud_id = int(getattr(solicitud, "id", 0) or 0)
-    if readonly:
-        summary = get_payment_summary_readonly(solicitud)
-    else:
-        summary = get_payment_summary(solicitud)
-    cycle_num = int(summary["numero_ciclo"])
-    total_pagado = Decimal(summary["total_pagado"])
-    total_abonado = Decimal(summary["total_abonado"])
-    precio_plan = Decimal(summary["precio_plan"])
-    abono_requerido = Decimal(summary["abono_requerido"])
-    saldo_pendiente = Decimal(summary["saldo_pendiente"])
-    total_historico = calcular_total_pagado(solicitud_id)
+    payment_data = summary
+    if payment_data is None:
+        payment_data = build_payment_summary_map([solicitud], include_movimientos=True).get(solicitud_id) or {}
+    cycle_num = int(payment_data["numero_ciclo"])
+    total_pagado = Decimal(payment_data["total_pagado"])
+    total_abonado = Decimal(payment_data["total_abonado"])
+    precio_plan = Decimal(payment_data["precio_plan"])
+    abono_requerido = Decimal(payment_data["abono_requerido"])
+    saldo_pendiente = Decimal(payment_data["saldo_pendiente"])
+    total_historico = Decimal(payment_data.get("total_pagado_historico", total_pagado))
     estado_pago = "Sin pago"
     if total_pagado >= precio_plan and precio_plan > Decimal("0.00"):
         estado_pago = "Pagado"
     elif total_pagado > Decimal("0.00"):
         estado_pago = "Parcial"
 
-    movimientos = (
-        PagoSolicitud.query
-        .filter(PagoSolicitud.solicitud_id == solicitud_id)
-        .order_by(PagoSolicitud.created_at.desc(), PagoSolicitud.id.desc())
-        .limit(20)
-        .all()
-    )
-    user_ids = [int(m.registrado_por_id) for m in movimientos if getattr(m, "registrado_por_id", None)]
-    staff_map = _staff_username_map(user_ids)
+    movimientos = list(payment_data.get("payment_movimientos") or [])
+    staff_map = dict(payment_data.get("payment_staff_map") or {})
+    if not staff_map and movimientos:
+        user_ids = [int(m.registrado_por_id) for m in movimientos if getattr(m, "registrado_por_id", None)]
+        staff_map = _staff_username_map(user_ids)
 
     candidata_id = int(getattr(solicitud, "candidata_id", 0) or 0)
     assignment_guard = None
@@ -16284,6 +16286,10 @@ def _build_payment_summary_ctx(solicitud, *, readonly: bool = False) -> dict:
             candidata_id=candidata_id,
             solicitud_id=solicitud_id,
         )
+
+    can_register_payment = bool(payment_data.get("solicitud_can_register_payment"))
+    if "solicitud_can_register_payment" not in payment_data:
+        can_register_payment = solicitud_puede_registrar_pago(solicitud, summary=payment_data)
 
     return {
         "plan_price": precio_plan,
@@ -16297,7 +16303,7 @@ def _build_payment_summary_ctx(solicitud, *, readonly: bool = False) -> dict:
         "payment_movimientos": movimientos,
         "payment_staff_map": staff_map,
         "assignment_guard": assignment_guard,
-        "solicitud_can_register_payment": solicitud_puede_registrar_pago(solicitud),
+        "solicitud_can_register_payment": can_register_payment,
     }
 
 
@@ -16329,9 +16335,12 @@ def _build_whatsapp_activation_ctx(
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
     allowed_state_values = {str(x or "").strip().lower() for x in (allowed_states or {"proceso"}) if str(x or "").strip()}
     allowed_state = estado in allowed_state_values
-    can_charge_cycle = bool(solicitud_puede_registrar_pago(solicitud))
-
     payment_data = payment_ctx or _build_payment_summary_ctx(solicitud, readonly=True)
+    can_charge_cycle = bool(
+        payment_data.get("solicitud_can_register_payment")
+        if isinstance(payment_data, dict) and "solicitud_can_register_payment" in payment_data
+        else solicitud_puede_registrar_pago(solicitud, summary=payment_data if isinstance(payment_data, dict) else None)
+    )
     plan_source = getattr(solicitud, "payment_cycle_plan", None) or getattr(solicitud, "tipo_plan", None)
     plan_known = bool(is_valid_plan(plan_source))
     plan_price = Decimal(payment_data.get("plan_price", 0) or 0)

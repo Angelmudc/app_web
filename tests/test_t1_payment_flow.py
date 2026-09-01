@@ -127,6 +127,11 @@ def _payment_cycle_update_count(statements) -> int:
     return total
 
 
+def _count_table_mentions(statements, table_name: str) -> int:
+    needle = table_name.lower()
+    return sum(1 for statement in (statements or []) if needle in str(statement or "").lower())
+
+
 def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -2177,6 +2182,155 @@ def test_t1_get_detalle_solicitud_no_emite_update_payment_cycle_y_conserva_cta()
     assert resp.status_code == 200
     assert "Registrar pago" in html
     assert _payment_cycle_update_count(statements) == 0
+
+
+def test_t1_cliente_detail_pago_summary_no_crece_lineal_con_solicitudes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        token = secrets.token_hex(6)
+        cliente = Cliente(
+            codigo=f"KPI-{token}",
+            nombre_completo=f"Cliente KPI {token}",
+            email=f"kpi_{token}@example.com",
+            telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+        )
+        db.session.add(cliente)
+        db.session.flush()
+        solicitud_ids = []
+        for idx in range(5):
+            solicitud = Solicitud(
+                cliente_id=int(cliente.id),
+                codigo_solicitud=f"SOL-KPI-{token}-{idx}",
+                estado="activa",
+                tipo_plan="premium",
+                abono="0.00",
+                payment_cycle_plan=None,
+                payment_cycle_precio_total=None,
+                payment_cycle_abono_requerido=None,
+                payment_cycle_estado=None,
+            )
+            db.session.add(solicitud)
+            db.session.flush()
+            solicitud_ids.append(int(solicitud.id))
+            db.session.add(
+                PagoSolicitud(
+                    solicitud_id=int(solicitud.id),
+                    cliente_id=int(cliente.id),
+                    monto="2500.00",
+                    tipo_pago="abono",
+                    ciclo_numero=1,
+                    origen="test",
+                    origen_id=f"cliente-detail-bulk:{solicitud.id}",
+                )
+            )
+        db.session.commit()
+        cliente_id = int(cliente.id)
+        first_solicitud_id = solicitud_ids[0]
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert f'data-testid="cliente-solicitud-registrar-pago-{first_solicitud_id}"' in html
+    assert _count_table_mentions(statements, "pagos_solicitud") <= 2
+
+
+def test_t1_cliente_detail_solicitudes_fragment_pago_summary_no_crece_lineal():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        token = secrets.token_hex(6)
+        cliente = Cliente(
+            codigo=f"FRAG-{token}",
+            nombre_completo=f"Cliente Fragment {token}",
+            email=f"frag_{token}@example.com",
+            telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+        )
+        db.session.add(cliente)
+        db.session.flush()
+        solicitud_ids = []
+        for idx in range(4):
+            solicitud = Solicitud(
+                cliente_id=int(cliente.id),
+                codigo_solicitud=f"SOL-FRAG-{token}-{idx}",
+                estado="activa",
+                tipo_plan="premium",
+                abono="0.00",
+                payment_cycle_plan=None,
+                payment_cycle_precio_total=None,
+                payment_cycle_abono_requerido=None,
+                payment_cycle_estado=None,
+            )
+            db.session.add(solicitud)
+            db.session.flush()
+            solicitud_ids.append(int(solicitud.id))
+            db.session.add(
+                PagoSolicitud(
+                    solicitud_id=int(solicitud.id),
+                    cliente_id=int(cliente.id),
+                    monto="2500.00",
+                    tipo_pago="abono",
+                    ciclo_numero=1,
+                    origen="test",
+                    origen_id=f"cliente-frag-bulk:{solicitud.id}",
+                )
+            )
+        db.session.commit()
+        cliente_id = int(cliente.id)
+        first_solicitud_id = solicitud_ids[0]
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}/_solicitudes", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert f'data-testid="cliente-solicitud-registrar-pago-{first_solicitud_id}"' in html
+    assert _count_table_mentions(statements, "pagos_solicitud") <= 2
+
+
+def test_t1_detalle_solicitud_pago_summary_no_repite_queries():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        solicitud.payment_cycle_plan = None
+        solicitud.payment_cycle_precio_total = None
+        solicitud.payment_cycle_abono_requerido = None
+        solicitud.payment_cycle_estado = None
+        db.session.add(
+            PagoSolicitud(
+                solicitud_id=solicitud_id,
+                cliente_id=cliente_id,
+                monto="2500.00",
+                tipo_pago="abono",
+                ciclo_numero=1,
+                origen="test",
+                origen_id=f"detalle-summary-abono:{solicitud_id}",
+            )
+        )
+        db.session.commit()
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Registrar pago" in html
+    assert _count_table_mentions(statements, "pagos_solicitud") <= 2
 
 
 def test_t1_get_operativa_core_no_emite_update_payment_cycle_y_conserva_cta():
