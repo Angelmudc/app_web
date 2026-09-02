@@ -18090,6 +18090,7 @@ def listar_solicitudes():
             "nota_cliente",
             "estado",
             "fecha_solicitud",
+            "fecha_inicio_seguimiento",
             "last_copiado_at",
             "estado_actual_desde",
             "fecha_seguimiento_manual",
@@ -18613,24 +18614,58 @@ def solicitud_quick_view_fragment(id: int):
 
 
 def _solicitudes_summary_counts() -> tuple[int, int, str]:
-    proc_count = int(Solicitud.query.filter_by(estado='proceso').count() or 0)
     start_utc, _ = _today_utc_bounds()
     warning = ""
     try:
+        query = Solicitud.query
+        if hasattr(query, "with_entities"):
+            summary_row = (
+                query
+                .with_entities(
+                    func.sum(case((Solicitud.estado == 'proceso', 1), else_=0)).label("proc_count"),
+                    func.sum(
+                        case(
+                            (
+                                and_(
+                                    Solicitud.estado.in_(('activa', 'reemplazo')),
+                                    or_(
+                                        Solicitud.last_copiado_at.is_(None),
+                                        Solicitud.last_copiado_at < start_utc,
+                                    ),
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ).label("copiable_count"),
+                )
+                .one()
+            )
+            if summary_row is None:
+                proc_count = 0
+                copiable_count = 0
+            elif isinstance(summary_row, tuple):
+                proc_count = int(summary_row[0] or 0)
+                copiable_count = int(summary_row[1] or 0)
+            else:
+                proc_count = int(getattr(summary_row, "proc_count", 0) or 0)
+                copiable_count = int(getattr(summary_row, "copiable_count", 0) or 0)
+        else:
+            raise AttributeError("query_without_with_entities")
+    except SQLAlchemyError:
+        db.session.rollback()
+        proc_count = int(Solicitud.query.filter_by(estado='proceso').count() or 0)
         copiable_count = int(
             Solicitud.query
             .filter(Solicitud.estado.in_(('activa', 'reemplazo')))
-            .filter(
-                or_(
-                    Solicitud.last_copiado_at.is_(None),
-                    Solicitud.last_copiado_at < start_utc
-                )
-            )
             .count()
             or 0
         )
-    except SQLAlchemyError:
-        db.session.rollback()
+        warning = (
+            "No se pudo aplicar el filtro de copia diaria; mostrando el total de solicitudes activas/reemplazo."
+        )
+    except Exception:
+        proc_count = int(Solicitud.query.filter_by(estado='proceso').count() or 0)
         copiable_count = int(
             Solicitud.query
             .filter(Solicitud.estado.in_(('activa', 'reemplazo')))

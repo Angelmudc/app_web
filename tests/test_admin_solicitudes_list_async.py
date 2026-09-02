@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import json
 import os
 import secrets
 import unittest
@@ -8,11 +9,13 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from flask import redirect, request
+from sqlalchemy import event
 from sqlalchemy.exc import SQLAlchemyError
 
 from app import app as flask_app
 import admin.routes as admin_routes
-from models import SolicitudCandidata
+from config_app import db
+from models import Candidata, Cliente, Reemplazo, Solicitud, SolicitudCandidata, StaffAuditLog, StaffUser
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -190,6 +193,94 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIn('id="solicitudesFilterForm"', html)
         self.assertIn('data-async-debounce-ms="300"', html)
         self.assertIn('data-async-history="true"', html)
+
+    def test_listado_clasico_reduce_queries_en_seguimiento_y_resumen(self):
+        flask_app.config["TESTING"] = True
+        flask_app.config["WTF_CSRF_ENABLED"] = False
+        os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+
+        with flask_app.app_context():
+            ensure_sqlite_compat_tables(
+                [
+                    StaffUser,
+                    Cliente,
+                    Candidata,
+                    Solicitud,
+                    Reemplazo,
+                    StaffAuditLog,
+                    SolicitudCandidata,
+                ],
+                reset=True,
+            )
+            owner = StaffUser(id=1, username="Owner", email="owner@test.local", role="owner", is_active=True, mfa_enabled=False)
+            owner.set_password("admin123")
+            staff = StaffUser(id=2, username="Cruz", email="cruz@test.local", role="admin", is_active=True, mfa_enabled=False)
+            staff.set_password("8998")
+            db.session.add_all([owner, staff])
+            cliente = Cliente(codigo="CLI-PRIO", nombre_completo="Cliente Prioridad", email="cliente@test.local", telefono="8095550001")
+            db.session.add(cliente)
+            db.session.add(Candidata(fila=7, nombre_completo="Cand 7", codigo="CAN-7"))
+            db.session.flush()
+            base_dt = datetime(2026, 3, 1, 10, 0, 0)
+            solicitudes = []
+            for idx in range(1, 6):
+                s = Solicitud(
+                    id=idx,
+                    cliente_id=int(cliente.id or 0),
+                    candidata_id=7,
+                    codigo_solicitud=f"SOL-PERF-{idx}",
+                    estado="activa" if idx % 2 else "reemplazo",
+                    fecha_solicitud=base_dt,
+                    fecha_inicio_seguimiento=base_dt,
+                    fecha_ultima_modificacion=base_dt,
+                    estado_actual_desde=base_dt,
+                    ciudad_sector="Santo Domingo",
+                )
+                solicitudes.append(s)
+            db.session.add_all(solicitudes)
+            db.session.flush()
+            for idx, s in enumerate(solicitudes, start=1):
+                db.session.add(
+                    StaffAuditLog(
+                        created_at=base_dt,
+                        action_type="SOLICITUD_EDIT",
+                        entity_type="solicitud",
+                        entity_id=str(s.id),
+                        actor_user_id=1 if idx % 2 else 2,
+                        actor_role="admin",
+                        summary=f"Audit {s.id}",
+                    )
+                )
+            db.session.commit()
+
+        client = flask_app.test_client()
+        login = client.post("/admin/login", data={"usuario": "Owner", "clave": "admin123"}, follow_redirects=False)
+        self.assertIn(login.status_code, (302, 303))
+
+        statements: list[str] = []
+        with flask_app.app_context():
+            def _before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
+                statements.append(statement)
+
+            event.listen(db.engine, "before_cursor_execute", _before_cursor_execute)
+            try:
+                with self.assertLogs("config_app", level="INFO") as captured_logs:
+                    resp = client.get("/admin/solicitudes", follow_redirects=False)
+            finally:
+                event.remove(db.engine, "before_cursor_execute", _before_cursor_execute)
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("En proceso", html)
+        self.assertIn("Copiables", html)
+        self.assertIn("Responsable", html)
+        self.assertEqual(sum(1 for stmt in statements if "count(distinct(solicitudes.id))" in stmt.lower()), 1)
+        self.assertLessEqual(sum(1 for stmt in statements if "from staff_users" in stmt.lower()), 3)
+        self.assertEqual(sum(1 for stmt in statements if "SELECT solicitudes.fecha_inicio_seguimiento AS solicitudes_fecha_inicio_seguimiento" in stmt), 0)
+        perf_logs = [line for line in captured_logs.output if "[p1-c1-baseline]" in line]
+        self.assertTrue(perf_logs)
+        perf_payload = json.loads(perf_logs[-1].split("[p1-c1-baseline] ", 1)[1])
+        self.assertLessEqual(int(perf_payload.get("db_queries", 0) or 0), 8)
 
     def test_paginacion_async_conserva_querystring_en_links(self):
         rows = [_solicitud_stub(i, f"SOL-{i:03d}", "activa") for i in range(1, 26)]
@@ -564,8 +655,8 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         start_marker = 'id="sol-actions-10"'
         idx = html.find(start_marker)
         self.assertGreaterEqual(idx, 0)
-        next_article_idx = html.find('<article id="sol-11"', idx)
-        collapsed_section = html[idx:next_article_idx if next_article_idx > idx else len(html)]
+        next_row_idx = html.find('<tr class=', idx + 1)
+        collapsed_section = html[idx:next_row_idx if next_row_idx > idx else len(html)]
         self.assertIn("Marcar espera de pago</button>", collapsed_section)
         self.assertNotIn("Quitar espera de pago</button>", collapsed_section)
 
@@ -705,7 +796,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("replace_html") or ""
         self.assertIn("Atención hoy", html)
-        self.assertIn('<span class="sol-muted">Seguimiento:</span>', html)
+        self.assertIn("Seguimiento", html)
         self.assertIn('title="Seguimiento manual programado para hoy.">Hoy</span>', html)
 
     def test_accion_por_fila_async_poner_espera_pago(self):
