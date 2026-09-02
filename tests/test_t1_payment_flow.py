@@ -15,6 +15,7 @@ from models import (
     Candidata,
     Cliente,
     DomainOutbox,
+    Entrevista,
     PagoSolicitud,
     Reemplazo,
     RequestIdempotencyKey,
@@ -51,6 +52,7 @@ def _ensure_core_tables() -> None:
             TareaCliente,
             SolicitudCandidata,
             PagoSolicitud,
+            Entrevista,
             RequestIdempotencyKey,
             DomainOutbox,
         ],
@@ -130,6 +132,16 @@ def _payment_cycle_update_count(statements) -> int:
 def _count_table_mentions(statements, table_name: str) -> int:
     needle = table_name.lower()
     return sum(1 for statement in (statements or []) if needle in str(statement or "").lower())
+
+
+def _count_sql_patterns(statements, *needles: str) -> int:
+    lowered_needles = [str(needle or "").lower() for needle in needles if str(needle or "").strip()]
+    total = 0
+    for statement in (statements or []):
+        normalized = " ".join(str(statement or "").split()).lower()
+        if all(needle in normalized for needle in lowered_needles):
+            total += 1
+    return total
 
 
 def test_t1_pago_completo_marca_pagada_y_crea_movimiento():
@@ -2294,6 +2306,63 @@ def test_t1_cliente_detail_solicitudes_fragment_pago_summary_no_crece_lineal():
     assert resp.status_code == 200
     assert f'data-testid="cliente-solicitud-registrar-pago-{first_solicitud_id}"' in html
     assert _count_table_mentions(statements, "pagos_solicitud") <= 2
+
+
+def test_t1_cliente_detail_permission_guard_no_crece_lineal_con_solicitudes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        token = secrets.token_hex(6)
+        cliente = Cliente(
+            codigo=f"ASSIGN-{token}",
+            nombre_completo=f"Cliente Assign {token}",
+            email=f"assign_{token}@example.com",
+            telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+        )
+        candidata = Candidata(
+            nombre_completo=f"Candidata Assign {token}",
+            cedula=f"{int(token[:10], 16) % 10**11:011d}",
+            numero_telefono="8090002222",
+            estado="lista_para_trabajar",
+        )
+        db.session.add(cliente)
+        db.session.add(candidata)
+        db.session.flush()
+        solicitud_ids = []
+        for idx in range(10):
+            solicitud = Solicitud(
+                cliente_id=int(cliente.id),
+                candidata_id=int(candidata.fila),
+                codigo_solicitud=f"SOL-ASSIGN-{token}-{idx}",
+                estado="activa",
+                tipo_plan="premium",
+                abono="0.00",
+            )
+            db.session.add(solicitud)
+            db.session.flush()
+            solicitud_ids.append(int(solicitud.id))
+            db.session.add(
+                SolicitudCandidata(
+                    solicitud_id=int(solicitud.id),
+                    candidata_id=int(candidata.fila),
+                    status="enviada",
+                )
+            )
+        db.session.commit()
+        cliente_id = int(cliente.id)
+        first_solicitud_id = solicitud_ids[0]
+    _login_admin(client)
+    with flask_app.app_context():
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert f'data-testid="cliente-solicitud-registrar-pago-{first_solicitud_id}"' in html
+    assert _count_table_mentions(statements, "solicitudes_candidatas") == 1
+    assert _count_sql_patterns(statements, "from solicitudes", "solicitudes.id in (", "solicitudes.candidata_id in (") == 1
 
 
 def test_t1_detalle_solicitud_pago_summary_no_repite_queries():

@@ -223,6 +223,7 @@ from services.candidata_invariants import (
     sync_solicitud_candidatas_after_assignment as invariant_sync_solicitud_candidatas_after_assignment,
 )
 from services.candidata_assignment_guard import validate_candidata_assignment_context
+from services.candidata_assignment_guard import build_solicitud_payment_eligibility_map
 from services.candidata_state_capabilities import build_candidata_state_capabilities
 from services.solicitud_estado import (
     days_in_state,
@@ -10842,14 +10843,19 @@ def eliminar_cliente(cliente_id):
 # ─────────────────────────────────────────────────────────────
 # 🔍 Detalle de cliente
 # ─────────────────────────────────────────────────────────────
-def solicitud_puede_registrar_pago(solicitud, *, summary: dict | None = None) -> bool:
+def solicitud_puede_registrar_pago(solicitud, *, summary: dict | None = None, assignment_guard=None) -> bool:
     candidata_id = int(getattr(solicitud, "candidata_id", 0) or 0)
-    if candidata_id > 0:
+    guard = assignment_guard if candidata_id > 0 else None
+    if guard is None and candidata_id > 0:
         guard = validate_candidata_assignment_context(
             candidata_id=candidata_id,
             solicitud_id=int(getattr(solicitud, "id", 0) or 0),
         )
-        if not guard.can_charge:
+    if guard is not None:
+        can_charge = bool(getattr(guard, "can_charge", False))
+        if not can_charge and isinstance(guard, dict):
+            can_charge = bool(guard.get("can_charge"))
+        if not can_charge:
             return False
     estado = str(getattr(solicitud, "estado", "") or "").strip().lower()
     estados_bloqueados = {"reemplazo", "pendiente_servicio", "cancelada"}
@@ -10970,6 +10976,7 @@ def _cliente_detail_regions_context(
     solicitudes_page = (solicitudes or [])[start:end]
     has_more = page < total_pages
     payment_summary_by_solicitud_id = build_payment_summary_map(solicitudes)
+    assignment_guard_by_solicitud_id = build_solicitud_payment_eligibility_map(solicitudes)
     solicitud_pago_habilitado: dict[int, bool] = {}
     solicitud_whatsapp_activation: dict[int, dict] = {}
     for s in (solicitudes or []):
@@ -10979,7 +10986,8 @@ def _cliente_detail_regions_context(
         payment_ctx = payment_summary_by_solicitud_id.get(sid)
         if payment_ctx is None:
             payment_ctx = _build_payment_summary_ctx(s, readonly=True)
-        can_register_payment = solicitud_puede_registrar_pago(s, summary=payment_ctx)
+        assignment_guard = assignment_guard_by_solicitud_id.get(sid)
+        can_register_payment = solicitud_puede_registrar_pago(s, summary=payment_ctx, assignment_guard=assignment_guard)
         payment_ctx = dict(payment_ctx)
         payment_ctx["solicitud_can_register_payment"] = can_register_payment
         solicitud_pago_habilitado[sid] = can_register_payment
