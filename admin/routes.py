@@ -21929,6 +21929,7 @@ _CANDIDATA_CENTER_SEARCH_FIELDS = (
     Candidata.trabaja_con_mascotas,
     Candidata.puede_dormir_fuera,
     Candidata.fecha_cambio_estado,
+    Candidata.marca_temporal,
     Candidata.contactos_referencias_laborales,
     Candidata.referencias_familiares_detalle,
     Candidata.referencias_laboral,
@@ -22446,26 +22447,48 @@ def _candidata_center_apply_filters(query, ctx, *, chip: str, args):
 
 def _candidata_center_row_from_tuple(row, *, list_url: str | None = None) -> dict:
     cand, entrevistas_count, dep_len, perfil_len, ced1_len, ced2_len, last_tracking_at, next_due_at = row
+    cand_view = SimpleNamespace(
+        fila=int(getattr(cand, "fila", 0) or 0),
+        nombre_completo=getattr(cand, "nombre_completo", None) or "",
+        edad=getattr(cand, "edad", None) or "",
+        numero_telefono=getattr(cand, "numero_telefono", None) or "",
+        cedula=getattr(cand, "cedula", None) or "",
+        codigo=getattr(cand, "codigo", None) or "",
+        estado=str(getattr(cand, "estado", "") or ""),
+        inscripcion=bool(getattr(cand, "inscripcion", False)),
+        entrevista=getattr(cand, "entrevista", None) or "",
+        referencias_laboral=getattr(cand, "referencias_laboral", None) or "",
+        referencias_familiares=getattr(cand, "referencias_familiares", None) or "",
+        contactos_referencias_laborales=getattr(cand, "contactos_referencias_laborales", None) or "",
+        referencias_familiares_detalle=getattr(cand, "referencias_familiares_detalle", None) or "",
+        direccion_completa=getattr(cand, "direccion_completa", None) or "",
+        modalidad_trabajo_preferida=getattr(cand, "modalidad_trabajo_preferida", None) or "",
+        trabaja_con_ninos=bool(getattr(cand, "trabaja_con_ninos", False)),
+        trabaja_con_mascotas=bool(getattr(cand, "trabaja_con_mascotas", False)),
+        puede_dormir_fuera=bool(getattr(cand, "puede_dormir_fuera", False)),
+        fecha_cambio_estado=getattr(cand, "fecha_cambio_estado", None),
+        marca_temporal=getattr(cand, "marca_temporal", None),
+    )
     doc_flags = {
         "depuracion": binario_ok(dep_len),
         "perfil": binario_ok(perfil_len),
         "cedula1": binario_ok(ced1_len),
         "cedula2": binario_ok(ced2_len),
     }
-    readiness = _candidata_center_build_readiness(cand, int(entrevistas_count or 0), doc_flags)
+    readiness = _candidata_center_build_readiness(cand_view, int(entrevistas_count or 0), doc_flags)
     completed = sum(1 for ok in readiness["flags"].values() if ok)
     total = len(readiness["flags"])
-    params = {"fila": cand.fila}
+    params = {"fila": cand_view.fila}
     if list_url:
         params["next"] = list_url
     return {
-        "candidata": cand,
+        "candidata": cand_view,
         "detail_url": url_for("admin.candidatas_operativo_detail", **params),
         "readiness": readiness,
         "completed": completed,
         "total": total,
         "completed_label": f"{completed}/{total}",
-        "estado_label": _center_state_label(cand.estado),
+        "estado_label": _center_state_label(cand_view.estado),
         "last_activity": last_tracking_at or next_due_at or getattr(cand, "fecha_cambio_estado", None) or getattr(cand, "marca_temporal", None),
         "next_due_at": next_due_at,
     }
@@ -22731,17 +22754,37 @@ def _candidata_center_listing_rows(q: str, chip: str, page: int, args) -> dict:
 
 def _candidata_center_queue_counts() -> dict:
     base, ctx = _candidata_center_listing_base()
+    aggregate = (
+        base.with_entities(
+            func.count(Candidata.fila).label("todas"),
+            func.sum(case((Candidata.estado.in_(_CANDIDATA_CENTER_PROCESS_STATES), 1), else_=0)).label("proceso"),
+            func.sum(case((Candidata.estado == "lista_para_trabajar", 1), else_=0)).label("listas"),
+            func.sum(case((Candidata.estado == "trabajando", 1), else_=0)).label("trabajando"),
+            func.sum(case((Candidata.estado == "descalificada", 1), else_=0)).label("descalificadas"),
+            func.sum(
+                case(
+                    (
+                        and_(
+                            Candidata.estado.notin_(["descalificada", "trabajando"]),
+                            _candidata_center_ready_missing_expr(ctx),
+                        ),
+                        1,
+                    ),
+                    else_=0,
+                )
+            ).label("por_completar"),
+        )
+        .one()
+    )
     counts = {
-        "todas": int(Candidata.query.count() or 0),
-        "por_completar": int(
-            _candidata_center_apply_filters(base, ctx, chip="por_completar", args={}).with_entities(func.count(Candidata.fila)).scalar() or 0
-        ),
-        "proceso": int(Candidata.query.filter(Candidata.estado.in_(_CANDIDATA_CENTER_PROCESS_STATES)).count() or 0),
-        "listas": int(Candidata.query.filter(Candidata.estado == "lista_para_trabajar").count() or 0),
-        "trabajando": int(Candidata.query.filter(Candidata.estado == "trabajando").count() or 0),
+        "todas": int(getattr(aggregate, "todas", 0) or 0),
+        "por_completar": int(getattr(aggregate, "por_completar", 0) or 0),
+        "proceso": int(getattr(aggregate, "proceso", 0) or 0),
+        "listas": int(getattr(aggregate, "listas", 0) or 0),
+        "trabajando": int(getattr(aggregate, "trabajando", 0) or 0),
     }
     if _candidata_center_can_view_descalificadas():
-        counts["descalificadas"] = int(Candidata.query.filter(Candidata.estado == "descalificada").count() or 0)
+        counts["descalificadas"] = int(getattr(aggregate, "descalificadas", 0) or 0)
     today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
     counts["seguimiento"] = int(
         SeguimientoCandidataCaso.query.filter(
@@ -23967,7 +24010,7 @@ def candidatas_operativo_index():
     page = _safe_int(request.args.get("page"), default=1)
     listing = _candidata_center_listing_rows(q, chip, page, request.args)
     counts = _candidata_center_queue_counts()
-    dashboard = _candidata_center_dashboard_summary(counts)
+    dashboard = None if q else _candidata_center_dashboard_summary(counts)
     page_args = request.args.to_dict()
     page_args.pop("page", None)
     return render_template(
@@ -23983,7 +24026,6 @@ def candidatas_operativo_index():
         dashboard=dashboard,
         queue_criteria=_CANDIDATA_CENTER_QUEUE_CRITERIA,
         can_view_descalificadas=_candidata_center_can_view_descalificadas(),
-        recent_candidates=_candidata_center_recent_rows(limit=8),
         estado_filter_options=[(estado, _center_state_label(estado)) for estado in [
             "en_proceso",
             "proceso_inscripcion",

@@ -1340,6 +1340,61 @@ def test_admin_candidatas_dashboard_prioriza_y_deduplica_senales_operativas():
         assert dashboard["secondary_kpis"][0]["key"] == "proceso"
 
 
+def test_admin_candidatas_index_no_crece_linealmente_en_sql():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    def _measure(url: str) -> tuple[int, str]:
+        statements: list[str] = []
+
+        def _before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
+            sql = " ".join(str(statement).split())
+            if sql.startswith("PRAGMA"):
+                return
+            statements.append(sql)
+
+        with flask_app.app_context():
+            event.listen(db.engine, "before_cursor_execute", _before_cursor_execute)
+            try:
+                resp = client.get(url, follow_redirects=False)
+            finally:
+                event.remove(db.engine, "before_cursor_execute", _before_cursor_execute)
+        assert resp.status_code == 200
+        return len(statements), resp.get_data(as_text=True)
+
+    with flask_app.app_context():
+        _ensure_tables()
+        for fila in (991200,):
+            _seed_center_candidate(fila=fila)
+        base = Candidata.query.get(991200)
+        base.nombre_completo = "SQL Base"
+        base.estado = "lista_para_trabajar"
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    base_count, base_html = _measure("/admin/candidatas")
+    assert "SQL Base" in base_html
+
+    with flask_app.app_context():
+        for fila in range(991201, 991206):
+            _seed_center_candidate(fila=fila)
+            cand = Candidata.query.get(fila)
+            cand.nombre_completo = f"SQL Extra {fila}"
+            cand.estado = "inscrita_incompleta" if fila % 2 else "lista_para_trabajar"
+            if fila % 2:
+                cand.cedula2 = None
+        db.session.commit()
+
+    many_count, many_html = _measure("/admin/candidatas")
+    assert "SQL Base" in many_html
+    assert many_count <= base_count + 2
+
+    search_count, search_html = _measure("/admin/candidatas?q=SQL&filtro=todas&page=1")
+    assert "Resultados para:" in search_html
+    assert search_count < many_count
+
+
 def test_admin_candidatas_operativo_index_simplifica_paneles_sin_perder_busqueda():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
