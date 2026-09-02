@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from app import app as flask_app
 import admin.routes as admin_routes
+from tests.test_admin_candidatas_operativo import _ensure_tables, _seed_center_candidate
 
 
 class _SolicitudQueryStub:
@@ -147,6 +148,22 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('document.addEventListener("admin:navigation-complete"', js_txt)
         self.assertIn('document.addEventListener("admin:content-updated"', js_txt)
         self.assertIn("data-cand-inline-search", js_txt)
+
+    def test_candidatas_rutas_optan_al_runtime_lazy_del_detalle(self):
+        with flask_app.app_context():
+            _ensure_tables()
+            _seed_center_candidate(fila=990693)
+
+        index_resp = self.client.get("/admin/candidatas", follow_redirects=False)
+        self.assertEqual(index_resp.status_code, 200)
+        index_html = index_resp.get_data(as_text=True)
+        self.assertIn("js/core/admin_lazy_scripts.js", index_html)
+
+        detail_resp = self.client.get("/admin/candidatas/990693", follow_redirects=False)
+        self.assertEqual(detail_resp.status_code, 200)
+        detail_html = detail_resp.get_data(as_text=True)
+        self.assertIn("js/core/admin_lazy_scripts.js", detail_html)
+        self.assertIn("data-lazy-script-candidata-detail-ui", detail_html)
 
     def test_links_piloto_opt_in_en_templates_objetivo(self):
         clientes_tpl = os.path.join(os.getcwd(), "templates", "admin", "clientes_list.html")

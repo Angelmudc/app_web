@@ -184,7 +184,7 @@
 {% set _admin_light_runtime_endpoints = ['admin.tareas_hoy'] %}
 {% set _is_admin_light_runtime_view = _is_admin_runtime_page and (request.endpoint in _admin_light_runtime_endpoints) %}
 {% set _admin_core_runtime_enabled = _is_admin_runtime_page and (not _is_admin_light_runtime_view) %}
-{% set _admin_lazy_default_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _requires_live_refresh) %}
+{% set _admin_lazy_default_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes') or _ui_path.startswith('/admin/candidatas') or _requires_live_refresh) %}
 {% set _admin_lazy_enabled = _admin_lazy_default_enabled if _requires_lazy_runtime is none else (_admin_lazy_default_enabled and _requires_lazy_runtime) %}
 {% set _admin_nav_default_enabled = _admin_core_runtime_enabled and (_ui_path.startswith('/admin/solicitudes') or _ui_path.startswith('/admin/clientes/')) %}
 {% set _admin_nav_enabled = _admin_nav_default_enabled if _requires_partial_nav is none else (_admin_nav_default_enabled and _requires_partial_nav) %}
