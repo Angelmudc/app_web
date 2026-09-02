@@ -10945,6 +10945,8 @@ def _cliente_detail_regions_context(
     end = start + per_page
     solicitudes_page = (solicitudes or [])[start:end]
     has_more = page < total_pages
+    solicitudes_render_rows = _cliente_detail_solicitudes_render_rows(solicitudes_page)
+    timeline_solicitudes = _cliente_detail_timeline_render_rows(solicitudes)
     payment_summary_by_solicitud_id = build_payment_summary_map(solicitudes)
     assignment_guard_by_solicitud_id = build_solicitud_payment_eligibility_map(solicitudes)
     solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
@@ -11036,6 +11038,8 @@ def _cliente_detail_regions_context(
         "cliente": cliente,
         "solicitudes": solicitudes,
         "solicitudes_page": solicitudes_page,
+        "solicitudes_render_rows": solicitudes_render_rows,
+        "timeline_solicitudes": timeline_solicitudes,
         "page": page,
         "per_page": per_page,
         "total": total_solicitudes,
@@ -11097,6 +11101,24 @@ def _cliente_detail_solicitudes_render_rows(solicitudes: list[Solicitud]) -> lis
     return rows
 
 
+def _cliente_detail_timeline_render_rows(solicitudes: list[Solicitud]) -> list[SimpleNamespace]:
+    rows: list[SimpleNamespace] = []
+    for s in (solicitudes or []):
+        rows.append(
+            SimpleNamespace(
+                id=getattr(s, "id", None),
+                codigo_solicitud=getattr(s, "codigo_solicitud", None),
+                fecha_solicitud=getattr(s, "fecha_solicitud", None),
+                estado=getattr(s, "estado", None),
+                fecha_ultima_modificacion=getattr(s, "fecha_ultima_modificacion", None),
+                last_copiado_at=getattr(s, "last_copiado_at", None),
+                fecha_cancelacion=getattr(s, "fecha_cancelacion", None),
+                motivo_cancelacion=getattr(s, "motivo_cancelacion", None),
+            )
+        )
+    return rows
+
+
 @admin_bp.route('/clientes/<int:cliente_id>')
 @login_required
 @staff_required
@@ -11122,8 +11144,9 @@ def detalle_cliente(cliente_id):
         # ------------------------------
         timeline = []
         with _admin_cliente_detail_measure_block("timeline_build", enabled=measure_enabled):
+            timeline_solicitudes = region_ctx.get("timeline_solicitudes") or []
             reemplazos_por_solicitud = region_ctx.get("reemplazos_por_solicitud") or {}
-            for s in solicitudes:
+            for s in timeline_solicitudes:
                 codigo = s.codigo_solicitud or s.id
 
                 # 1) Creación de la solicitud
@@ -11207,7 +11230,7 @@ def detalle_cliente(cliente_id):
             )
         with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
             render_ctx = dict(region_ctx)
-            render_ctx["solicitudes"] = _cliente_detail_solicitudes_render_rows(region_ctx["solicitudes_page"])
+            render_ctx["solicitudes"] = region_ctx.get("solicitudes_render_rows") or []
             html = render_template(
                 'admin/cliente_detail.html',
                 timeline=timeline,

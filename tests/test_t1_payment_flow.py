@@ -2518,6 +2518,65 @@ def test_t1_cliente_detail_reemplazo_activo_no_crece_lineal_con_solicitudes():
     assert measurements[20]["reemplazos"] <= measurements[1]["reemplazos"] + 1
 
 
+def test_t1_cliente_detail_timeline_no_crece_lineal_con_solicitudes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    measurements = {}
+
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+
+    with flask_app.app_context():
+        def _seed_case(total_solicitudes: int):
+            token = secrets.token_hex(6)
+            cliente = Cliente(
+                codigo=f"TIMELINE-{total_solicitudes}-{token}",
+                nombre_completo=f"Cliente Timeline {total_solicitudes} {token}",
+                email=f"timeline_{total_solicitudes}_{token}@example.com",
+                telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+            )
+            db.session.add(cliente)
+            db.session.flush()
+            for idx in range(total_solicitudes):
+                base_ts = admin_routes.utc_now_naive() - timedelta(days=idx)
+                estado = "cancelada" if idx % 4 == 3 else ("pagada" if idx % 4 == 2 else "activa")
+                solicitud = Solicitud(
+                    cliente_id=int(cliente.id),
+                    codigo_solicitud=f"SOL-TIMELINE-{total_solicitudes}-{idx}-{token}",
+                    estado=estado,
+                    fecha_solicitud=base_ts,
+                    fecha_ultima_modificacion=base_ts if estado in {"activa", "pagada"} else None,
+                    last_copiado_at=base_ts if idx % 3 == 0 else None,
+                    fecha_cancelacion=base_ts if estado == "cancelada" else None,
+                    motivo_cancelacion="Cambio de plan" if estado == "cancelada" else None,
+                    tipo_plan="premium",
+                    abono="0.00",
+                )
+                db.session.add(solicitud)
+            db.session.commit()
+            return int(cliente.id)
+
+        for total in (1, 5, 10, 20):
+            cliente_id = _seed_case(total)
+            with _capture_sql_statements() as statements:
+                resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+            html = resp.get_data(as_text=True)
+            assert resp.status_code == 200
+            assert "Historial de actividad" in html
+            measurements[total] = {
+                "solicitudes_id_eq": _count_sql_patterns(statements, "from solicitudes", "where solicitudes.id = ?"),
+                "sql_total": len(statements),
+                "html_bytes": len(html.encode("utf-8")),
+            }
+
+    assert measurements[20]["solicitudes_id_eq"] <= measurements[1]["solicitudes_id_eq"] + 1
+    assert measurements[10]["solicitudes_id_eq"] <= measurements[1]["solicitudes_id_eq"] + 1
+    assert measurements[5]["solicitudes_id_eq"] <= measurements[1]["solicitudes_id_eq"] + 1
+
+
 def test_t1_detalle_solicitud_pago_summary_no_repite_queries():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
