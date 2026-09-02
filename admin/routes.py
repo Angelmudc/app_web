@@ -8170,36 +8170,44 @@ def listar_clientes():
 
         if filtros:
             query = query.filter(or_(*filtros))
-        list_attrs = []
-        for attr in (
-            "id",
-            "codigo",
-            "nombre_completo",
-            "telefono",
-            "email",
-            "estado",
-            "total_solicitudes",
-            "fecha_registro",
-        ):
-            if hasattr(Cliente, attr):
-                list_attrs.append(getattr(Cliente, attr))
-
-        if list_attrs and hasattr(query, "options"):
+        cliente_cols = []
+        for col in getattr(Cliente, "__table__", None).columns if getattr(Cliente, "__table__", None) is not None else []:
             try:
-                query = query.options(load_only(*list_attrs))
+                attr = getattr(Cliente, str(col.key), None)
             except Exception:
-                # Compatibilidad defensiva con stubs de tests u ORMs parciales.
-                pass
+                attr = None
+            if attr is not None:
+                cliente_cols.append((str(col.key), attr))
 
         ordered_query = query.order_by(Cliente.fecha_registro.desc())
         if all(hasattr(ordered_query, attr) for attr in ("count", "offset", "limit", "all")):
             total = ordered_query.count()
-            clientes = (
-                ordered_query
-                .offset((page - 1) * per_page)
-                .limit(per_page)
-                .all()
-            )
+            if cliente_cols:
+                cliente_attrs = [attr for _name, attr in cliente_cols]
+                cliente_rows = (
+                    ordered_query
+                    .with_entities(*cliente_attrs)
+                    .offset((page - 1) * per_page)
+                    .limit(per_page)
+                    .all()
+                )
+                clientes = []
+                for row in (cliente_rows or []):
+                    if hasattr(row, "_mapping"):
+                        mapping = row._mapping
+                        data = {name: mapping.get(name) for name, _attr in cliente_cols}
+                    else:
+                        values = list(row or [])
+                        data = {name: values[idx] if idx < len(values) else None for idx, (name, _attr) in enumerate(cliente_cols)}
+                    data.setdefault("estado", None)
+                    clientes.append(SimpleNamespace(**data))
+            else:
+                clientes = (
+                    ordered_query
+                    .offset((page - 1) * per_page)
+                    .limit(per_page)
+                    .all()
+                )
         else:
             # Fallback para stubs legacy de tests que solo exponen .all()
             all_rows = ordered_query.all()
