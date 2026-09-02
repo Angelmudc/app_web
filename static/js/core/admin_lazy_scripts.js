@@ -323,7 +323,9 @@
     const root = scope && scope.querySelector ? scope : document;
     const scriptSolicitud = String(document.body?.getAttribute("data-lazy-script-solicitud-detail-ui") || "").trim();
     const scriptLiveRefresh = String(document.body?.getAttribute("data-lazy-script-live-refresh") || "").trim();
-    const candidataScriptNode = root.querySelector("[data-lazy-script-candidata-detail-ui]");
+    const candidataScriptNode = (root.matches && root.matches("[data-lazy-script-candidata-detail-ui]"))
+      ? root
+      : root.querySelector("[data-lazy-script-candidata-detail-ui]");
     const scriptCandidataDetail = candidataScriptNode
       ? String(candidataScriptNode.getAttribute("data-lazy-script-candidata-detail-ui") || "").trim()
       : "";
@@ -334,7 +336,9 @@
     if (scriptLiveRefresh && hasLiveRefreshMarkers(root)) {
       loadScriptOnce(scriptLiveRefresh).catch(function () {});
     }
-    if (scriptCandidataDetail && root.querySelector("[data-candidata-center]")) {
+    const hasCandidataDetailRoot = (root.matches && root.matches("[data-candidata-center]"))
+      || !!root.querySelector("[data-candidata-center]");
+    if (scriptCandidataDetail && hasCandidataDetailRoot) {
       loadScriptOnce(scriptCandidataDetail).catch(function () {});
     }
     if (hasClientesListMarkers(root)) {

@@ -5,8 +5,15 @@
 
   if (window.AdminCandidataDetailUI) return;
 
+  const boundRoots = new WeakSet();
+  const boundInlineSearchShells = new WeakSet();
+  const boundQuickForms = new WeakSet();
+  const boundStateForms = new WeakSet();
+  const boundDocForms = new WeakSet();
+
   function getDetailRoot(scope) {
     const root = scope && scope.querySelector ? scope : document;
+    if (root && root.matches && root.matches("[data-candidata-center]")) return root;
     return root.querySelector("[data-candidata-center]");
   }
 
@@ -74,8 +81,8 @@
 
   function bindInlineSearch(detailRoot) {
     const shell = detailRoot.querySelector("[data-cand-inline-search]");
-    if (!shell || shell.dataset.inlineSearchBound === "1") return;
-    shell.dataset.inlineSearchBound = "1";
+    if (!shell || boundInlineSearchShells.has(shell)) return;
+    boundInlineSearchShells.add(shell);
     window.__candInlineSearchShell = shell;
 
     const input = shell.querySelector("input");
@@ -709,8 +716,8 @@
 
   function bindDetail(detailRoot) {
     const root = detailRoot;
-    if (!root || root.dataset.candDetailUiBound === "1") return;
-    root.dataset.candDetailUiBound = "1";
+    if (!root || boundRoots.has(root)) return;
+    boundRoots.add(root);
 
     showStickyIdentityBar(root);
     bindInlineSearch(root);
@@ -765,8 +772,8 @@
     });
 
     root.querySelectorAll("[data-quick-form]").forEach((form) => {
-      if (form.dataset.quickFormBound === "1") return;
-      form.dataset.quickFormBound = "1";
+      if (boundQuickForms.has(form)) return;
+      boundQuickForms.add(form);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (form.dataset.quickBusy === "1") return;
@@ -812,8 +819,8 @@
     });
 
     root.querySelectorAll("[data-state-action]").forEach((form) => {
-      if (form.dataset.stateFormBound === "1") return;
-      form.dataset.stateFormBound = "1";
+      if (boundStateForms.has(form)) return;
+      boundStateForms.add(form);
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         if (form.dataset.quickBusy === "1") return;
@@ -881,8 +888,8 @@
     });
 
     root.querySelectorAll("[data-doc-upload-form]").forEach((form) => {
-      if (form.dataset.docFormBound === "1") return;
-      form.dataset.docFormBound = "1";
+      if (boundDocForms.has(form)) return;
+      boundDocForms.add(form);
       const input = form.querySelector("[data-doc-file-input]");
       const pick = form.querySelector('[data-doc-action="pick"]');
       const dropzone = form.querySelector("[data-doc-dropzone]");
