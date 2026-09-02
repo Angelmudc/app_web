@@ -1476,6 +1476,11 @@ def test_admin_candidatas_operativo_visual_css_scoped_tokens():
     assert ".cand-center summary" in css
     assert ".cand-center .badge" in css
     assert ".cand-center :where(.form-control" in css
+    assert ".detail-info-grid--personal" in css
+    assert ".detail-info-item--stacked .detail-info-label" in css
+    assert ".detail-info-item--stacked .detail-info-value" in css
+    assert "@media (max-width: 991.98px)" in css
+    assert "@media (max-width: 575.98px)" in css
     assert "color: white !important" not in css.lower()
 
 
@@ -1515,6 +1520,34 @@ def test_admin_candidatas_operativo_visual_markup_legible_y_sin_badges_duplicado
     assert "Ver datos secundarios" in html
     assert "2026-05-25 19:35:08.894047" not in html
     assert ".000000" not in html
+
+
+def test_admin_candidata_informacion_personal_agrupa_label_y_valor_en_misma_tarjeta():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990594)
+
+    assert _login(client).status_code in (302, 303)
+    detail = client.get("/admin/candidatas/990594", follow_redirects=False)
+    assert detail.status_code == 200
+    html = detail.get_data(as_text=True)
+
+    personal_html = html.split('aria-label="Información personal"', 1)[1].split('aria-label="Información laboral"', 1)[0]
+    assert 'class="detail-info-grid cand-display detail-info-grid--personal"' in personal_html
+    assert personal_html.count('class="detail-info-item detail-info-item--stacked"') >= 5
+    for label in ["Nombre", "Cédula", "Edad", "Teléfono", "Dirección"]:
+        assert f'<small class="detail-info-label">{label}</small>' in personal_html
+    assert "Ana Centro Operativo" in personal_html
+    assert "402-9905940-4" in personal_html
+    assert "34" in personal_html
+    assert "809-555-0101" in personal_html
+    assert "Santiago" in personal_html
+    assert "Información laboral" in html
+    assert 'data-display="labor"' in html
 
 
 def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():

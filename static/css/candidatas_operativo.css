@@ -303,6 +303,34 @@ html[data-theme="light"] .cand-docs {
   overflow: hidden;
 }
 
+.detail-info-grid--personal {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .8rem;
+}
+
+.detail-info-item--stacked {
+  display: grid;
+  gap: .14rem;
+  align-content: start;
+}
+
+.detail-info-item--stacked .detail-info-label {
+  display: block;
+  color: var(--cand-muted);
+  font-size: .78rem;
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: .01em;
+}
+
+.detail-info-item--stacked .detail-info-value {
+  display: block;
+  color: var(--cand-text-strong);
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
 .cand-grid {
   display: grid;
   grid-template-columns: repeat(12, 1fr);
@@ -922,6 +950,18 @@ html[data-theme="light"] .cand-docs .text-danger {
 .cand-docs .card:hover {
   transform: none !important;
   box-shadow: none !important;
+}
+
+@media (max-width: 991.98px) {
+  .detail-info-grid--personal {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 575.98px) {
+  .detail-info-grid--personal {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .cand-docs .card-header,

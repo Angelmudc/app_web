@@ -431,11 +431,11 @@
             <button class="btn btn-outline-primary btn-sm" type="button" data-edit-toggle>Editar</button>
           </div>
           <div class="detail-section__body">
-            <div class="detail-info-grid cand-display" data-display="personal">
+            <div class="detail-info-grid cand-display detail-info-grid--personal" data-display="personal">
               {% for label, value in personal_fields %}
-                <div class="detail-info-item">
-                  <small>{{ label }}</small>
-                  <span>
+                <div class="detail-info-item detail-info-item--stacked">
+                  <small class="detail-info-label">{{ label }}</small>
+                  <span class="detail-info-value">
                     {% if label in ['Marca temporal', 'Último cambio de estado'] and value is not string %}
                       {{ value|rd_datetime('%d/%m/%Y %I:%M %p') }}
                     {% else %}
