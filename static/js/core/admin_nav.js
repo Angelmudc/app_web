@@ -32,6 +32,7 @@
     if (/^\/admin\/solicitudes\/prioridad\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/?$/.test(path)) return true;
     if (/^\/admin\/candidatas\/?$/.test(path)) return true;
+    if (/^\/admin\/candidatas\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/?$/.test(path)) return true;
     return false;
@@ -594,6 +595,12 @@
     if (!shouldHandleLink(link, ev)) return;
 
     ev.preventDefault();
+    if (link && link.getAttribute("data-admin-nav-back") === "true") {
+      if (history.state && history.state[STATE_KEY] === true) {
+        window.history.back();
+        return;
+      }
+    }
     updateCurrentHistoryScrollY();
     navigateTo(link.href);
   }

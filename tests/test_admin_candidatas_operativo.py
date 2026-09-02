@@ -668,7 +668,10 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
 
     assert "/admin/candidatas/990539/documentos/depuracion" in html
     assert "data-doc-upload-form" in html
-    assert "Arrastra aquí o haz clic para subir." in html
+    assert (
+        "Arrastra aquí o haz clic para subir." in html
+        or "Arrastra otro archivo para reemplazarlo." in html
+    )
     assert "/admin/seguimiento-candidatas/casos/" in html
     assert "depuracion-binary-not-html" not in html
     assert "perfil-binary-not-html" not in html
@@ -1609,17 +1612,18 @@ def test_admin_candidata_pdf_entrevista_historica_usa_solo_legacy_y_respeta_perm
 
 def test_admin_candidatas_operativo_async_forms_limpian_loader_y_bloquean_doble_submit():
     template = Path("templates/admin/candidatas_operativo_detail.html").read_text(encoding="utf-8")
+    js = Path("static/js/admin/candidatas_operativo_detail_ui.js").read_text(encoding="utf-8")
 
     assert 'data-quick-form data-no-loader="true"' in template
     assert 'data-state-action data-no-loader="true"' in template
     assert 'type="submit" data-no-loader="true"' in template
-    assert "function clearGlobalLoaders()" in template
-    assert "function setFormBusy(form, isBusy, submitter)" in template
-    assert "if (form.dataset.quickBusy === '1') return;" in template
-    assert "fetchJsonWithTimeout" in template
-    assert "finally {" in template
-    assert "clearGlobalLoaders();" in template
-    assert "setFormBusy(form, false, submitter);" in template
+    assert "function clearGlobalLoaders()" in js
+    assert "function setFormBusy(form, isBusy, submitter)" in js
+    assert 'if (form.dataset.quickBusy === "1") return;' in js
+    assert "fetchJsonWithTimeout" in js
+    assert "finally {" in js
+    assert "clearGlobalLoaders();" in js
+    assert "setFormBusy(form, false, submitter);" in js
 
 
 def test_admin_candidata_detalle_tiene_identidad_sticky_compacta():
@@ -1635,13 +1639,12 @@ def test_admin_candidata_detalle_tiene_identidad_sticky_compacta():
     assert "card_key='secretary-laboral'" in template
     assert '<header class="detail-hero">' in template
     assert 'data-cand-header="nombre"' in template
-    assert 'setupStickyIdentityBar' in template
-    assert 'IntersectionObserver' in template
-    assert 'admin:navigation-complete' in template
-    assert "syncIdentity(payload)" in template
-    assert "refreshReferenceCards(display)" in template
-    assert "Object.prototype.hasOwnProperty.call(display, 'personal')" in template
-    assert "Object.prototype.hasOwnProperty.call(display, 'references')" in template
+    assert 'data-lazy-script-candidata-detail-ui' in template
+    assert 'data-admin-nav-back="true"' in template
+    assert 'setupStickyIdentityBar' not in template
+    assert 'function clearGlobalLoaders()' not in template
+    assert 'admin:navigation-complete' not in template
+    assert 'refreshReferenceCards(display)' not in template
 
 
 def test_admin_candidata_ficha_no_selecciona_columnas_blob():

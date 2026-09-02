@@ -323,12 +323,19 @@
     const root = scope && scope.querySelector ? scope : document;
     const scriptSolicitud = String(document.body?.getAttribute("data-lazy-script-solicitud-detail-ui") || "").trim();
     const scriptLiveRefresh = String(document.body?.getAttribute("data-lazy-script-live-refresh") || "").trim();
+    const candidataScriptNode = root.querySelector("[data-lazy-script-candidata-detail-ui]");
+    const scriptCandidataDetail = candidataScriptNode
+      ? String(candidataScriptNode.getAttribute("data-lazy-script-candidata-detail-ui") || "").trim()
+      : "";
 
     if (scriptSolicitud && hasSolicitudDetailMarkers(root)) {
       loadScriptOnce(scriptSolicitud).catch(function () {});
     }
     if (scriptLiveRefresh && hasLiveRefreshMarkers(root)) {
       loadScriptOnce(scriptLiveRefresh).catch(function () {});
+    }
+    if (scriptCandidataDetail && root.querySelector("[data-candidata-center]")) {
+      loadScriptOnce(scriptCandidataDetail).catch(function () {});
     }
     if (hasClientesListMarkers(root)) {
       bindClientesListDeleteModal(root);
@@ -339,6 +346,7 @@
   function boot() {
     bindClientesListDeleteModal(document);
     bindLazyFragments(document);
+    evaluate(document);
     scheduleIdle(() => evaluate(document), 1400);
 
     if (!document.__adminLazyRetryBound) {

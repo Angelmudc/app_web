@@ -208,7 +208,7 @@
               {% set c = row.candidata %}
               <tr data-row-url="{{ row.detail_url }}">
                 <td data-label="Nombre">
-                  <a href="{{ row.detail_url }}" class="cand-row-link fw-semibold">{{ c.nombre_completo }}</a>
+                  <a href="{{ row.detail_url }}" class="cand-row-link fw-semibold" data-admin-nav="true">{{ c.nombre_completo }}</a>
                   <div class="small cand-muted">
                     <span class="cand-code">{{ c.codigo or 'sin código' }}</span>
                     · {{ c.edad or 'edad no informada' }}
@@ -228,7 +228,7 @@
                 <td data-label="Última actividad">{{ row.last_activity|rd_datetime('%d/%m/%Y %I:%M %p') if row.last_activity and row.last_activity is not string else (row.last_activity or '—') }}</td>
                 <td data-label="">
                   <div class="d-flex gap-1 justify-content-end">
-                    <a class="btn btn-sm btn-outline-primary" href="{{ row.detail_url }}">Abrir</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ row.detail_url }}" data-admin-nav="true">Abrir</a>
                     {% if c.numero_telefono %}<a class="btn btn-sm btn-outline-secondary" href="tel:{{ c.numero_telefono }}">Llamar</a>{% endif %}
                   </div>
                 </td>

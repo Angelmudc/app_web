@@ -53,9 +53,11 @@ function matchesSelector(node, selector) {
   if (sel === ".js-copy-contract-link") return (node.className || "").split(/\s+/).includes("js-copy-contract-link");
   if (sel === "#deleteClienteFromListModalShared") return node.id === "deleteClienteFromListModalShared";
   if (sel === "#clientesSearchForm") return node.id === "clientesSearchForm";
+  if (sel === "[data-candidata-center]") return !!node.getAttribute && node.getAttribute("data-candidata-center") !== null;
   if (sel === "[data-admin-lazy-fragment-url]") return !!node.getAttribute && !!node.getAttribute("data-admin-lazy-fragment-url");
   if (sel === "[data-admin-lazy-status]") return !!node.getAttribute && node.getAttribute("data-admin-lazy-status") !== null;
   if (sel === "[data-admin-lazy-retry]") return !!node.getAttribute && node.getAttribute("data-admin-lazy-retry") !== null;
+  if (sel === "[data-lazy-script-candidata-detail-ui]") return !!node.getAttribute && node.getAttribute("data-lazy-script-candidata-detail-ui") !== null;
   if (sel === "[data-live-refresh='1']") return !!node.getAttribute && node.getAttribute("data-live-refresh") === "1";
   if (sel === "script[src]") return node.tagName === "SCRIPT" && !!node.getAttribute("src");
   return false;
@@ -77,6 +79,14 @@ class FakeNode {
     for (const [key, value] of Object.entries(attrs || {})) {
       this.setAttribute(key, value);
     }
+  }
+
+  set src(value) {
+    this.setAttribute("src", value);
+  }
+
+  get src() {
+    return this.getAttribute("src");
   }
 
   appendChild(child) {
@@ -415,6 +425,13 @@ function bootstrap(options) {
   const status = new FakeNode("div", { "data-admin-lazy-status": "" });
   region.appendChild(status);
   doc.body.appendChild(region);
+  if (options.includeCandidateDetailMarker) {
+    const candidateRoot = new FakeNode("div", {
+      "data-candidata-center": "",
+      "data-lazy-script-candidata-detail-ui": "/static/js/admin/candidatas_operativo_detail_ui.js",
+    });
+    doc.body.appendChild(candidateRoot);
+  }
 
   vm.runInNewContext(source, ctx, { filename: "admin_lazy_scripts.js" });
 
@@ -553,6 +570,18 @@ async function runScenario(name) {
     };
   }
 
+  if (name === "candidate_detail_marker") {
+    const env = bootstrap({
+      useIntersectionObserver: true,
+      useRequestIdleCallback: true,
+      fetchMode: { type: "success" },
+      includeCandidateDetailMarker: true,
+    });
+    return {
+      scripts: env.doc.head.querySelectorAll("script[src]").map((node) => node.getAttribute("src")),
+    };
+  }
+
   throw new Error("unknown scenario: " + name);
 }
 
@@ -636,3 +665,8 @@ def test_admin_lazy_scripts_keeps_retry_on_real_error():
     assert "Reintentar" in data["firstHtml"]
     assert "retry-ok" in data["html"]
     assert data["state"] == "loaded"
+
+
+def test_admin_lazy_scripts_loads_candidate_detail_runtime_marker():
+    data = _run_node_case("candidate_detail_marker")
+    assert "/static/js/admin/candidatas_operativo_detail_ui.js" in data["scripts"]

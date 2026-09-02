@@ -103,7 +103,13 @@
       btn.querySelector("strong").textContent = item.nombre || "Sin nombre";
       btn.querySelector(".small").textContent = meta;
       btn.addEventListener("click", () => {
-        if (item.detail_url) window.location.href = item.detail_url;
+        if (item.detail_url) {
+          if (window.AdminNav && typeof window.AdminNav.navigateTo === "function") {
+            window.AdminNav.navigateTo(item.detail_url);
+          } else {
+            window.location.href = item.detail_url;
+          }
+        }
       });
       box.appendChild(btn);
     });
@@ -228,7 +234,11 @@
       ev.preventDefault();
       const selected = state.items[state.active] || state.items[0];
       if (selected && selected.detail_url) {
-        window.location.href = selected.detail_url;
+        if (window.AdminNav && typeof window.AdminNav.navigateTo === "function") {
+          window.AdminNav.navigateTo(selected.detail_url);
+        } else {
+          window.location.href = selected.detail_url;
+        }
       }
     }
   }
@@ -241,7 +251,13 @@
     if (row) {
       if (target.closest && target.closest("a, button, input, select, textarea")) return;
       const url = String(row.getAttribute("data-row-url") || "").trim();
-      if (url) window.location.href = url;
+      if (url) {
+        if (window.AdminNav && typeof window.AdminNav.navigateTo === "function") {
+          window.AdminNav.navigateTo(url);
+        } else {
+          window.location.href = url;
+        }
+      }
       return;
     }
 

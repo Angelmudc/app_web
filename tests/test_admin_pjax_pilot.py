@@ -124,6 +124,30 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertNotIn("window.location.href = item.detail_url", index_txt)
         self.assertNotIn("row.addEventListener('click'", index_txt)
 
+    def test_candidata_detalle_es_pilot_y_runtime_externo(self):
+        nav_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_nav.js")
+        with open(nav_path, "r", encoding="utf-8") as f:
+            nav_txt = f.read()
+        self.assertIn("^\\/admin\\/candidatas\\/\\d+\\/?$", nav_txt)
+
+        detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "candidatas_operativo_detail.html")
+        with open(detail_tpl, "r", encoding="utf-8") as f:
+            detail_txt = f.read()
+        self.assertIn('data-lazy-script-candidata-detail-ui', detail_txt)
+        self.assertIn('data-admin-nav="true"', detail_txt)
+        self.assertIn('data-admin-nav-back="true"', detail_txt)
+        self.assertNotIn("setupStickyIdentityBar", detail_txt)
+        self.assertNotIn("function clearGlobalLoaders()", detail_txt)
+
+        js_path = os.path.join(os.getcwd(), "static", "js", "admin", "candidatas_operativo_detail_ui.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_txt = f.read()
+        self.assertIn("window.AdminCandidataDetailUI", js_txt)
+        self.assertIn("function boot(scope)", js_txt)
+        self.assertIn('document.addEventListener("admin:navigation-complete"', js_txt)
+        self.assertIn('document.addEventListener("admin:content-updated"', js_txt)
+        self.assertIn("data-cand-inline-search", js_txt)
+
     def test_links_piloto_opt_in_en_templates_objetivo(self):
         clientes_tpl = os.path.join(os.getcwd(), "templates", "admin", "clientes_list.html")
         with open(clientes_tpl, "r", encoding="utf-8") as f:
