@@ -318,24 +318,36 @@
                       {% if est_norm not in ['pendiente_servicio', 'reemplazo'] and s.estado != 'espera_pago' %}
                       <form method="post"
                             action="{{ url_for('admin.poner_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
-                            class="d-inline">
+                            class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ back_to }}">
                         <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
                         <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-                        <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Poner en espera de pago">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <button class="btn btn-sm btn-outline-warning" data-bs-toggle="tooltip" title="Poner en espera de pago" data-loading-text="Guardando...">
                           ⏸️
                         </button>
                       </form>
                       {% elif est_norm not in ['pendiente_servicio', 'reemplazo'] %}
                       <form method="post"
                             action="{{ url_for('admin.quitar_espera_pago_solicitud_cliente', cliente_id=cliente.id, id=s.id) }}"
-                            class="d-inline">
+                            class="d-inline"
+                            data-admin-async-form
+                            data-async-target="#clienteSolicitudesAsyncRegion"
+                            data-async-busy-container="#clienteSolicitudesAsyncScope"
+                            data-async-preserve-scroll="true"
+                            data-async-fallback="native">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="next" value="{{ back_to }}">
                         <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
                         <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-                        <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Quitar espera de pago">
+                        <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                        <button class="btn btn-sm btn-outline-success" data-bs-toggle="tooltip" title="Quitar espera de pago" data-loading-text="Guardando...">
                           ▶️
                         </button>
                       </form>

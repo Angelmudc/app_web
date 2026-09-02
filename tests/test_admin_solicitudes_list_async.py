@@ -193,6 +193,7 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
         self.assertIn('id="solicitudesFilterForm"', html)
         self.assertIn('data-async-debounce-ms="300"', html)
         self.assertIn('data-async-history="true"', html)
+        self.assertIn('data-loading-text="Guardando..."', html)
 
     def test_listado_clasico_reduce_queries_en_seguimiento_y_resumen(self):
         flask_app.config["TESTING"] = True

@@ -28665,6 +28665,31 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        response_extra = {
+            "focus_row_id": int(s.id),
+            "flash_row": True,
+            "preserve_open_collapses": True,
+        } if bool(ok) else None
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            extra=response_extra,
+        )
+
     blocked_resp = _admin_block_sensitive_action(
         scope="admin_solicitud_espera_pago_poner",
         entity_type="Solicitud",
@@ -28677,14 +28702,27 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
         fallback=fallback,
     )
     if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
         return blocked_resp
 
     expected_version = _expected_row_version()
     if _critical_concurrency_guards_enabled() and expected_version is not None:
         current_version = int(getattr(s, "row_version", 0) or 0)
         if int(expected_version) != current_version:
-            flash('La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
 
     idem_row, duplicate = _claim_idempotency(
         scope="solicitud_estado_espera_pago_poner",
@@ -28694,14 +28732,27 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
     )
     if duplicate:
         if _idempotency_request_conflict(idem_row):
-            flash(_idempotency_conflict_message(), 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
         prev_status = int(getattr(idem_row, "response_status", 0) or 0)
         if 200 <= prev_status < 300:
-            flash('Acción ya aplicada previamente.', 'info')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
-        flash('Solicitud duplicada detectada. Espera y vuelve a intentar.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     if s.estado == 'espera_pago':
         if _admin_noop_repeat_blocked(
@@ -28711,15 +28762,30 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
             state="espera_pago",
             summary=f"Intento repetido de poner en espera de pago una solicitud ya en espera ({s.id})",
         ):
-            flash('Acción bloqueada temporalmente: la solicitud ya está en espera de pago.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
-        flash('La solicitud ya está en espera de pago.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud ya está en espera de pago.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
+        return _action_response(
+            ok=False,
+            message='La solicitud ya está en espera de pago.',
+            category='info',
+            http_status=409,
+            error_code='conflict',
+        )
 
     estado_actual = (s.estado or '').strip().lower()
     if estado_actual in ('cancelada',):
-        flash('No se puede poner en espera de pago una solicitud cancelada.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se puede poner en espera de pago una solicitud cancelada.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     try:
         if hasattr(s, 'estado_previo_espera_pago'):
@@ -28738,15 +28804,29 @@ def poner_espera_pago_solicitud_cliente(cliente_id, id):
             summary=f"Solicitud puesta en espera de pago: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": estado_actual, "to": "espera_pago"}},
         )
-        flash('Solicitud marcada en espera de pago.', 'success')
+        return _action_response(
+            ok=True,
+            message='Solicitud marcada en espera de pago.',
+            category='success',
+        )
     except StaleDataError:
         db.session.rollback()
-        flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo cambiar la solicitud a espera de pago.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se pudo cambiar la solicitud a espera de pago.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 
 @admin_bp.route('/solicitudes/<int:id>/quitar_espera_pago', methods=['POST'])
@@ -28941,6 +29021,31 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_cliente', cliente_id=cliente_id) + f"#sol-{s.id}"
+
+    def _action_response(
+        *,
+        ok: bool,
+        message: str,
+        category: str,
+        http_status: int = 200,
+        error_code: str | None = None,
+    ):
+        response_extra = {
+            "focus_row_id": int(s.id),
+            "flash_row": True,
+            "preserve_open_collapses": True,
+        } if bool(ok) else None
+        return _solicitudes_list_action_response(
+            ok=ok,
+            message=message,
+            category=category,
+            next_url=next_url or '',
+            fallback=fallback,
+            http_status=http_status,
+            error_code=error_code,
+            extra=response_extra,
+        )
+
     blocked_resp = _admin_block_sensitive_action(
         scope="admin_solicitud_espera_pago_quitar",
         entity_type="Solicitud",
@@ -28953,14 +29058,27 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
         fallback=fallback,
     )
     if blocked_resp is not None:
+        if _admin_async_wants_json():
+            return _action_response(
+                ok=False,
+                message='Demasiadas acciones seguidas. Espera un momento e intenta nuevamente.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
         return blocked_resp
 
     expected_version = _expected_row_version()
     if _critical_concurrency_guards_enabled() and expected_version is not None:
         current_version = int(getattr(s, "row_version", 0) or 0)
         if int(expected_version) != current_version:
-            flash('La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
 
     idem_row, duplicate = _claim_idempotency(
         scope="solicitud_estado_espera_pago_quitar",
@@ -28970,14 +29088,27 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
     )
     if duplicate:
         if _idempotency_request_conflict(idem_row):
-            flash(_idempotency_conflict_message(), 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
         prev_status = int(getattr(idem_row, "response_status", 0) or 0)
         if 200 <= prev_status < 300:
-            flash('Acción ya aplicada previamente.', 'info')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
-        flash('Solicitud duplicada detectada. Espera y vuelve a intentar.', 'warning')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=True,
+                message='Acción ya aplicada previamente.',
+                category='info',
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Espera y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
 
     if s.estado != 'espera_pago':
         if _admin_noop_repeat_blocked(
@@ -28987,8 +29118,13 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             state=(s.estado or ""),
             summary=f"Intento repetido de quitar espera de pago fuera de flujo ({s.id})",
         ):
-            flash('Acción bloqueada temporalmente: la solicitud no está en espera de pago.', 'warning')
-            return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+            return _action_response(
+                ok=False,
+                message='Acción bloqueada temporalmente: la solicitud no está en espera de pago.',
+                category='warning',
+                http_status=429,
+                error_code='rate_limit',
+            )
         _audit_log(
             action_type="BUSINESS_FLOW_BLOCKED",
             entity_type="Solicitud",
@@ -28998,8 +29134,13 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             success=False,
             error="solicitud_not_in_espera_pago",
         )
-        flash('La solicitud no está en espera de pago.', 'info')
-        return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='La solicitud no está en espera de pago.',
+            category='info',
+            http_status=409,
+            error_code='conflict',
+        )
 
     try:
         restore = (getattr(s, 'estado_previo_espera_pago', None) or '').strip().lower()
@@ -29021,15 +29162,29 @@ def quitar_espera_pago_solicitud_cliente(cliente_id, id):
             summary=f"Solicitud reactivada desde espera de pago: {s.codigo_solicitud or s.id}",
             changes={"estado": {"from": "espera_pago", "to": restore}},
         )
-        flash(f'Solicitud reactivada desde espera de pago a {restore}.', 'success')
+        return _action_response(
+            ok=True,
+            message=f'Solicitud reactivada desde espera de pago a {restore}.',
+            category='success',
+        )
     except StaleDataError:
         db.session.rollback()
-        flash('La solicitud cambió por otra sesión. Recarga e intenta nuevamente.', 'warning')
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
     except Exception:
         db.session.rollback()
-        flash('No se pudo quitar espera de pago.', 'danger')
-
-    return redirect(next_url if _is_safe_redirect_url(next_url) else fallback)
+        return _action_response(
+            ok=False,
+            message='No se pudo quitar espera de pago.',
+            category='danger',
+            http_status=500,
+            error_code='server_error',
+        )
 
 # -----------------------------------------------------------------------------
 # Cancelación con confirmación (GET muestra formulario, POST ejecuta)

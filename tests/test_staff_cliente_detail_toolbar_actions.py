@@ -160,6 +160,61 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertEqual(sol.estado, "activa")
         c2.assert_called_once()
 
+    def test_1b_espera_pago_toggle_desde_cliente_detail_async_devuelve_json_parcial(self):
+        self._login("Karla", "9989")
+        sol = _DummySolicitud(estado="activa")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(filter_by=lambda **k: SimpleNamespace(first_or_404=lambda: sol))), \
+                 patch("admin.routes._admin_async_wants_json", return_value=True), \
+                 patch("admin.routes._claim_idempotency", return_value=(SimpleNamespace(response_status=None), False)), \
+                 patch("admin.routes._set_idempotency_response"), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/clientes/7/solicitudes/10/espera_pago/poner",
+                    data={
+                        "next": "/admin/clientes/7#sol-10",
+                        "_async_target": "#clienteSolicitudesAsyncRegion",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["update_target"], "#clienteSolicitudesAsyncRegion")
+        targets = {item["target"]: item for item in data["update_targets"]}
+        self.assertIn("#clienteSolicitudesAsyncRegion", targets)
+        self.assertIn("#clienteSummaryAsyncRegion", targets)
+        self.assertEqual(sol.estado, "espera_pago")
+        commit_mock.assert_called_once()
+
+    def test_1c_espera_pago_toggle_desde_cliente_detail_async_conflicto_no_finge_exito(self):
+        self._login("Karla", "9989")
+        sol = _DummySolicitud(estado="activa")
+        sol.row_version = 1
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(filter_by=lambda **k: SimpleNamespace(first_or_404=lambda: sol))), \
+                 patch("admin.routes._admin_async_wants_json", return_value=True), \
+                 patch("admin.routes._critical_concurrency_guards_enabled", return_value=True), \
+                 patch("admin.routes._expected_row_version", return_value=2), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/clientes/7/solicitudes/10/espera_pago/poner",
+                    data={
+                        "next": "/admin/clientes/7#sol-10",
+                        "_async_target": "#clienteSolicitudesAsyncRegion",
+                        "row_version": "2",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 409)
+        data = resp.get_json()
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "conflict")
+        self.assertNotEqual(sol.estado, "espera_pago")
+        commit_mock.assert_not_called()
+
     def test_2_abrir_reemplazo_desde_modal_crea_activo(self):
         self._login("Cruz", "8998")
         old = _DummyCandidata(fila=1, estado="trabajando")
@@ -331,6 +386,10 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         with open(solicitudes_tpl, "r", encoding="utf-8") as fh:
             solicitudes_txt = fh.read()
         self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
+        self.assertIn('data-admin-async-form', solicitudes_txt)
+        self.assertIn('data-async-target="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
+        self.assertIn('data-async-busy-container="#clienteSolicitudesAsyncScope"', solicitudes_txt)
+        self.assertIn('data-loading-text="Guardando..."', solicitudes_txt)
 
 
 if __name__ == "__main__":
