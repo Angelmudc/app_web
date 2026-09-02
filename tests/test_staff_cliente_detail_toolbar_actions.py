@@ -3,6 +3,7 @@
 import os
 import unittest
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -182,6 +183,8 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         data = resp.get_json()
         self.assertTrue(data["success"])
         self.assertEqual(data["update_target"], "#clienteSolicitudesAsyncRegion")
+        self.assertEqual(data["focus_row_id"], 10)
+        self.assertTrue(data["flash_row"])
         targets = {item["target"]: item for item in data["update_targets"]}
         self.assertIn("#clienteSolicitudesAsyncRegion", targets)
         self.assertIn("#clienteSummaryAsyncRegion", targets)
@@ -390,6 +393,13 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertIn('data-async-target="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
         self.assertIn('data-async-busy-container="#clienteSolicitudesAsyncScope"', solicitudes_txt)
         self.assertIn('data-loading-text="Guardando..."', solicitudes_txt)
+
+    def test_cliente_detail_async_runtime_evita_scroll_de_fila_en_solicitudes(self):
+        js_txt = Path("static/js/core/admin_async.js").read_text(encoding="utf-8")
+        self.assertIn('const suppressRowScroll = suppressTargetRowScroll(targetSelector);', js_txt)
+        self.assertIn('normalizeSelector(targetSelector) === "#clienteSolicitudesAsyncRegion"', js_txt)
+        self.assertIn('restoreVisualSnapshot(target, snapshot, { allowScroll: !suppressRowScroll });', js_txt)
+        self.assertIn('highlightSolicitudRow(target, options.focusRowId, options.flashRow !== false, !suppressRowScroll);', js_txt)
 
 
 if __name__ == "__main__":

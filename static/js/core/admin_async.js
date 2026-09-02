@@ -696,12 +696,17 @@
     });
   }
 
+  function suppressTargetRowScroll(targetSelector) {
+    return normalizeSelector(targetSelector) === "#clienteSolicitudesAsyncRegion";
+  }
+
   function replaceTargetHtml(targetSelector, html, options) {
     if (!targetSelector || typeof html !== "string") return false;
     const target = document.querySelector(targetSelector);
     if (!target) return false;
     if (target.innerHTML === html) return true;
 
+    const suppressRowScroll = suppressTargetRowScroll(targetSelector);
     const preserveScroll = resolvePreserveScroll(targetSelector, options && options.preserveScroll);
     const rememberCollapse = (
       (options && options.preserveOpenCollapses === true)
@@ -727,9 +732,9 @@
       if (openCollapseIds.length) {
         restoreOpenCollapses(target, openCollapseIds);
       }
-      restoreVisualSnapshot(target, snapshot);
+      restoreVisualSnapshot(target, snapshot, { allowScroll: !suppressRowScroll });
       if (options && options.focusRowId) {
-        highlightSolicitudRow(target, options.focusRowId, options.flashRow !== false);
+        highlightSolicitudRow(target, options.focusRowId, options.flashRow !== false, !suppressRowScroll);
       }
       syncCollapseToggleLabels(target);
       target.style.opacity = "1";
@@ -804,14 +809,15 @@
     return { openQuickViews };
   }
 
-  function restoreVisualSnapshot(target, snapshot) {
+  function restoreVisualSnapshot(target, snapshot, options) {
+    const allowScroll = !(options && options.allowScroll === false);
     const rows = Array.from(target.querySelectorAll("[id^='sol-']"));
     if (!rows.length) return;
     const firstVisible = rows.find((row) => {
       const rect = row.getBoundingClientRect();
       return rect.bottom > 0 && rect.top < window.innerHeight;
     });
-    if (firstVisible) {
+    if (firstVisible && allowScroll) {
       try {
         firstVisible.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "auto" });
       } catch (_) {}
@@ -847,15 +853,17 @@
     });
   }
 
-  function highlightSolicitudRow(target, rowId, flashRow) {
+  function highlightSolicitudRow(target, rowId, flashRow, allowScroll) {
     const id = Number(rowId || 0);
     if (!target || !Number.isFinite(id) || id <= 0) return;
     const row = target.querySelector(`#sol-${id}`);
     if (!row) return;
 
-    try {
-      row.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-    } catch (_) {}
+    if (allowScroll !== false) {
+      try {
+        row.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+      } catch (_) {}
+    }
 
     if (!flashRow) return;
     row.classList.add("admin-async-row-updated");
