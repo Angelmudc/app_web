@@ -23052,6 +23052,7 @@ def _candidata_center_partial_response_payload(
         "ok": True,
         "message": message,
         "changes": changes or {},
+        "invalidate_snapshots": ["/admin/candidatas"],
         "header": {
             "nombre": candidata.nombre_completo or "",
             "edad": candidata.edad or "",
@@ -23692,6 +23693,7 @@ def _candidata_center_response_payload(
         "ok": True,
         "message": message,
         "changes": changes or {},
+        "invalidate_snapshots": ["/admin/candidatas"],
         "header": {
             "nombre": candidata.nombre_completo or "",
             "edad": candidata.edad or "",

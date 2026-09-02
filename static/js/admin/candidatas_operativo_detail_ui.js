@@ -287,6 +287,14 @@
     }
   }
 
+  function invalidateSnapshots(payload) {
+    const keys = Array.isArray(payload && payload.invalidate_snapshots) ? payload.invalidate_snapshots : [];
+    if (!keys.length) return;
+    if (window.AdminNav && typeof window.AdminNav.invalidateSnapshots === "function") {
+      window.AdminNav.invalidateSnapshots(keys);
+    }
+  }
+
   function renderKv(target, values, fallback) {
     if (!target) return;
     const entries = Object.entries(values || {}).filter(([, value]) => String(value || "").trim() !== "");
@@ -798,6 +806,7 @@
             return;
           }
           applyPayload(root, payload);
+          invalidateSnapshots(payload);
           if (form.closest("[data-finance-panel]")) {
             form.reset();
             ensureFinanceIdempotencyKeys(root);
@@ -865,6 +874,7 @@
             return;
           }
           applyPayload(root, payload);
+          invalidateSnapshots(payload);
           if (feedback) {
             feedback.textContent = payload.message || "Estado actualizado.";
             feedback.className = "small mt-2 cand-feedback text-success";

@@ -15,16 +15,28 @@
   const SNAPSHOT_TTL_MS = 120000;
   const SNAPSHOT_LIMIT = 12;
   const SNAPSHOT_STORAGE_PREFIX = "__admin_pjax_snapshot__::";
+  const PREFETCH_DELAY_MS = 180;
+  const PREFETCH_TTL_MS = 30000;
+  const PREFETCH_LIMIT = 6;
 
   const snapshotCache = new Map();
+  const prefetchCache = new Map();
   const metrics = (window.__adminNavMetrics = window.__adminNavMetrics || {
     snapshotHits: 0,
     fetchLoads: 0,
     snapshotStores: 0,
+    prefetchHits: 0,
+    prefetchStores: 0,
   });
 
   let isNavigating = false;
   let pendingPopstate = null;
+  let prefetchTimer = null;
+  let prefetchIntent = null;
+  let prefetchRequestSeq = 0;
+  let prefetchController = null;
+  let prefetchPromise = null;
+  let prefetchUrl = "";
 
   function isPilotPath(pathname) {
     const path = String(pathname || "");
@@ -49,6 +61,238 @@
 
   function fallbackLoad(url) {
     window.location.assign(url);
+  }
+
+  function isPrefetchableCandidateLink(link) {
+    if (!link || !link.getAttribute) return false;
+    const href = String(link.getAttribute("href") || "").trim();
+    if (!href || href === "#" || href.startsWith("javascript:")) return false;
+    let to;
+    try {
+      to = new URL(href, window.location.origin);
+    } catch (_) {
+      return false;
+    }
+    if (to.origin !== window.location.origin) return false;
+    return /^\/admin\/candidatas\/\d+\/?$/.test(to.pathname);
+  }
+
+  function prefetchStorageKey(url) {
+    return `__admin_pjax_prefetch__::${String(url || "")}`;
+  }
+
+  function storePrefetchEntry(url, payload) {
+    const key = String(url || "").trim();
+    if (!key || !payload || typeof payload.html !== "string") return;
+    const entry = {
+      html: payload.html,
+      title: String(payload.title || ""),
+      finalUrl: String(payload.finalUrl || key).trim() || key,
+      ts: Date.now(),
+    };
+    prefetchCache.set(key, entry);
+    if (entry.finalUrl && entry.finalUrl !== key) {
+      prefetchCache.set(entry.finalUrl, entry);
+    }
+    if (prefetchCache.size > PREFETCH_LIMIT) {
+      let oldestKey = "";
+      let oldestTs = Infinity;
+      prefetchCache.forEach((value, k) => {
+        const ts = Number(value && value.ts) || 0;
+        if (ts < oldestTs) {
+          oldestTs = ts;
+          oldestKey = k;
+        }
+      });
+      if (oldestKey) prefetchCache.delete(oldestKey);
+    }
+    try {
+      sessionStorage.setItem(prefetchStorageKey(key), JSON.stringify(entry));
+    } catch (_) {}
+    metrics.prefetchStores += 1;
+  }
+
+  function loadPrefetchEntry(url) {
+    const key = String(url || "").trim();
+    if (!key) return null;
+    const mem = prefetchCache.get(key);
+    if (mem && (Date.now() - Number(mem.ts || 0)) <= PREFETCH_TTL_MS) return mem;
+    try {
+      const raw = sessionStorage.getItem(prefetchStorageKey(key));
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed.html !== "string") return null;
+      if ((Date.now() - Number(parsed.ts || 0)) > PREFETCH_TTL_MS) {
+        sessionStorage.removeItem(prefetchStorageKey(key));
+        return null;
+      }
+      prefetchCache.set(key, parsed);
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function consumePrefetchEntry(url) {
+    const key = String(url || "").trim();
+    if (!key) return null;
+    const entry = loadPrefetchEntry(key);
+    if (!entry) return null;
+    prefetchCache.delete(key);
+    if (entry.finalUrl && entry.finalUrl !== key) {
+      prefetchCache.delete(entry.finalUrl);
+    }
+    try {
+      sessionStorage.removeItem(prefetchStorageKey(key));
+      if (entry.finalUrl && entry.finalUrl !== key) {
+        sessionStorage.removeItem(prefetchStorageKey(entry.finalUrl));
+      }
+    } catch (_) {}
+    return entry;
+  }
+
+  function clearPrefetchIntent() {
+    if (prefetchTimer) {
+      window.clearTimeout(prefetchTimer);
+      prefetchTimer = null;
+    }
+    prefetchIntent = null;
+    prefetchUrl = "";
+  }
+
+  function abortPrefetch() {
+    clearPrefetchIntent();
+    if (prefetchController && typeof prefetchController.abort === "function") {
+      try {
+        prefetchController.abort();
+      } catch (_) {}
+    }
+    prefetchController = null;
+    prefetchPromise = null;
+    prefetchRequestSeq += 1;
+  }
+
+  function invalidateSnapshots(keys) {
+    const list = Array.isArray(keys) ? keys : [keys];
+    const prefixes = list
+      .map((key) => String(key || "").trim())
+      .filter(Boolean);
+    if (!prefixes.length) return 0;
+
+    let removed = 0;
+    snapshotCache.forEach((value, key) => {
+      const matches = prefixes.some((prefix) => snapshotKeyMatchesPrefix(key, prefix));
+      if (!matches) return;
+      snapshotCache.delete(key);
+      removed += 1;
+      try {
+        sessionStorage.removeItem(snapshotStorageKey(key));
+      } catch (_) {}
+    });
+    try {
+      const removeKeys = [];
+      for (let index = 0; index < (sessionStorage.length || 0); index += 1) {
+        const storageKey = sessionStorage.key(index);
+        if (!storageKey || !String(storageKey).startsWith(SNAPSHOT_STORAGE_PREFIX)) continue;
+        const rawUrl = String(storageKey).slice(SNAPSHOT_STORAGE_PREFIX.length);
+        if (prefixes.some((prefix) => snapshotKeyMatchesPrefix(rawUrl, prefix))) {
+          removeKeys.push(storageKey);
+        }
+      }
+      removeKeys.forEach((storageKey) => {
+        try {
+          sessionStorage.removeItem(storageKey);
+        } catch (_) {}
+      });
+    } catch (_) {}
+    return removed;
+  }
+
+  async function resolvePrefetchEntry(url) {
+    const key = String(url || "").trim();
+    if (!key) return null;
+    const cached = loadPrefetchEntry(key);
+    if (cached) {
+      metrics.prefetchHits += 1;
+      return cached;
+    }
+    if (prefetchPromise && prefetchUrl === key) {
+      try {
+        await prefetchPromise;
+      } catch (_) {}
+    }
+    const next = loadPrefetchEntry(key);
+    if (next) {
+      metrics.prefetchHits += 1;
+      return next;
+    }
+    return null;
+  }
+
+  function startPrefetch(link) {
+    if (!isPrefetchableCandidateLink(link)) return;
+    const href = String(link.getAttribute("href") || "").trim();
+    if (!href) return;
+    if (loadPrefetchEntry(href) || (prefetchPromise && prefetchUrl === href)) return;
+
+    if (prefetchUrl && prefetchUrl !== href) {
+      abortPrefetch();
+    }
+
+    clearPrefetchIntent();
+    prefetchIntent = link;
+    prefetchUrl = href;
+    prefetchTimer = window.setTimeout(() => {
+      prefetchTimer = null;
+      if (!prefetchIntent || !prefetchIntent.isConnected) return;
+      if (prefetchIntent !== link) return;
+      if (prefetchPromise && prefetchUrl === href) return;
+      if (!window.fetch) return;
+
+      const requestSeq = ++prefetchRequestSeq;
+      prefetchController = window.AbortController ? new AbortController() : null;
+      prefetchPromise = (async () => {
+        try {
+          const response = await fetch(href, {
+            method: "GET",
+            credentials: "same-origin",
+            redirect: "follow",
+            headers: {
+              "Accept": "text/html,application/xhtml+xml",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            signal: prefetchController ? prefetchController.signal : undefined,
+          });
+          const finalUrl = response.url || href;
+          const text = await response.text();
+          if (requestSeq !== prefetchRequestSeq) return null;
+          const nextDoc = parseHtml(text);
+          if (shouldForceFullRedirect(response, nextDoc)) return null;
+          const nextViewport = getViewport(nextDoc);
+          if (!nextViewport) return null;
+          storePrefetchEntry(href, {
+            html: String(nextViewport.innerHTML || ""),
+            title: String((nextDoc.title || "").trim()),
+            finalUrl,
+          });
+          return { html: String(nextViewport.innerHTML || ""), title: String((nextDoc.title || "").trim()), finalUrl };
+        } catch (err) {
+          if (err && err.name === "AbortError") return null;
+          return null;
+        } finally {
+          if (requestSeq === prefetchRequestSeq) {
+            prefetchController = null;
+            prefetchPromise = null;
+          }
+        }
+      })();
+    }, PREFETCH_DELAY_MS);
+  }
+
+  function stopPrefetchForLink(link) {
+    if (!link) return;
+    if (prefetchIntent !== link) return;
+    abortPrefetch();
   }
 
   function getCurrentScrollY() {
@@ -154,6 +398,23 @@
 
   function snapshotStorageKey(url) {
     return SNAPSHOT_STORAGE_PREFIX + String(url || "");
+  }
+
+  function snapshotKeyMatchesPrefix(key, prefix) {
+    const rawKey = String(key || "").trim();
+    const rawPrefix = String(prefix || "").trim();
+    if (!rawKey || !rawPrefix) return false;
+    if (rawKey === rawPrefix || rawKey.startsWith(rawPrefix)) return true;
+    try {
+      const parsed = new URL(rawKey, window.location.origin);
+      if (/^https?:\/\//i.test(rawPrefix)) {
+        const prefixUrl = new URL(rawPrefix, window.location.origin);
+        return parsed.origin === prefixUrl.origin && parsed.pathname.startsWith(prefixUrl.pathname);
+      }
+      return parsed.pathname === rawPrefix || parsed.pathname.startsWith(rawPrefix);
+    } catch (_) {
+      return false;
+    }
   }
 
   function saveSnapshot(url, payload) {
@@ -470,6 +731,69 @@
         }
       }
 
+      const prefetched = await resolvePrefetchEntry(requestedUrl);
+      if (prefetched) {
+        const finalUrl = prefetched.finalUrl || requestedUrl;
+        const nextDoc = parseHtml(prefetched.html);
+        const nextViewport = getViewport(nextDoc);
+        if (!nextViewport) {
+          emitFallback("missing_target_viewport", finalUrl);
+          fallbackLoad(finalUrl);
+          return false;
+        }
+
+        clearModalState();
+        currentViewport.style.opacity = "0.78";
+        currentViewport.style.transition = "opacity 100ms ease";
+        currentViewport.innerHTML = nextViewport.innerHTML;
+        window.requestAnimationFrame(() => {
+          currentViewport.style.opacity = "1";
+        });
+
+        const nextTitle = (prefetched.title || nextDoc.title || "").trim();
+        if (nextTitle) {
+          document.title = nextTitle;
+        }
+
+        applyUiState(currentViewport, opts.restoreUiState || null);
+
+        const state = {
+          ...(history.state && typeof history.state === "object" ? history.state : {}),
+          [STATE_KEY]: true,
+          url: finalUrl,
+          scrollY: opts.fromPopstate && Number.isFinite(opts.restoreScrollY)
+            ? Math.max(0, Number(opts.restoreScrollY) || 0)
+            : 0,
+          uiState: captureUiState(currentViewport),
+        };
+        if (opts.fromPopstate || opts.replaceState) {
+          history.replaceState(state, "", finalUrl);
+        } else {
+          history.pushState(state, "", finalUrl);
+        }
+
+        applyScrollPolicy(finalUrl, currentViewport, {
+          fromPopstate: !!opts.fromPopstate,
+          restoreScrollY: opts.restoreScrollY,
+          restoreActiveSel: state.uiState && state.uiState.activeSel,
+        });
+
+        saveSnapshot(finalUrl, {
+          html: String(currentViewport.innerHTML || ""),
+          title: document.title,
+          uiState: state.uiState || null,
+        });
+
+        dispatchNavigationComplete({
+          url: finalUrl,
+          title: document.title,
+          viewport: currentViewport,
+          fromPopstate: !!opts.fromPopstate,
+          restoredFromSnapshot: false,
+        });
+        return true;
+      }
+
       const response = await fetch(requestedUrl, {
         method: "GET",
         credentials: "same-origin",
@@ -601,8 +925,45 @@
         return;
       }
     }
+    if (prefetchIntent && prefetchIntent !== link) {
+      stopPrefetchForLink(prefetchIntent);
+    }
     updateCurrentHistoryScrollY();
     navigateTo(link.href);
+  }
+
+  function onPrefetchPointerOver(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    const link = target && target.closest ? target.closest(LINK_SELECTOR) : null;
+    if (!isPrefetchableCandidateLink(link)) return;
+    const related = ev ? ev.relatedTarget : null;
+    if (related && link && link.contains && link.contains(related)) return;
+    startPrefetch(link);
+  }
+
+  function onPrefetchPointerOut(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    const link = target && target.closest ? target.closest(LINK_SELECTOR) : null;
+    if (!isPrefetchableCandidateLink(link)) return;
+    const related = ev ? ev.relatedTarget : null;
+    if (related && link && link.contains && link.contains(related)) return;
+    stopPrefetchForLink(link);
+  }
+
+  function onPrefetchFocusIn(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    const link = target && target.closest ? target.closest(LINK_SELECTOR) : null;
+    if (!isPrefetchableCandidateLink(link)) return;
+    startPrefetch(link);
+  }
+
+  function onPrefetchFocusOut(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    const link = target && target.closest ? target.closest(LINK_SELECTOR) : null;
+    if (!isPrefetchableCandidateLink(link)) return;
+    const related = ev ? ev.relatedTarget : null;
+    if (related && link && link.contains && link.contains(related)) return;
+    stopPrefetchForLink(link);
   }
 
   function onPopstate(ev) {
@@ -646,12 +1007,17 @@
     }
 
     document.addEventListener("click", onClick, true);
+    document.addEventListener("pointerover", onPrefetchPointerOver, true);
+    document.addEventListener("pointerout", onPrefetchPointerOut, true);
+    document.addEventListener("focusin", onPrefetchFocusIn, true);
+    document.addEventListener("focusout", onPrefetchFocusOut, true);
     window.addEventListener("popstate", onPopstate);
   }
 
   window.AdminNav = {
     init,
     navigateTo,
+    invalidateSnapshots,
   };
 
   if (document.readyState === "loading") {

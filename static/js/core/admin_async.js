@@ -1322,6 +1322,15 @@
     return out;
   }
 
+  function invalidateSnapshotsFromPayload(payload) {
+    const entries = Array.isArray(payload && payload.invalidate_snapshots) ? payload.invalidate_snapshots : [];
+    if (!entries.length) return 0;
+    if (window.AdminNav && typeof window.AdminNav.invalidateSnapshots === "function") {
+      return window.AdminNav.invalidateSnapshots(entries);
+    }
+    return 0;
+  }
+
   async function applyPayloadTargets(targets, requestId, options) {
     let anyApplied = false;
     const fetchGroups = new Map(); // redirect_url -> targetOps[]
@@ -1403,6 +1412,7 @@
       flashRow: payload ? payload.flash_row !== false : true,
       preserveOpenCollapses: payload && payload.preserve_open_collapses === true,
     });
+    invalidateSnapshotsFromPayload(payload || {});
 
     if (payload && payload.remove_element) {
       removeElement(payload.remove_element);

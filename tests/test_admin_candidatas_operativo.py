@@ -1763,6 +1763,7 @@ def test_admin_candidata_update_datos_personales_json_telefono_cedula_y_auditori
     assert payload["header"]["nombre"] == "Ana Centro Editada"
     assert payload["header"]["telefono"] == "809-777-1234"
     assert payload["values"]["personal"]["direccion"] == ""
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
 
     with flask_app.app_context():
         db.session.expire_all()
@@ -2081,6 +2082,7 @@ def test_admin_candidata_update_referencias_devuelve_solo_regiones_necesarias():
     assert payload["readiness"]["flags"]["referencias_laboral"] is True
     assert payload["readiness"]["flags"]["referencias_familiares"] is True
     assert payload["state_capabilities"]["assignment"]
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
     assert "personal" not in payload.get("display", {})
     assert "labor" not in payload.get("display", {})
     assert "references" not in payload.get("display", {})
@@ -2128,6 +2130,7 @@ def test_admin_candidata_update_inscripcion_devuelve_payload_parcial_con_readine
     assert payload["state_capabilities"]["process"]["label"]
     assert payload["display"]["inscription"]["Código"] == "CTR-PARCIAL-527"
     assert payload["values"]["inscription"]["medio"] == "WhatsApp"
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
     assert "personal" not in payload.get("display", {})
     assert "labor" not in payload.get("display", {})
     assert "references" not in payload.get("display", {})
@@ -2159,6 +2162,7 @@ def test_admin_candidata_registrar_llamada_devuelve_payload_minimo_sin_ficha_com
     assert payload["ok"] is True
     assert payload["recent_calls"][0]["resultado"] == "exitosa"
     assert payload["recent_calls"][0]["notas"] == "Seguimiento parcial"
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
     assert "display" not in payload
     assert "readiness" not in payload
     assert "state_capabilities" not in payload
