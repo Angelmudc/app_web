@@ -10926,39 +10926,9 @@ def _cliente_detail_regions_context(
         if hasattr(Solicitud, attr):
             solicitud_attrs.append(getattr(Solicitud, attr))
 
-    reemplazo_attrs = []
-    for attr in (
-        "id",
-        "solicitud_id",
-        "candidata_new_id",
-        "fase",
-        "resultado_final",
-        "fecha_inicio_reemplazo",
-        "fecha_fin_reemplazo",
-        "created_at",
-    ):
-        if hasattr(Reemplazo, attr):
-            reemplazo_attrs.append(getattr(Reemplazo, attr))
-
     options_list = []
     if solicitud_attrs:
         options_list.append(load_only(*solicitud_attrs))
-    try:
-        repl_loader = selectinload(Solicitud.reemplazos)
-        if reemplazo_attrs:
-            repl_loader = repl_loader.load_only(*reemplazo_attrs)
-        if include_timeline:
-            candidata_new_attrs = []
-            for attr in ("fila", "nombre_completo"):
-                if hasattr(Candidata, attr):
-                    candidata_new_attrs.append(getattr(Candidata, attr))
-            if candidata_new_attrs:
-                repl_loader = repl_loader.joinedload(Reemplazo.candidata_new).load_only(*candidata_new_attrs)
-            else:
-                repl_loader = repl_loader.joinedload(Reemplazo.candidata_new)
-        options_list.append(repl_loader)
-    except Exception:
-        pass
 
     solicitudes = (
         Solicitud.query
@@ -10977,6 +10947,8 @@ def _cliente_detail_regions_context(
     has_more = page < total_pages
     payment_summary_by_solicitud_id = build_payment_summary_map(solicitudes)
     assignment_guard_by_solicitud_id = build_solicitud_payment_eligibility_map(solicitudes)
+    solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
+    reemplazos_por_solicitud = _reemplazos_map_for_solicitudes(solicitud_ids, include_timeline=include_timeline)
     solicitud_pago_habilitado: dict[int, bool] = {}
     solicitud_whatsapp_activation: dict[int, dict] = {}
     for s in (solicitudes or []):
@@ -10997,7 +10969,14 @@ def _cliente_detail_regions_context(
             payment_ctx=payment_ctx,
         )
     kpi_cliente = _build_cliente_summary_kpi(cliente=cliente, solicitudes=solicitudes) if include_kpi else None
-    reemplazos_activos = {int(s.id): _active_reemplazo_for_solicitud(s) for s in (solicitudes or [])}
+    reemplazos_activos = {
+        sid: repl
+        for sid, repl in (
+            (int(sid), _active_reemplazo_for_reemplazos(rows))
+            for sid, rows in (reemplazos_por_solicitud or {}).items()
+        )
+        if repl is not None
+    }
     role = (
         str(getattr(current_user, "role", "") or "").strip().lower()
         or str(session.get("role", "") or "").strip().lower()
@@ -11006,7 +10985,6 @@ def _cliente_detail_regions_context(
     contracts_schema_ready = True
     latest_contracts_by_solicitud = {}
     contract_links_by_solicitud = {}
-    solicitud_ids = [int(s.id) for s in (solicitudes or []) if int(getattr(s, "id", 0) or 0) > 0]
     if solicitud_ids:
         try:
             contract_rows = (
@@ -11066,6 +11044,7 @@ def _cliente_detail_regions_context(
         "solicitud_pago_habilitado": solicitud_pago_habilitado,
         "solicitud_whatsapp_activation": solicitud_whatsapp_activation,
         "kpi_cliente": kpi_cliente,
+        "reemplazos_por_solicitud": reemplazos_por_solicitud,
         "reemplazos_activos": reemplazos_activos,
         "is_admin_role": is_admin_role,
         "contracts_schema_ready": contracts_schema_ready,
@@ -11143,6 +11122,7 @@ def detalle_cliente(cliente_id):
         # ------------------------------
         timeline = []
         with _admin_cliente_detail_measure_block("timeline_build", enabled=measure_enabled):
+            reemplazos_por_solicitud = region_ctx.get("reemplazos_por_solicitud") or {}
             for s in solicitudes:
                 codigo = s.codigo_solicitud or s.id
 
@@ -11190,7 +11170,7 @@ def detalle_cliente(cliente_id):
                     })
 
                 # 6) Reemplazos activados
-                for r in (s.reemplazos or []):
+                for r in (reemplazos_por_solicitud.get(int(getattr(s, "id", 0) or 0)) or []):
                     fecha_r = getattr(r, 'fecha_inicio_reemplazo', None) or getattr(r, 'created_at', None)
                     if not fecha_r:
                         continue
@@ -19603,9 +19583,7 @@ def _log_lista_state_change(cand: Candidata, *, source: str, faltantes: list[str
     )
 
 
-def _active_reemplazo_for_solicitud(solicitud: Solicitud):
-    if not solicitud:
-        return None
+def _active_reemplazo_for_reemplazos(reemplazos: list[Reemplazo] | None):
     closed_resultados = {
         "cancelado",
         "cancelada",
@@ -19635,10 +19613,7 @@ def _active_reemplazo_for_solicitud(solicitud: Solicitud):
             return False
         return True
 
-    activos = [
-        r for r in (getattr(solicitud, "reemplazos", None) or [])
-        if _is_open_reemplazo(r)
-    ]
+    activos = [r for r in (reemplazos or []) if _is_open_reemplazo(r)]
     if not activos:
         return None
     return sorted(
@@ -19648,62 +19623,84 @@ def _active_reemplazo_for_solicitud(solicitud: Solicitud):
     )[0]
 
 
-def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int, Reemplazo]:
+def _active_reemplazo_for_solicitud(solicitud: Solicitud):
+    if not solicitud:
+        return None
+    return _active_reemplazo_for_reemplazos(getattr(solicitud, "reemplazos", None) or [])
+
+
+def _reemplazos_map_for_solicitudes(
+    solicitud_ids: list[int],
+    *,
+    include_timeline: bool = False,
+) -> dict[int, list[Reemplazo]]:
     ids = sorted({int(sid) for sid in (solicitud_ids or []) if int(sid or 0) > 0})
     if not ids:
         return {}
     try:
-        resultado_final_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.resultado_final, db.String), "")))
-        fase_norm = func.lower(func.trim(func.coalesce(cast(Reemplazo.fase, db.String), "")))
-        closed_resultados = {
-            "cancelado",
-            "cancelada",
-            "cerrado",
-            "cerrado_exitoso",
-            "exitoso",
-            "cerrado_fallido",
-            "fallido",
-            "finalizado",
-            "finalizada",
-            "resuelto",
-            "resuelta",
-            "completado",
-            "completada",
-        }
+        options_list = []
+        if include_timeline:
+            candidata_new_attrs = []
+            for attr in ("fila", "nombre_completo"):
+                if hasattr(Candidata, attr):
+                    candidata_new_attrs.append(getattr(Candidata, attr))
+            try:
+                if candidata_new_attrs:
+                    options_list.append(joinedload(Reemplazo.candidata_new).load_only(*candidata_new_attrs))
+                else:
+                    options_list.append(joinedload(Reemplazo.candidata_new))
+            except Exception:
+                pass
         rows = (
             Reemplazo.query
-            .options(load_only(
-                Reemplazo.id,
-                Reemplazo.solicitud_id,
-                Reemplazo.fecha_inicio_reemplazo,
-                Reemplazo.fecha_fin_reemplazo,
-                Reemplazo.created_at,
-            ))
-            .filter(
-                Reemplazo.solicitud_id.in_(ids),
-                Reemplazo.fecha_inicio_reemplazo.isnot(None),
-                Reemplazo.fecha_fin_reemplazo.is_(None),
-                fase_norm != "cerrado",
-                ~resultado_final_norm.in_(closed_resultados),
+            .options(*options_list)
+            .filter(Reemplazo.solicitud_id.in_(ids))
+            .order_by(
+                Reemplazo.solicitud_id.asc(),
+                Reemplazo.fecha_inicio_reemplazo.desc().nullslast(),
+                Reemplazo.created_at.desc().nullslast(),
+                Reemplazo.id.desc(),
             )
             .all()
         )
     except Exception:
         return {}
 
-    out: dict[int, Reemplazo] = {}
+    out: dict[int, list[Reemplazo]] = {}
     for row in (rows or []):
         sid = int(getattr(row, "solicitud_id", 0) or 0)
         if sid <= 0:
             continue
-        prev = out.get(sid)
-        row_anchor = getattr(row, "fecha_inicio_reemplazo", None) or getattr(row, "created_at", None) or datetime.min
-        if prev is None:
-            out[sid] = row
-            continue
-        prev_anchor = getattr(prev, "fecha_inicio_reemplazo", None) or getattr(prev, "created_at", None) or datetime.min
-        if row_anchor >= prev_anchor:
-            out[sid] = row
+        candidata_new = None
+        if include_timeline:
+            candidata_new_row = getattr(row, "candidata_new", None)
+            if candidata_new_row is not None:
+                candidata_new = SimpleNamespace(
+                    fila=int(getattr(candidata_new_row, "fila", 0) or 0) or None,
+                    nombre_completo=str(getattr(candidata_new_row, "nombre_completo", "") or ""),
+                )
+        out.setdefault(sid, []).append(
+            SimpleNamespace(
+                id=int(getattr(row, "id", 0) or 0) or None,
+                solicitud_id=sid,
+                fecha_inicio_reemplazo=getattr(row, "fecha_inicio_reemplazo", None),
+                fecha_fin_reemplazo=getattr(row, "fecha_fin_reemplazo", None),
+                created_at=getattr(row, "created_at", None),
+                fase=str(getattr(row, "fase", "") or ""),
+                resultado_final=str(getattr(row, "resultado_final", "") or ""),
+                candidata_new=candidata_new,
+            )
+        )
+    return out
+
+
+def _active_reemplazo_map_for_solicitudes(solicitud_ids: list[int]) -> dict[int, Reemplazo]:
+    grouped = _reemplazos_map_for_solicitudes(solicitud_ids)
+    out: dict[int, Reemplazo] = {}
+    for sid, rows in (grouped or {}).items():
+        active = _active_reemplazo_for_reemplazos(rows)
+        if active is not None:
+            out[int(sid)] = active
     return out
 
 

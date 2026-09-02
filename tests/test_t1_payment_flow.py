@@ -6,6 +6,7 @@ import secrets
 from contextlib import contextmanager
 from decimal import Decimal
 from pathlib import Path
+from datetime import timedelta
 from unittest.mock import patch
 
 import admin.routes as admin_routes
@@ -2363,6 +2364,158 @@ def test_t1_cliente_detail_permission_guard_no_crece_lineal_con_solicitudes():
     assert f'data-testid="cliente-solicitud-registrar-pago-{first_solicitud_id}"' in html
     assert _count_table_mentions(statements, "solicitudes_candidatas") == 1
     assert _count_sql_patterns(statements, "from solicitudes", "solicitudes.id in (", "solicitudes.candidata_id in (") == 1
+
+
+def test_t1_cliente_detail_reemplazo_activo_batch_conserva_semantica():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_core_tables()
+        token = secrets.token_hex(6)
+        cliente = Cliente(
+            codigo=f"REPL-BATCH-{token}",
+            nombre_completo=f"Cliente Reemplazo Batch {token}",
+            email=f"repl_batch_{token}@example.com",
+            telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+        )
+        candidata = Candidata(
+            nombre_completo=f"Candidata Reemplazo Batch {token}",
+            cedula=f"{int(token[:10], 16) % 10**11:011d}",
+            numero_telefono="8090003333",
+            estado="lista_para_trabajar",
+        )
+        db.session.add_all([cliente, candidata])
+        db.session.flush()
+        solicitud = Solicitud(
+            cliente_id=int(cliente.id),
+            candidata_id=int(candidata.fila),
+            codigo_solicitud=f"SOL-REPL-BATCH-{token}",
+            estado="reemplazo",
+            tipo_plan="premium",
+            abono="0.00",
+        )
+        db.session.add(solicitud)
+        db.session.flush()
+        now = admin_routes.utc_now_naive()
+        older = Reemplazo(
+            solicitud_id=int(solicitud.id),
+            candidata_old_id=int(candidata.fila),
+            motivo_fallo="older",
+            fecha_inicio_reemplazo=now - timedelta(days=2),
+            created_at=now - timedelta(days=2),
+            fase="busqueda",
+        )
+        newer = Reemplazo(
+            solicitud_id=int(solicitud.id),
+            candidata_old_id=int(candidata.fila),
+            motivo_fallo="newer",
+            fecha_inicio_reemplazo=now - timedelta(hours=1),
+            created_at=now - timedelta(hours=1),
+            fase="busqueda",
+        )
+        closed = Reemplazo(
+            solicitud_id=int(solicitud.id),
+            candidata_old_id=int(candidata.fila),
+            motivo_fallo="closed",
+            fecha_inicio_reemplazo=now - timedelta(minutes=30),
+            fecha_fin_reemplazo=now,
+            created_at=now - timedelta(minutes=30),
+            fase="cerrado",
+            resultado_final="exitoso",
+        )
+        db.session.add_all([older, newer, closed])
+        db.session.commit()
+        cliente_id = int(cliente.id)
+        solicitud_id = int(solicitud.id)
+        expected_id = int(newer.id)
+    _login_admin(client)
+    with flask_app.app_context():
+        solicitud_db = Solicitud.query.get(solicitud_id)
+        assert solicitud_db is not None
+        active_single = admin_routes._active_reemplazo_for_solicitud(solicitud_db)
+        active_batch = admin_routes._active_reemplazo_map_for_solicitudes([solicitud_id])
+        assert active_single is not None
+        assert active_batch.get(solicitud_id) is not None
+        assert int(active_single.id) == expected_id
+        assert int(active_batch[solicitud_id].id) == expected_id
+        with _capture_sql_statements() as statements:
+            resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+    html = resp.get_data(as_text=True)
+    assert resp.status_code == 200
+    assert "Reemplazo activo" in html
+    assert _count_table_mentions(statements, "reemplazos") <= 4
+    assert _count_sql_patterns(statements, "from solicitudes", "solicitudes.id as solicitudes_id", "solicitudes.cliente_id as solicitudes_cliente_id") <= 4
+
+
+def test_t1_cliente_detail_reemplazo_activo_no_crece_lineal_con_solicitudes():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+    measurements = {}
+
+    with flask_app.app_context():
+        _ensure_core_tables()
+    _login_admin(client)
+
+    with flask_app.app_context():
+        def _seed_case(total_solicitudes: int):
+            token = secrets.token_hex(6)
+            cliente = Cliente(
+                codigo=f"REPL-SCALE-{total_solicitudes}-{token}",
+                nombre_completo=f"Cliente Reemplazo {total_solicitudes} {token}",
+                email=f"repl_scale_{total_solicitudes}_{token}@example.com",
+                telefono=f"809{int(token[:6], 16) % 10**7:07d}",
+            )
+            candidata = Candidata(
+                nombre_completo=f"Candidata Reemplazo {total_solicitudes} {token}",
+                cedula=f"{int(token[:10], 16) % 10**11:011d}",
+                numero_telefono="8090004444",
+                estado="lista_para_trabajar",
+            )
+            db.session.add_all([cliente, candidata])
+            db.session.flush()
+            now = admin_routes.utc_now_naive()
+            for idx in range(total_solicitudes):
+                solicitud = Solicitud(
+                    cliente_id=int(cliente.id),
+                    candidata_id=int(candidata.fila),
+                    codigo_solicitud=f"SOL-REPL-SCALE-{total_solicitudes}-{idx}-{token}",
+                    estado="reemplazo",
+                    tipo_plan="premium",
+                    abono="0.00",
+                )
+                db.session.add(solicitud)
+                db.session.flush()
+                db.session.add(
+                    Reemplazo(
+                        solicitud_id=int(solicitud.id),
+                        candidata_old_id=int(candidata.fila),
+                        motivo_fallo=f"motivo-{idx}",
+                        fecha_inicio_reemplazo=now,
+                        created_at=now,
+                        fase="busqueda",
+                    )
+                )
+            db.session.commit()
+            return int(cliente.id)
+
+        for total in (1, 5, 10, 20):
+            cliente_id = _seed_case(total)
+            with _capture_sql_statements() as statements:
+                resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
+            html = resp.get_data(as_text=True)
+            assert resp.status_code == 200
+            assert "Reemplazo activo" in html
+            measurements[total] = {
+                "sql_total": len(statements),
+                "reemplazos": _count_table_mentions(statements, "reemplazos"),
+            }
+
+    assert measurements[20]["reemplazos"] <= 2
+    assert measurements[20]["reemplazos"] <= measurements[1]["reemplazos"] + 1
 
 
 def test_t1_detalle_solicitud_pago_summary_no_repite_queries():
