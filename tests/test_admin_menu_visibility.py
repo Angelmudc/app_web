@@ -27,6 +27,7 @@ def test_owner_sees_create_user_link_and_can_open_route():
     assert b'href="/admin/usuarios"' in home.data
     assert "Usuarios y roles".encode("utf-8") in home.data
     assert "Registrar candidata".encode("utf-8") in home.data
+    assert "Inscripción legacy".encode("utf-8") not in home.data
 
     users_module = client.get("/admin/usuarios", follow_redirects=False)
     assert users_module.status_code == 200
@@ -45,6 +46,7 @@ def test_admin_sees_register_candidate_link_and_can_open_route():
     assert home.status_code == 200
     assert "Registrar candidata".encode("utf-8") in home.data
     assert "Usuarios y roles".encode("utf-8") not in home.data
+    assert "Inscripción legacy".encode("utf-8") not in home.data
 
     reg_candidata = client.get("/registro_interno/", follow_redirects=False)
     assert reg_candidata.status_code == 200

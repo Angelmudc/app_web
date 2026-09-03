@@ -535,13 +535,6 @@
                 </li>
                 {% endif %}
 
-                {% if has_endpoint('inscripcion') %}
-                <li>
-                  <a class="dropdown-item {% if request.endpoint=='inscripcion' %}active{% endif %}"
-                     href="{{ url_for('inscripcion') }}">Inscripción legacy</a>
-                </li>
-                {% endif %}
-
                 {% if has_endpoint('porciento') %}
                 <li>
                   <a class="dropdown-item {% if request.endpoint=='porciento' %}active{% endif %}"

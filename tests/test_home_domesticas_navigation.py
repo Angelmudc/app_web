@@ -61,6 +61,7 @@ def test_home_owner_admin_prioriza_domesticas_y_relega_legacy():
     assert "Seguimientos pendientes/vencidos" in html
     assert "Listas para trabajar" in html
     assert "Registrar nueva" in html
+    assert "Inscripción legacy" not in html
 
     assert "🔍 Buscar / Editar" not in html
     assert "📝 Inscripción" not in html
@@ -89,6 +90,7 @@ def test_home_secretaria_ve_domesticas_sin_finanzas_nuevas():
     assert 'href="/admin/candidatas"' in html
     assert "Buscar solicitudes" not in html
     assert "Registrar nueva" in html
+    assert "Inscripción legacy" not in html
     assert "Finanzas legacy de candidatas" not in html
     assert "Porciento" not in html
     assert "Pagos" not in html
