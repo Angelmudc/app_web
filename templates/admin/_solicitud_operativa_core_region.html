@@ -297,7 +297,11 @@
         Editar
       </a>
       {% if estado not in ['pendiente_servicio', 'reemplazo', 'pagada'] %}
-      <a href="{{ url_for('admin.gestionar_plan', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}" class="btn btn-sm btn-outline-primary">
+      <a href="{{ url_for('admin.gestionar_plan', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}"
+         class="btn btn-sm btn-outline-primary"
+         data-no-loader="true"
+         data-gestionar-plan-modal-trigger="1"
+         data-gestionar-plan-modal="#gestionarPlanModal">
         Plan / Abono
       </a>
       {% endif %}

@@ -19,9 +19,11 @@
   let globalRequestSeq = 0;
   const latestRequestByTarget = new Map();
   const activeRequestControllerByTarget = new Map();
+  const lastSubmitterByForm = new WeakMap();
   let lastResponseMeta = null;
   let secondaryBound = false;
   let modalGuardsBound = false;
+  let gestionarPlanBound = false;
   const scheduleIdle = (cb, timeout = 700) => {
     if (typeof window.requestIdleCallback === "function") {
       return window.requestIdleCallback(cb, { timeout });
@@ -1647,13 +1649,16 @@
 
   function buildFormRequest(form, submitter) {
     const method = String(form.getAttribute("method") || "POST").toUpperCase();
-    const action = form.getAttribute("action") || window.location.href;
+    const submitterAction = submitter && submitter.getAttribute ? (submitter.getAttribute("formaction") || "") : "";
+    const action = submitterAction || form.getAttribute("action") || window.location.href;
     const asyncAction = (form.getAttribute("data-async-action") || "").trim();
     const requestUrl = asyncAction || action;
+    const submitterMethod = submitter && submitter.getAttribute ? (submitter.getAttribute("formmethod") || "") : "";
+    const requestMethod = String(submitterMethod || method || "POST").toUpperCase();
     const noLoader = form.hasAttribute("data-no-loader");
     const updateTarget = (form.getAttribute("data-async-target") || "").trim();
 
-    if (method === "GET") {
+    if (requestMethod === "GET") {
       const params = new URLSearchParams(new FormData(form));
       if (updateTarget && !params.has("_async_target")) {
         params.set("_async_target", updateTarget);
@@ -1680,7 +1685,7 @@
 
     return {
       url: requestUrl,
-      method,
+      method: requestMethod,
       body: data,
       updateTarget,
       noLoader,
@@ -1703,7 +1708,10 @@
     if (!window.fetch) return;
 
     ev.preventDefault();
-    const submitter = ev.submitter || form.querySelector('button[type="submit"],input[type="submit"]');
+    const submitter = ev.submitter || lastSubmitterByForm.get(form) || form.querySelector('button[type="submit"],input[type="submit"]');
+    if (lastSubmitterByForm.has(form)) {
+      lastSubmitterByForm.delete(form);
+    }
     const req = buildFormRequest(form, submitter);
     const containerSel = (form.getAttribute("data-async-busy-container") || "").trim();
     const busyContainer = containerSel ? document.querySelector(containerSel) : form;
@@ -1770,6 +1778,16 @@
     });
   }
 
+  function trackFormSubmitterClick(ev) {
+    const target = ev && ev.target ? ev.target : null;
+    if (!target || !target.closest) return;
+    const submitter = target.closest("button[type='submit'],input[type='submit']");
+    if (!submitter || !submitter.closest) return;
+    const form = submitter.closest("form[data-admin-async-form]");
+    if (!form) return;
+    lastSubmitterByForm.set(form, submitter);
+  }
+
   async function onHistoryPopState(ev) {
     const state = ev && ev.state ? ev.state : null;
     if (!state || state.adminAsync !== true) return;
@@ -1802,6 +1820,7 @@
   function bindSecondaryListeners() {
     if (secondaryBound) return;
     secondaryBound = true;
+    document.addEventListener("click", trackFormSubmitterClick, true);
     document.addEventListener("submit", onSubmit, true);
     document.addEventListener("click", onClick, true);
     document.addEventListener("input", onAsyncDebouncedInput, true);
@@ -1856,9 +1875,202 @@
     syncRegistrarPagoManualFields(root || document);
   }
 
+  function formatPlanMoney(value) {
+    return "RD$ " + Number(value || 0).toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  function renderGestionarPlanLoading() {
+    return [
+      '<div class="p-4">',
+      '  <div class="d-flex align-items-center gap-2 text-muted">',
+      '    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>',
+      '    <span>Cargando formulario de plan...</span>',
+      "  </div>",
+      "</div>",
+    ].join("");
+  }
+
+  function renderGestionarPlanError(message, retryLabel) {
+    const safeMessage = String(message || "No se pudo cargar el formulario de plan.").replace(/[&<>\"']/g, (ch) => {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[ch] || ch;
+    });
+    const safeRetry = String(retryLabel || "Reintentar").replace(/[&<>\"']/g, (ch) => {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[ch] || ch;
+    });
+    return [
+      '<div class="p-4">',
+      '  <div class="alert alert-danger mb-0" role="alert" aria-live="polite">',
+      '    <div class="fw-semibold">No se pudo cargar el plan.</div>',
+      `    <div class="small mt-1">${safeMessage}</div>`,
+      `    <button type="button" class="btn btn-outline-danger btn-sm mt-3" data-gestionar-plan-modal-retry="1">${safeRetry}</button>`,
+      "  </div>",
+      "</div>",
+    ].join("");
+  }
+
+  function getGestionarPlanModal(trigger) {
+    if (!trigger || !trigger.closest) return null;
+    const selector = (trigger.getAttribute("data-gestionar-plan-modal") || "").trim() || "#gestionarPlanModal";
+    return document.querySelector(selector);
+  }
+
+  function getGestionarPlanUrl(trigger) {
+    if (!trigger || !trigger.getAttribute) return "";
+    return String(trigger.getAttribute("href") || trigger.getAttribute("data-gestionar-plan-url") || "").trim();
+  }
+
+  function syncGestionarPlanSummary(root) {
+    const host = root && root.querySelectorAll ? root : document;
+    const forms = host.querySelectorAll("#planForm");
+    forms.forEach((form) => {
+      if (!form || form.dataset.planSummaryReady === "1") return;
+      const planSelect = form.querySelector("#tipo_plan");
+      const totalEl = form.querySelector("#plan-summary-total");
+      const depositEl = form.querySelector("#plan-summary-deposit");
+      const balanceEl = form.querySelector("#plan-summary-balance");
+      const abonoInput = form.querySelector("#abono_auto");
+      if (!planSelect || !totalEl || !depositEl || !balanceEl || !abonoInput) return;
+
+      function syncSummaryFromPlan() {
+        const selected = planSelect.options[planSelect.selectedIndex];
+        const total = Number((selected && selected.dataset && selected.dataset.price) || 0);
+        const deposit = total * 0.5;
+        const balance = total - deposit;
+        totalEl.textContent = formatPlanMoney(total);
+        depositEl.textContent = formatPlanMoney(deposit);
+        balanceEl.textContent = formatPlanMoney(balance);
+        abonoInput.value = deposit.toFixed(2);
+      }
+
+      planSelect.addEventListener("change", syncSummaryFromPlan);
+      syncSummaryFromPlan();
+      form.dataset.planSummaryReady = "1";
+    });
+  }
+
+  function ensureGestionarPlanModalShown(modal) {
+    if (!modal) return;
+    try {
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modal).show();
+        return;
+      }
+    } catch (_) {}
+    modal.classList.add("show");
+    modal.style.display = "block";
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  async function openGestionarPlanModal(trigger) {
+    const modal = getGestionarPlanModal(trigger);
+    const url = getGestionarPlanUrl(trigger);
+    if (!modal || !url) {
+      if (url) window.location.assign(url);
+      return false;
+    }
+
+    const region = modal.querySelector("#gestionarPlanAsyncRegion");
+    if (!region) {
+      window.location.assign(url);
+      return false;
+    }
+
+    modal.dataset.gestionarPlanUrl = url;
+    region.innerHTML = renderGestionarPlanLoading();
+    ensureGestionarPlanModalShown(modal);
+
+    if (!window.AdminAsync || typeof window.AdminAsync.request !== "function") {
+      window.location.assign(url);
+      return false;
+    }
+
+    const result = await window.AdminAsync.request({
+      url,
+      method: "GET",
+      body: null,
+      sourceEl: trigger,
+      busyContainer: modal.querySelector(".modal-body") || modal,
+      submitter: trigger,
+      updateTarget: "#gestionarPlanAsyncRegion",
+      noLoader: true,
+      headers: {},
+      preserveScroll: false,
+      pushHistory: false,
+      historyFormSelector: "",
+      historyMode: "push",
+      allowCached: true,
+    });
+
+    if (result === false || result === null) {
+      const meta = window.AdminAsync.getLastResponseMeta ? window.AdminAsync.getLastResponseMeta() : null;
+      const fallbackMessage = meta && meta.message ? meta.message : "Intenta nuevamente.";
+      region.innerHTML = renderGestionarPlanError(fallbackMessage, "Reintentar");
+      modal.dataset.gestionarPlanLoadState = "error";
+      return false;
+    }
+
+    modal.dataset.gestionarPlanLoadState = "ready";
+    return true;
+  }
+
+  function handleGestionarPlanTriggerClick(ev) {
+    const trigger = ev && ev.target ? ev.target.closest("[data-gestionar-plan-modal-trigger]") : null;
+    if (!trigger) return;
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || (typeof ev.button === "number" && ev.button !== 0)) {
+      return;
+    }
+    ev.preventDefault();
+    openGestionarPlanModal(trigger);
+  }
+
+  function handleGestionarPlanRetryClick(ev) {
+    const btn = ev && ev.target ? ev.target.closest("[data-gestionar-plan-modal-retry='1']") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    const modal = btn.closest("#gestionarPlanModal");
+    if (!modal) return;
+    const url = String(modal.dataset.gestionarPlanUrl || "").trim();
+    if (!url) return;
+    const pseudoTrigger = {
+      getAttribute(name) {
+        const key = String(name || "");
+        if (key === "href" || key === "data-gestionar-plan-url") return url;
+        if (key === "data-gestionar-plan-modal") return "#gestionarPlanModal";
+        return null;
+      },
+      closest(selector) {
+        if (selector === "#gestionarPlanModal") return modal;
+        return null;
+      },
+    };
+    openGestionarPlanModal(pseudoTrigger);
+  }
+
+  function bindGestionarPlanRuntime() {
+    if (gestionarPlanBound) return;
+    gestionarPlanBound = true;
+
+    document.addEventListener("click", handleGestionarPlanTriggerClick, true);
+    document.addEventListener("click", handleGestionarPlanRetryClick, true);
+    document.addEventListener("admin:content-updated", (ev) => {
+      const container = ev && ev.detail ? ev.detail.container : null;
+      syncGestionarPlanSummary(container || document);
+    });
+    document.addEventListener("admin:navigation-complete", (ev) => {
+      const detail = ev && ev.detail ? ev.detail : {};
+      syncGestionarPlanSummary(detail.viewport || document);
+    });
+
+    syncGestionarPlanSummary(document);
+  }
+
   function init() {
     bindSecondaryListeners();
     bindCandidatasOperativoIndexRuntime();
+    bindGestionarPlanRuntime();
     syncCollapseToggleLabels(document);
     syncRegistrarPagoManualFields(document);
     bindManagedModalGuards();

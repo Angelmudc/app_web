@@ -430,6 +430,22 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertIn('data-async-confirm="¿Cancelar solicitud', solicitudes_txt)
         self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
         self.assertIn('data-loading-text="Cancelando..."', solicitudes_txt)
+        self.assertIn('data-gestionar-plan-modal-trigger="1"', solicitudes_txt)
+
+        solicitud_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_operativa_core_region.html")
+        with open(solicitud_tpl, "r", encoding="utf-8") as fh:
+            solicitud_txt = fh.read()
+        self.assertIn('data-gestionar-plan-modal-trigger="1"', solicitud_txt)
+
+        cliente_detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "cliente_detail.html")
+        with open(cliente_detail_tpl, "r", encoding="utf-8") as fh:
+            cliente_detail_txt = fh.read()
+        self.assertIn("admin/_gestionar_plan_modal.html", cliente_detail_txt)
+
+        solicitud_detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitud_detail.html")
+        with open(solicitud_detail_tpl, "r", encoding="utf-8") as fh:
+            solicitud_detail_txt = fh.read()
+        self.assertIn("admin/_gestionar_plan_modal.html", solicitud_detail_txt)
 
     def test_cliente_detail_async_runtime_evita_scroll_de_fila_en_solicitudes(self):
         js_txt = Path("static/js/core/admin_async.js").read_text(encoding="utf-8")

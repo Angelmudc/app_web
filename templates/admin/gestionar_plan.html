@@ -10,37 +10,3 @@
   </div>
 </div>
 {% endblock %}
-
-{% block scripts %}
-<script>
-(function() {
-  function bindAbonoSanitizer(root) {
-    const scope = root && root.querySelector ? root : document;
-    const abonoInput = scope.querySelector('#abono');
-    if (!abonoInput || abonoInput.dataset.sanitizeBound === '1') {
-      return;
-    }
-    abonoInput.dataset.sanitizeBound = '1';
-    abonoInput.addEventListener('input', function(e) {
-      const cleaned = (e.target.value || '').replace(/[^\d.,\s]/g, '');
-      if (cleaned !== e.target.value) {
-        e.target.value = cleaned;
-      }
-    });
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      bindAbonoSanitizer(document);
-    }, { once: true });
-  } else {
-    bindAbonoSanitizer(document);
-  }
-
-  document.addEventListener('admin:content-updated', function(ev) {
-    const detail = ev && ev.detail ? ev.detail : {};
-    bindAbonoSanitizer(detail.container || document);
-  });
-})();
-</script>
-{% endblock %}

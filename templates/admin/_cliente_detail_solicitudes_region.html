@@ -286,7 +286,11 @@
 
                       {% if est_norm not in ['pendiente_servicio', 'reemplazo'] %}
                         <a href="{{ url_for('admin.gestionar_plan', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
-                           class="btn btn-sm btn-primary" data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
+                           class="btn btn-sm btn-primary"
+                           data-no-loader="true"
+                           data-gestionar-plan-modal-trigger="1"
+                           data-gestionar-plan-modal="#gestionarPlanModal"
+                           data-bs-toggle="tooltip" title="Plan / Abono" aria-label="Plan / Abono">
                           💳 <i class="bi bi-credit-card-fill ms-1"></i><span class="sr-only">Plan</span>
                         </a>
                       {% endif %}

@@ -40,6 +40,7 @@
 
   <form
     method="POST"
+    action="{{ url_for('admin.gestionar_plan', cliente_id=cliente_id, id=solicitud.id, next=next_url or '') }}"
     id="planForm"
     novalidate
     data-admin-async-form
@@ -168,56 +169,3 @@
     </div>
   {% endif %}
 </div>
-<script>
-  (function () {
-    if (window.__adminPlanSummaryInitBound) return;
-    window.__adminPlanSummaryInitBound = true;
-
-    function formatDop(value) {
-      return "RD$ " + Number(value || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-
-    function initPlanSummary(scope) {
-      if (!scope || scope.nodeType !== 1) return;
-      var form = scope.querySelector("#planForm");
-      if (!form || form.dataset.planSummaryReady === "1") return;
-
-      var planSelect = form.querySelector("#tipo_plan");
-      var totalEl = form.querySelector("#plan-summary-total");
-      var depositEl = form.querySelector("#plan-summary-deposit");
-      var balanceEl = form.querySelector("#plan-summary-balance");
-      var abonoInput = form.querySelector("#abono_auto");
-      if (!planSelect || !totalEl || !depositEl || !balanceEl || !abonoInput) return;
-
-      function syncSummaryFromPlan() {
-        var selected = planSelect.options[planSelect.selectedIndex];
-        var total = Number((selected && selected.dataset && selected.dataset.price) || 0);
-        var deposit = total * 0.5;
-        var balance = total - deposit;
-        totalEl.textContent = formatDop(total);
-        depositEl.textContent = formatDop(deposit);
-        balanceEl.textContent = formatDop(balance);
-        abonoInput.value = deposit.toFixed(2);
-      }
-
-      planSelect.addEventListener("change", syncSummaryFromPlan);
-      syncSummaryFromPlan();
-      form.dataset.planSummaryReady = "1";
-    }
-
-    function initInDocument() {
-      initPlanSummary(document.getElementById("gestionarPlanAsyncRegion") || document);
-    }
-
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", initInDocument);
-    } else {
-      initInDocument();
-    }
-
-    document.addEventListener("admin:content-updated", function (ev) {
-      var root = (ev && ev.detail && ev.detail.target) || document.getElementById("gestionarPlanAsyncRegion") || document;
-      initPlanSummary(root);
-    });
-  })();
-</script>

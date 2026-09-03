@@ -13587,6 +13587,8 @@ def gestionar_plan(cliente_id, id):
         http_status: int = 200,
         error_code: str | None = None,
         include_region: bool = True,
+        update_targets: list | None = None,
+        invalidate_snapshots: list | None = None,
         async_feedback=None,
     ):
         payload = _admin_async_payload(
@@ -13596,10 +13598,48 @@ def gestionar_plan(cliente_id, id):
             redirect_url=redirect_url,
             replace_html=_render_plan_region(async_feedback=async_feedback) if include_region else None,
             update_target="#gestionarPlanAsyncRegion",
+            update_targets=update_targets,
             errors=_flatten_form_errors(),
             error_code=error_code,
+            extra={"invalidate_snapshots": invalidate_snapshots or []},
         )
         return jsonify(payload), http_status
+
+    def _plan_refresh_targets():
+        next_path = str(urlparse(safe_next).path or "").rstrip("/")
+        update_targets = []
+        invalidate_snapshots = []
+
+        if re.search(r"/clientes/\d+/solicitudes/\d+$", next_path):
+            update_targets = [
+                {
+                    "target": "#solicitudSummaryAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+                {
+                    "target": "#solicitudOperativaCoreAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+            ]
+            invalidate_snapshots = [next_path or url_for("admin.detalle_solicitud", cliente_id=cliente_id, id=id)]
+        elif re.search(r"/clientes/\d+$", next_path):
+            update_targets = [
+                {
+                    "target": "#clienteSummaryAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+                {
+                    "target": "#clienteSolicitudesAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+            ]
+            invalidate_snapshots = [next_path or url_for("admin.detalle_cliente", cliente_id=cliente_id)]
+
+        return update_targets, invalidate_snapshots
 
     def _find_initial_abono(cycle_num: int):
         try:
@@ -13734,6 +13774,7 @@ def gestionar_plan(cliente_id, id):
                 if _admin_async_wants_json():
                     form = AdminGestionPlanForm(formdata=None, obj=s)
                     show_whatsapp_cta = True
+                    update_targets, invalidate_snapshots = _plan_refresh_targets()
                     return _async_plan_response(
                         ok=True,
                         message=success_message,
@@ -13741,6 +13782,8 @@ def gestionar_plan(cliente_id, id):
                         redirect_url=None,
                         http_status=200,
                         include_region=True,
+                        update_targets=update_targets,
+                        invalidate_snapshots=invalidate_snapshots,
                         async_feedback={"message": success_message, "category": "success"},
                     )
                 flash(success_message, 'success')
@@ -13872,6 +13915,7 @@ def gestionar_plan(cliente_id, id):
             if _admin_async_wants_json():
                 form = AdminGestionPlanForm(formdata=None, obj=s)
                 show_whatsapp_cta = True
+                update_targets, invalidate_snapshots = _plan_refresh_targets()
                 return _async_plan_response(
                     ok=True,
                     message=success_message,
@@ -13879,6 +13923,8 @@ def gestionar_plan(cliente_id, id):
                     redirect_url=None,
                     http_status=200,
                     include_region=True,
+                    update_targets=update_targets,
+                    invalidate_snapshots=invalidate_snapshots,
                     async_feedback={"message": success_message, "category": "success"},
                 )
             flash('Plan guardado y abono inicial registrado correctamente.', 'success')
@@ -13893,7 +13939,7 @@ def gestionar_plan(cliente_id, id):
                     category='danger',
                     http_status=409,
                     error_code='conflict',
-                    include_region=False,
+                    async_feedback={"message": "Conflicto al guardar el plan. Verifica si otro cambio ocurrió al mismo tiempo.", "category": "danger"},
                 )
             flash('Conflicto al guardar el plan (valores únicos/relaciones).', 'danger')
         except SQLAlchemyError:
@@ -13905,7 +13951,7 @@ def gestionar_plan(cliente_id, id):
                     category='danger',
                     http_status=500,
                     error_code='server_error',
-                    include_region=False,
+                    async_feedback={"message": "Error de base de datos al guardar el plan.", "category": "danger"},
                 )
             flash('Error de base de datos al guardar el plan.', 'danger')
         except Exception:
@@ -13917,7 +13963,7 @@ def gestionar_plan(cliente_id, id):
                     category='danger',
                     http_status=500,
                     error_code='server_error',
-                    include_region=False,
+                    async_feedback={"message": "Ocurrió un error al guardar el plan.", "category": "danger"},
                 )
             flash('Ocurrió un error al guardar el plan.', 'danger')
 

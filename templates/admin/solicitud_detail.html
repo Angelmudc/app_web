@@ -152,6 +152,8 @@
     </div>
   </div>
 
+  {% include 'admin/_gestionar_plan_modal.html' %}
+
   <!-- 🔥 Resumen listo para enviar al cliente -->
   {% set _resumen_cliente_clean = (resumen_cliente or '')|trim %}
   <div class="glass-card mb-4">

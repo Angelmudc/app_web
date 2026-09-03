@@ -128,6 +128,39 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertIsNone(data.get("redirect_url"))
         self.assertIn("Enviar mensaje WhatsApp al cliente", data.get("replace_html") or "")
         self.assertIn("https://wa.me/18095551212?text=", data.get("replace_html") or "")
+        self.assertEqual(
+            [(item["target"], item.get("redirect_url")) for item in data.get("update_targets") or []],
+            [
+                ("#clienteSummaryAsyncRegion", "/admin/clientes/7"),
+                ("#clienteSolicitudesAsyncRegion", "/admin/clientes/7"),
+            ],
+        )
+        self.assertEqual(data.get("invalidate_snapshots"), ["/admin/clientes/7"])
+        commit_mock.assert_called_once()
+
+    def test_guardado_async_exitoso_desde_detalle_solicitud_refresca_regiones_operativas(self):
+        solicitud = _solicitud_stub()
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self._invoke(
+                    data={"tipo_plan": "premium", "abono": "1,500"},
+                    headers=self._async_headers(),
+                    path="/admin/clientes/7/solicitudes/101/plan?next=/admin/clientes/7/solicitudes/101",
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(
+            [(item["target"], item.get("redirect_url")) for item in data.get("update_targets") or []],
+            [
+                ("#solicitudSummaryAsyncRegion", "/admin/clientes/7/solicitudes/101"),
+                ("#solicitudOperativaCoreAsyncRegion", "/admin/clientes/7/solicitudes/101"),
+            ],
+        )
+        self.assertEqual(data.get("invalidate_snapshots"), ["/admin/clientes/7/solicitudes/101"])
         commit_mock.assert_called_once()
 
     def test_validacion_async_re_renderiza_formulario_con_error_en_campo(self):
@@ -291,6 +324,8 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
                 resp = self._invoke(method="GET", headers=self._async_headers())
         html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn('action="/admin/clientes/7/solicitudes/101/plan?next=/admin/clientes/7"', html)
+        self.assertIn('method="POST"', html)
         self.assertIn('data-price="3500"', html)
         self.assertIn('data-price="5000"', html)
         self.assertIn('data-price="8000"', html)
