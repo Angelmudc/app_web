@@ -385,11 +385,18 @@
                         <form method="post"
                               action="{{ url_for('admin.cancelar_solicitud_directa', id=s.id) }}?next={{ cliente_detail_url | urlencode }}"
                               class="d-inline"
-                              onsubmit="return confirm('¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?');">
+                              data-admin-async-form
+                              data-async-target="#clienteSolicitudesAsyncRegion"
+                              data-async-busy-container="#clienteSolicitudesAsyncScope"
+                              data-async-preserve-scroll="true"
+                              data-async-fallback="native"
+                              data-async-confirm="¿Cancelar solicitud {{ s.codigo_solicitud }} sin motivo?">
                           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="_async_target" value="#clienteSolicitudesAsyncRegion">
+                          <input type="hidden" name="next" value="{{ cliente_detail_url }}">
                           <input type="hidden" name="row_version" value="{{ s.row_version if s is defined and s is not none else '' }}">
                           <input type="hidden" name="idempotency_key" value="{{ new_idempotency_key() }}">
-                          <button class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)" aria-label="Cancelar rápido">
+                          <button type="submit" class="btn btn-sm btn-danger" data-bs-toggle="tooltip" title="Cancelar rápido (sin motivo)" aria-label="Cancelar rápido" data-loading-text="Cancelando...">
                             ⛔ <i class="bi bi-x-circle-fill ms-1"></i><span class="sr-only">Cancelar rápido</span>
                           </button>
                         </form>

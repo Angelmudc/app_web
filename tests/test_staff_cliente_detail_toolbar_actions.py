@@ -2,6 +2,7 @@
 
 import os
 import unittest
+import secrets
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -218,6 +219,39 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertNotEqual(sol.estado, "espera_pago")
         commit_mock.assert_not_called()
 
+    def test_1d_cancelar_directo_desde_cliente_detail_async_devuelve_json_parcial(self):
+        self._login("Cruz", "8998")
+        sol = _DummySolicitud(estado="activa")
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: sol)), \
+                 patch("admin.routes._admin_async_wants_json", return_value=True), \
+                 patch("admin.routes._claim_idempotency", return_value=(SimpleNamespace(response_status=None), False)), \
+                 patch("admin.routes._set_idempotency_response"), \
+                 patch("admin.routes._set_solicitud_estado_with_outbox", side_effect=lambda solicitud, estado, **_k: setattr(solicitud, "estado", estado)), \
+                 patch("admin.routes._release_solicitud_candidatas_on_cancel", return_value={"released_count": 0, "candidata_ids": []}), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/solicitudes/10/cancelar_directo",
+                    data={
+                        "next": "/admin/clientes/7",
+                        "_async_target": "#clienteSolicitudesAsyncRegion",
+                        "row_version": "0",
+                        "idempotency_key": f"test-form-{secrets.token_hex(12)}",
+                    },
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["update_target"], "#clienteSolicitudesAsyncRegion")
+        self.assertEqual(data["update_targets"][0]["target"], "#clienteSolicitudesAsyncRegion")
+        self.assertEqual(data["update_targets"][1]["target"], "#clienteSummaryAsyncRegion")
+        self.assertIn("/admin/clientes/7/_solicitudes", data["update_targets"][0]["redirect_url"] or "")
+        self.assertIn("/admin/clientes/7/_summary", data["update_targets"][1]["redirect_url"] or "")
+        self.assertEqual(sol.estado, "cancelada")
+        commit_mock.assert_called_once()
+
     def test_2_abrir_reemplazo_desde_modal_crea_activo(self):
         self._login("Cruz", "8998")
         old = _DummyCandidata(fila=1, estado="trabajando")
@@ -393,6 +427,9 @@ class ClienteDetailToolbarActionsTest(unittest.TestCase):
         self.assertIn('data-async-target="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
         self.assertIn('data-async-busy-container="#clienteSolicitudesAsyncScope"', solicitudes_txt)
         self.assertIn('data-loading-text="Guardando..."', solicitudes_txt)
+        self.assertIn('data-async-confirm="¿Cancelar solicitud', solicitudes_txt)
+        self.assertIn('name="_async_target" value="#clienteSolicitudesAsyncRegion"', solicitudes_txt)
+        self.assertIn('data-loading-text="Cancelando..."', solicitudes_txt)
 
     def test_cliente_detail_async_runtime_evita_scroll_de_fila_en_solicitudes(self):
         js_txt = Path("static/js/core/admin_async.js").read_text(encoding="utf-8")
