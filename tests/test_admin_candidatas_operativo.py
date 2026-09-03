@@ -5,6 +5,7 @@ import io
 import re
 from datetime import timedelta
 from decimal import Decimal
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -40,6 +41,22 @@ from utils.timezone import utc_now_naive
 
 def _login(client, usuario: str = "Karla", clave: str = "9989"):
     return client.post("/admin/login", data={"usuario": usuario, "clave": clave}, follow_redirects=False)
+
+
+@contextmanager
+def _feature_flag(name: str, value: bool):
+    config_key = f"FEATURE_{name.upper()}"
+    old_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    old_value = flask_app.config.get(config_key)
+    new_flags = dict(old_flags)
+    new_flags[name] = bool(value)
+    flask_app.config["FEATURE_FLAGS"] = new_flags
+    flask_app.config[config_key] = bool(value)
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = old_flags
+        flask_app.config[config_key] = old_value
 
 
 def _ensure_tables() -> None:
@@ -495,7 +512,8 @@ def test_admin_candidata_ficha_readonly_flags_limites_legacy_y_sin_blobs():
         }
 
     assert _login(client).status_code in (302, 303)
-    resp = client.get("/admin/candidatas/990502", follow_redirects=False)
+    with _feature_flag("llamadas", True):
+        resp = client.get("/admin/candidatas/990502", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -612,7 +630,8 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
         _seed_center_candidate(fila=990539)
 
     assert _login(client).status_code in (302, 303)
-    resp = client.get("/admin/candidatas/990539", follow_redirects=False)
+    with _feature_flag("compat", True), _feature_flag("candidatas_web", True):
+        resp = client.get("/admin/candidatas/990539", follow_redirects=False)
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
 
@@ -1782,11 +1801,12 @@ def test_registrar_llamada_acepta_next_seguro_del_centro():
         _seed_center_candidate(fila=990504)
 
     assert _login(client).status_code in (302, 303)
-    resp = client.post(
-        "/candidatas/990504/llamar?next=/admin/candidatas/990504",
-        data={"resultado": "informada", "duracion_minutos": "1", "notas": "ok"},
-        follow_redirects=False,
-    )
+    with _feature_flag("llamadas", True):
+        resp = client.post(
+            "/candidatas/990504/llamar?next=/admin/candidatas/990504",
+            data={"resultado": "informada", "duracion_minutos": "1", "notas": "ok"},
+            follow_redirects=False,
+        )
     assert resp.status_code in (302, 303)
     assert resp.headers.get("Location") == "/admin/candidatas/990504"
 
@@ -2550,15 +2570,16 @@ def test_admin_candidata_operaciones_permitidas_preservan_descalificada():
         ("get", "/candidatas/990536/llamar?next=/admin/candidatas/990536"),
     ]
 
-    for method, url, *payload in actions:
-        if method == "post":
-            resp = client.post(url, data=payload[0], follow_redirects=False)
-        else:
-            resp = client.get(url, follow_redirects=False)
-        assert resp.status_code in (200, 302, 303, 409)
-        with flask_app.app_context():
-            db.session.expire_all()
-            assert Candidata.query.get(990536).estado == "descalificada"
+    with _feature_flag("llamadas", True):
+        for method, url, *payload in actions:
+            if method == "post":
+                resp = client.post(url, data=payload[0], follow_redirects=False)
+            else:
+                resp = client.get(url, follow_redirects=False)
+            assert resp.status_code in (200, 302, 303, 409)
+            with flask_app.app_context():
+                db.session.expire_all()
+                assert Candidata.query.get(990536).estado == "descalificada"
 
 
 def test_admin_candidata_operaciones_permitidas_preservan_trabajando():
@@ -2598,15 +2619,16 @@ def test_admin_candidata_operaciones_permitidas_preservan_trabajando():
         ("get", "/candidatas/990537/llamar?next=/admin/candidatas/990537"),
     ]
 
-    for method, url, *payload in actions:
-        if method == "post":
-            resp = client.post(url, data=payload[0], follow_redirects=False)
-        else:
-            resp = client.get(url, follow_redirects=False)
-        assert resp.status_code in (200, 302, 303, 409)
-        with flask_app.app_context():
-            db.session.expire_all()
-            assert Candidata.query.get(990537).estado == "trabajando"
+    with _feature_flag("llamadas", True):
+        for method, url, *payload in actions:
+            if method == "post":
+                resp = client.post(url, data=payload[0], follow_redirects=False)
+            else:
+                resp = client.get(url, follow_redirects=False)
+            assert resp.status_code in (200, 302, 303, 409)
+            with flask_app.app_context():
+                db.session.expire_all()
+                assert Candidata.query.get(990537).estado == "trabajando"
 
 
 def test_admin_candidata_get_detail_sin_side_effects_de_estado_auditoria_outbox():

@@ -11,12 +11,12 @@
     <h1 class="h3 mb-1">📊 Dashboard de Procesos</h1>
     <p class="text-muted mb-0">Resumen de candidatas, estados y movimientos recientes. Filtra por estado y rango de fechas.</p>
     <div class="mt-2">
-      {% if siguiente_pendiente_id %}
+      {% if feature_enabled('finalizar_proceso') and siguiente_pendiente_id %}
         <a class="btn btn-primary btn-sm"
            href="{{ url_for('finalizar_proceso', fila=siguiente_pendiente_id, queue=pendientes_queue, next=dashboard_return_url) }}">
           <i class="fa-solid fa-forward me-1"></i>Abrir siguiente pendiente
         </a>
-      {% else %}
+      {% elif feature_enabled('finalizar_proceso') %}
         <button class="btn btn-outline-secondary btn-sm" type="button" disabled>
           Sin pendientes en esta página
         </button>

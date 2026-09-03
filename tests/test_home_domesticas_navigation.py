@@ -71,9 +71,8 @@ def test_home_owner_admin_prioriza_domesticas_y_relega_legacy():
 
     assert "<details class=\"home-admin-tools" in html
     assert "Administración y herramientas" in html
-    assert "Finalizar proceso" in html
+    assert "Finalizar proceso" not in html
     assert "Eliminar candidata" in html
-    assert html.index("Domésticas") < html.index("Finalizar proceso")
     assert html.index("Domésticas") < html.index("Eliminar candidata")
     assert "Finanzas legacy de candidatas" in html
     assert "Porciento" in html
@@ -118,4 +117,7 @@ def test_home_domesticas_navegacion_y_rutas_legacy_siguen_respondiendo():
         "/candidatas/eliminar",
     ):
         resp = client.get(route, follow_redirects=False)
-        assert resp.status_code == 200, route
+        if route.startswith("/finalizar_proceso"):
+            assert resp.status_code == 404, route
+        else:
+            assert resp.status_code == 200, route

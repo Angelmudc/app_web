@@ -40,7 +40,9 @@
       <li>
         #{{ item.candidata.fila if item.candidata else item.candidata_id }} · {{ item.candidata.codigo if item.candidata else 'SIN-COD' }} · {{ item.candidata.nombre_completo if item.candidata else 'Sin registro' }}
         {% if item.candidata %}
+        {% if feature_enabled('candidatas_web') %}
         <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ url_for('admin.candidatas_web_detail', fila=item.candidata.fila) }}">Perfil público</a>
+        {% endif %}
         {% endif %}
       </li>
       {% endfor %}

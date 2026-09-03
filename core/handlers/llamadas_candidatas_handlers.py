@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
-from flask import current_app, flash, redirect, render_template, request, session, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import Date, cast, func, or_
 
 from config_app import cache, db
@@ -13,6 +13,7 @@ from core.services.cache_keys import _cache_key_with_role
 from core.services.candidata_quick_edit import register_candidate_call
 from core.services.date_utils import get_date_bounds, get_start_date
 from forms import LlamadaCandidataForm
+from utils.feature_flags import feature_enabled
 from models import Candidata, LlamadaCandidata
 from utils.timezone import rd_today
 
@@ -28,6 +29,8 @@ def _safe_llamada_next_url(value: str | None) -> str | None:
 
 @roles_required("admin", "secretaria")
 def listado_llamadas_candidatas():
+    if not feature_enabled("llamadas"):
+        abort(404)
     q = (request.args.get("q") or "").strip()[:128]
     period = (request.args.get("period") or "all").strip()[:16]
     start_date_str = request.args.get("start_date", None)
@@ -106,6 +109,8 @@ def listado_llamadas_candidatas():
 
 @roles_required("admin", "secretaria")
 def registrar_llamada_candidata(fila):
+    if not feature_enabled("llamadas"):
+        abort(404)
     candidata = Candidata.query.get_or_404(fila)
     form = LlamadaCandidataForm()
     next_url = _safe_llamada_next_url(request.values.get("next"))
@@ -138,6 +143,8 @@ def registrar_llamada_candidata(fila):
     key_prefix=lambda: _cache_key_with_role("reporte_llamadas"),
 )
 def reporte_llamadas_candidatas():
+    if not feature_enabled("llamadas"):
+        abort(404)
     period = (request.args.get("period") or "week").strip()[:16]
     start_date_str = request.args.get("start_date", None)
     start_dt = get_start_date(period, start_date_str)

@@ -48,9 +48,11 @@
         <i class="bi bi-whatsapp me-1"></i> Cobro 50%
       </button>
       {% endif %}
+      {% if feature_enabled('matching') %}
       <a href="{{ url_for('admin.sugerencias_solicitud', solicitud_id=solicitud.id) }}" class="btn btn-outline-primary">
         <i class="bi bi-lightbulb me-1"></i> Ver sugerencias
       </a>
+      {% endif %}
       <a href="{{ url_for('admin.listar_solicitudes', q=(solicitud.codigo_solicitud or ('SOL-' ~ solicitud.id))) }}" class="btn btn-outline-secondary" data-admin-nav="true">
         <i class="bi bi-list-ul me-1"></i> Bandeja de solicitudes
       </a>

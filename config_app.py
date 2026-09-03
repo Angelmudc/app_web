@@ -596,6 +596,17 @@ def create_app():
     app.config["DISTRIBUTED_BACKPLANE_MODE"] = "redis" if distributed_backplane_enabled else "disabled"
     app.config["DISTRIBUTED_BACKPLANE_HEALTHY_AT_STARTUP"] = False
 
+    feature_flags = {
+        "finalizar_proceso": _is_true(os.getenv("FEATURE_FINALIZAR_PROCESO", "0")),
+        "llamadas": _is_true(os.getenv("FEATURE_LLAMADAS", "0")),
+        "compat": _is_true(os.getenv("FEATURE_COMPAT", "0")),
+        "matching": _is_true(os.getenv("FEATURE_MATCHING", "0")),
+        "candidatas_web": _is_true(os.getenv("FEATURE_CANDIDATAS_WEB", "0")),
+    }
+    app.config["FEATURE_FLAGS"] = feature_flags
+    for feature_name, is_enabled in feature_flags.items():
+        app.config[f"FEATURE_{feature_name.upper()}"] = bool(is_enabled)
+
     # ─────────────────────────────────────────────────────────
     # Inicializar extensiones
     # ─────────────────────────────────────────────────────────
@@ -813,6 +824,7 @@ def create_app():
     app.jinja_env.filters["format_funciones_display"] = format_funciones_display
     app.jinja_env.globals["format_compat_result"] = format_compat_result
     app.jinja_env.filters["compat_fmt"] = format_compat_result
+    app.jinja_env.globals["feature_enabled"] = lambda name: bool(app.config.get("FEATURE_FLAGS", {}).get(str(name), False))
     app.jinja_env.globals["new_idempotency_key"] = lambda: secrets.token_urlsafe(24)
 
     # ─────────────────────────────────────────────────────────

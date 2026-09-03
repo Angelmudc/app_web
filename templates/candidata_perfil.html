@@ -138,8 +138,10 @@
       <small class="ms-2">#{{ candidata.fila }}</small>
     </h1>
     <div class="d-flex gap-2">
+      {% if feature_enabled('finalizar_proceso') %}
       <a href="{{ url_for('finalizar_proceso_buscar') }}" class="btn-outline-glass btn btn-sm">← Volver</a>
       <a href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}" class="btn-glass btn btn-sm">Editar / Finalizar</a>
+      {% endif %}
     </div>
   </div>
 
@@ -262,9 +264,11 @@
              download="perfil_{{ candidata.fila }}.png">
              <i class="fa-solid fa-download me-1"></i> Descargar foto
           </a>
+          {% if feature_enabled('finalizar_proceso') %}
           <a href="{{ url_for('finalizar_proceso_buscar') }}" class="volver-link">
             <i class="fa-solid fa-arrow-left-long me-1"></i> Volver a buscar
           </a>
+          {% endif %}
         </div>
       </div>
     </div>

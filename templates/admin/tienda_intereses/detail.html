@@ -167,7 +167,7 @@
         </div>
 
         <div class="td-cand-actions">
-          {% if c %}
+          {% if c and feature_enabled('candidatas_web') %}
           <a class="td-btn td-btn-link" href="{{ url_for('admin.candidatas_web_detail', fila=c.fila) }}">Ver candidata</a>
           <a class="td-btn td-btn-link" href="{{ url_for('admin.candidatas_web_detail', fila=c.fila) }}">Editar perfil público</a>
           {% endif %}

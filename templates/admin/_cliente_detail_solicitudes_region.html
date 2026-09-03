@@ -369,7 +369,7 @@
                         {% include 'admin/_reemplazo_actions_region.html' with context %}
                       </div>
 
-                      {% if s.candidata_id %}
+                      {% if feature_enabled('compat') and s.candidata_id %}
                         <a href="{{ url_for('admin.ver_compatibilidad', cliente_id=cliente.id, candidata_id=s.candidata_id) }}"
                            class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Ver compatibilidad (admin)" aria-label="Compatibilidad admin">
                           👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad admin</span>
@@ -379,13 +379,6 @@
                            class="btn btn-sm btn-dark" data-bs-toggle="tooltip" title="Llenar/editar test (Secretarías)" aria-label="Test Secretarías">
                           ✅ <i class="bi bi-ui-checks-grid ms-1"></i><span class="sr-only">Test Secretarías</span>
                         </a>
-                      {% else %}
-                        <button class="btn btn-sm btn-secondary" disabled
-                                data-bs-toggle="tooltip"
-                                title="Asigna una candidata para evaluar compatibilidad"
-                                aria-label="Compatibilidad deshabilitada">
-                          👥 <i class="bi bi-people-fill ms-1"></i><span class="sr-only">Compatibilidad</span>
-                        </button>
                       {% endif %}
 
                       {% if s.estado in ['activa','proceso','reemplazo'] %}

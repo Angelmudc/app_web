@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from flask import current_app, flash, redirect, render_template, request, url_for
+from flask import abort, current_app, flash, redirect, render_template, request, url_for
 
 from decorators import roles_required
 from core.services.search import search_candidatas_limited
+from utils.feature_flags import feature_enabled
 from utils.guards import assert_candidata_no_descalificada, candidatas_activas_filter
 
 from core import legacy_handlers as legacy_h
@@ -126,6 +127,8 @@ HORARIO_ORDER = {tok: idx for idx, (tok, _lbl) in enumerate(legacy_h.HORARIO_OPT
 
 @roles_required('admin', 'secretaria')
 def compat_candidata():
+    if not feature_enabled("compat"):
+        abort(404)
     """
     - GET sin ?fila  → buscador (acepta ?q= en GET).
     - GET con ?fila  → muestra formulario del test.

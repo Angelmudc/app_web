@@ -101,7 +101,7 @@
             {% if row.indicador_sin_candidata %}<span class="reemp-indicator reemp-indicator-danger">⚠ sin candidata</span>{% endif %}
             {% if row.indicador_esperando_cliente %}<span class="reemp-indicator reemp-indicator-info">👤 esperando cliente</span>{% endif %}
             {% for al in (row.alertas_activas or []) %}<span class="reemp-indicator reemp-indicator-warn">{{ al }}</span>{% endfor %}
-            {% if row.indicador_publicacion_incompleta %}
+            {% if feature_enabled('candidatas_web') and row.indicador_publicacion_incompleta %}
             <span class="reemp-indicator reemp-indicator-warn" title="Faltan: {{ (row.publicacion_missing_fields or [])|join(', ') }}">⚠ publicación incompleta</span>
             {% endif %}
             {% if row.cliente_riesgo and row.cliente_riesgo.nivel != 'bajo' %}
@@ -112,11 +112,13 @@
         <td class="reemp-actions-col">
           <div class="reemp-actions">
             <a class="btn btn-outline-primary btn-sm" href="{{ url_for('admin.reemplazo_detail', reemplazo_id=r.id) }}">Gestionar</a>
+            {% if feature_enabled('candidatas_web') %}
             <button
               type="button"
               class="btn btn-outline-dark btn-sm js-reemp-copy-publicacion"
               data-publicacion-texto="{{ row.publicacion_texto|tojson|forceescape }}"
             >Publicar</button>
+            {% endif %}
             <div class="dropdown reemp-action-menu">
               <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">⋮</button>
               <ul class="dropdown-menu dropdown-menu-end">
@@ -184,6 +186,7 @@
   </div>
 </div>
 </div>
+{% if feature_enabled('candidatas_web') %}
 <script>
 document.addEventListener('click', async function(ev) {
   var btn = ev.target && ev.target.closest ? ev.target.closest('.js-reemp-copy-publicacion') : null;
@@ -207,4 +210,5 @@ document.addEventListener('click', async function(ev) {
   window.prompt('Copia este texto para publicar', text);
 });
 </script>
+{% endif %}
 {% endblock %}

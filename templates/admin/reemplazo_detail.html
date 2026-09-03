@@ -120,7 +120,9 @@
           <div class="dropdown">
             <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Más acciones</button>
             <ul class="dropdown-menu dropdown-menu-end">
+              {% if feature_enabled('candidatas_web') %}
               <li><button class="dropdown-item" type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ publicacion_texto|tojson }});">Copiar publicación</button></li>
+              {% endif %}
               {% if cliente and cliente.telefono %}<li><a class="dropdown-item" target="_blank" rel="noopener" href="https://wa.me/{{ cliente.telefono|replace('+','')|replace('-','')|replace(' ','') }}">WhatsApp cliente</a></li>{% endif %}
               {% if solicitud %}<li><a class="dropdown-item" href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}">Timeline de solicitud</a></li>{% endif %}
               {% if solicitud and not _reemplazo_ya_cerrado %}
@@ -299,7 +301,9 @@
       <a href="{{ url_for('admin.detalle_solicitud', cliente_id=solicitud.cliente_id, id=solicitud.id) }}" class="btn btn-outline-light btn-sm">Ver solicitud</a>
       {% endif %}
       {% if reemplazo.candidata_new_id %}
+      {% if feature_enabled('candidatas_web') %}
       <a href="{{ url_for('admin.candidatas_web_detail', fila=reemplazo.candidata_new_id) }}" class="btn btn-outline-light btn-sm">Ver candidata</a>
+      {% endif %}
       {% endif %}
     </div>
   </div>

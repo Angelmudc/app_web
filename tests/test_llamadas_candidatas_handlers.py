@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 from unittest.mock import patch
+from contextlib import contextmanager
 
 from flask import url_for
 
@@ -15,6 +16,22 @@ def _login_secretaria(client):
 
 def _login_admin(client):
     return client.post("/admin/login", data={"usuario": "Owner", "clave": "admin123"}, follow_redirects=False)
+
+
+@contextmanager
+def _feature_flag(name: str, value: bool):
+    config_key = f"FEATURE_{name.upper()}"
+    old_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    old_value = flask_app.config.get(config_key)
+    new_flags = dict(old_flags)
+    new_flags[name] = bool(value)
+    flask_app.config["FEATURE_FLAGS"] = new_flags
+    flask_app.config[config_key] = bool(value)
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = old_flags
+        flask_app.config[config_key] = old_value
 
 
 class _Expr:
@@ -175,15 +192,16 @@ def test_listado_llamadas_render_basico_contrato_intacto():
         captured["ctx"] = ctx
         return "ok"
 
-    with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
-         patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", new=fake_llamada), \
-         patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
-         patch("core.handlers.llamadas_candidatas_handlers.or_", side_effect=lambda *a: a), \
-         patch("core.handlers.llamadas_candidatas_handlers.cast", side_effect=lambda *a, **k: _Expr()), \
-         patch("core.handlers.llamadas_candidatas_handlers.get_date_bounds", return_value=(None, None)), \
-         patch("core.handlers.llamadas_candidatas_handlers.render_template", side_effect=_fake_render):
-        resp = client.get("/candidatas/llamadas?page=2&period=all&q=ana", follow_redirects=False)
+    with _feature_flag("llamadas", True):
+        with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
+             patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata), \
+             patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", new=fake_llamada), \
+             patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
+             patch("core.handlers.llamadas_candidatas_handlers.or_", side_effect=lambda *a: a), \
+             patch("core.handlers.llamadas_candidatas_handlers.cast", side_effect=lambda *a, **k: _Expr()), \
+             patch("core.handlers.llamadas_candidatas_handlers.get_date_bounds", return_value=(None, None)), \
+             patch("core.handlers.llamadas_candidatas_handlers.render_template", side_effect=_fake_render):
+            resp = client.get("/candidatas/llamadas?page=2&period=all&q=ana", follow_redirects=False)
 
     assert resp.status_code == 200
     assert base_q.paginate_calls == 3
@@ -219,10 +237,11 @@ def test_registrar_llamada_persistencia_y_redirect():
         captured["actor"] = actor
         return SimpleNamespace(ok=True, error_code=None, message="")
 
-    with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
-         patch("core.handlers.llamadas_candidatas_handlers.register_candidate_call", side_effect=_register_candidate_call):
-        resp = client.post("/candidatas/15/llamar", data={"resultado": "contestada"}, follow_redirects=False)
+    with _feature_flag("llamadas", True):
+        with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
+             patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
+             patch("core.handlers.llamadas_candidatas_handlers.register_candidate_call", side_effect=_register_candidate_call):
+            resp = client.post("/candidatas/15/llamar", data={"resultado": "contestada"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert "/candidatas/llamadas" in (resp.headers.get("Location") or "")
@@ -247,13 +266,14 @@ def test_registrar_llamada_fallback_rollback_y_redirect():
         notas=SimpleNamespace(data=""),
     )
 
-    with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
-         patch(
-             "core.handlers.llamadas_candidatas_handlers.register_candidate_call",
-             return_value=SimpleNamespace(ok=False, error_code="persist_error", message="db fail"),
-         ):
-        resp = client.post("/candidatas/21/llamar", data={"resultado": "sin respuesta"}, follow_redirects=False)
+    with _feature_flag("llamadas", True):
+        with patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata_model), \
+             patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidataForm", return_value=fake_form), \
+             patch(
+                 "core.handlers.llamadas_candidatas_handlers.register_candidate_call",
+                 return_value=SimpleNamespace(ok=False, error_code="persist_error", message="db fail"),
+             ):
+            resp = client.post("/candidatas/21/llamar", data={"resultado": "sin respuesta"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
     assert "/candidatas/llamadas" in (resp.headers.get("Location") or "")
@@ -305,16 +325,17 @@ def test_reporte_llamadas_render_basico_y_metricas():
         captured["ctx"] = ctx
         return "ok"
 
-    with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
-         patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata), \
-         patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", new=fake_llamada), \
-         patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
-         patch("core.handlers.llamadas_candidatas_handlers.or_", side_effect=lambda *a: a), \
-         patch("core.handlers.llamadas_candidatas_handlers.cast", side_effect=lambda *a, **k: _Expr()), \
-         patch("core.handlers.llamadas_candidatas_handlers.get_start_date", return_value=None), \
-         patch("core.handlers.llamadas_candidatas_handlers.rd_today", return_value="2026-03-26"), \
-         patch("core.handlers.llamadas_candidatas_handlers.render_template", side_effect=_fake_render):
-        resp = client.get("/candidatas/llamadas/reporte?period=week&page=1", follow_redirects=False)
+    with _feature_flag("llamadas", True):
+        with patch("core.handlers.llamadas_candidatas_handlers.db", new=fake_db), \
+             patch("core.handlers.llamadas_candidatas_handlers.Candidata", new=fake_candidata), \
+             patch("core.handlers.llamadas_candidatas_handlers.LlamadaCandidata", new=fake_llamada), \
+             patch("core.handlers.llamadas_candidatas_handlers.func", new=_FuncFake()), \
+             patch("core.handlers.llamadas_candidatas_handlers.or_", side_effect=lambda *a: a), \
+             patch("core.handlers.llamadas_candidatas_handlers.cast", side_effect=lambda *a, **k: _Expr()), \
+             patch("core.handlers.llamadas_candidatas_handlers.get_start_date", return_value=None), \
+             patch("core.handlers.llamadas_candidatas_handlers.rd_today", return_value="2026-03-26"), \
+             patch("core.handlers.llamadas_candidatas_handlers.render_template", side_effect=_fake_render):
+            resp = client.get("/candidatas/llamadas/reporte?period=week&page=1", follow_redirects=False)
 
     assert resp.status_code == 200
     assert base_q.paginate_calls == 3

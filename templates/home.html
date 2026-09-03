@@ -177,7 +177,7 @@
               </div>
             </span>
           </div>
-          {% if has_endpoint('admin.candidatas_web_list') %}
+          {% if feature_enabled('candidatas_web') and has_endpoint('admin.candidatas_web_list') %}
           <a class="home-tool-card" href="{{ url_for('admin.candidatas_web_list') }}">
             <span class="home-tool-icon"><i class="fa-solid fa-store"></i></span>
             <span>
@@ -193,7 +193,7 @@
       <section>
         <h2>Herramientas de candidatas</h2>
         <div class="home-compact-grid">
-          {% if has_endpoint('finalizar_proceso') %}
+          {% if feature_enabled('finalizar_proceso') and has_endpoint('finalizar_proceso') %}
           <a class="home-tool-card" href="{{ url_for('finalizar_proceso') }}">
             <span class="home-tool-icon"><i class="fa-solid fa-check"></i></span>
             <span>
@@ -284,7 +284,7 @@
       <section>
         <h2>Administración operativa</h2>
         <div class="home-compact-grid">
-          {% if has_endpoint('compat_candidata') %}
+          {% if feature_enabled('compat') and has_endpoint('compat_candidata') %}
           <a class="home-tool-card" href="{{ url_for('compat_candidata') }}">
             <span class="home-tool-icon"><i class="fa-solid fa-scale-balanced"></i></span>
             <span>
@@ -293,7 +293,7 @@
             </span>
           </a>
           {% endif %}
-          {% if has_endpoint('admin.matching_solicitudes') %}
+          {% if feature_enabled('matching') and has_endpoint('admin.matching_solicitudes') %}
           <a class="home-tool-card" href="{{ url_for('admin.matching_solicitudes') }}">
             <span class="home-tool-icon"><i class="fa-solid fa-people-arrows"></i></span>
             <span>

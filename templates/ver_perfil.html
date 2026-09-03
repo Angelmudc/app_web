@@ -14,10 +14,12 @@
       </div>
     </div>
     <div class="d-flex gap-2">
-      {% if candidata.fila %}
+      {% if feature_enabled('finalizar_proceso') and candidata.fila %}
       <a class="btn btn-success" href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}">Finalizar proceso</a>
       {% endif %}
+      {% if feature_enabled('finalizar_proceso') %}
       <a class="btn btn-outline-secondary" href="{{ url_for('finalizar_proceso_buscar') }}">Buscar otra</a>
+      {% endif %}
       <a class="btn btn-link" href="{{ url_for('list_candidatas') }}">Volver al listado</a>
     </div>
   </div>
@@ -197,14 +199,16 @@
 
           <!-- Acciones -->
           <div class="d-flex flex-wrap gap-2 mt-3">
-            {% if candidata.fila %}
+            {% if feature_enabled('finalizar_proceso') and candidata.fila %}
             <a class="btn btn-primary" href="{{ url_for('finalizar_proceso', fila=candidata.fila) }}">
               Completar / Editar documentos
             </a>
             {% endif %}
+            {% if feature_enabled('finalizar_proceso') %}
             <a class="btn btn-outline-secondary" href="{{ url_for('finalizar_proceso_buscar') }}">
               Buscar otra candidata
             </a>
+            {% endif %}
             <a class="btn btn-link" href="{{ url_for('list_candidatas') }}">
               ← Volver al listado
             </a>

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import io
+from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -11,6 +12,22 @@ from app import app as flask_app
 
 def _login_secretaria(client):
     return client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
+
+
+@contextmanager
+def _feature_flag(name: str, value: bool):
+    config_key = f"FEATURE_{name.upper()}"
+    old_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    old_value = flask_app.config.get(config_key)
+    new_flags = dict(old_flags)
+    new_flags[name] = bool(value)
+    flask_app.config["FEATURE_FLAGS"] = new_flags
+    flask_app.config[config_key] = bool(value)
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = old_flags
+        flask_app.config[config_key] = old_value
 
 
 class _Expr:
@@ -97,11 +114,12 @@ def test_finalizar_proceso_buscar_flujo_basico_render_contrato():
         captured["ctx"] = ctx
         return "ok"
 
-    with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=fake_candidata_model), \
-         patch("core.handlers.finalizar_proceso_handlers.load_only", side_effect=lambda *a: a), \
-         patch("core.handlers.finalizar_proceso_handlers.or_", side_effect=lambda *a: a), \
-         patch("core.handlers.finalizar_proceso_handlers.render_template", side_effect=_fake_render):
-        resp = client.get("/finalizar_proceso/buscar?q=ana", follow_redirects=False)
+    with _feature_flag("finalizar_proceso", True):
+        with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=fake_candidata_model), \
+             patch("core.handlers.finalizar_proceso_handlers.load_only", side_effect=lambda *a: a), \
+             patch("core.handlers.finalizar_proceso_handlers.or_", side_effect=lambda *a: a), \
+             patch("core.handlers.finalizar_proceso_handlers.render_template", side_effect=_fake_render):
+            resp = client.get("/finalizar_proceso/buscar?q=ana", follow_redirects=False)
 
     assert resp.status_code == 200
     assert search_q.limit_seen == 300
@@ -116,7 +134,8 @@ def test_finalizar_proceso_redirect_fallback_sin_fila():
     client = flask_app.test_client()
     assert _login_secretaria(client).status_code in (302, 303)
 
-    resp = client.get("/finalizar_proceso", follow_redirects=False)
+    with _feature_flag("finalizar_proceso", True):
+        resp = client.get("/finalizar_proceso", follow_redirects=False)
     assert resp.status_code in (302, 303)
     assert "/finalizar_proceso/buscar" in (resp.headers.get("Location") or "")
 
@@ -136,18 +155,19 @@ def test_finalizar_proceso_no_regresion_archivos_vacios_no_sobrescribe():
         def get(self, _fila):
             return cand
 
-    with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
-         patch("core.handlers.finalizar_proceso_handlers.execute_robust_save") as save_mock:
-        resp = client.post(
-            "/finalizar_proceso?fila=1",
-            data={
-                "foto_perfil": (io.BytesIO(b""), "foto.jpg"),
-                "cedula1": (io.BytesIO(b""), "ced1.jpg"),
-                "cedula2": (io.BytesIO(b""), "ced2.jpg"),
-            },
-            content_type="multipart/form-data",
-            follow_redirects=False,
-        )
+    with _feature_flag("finalizar_proceso", True):
+        with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
+             patch("core.handlers.finalizar_proceso_handlers.execute_robust_save") as save_mock:
+            resp = client.post(
+                "/finalizar_proceso?fila=1",
+                data={
+                    "foto_perfil": (io.BytesIO(b""), "foto.jpg"),
+                    "cedula1": (io.BytesIO(b""), "ced1.jpg"),
+                    "cedula2": (io.BytesIO(b""), "ced2.jpg"),
+                },
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
 
     assert resp.status_code == 200
     assert b"no pueden estar vac" in resp.data.lower()
@@ -173,23 +193,24 @@ def test_finalizar_proceso_post_exitoso_redirect_y_persistencia():
         persist_fn(1)
         return SimpleNamespace(ok=True, attempts=1, error_message="")
 
-    with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
-         patch("core.handlers.finalizar_proceso_handlers.legacy_h._cfg_grupos_empleo", return_value=["Interna"]), \
-         patch("core.handlers.finalizar_proceso_handlers.legacy_h._save_grupos_empleo_safe", return_value=True), \
-         patch("core.handlers.finalizar_proceso_handlers.execute_robust_save", side_effect=_fake_execute_robust_save), \
-         patch("core.handlers.finalizar_proceso_handlers.log_candidata_action") as log_mock, \
-         patch("core.handlers.finalizar_proceso_handlers.maybe_update_estado_por_completitud"):
-        resp = client.post(
-            "/finalizar_proceso?fila=22",
-            data={
-                "grupos_empleo": ["Interna"],
-                "foto_perfil": (io.BytesIO(b"foto-nueva"), "foto.jpg"),
-                "cedula1": (io.BytesIO(b"ced1-nueva"), "ced1.jpg"),
-                "cedula2": (io.BytesIO(b"ced2-nueva"), "ced2.jpg"),
-            },
-            content_type="multipart/form-data",
-            follow_redirects=False,
-        )
+    with _feature_flag("finalizar_proceso", True):
+        with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
+             patch("core.handlers.finalizar_proceso_handlers.legacy_h._cfg_grupos_empleo", return_value=["Interna"]), \
+             patch("core.handlers.finalizar_proceso_handlers.legacy_h._save_grupos_empleo_safe", return_value=True), \
+             patch("core.handlers.finalizar_proceso_handlers.execute_robust_save", side_effect=_fake_execute_robust_save), \
+             patch("core.handlers.finalizar_proceso_handlers.log_candidata_action") as log_mock, \
+             patch("core.handlers.finalizar_proceso_handlers.maybe_update_estado_por_completitud"):
+            resp = client.post(
+                "/finalizar_proceso?fila=22",
+                data={
+                    "grupos_empleo": ["Interna"],
+                    "foto_perfil": (io.BytesIO(b"foto-nueva"), "foto.jpg"),
+                    "cedula1": (io.BytesIO(b"ced1-nueva"), "ced1.jpg"),
+                    "cedula2": (io.BytesIO(b"ced2-nueva"), "ced2.jpg"),
+                },
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
 
     assert resp.status_code in (302, 303)
     assert "/candidata/perfil" in (resp.headers.get("Location") or "")
@@ -215,16 +236,17 @@ def test_finalizar_proceso_post_respeta_next_y_no_exige_docs_ya_existentes():
         persist_fn(1)
         return SimpleNamespace(ok=True, attempts=1, error_message="")
 
-    with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
-         patch("core.handlers.finalizar_proceso_handlers.legacy_h._cfg_grupos_empleo", return_value=[]), \
-         patch("core.handlers.finalizar_proceso_handlers.execute_robust_save", side_effect=_fake_execute_robust_save), \
-         patch("core.handlers.finalizar_proceso_handlers.log_candidata_action"):
-        resp = client.post(
-            "/finalizar_proceso?fila=45&next=/dashboard_procesos",
-            data={},
-            content_type="multipart/form-data",
-            follow_redirects=False,
-        )
+    with _feature_flag("finalizar_proceso", True):
+        with patch("core.handlers.finalizar_proceso_handlers.legacy_h.Candidata", new=SimpleNamespace(query=_Query())), \
+             patch("core.handlers.finalizar_proceso_handlers.legacy_h._cfg_grupos_empleo", return_value=[]), \
+             patch("core.handlers.finalizar_proceso_handlers.execute_robust_save", side_effect=_fake_execute_robust_save), \
+             patch("core.handlers.finalizar_proceso_handlers.log_candidata_action"):
+            resp = client.post(
+                "/finalizar_proceso?fila=45&next=/dashboard_procesos",
+                data={},
+                content_type="multipart/form-data",
+                follow_redirects=False,
+            )
 
     assert resp.status_code in (302, 303)
     assert (resp.headers.get("Location") or "").endswith("/dashboard_procesos")

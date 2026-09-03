@@ -293,19 +293,23 @@
     'contratos.listado_contratos_admin', 'contratos.detalle_contrato_admin_view',
     'admin.monitoreo_staff', 'admin.monitoreo_logs',
     'admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view',
-    'admin.matching_inteligente', 'admin.sugerencias_solicitud',
     'admin.chat_staff_inbox',
     'admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail',
     'admin.bandeja_formularios_publicos_nuevos',
     'admin.tienda_intereses_list', 'admin.tienda_intereses_detail',
     'admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create',
     'admin.catalogos_privados_detail', 'admin.catalogos_privados_edit', 'admin.catalogos_privados_update',
-    'admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update',
     'admin.listar_usuarios', 'admin.crear_usuario', 'admin.editar_usuario', 'admin.admin_roles',
     'admin.acciones_solicitudes_proceso',
     'buscar_candidata', 'inscripcion', 'porciento', 'pagos',
     'admin.alertas_canales'
   ] %}
+  {% if feature_enabled('matching') %}
+    {% set _admin_more_active_endpoints = _admin_more_active_endpoints + ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}
+  {% endif %}
+  {% if feature_enabled('candidatas_web') %}
+    {% set _admin_more_active_endpoints = _admin_more_active_endpoints + ['admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update'] %}
+  {% endif %}
   {% set _admin_more_is_active = request.endpoint in _admin_more_active_endpoints %}
 
   <!-- Navbar -->
@@ -384,7 +388,7 @@
             (has_endpoint('contratos.listado_contratos_admin') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or (has_endpoint('admin.monitoreo_staff') and (_staff_role in ['owner', 'admin']))
             or (has_endpoint('admin.metricas_dashboard') and (_staff_role in ['owner', 'admin']))
-            or (has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or (feature_enabled('matching') and has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or (has_endpoint('admin.chat_staff_inbox') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or (has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or _public_intake_badge_enabled
@@ -424,7 +428,7 @@
               </li>
               {% endif %}
 
-              {% if has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+              {% if feature_enabled('matching') and has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
               <li>
                 <a class="dropdown-item {% if request.endpoint in ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}active{% endif %}"
                    href="{{ url_for('admin.matching_inteligente') }}">Decisiones</a>
@@ -499,7 +503,7 @@
                 </li>
                 {% endif %}
 
-                {% if has_endpoint('admin.candidatas_web_list') %}
+              {% if feature_enabled('candidatas_web') and has_endpoint('admin.candidatas_web_list') %}
                 <li>
                   <a class="dropdown-item {% if request.endpoint in ['admin.candidatas_web_list', 'admin.candidatas_web_detail', 'admin.candidatas_web_update'] %}active{% endif %}"
                      href="{{ url_for('admin.candidatas_web_list') }}">Perfiles públicos</a>

@@ -11,6 +11,7 @@ from decorators import roles_required
 from utils.audit_entity import log_candidata_action
 from utils.candidata_readiness import candidata_docs_complete, candidata_has_interview, candidata_referencias_complete
 from utils.candidata_readiness import maybe_update_estado_por_completitud
+from utils.feature_flags import feature_enabled
 from utils.robust_save import execute_robust_save, safe_bytes_length
 
 from core import legacy_handlers as legacy_h
@@ -18,6 +19,8 @@ from core import legacy_handlers as legacy_h
 
 @roles_required("admin", "secretaria")
 def finalizar_proceso_buscar():
+    if not feature_enabled("finalizar_proceso"):
+        abort(404)
     q = (request.args.get("q") or "").strip()[:128]
     next_url = (request.args.get("next") or "").strip()
     if not legacy_h._is_safe_next(next_url):
@@ -55,6 +58,8 @@ def finalizar_proceso_buscar():
 
 @roles_required("admin", "secretaria")
 def finalizar_proceso():
+    if not feature_enabled("finalizar_proceso"):
+        abort(404)
     fila = request.values.get("fila", type=int)
     next_url = (request.values.get("next") or "").strip()
     if not legacy_h._is_safe_next(next_url):

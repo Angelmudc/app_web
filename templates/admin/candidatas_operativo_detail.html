@@ -85,7 +85,9 @@
           </div>
         </div>
         <div class="detail-actions" data-header-actions>
+          {% if feature_enabled('llamadas') %}
           <button class="btn btn-primary btn-sm" type="button">Llamada</button>
+          {% endif %}
           <div class="cand-inline-search" data-cand-inline-search data-search-url="{{ url_for('admin.candidatas_operativo_busqueda_rapida_json') }}">
             <label class="visually-hidden" for="candOtherSearch">Buscar otra candidata</label>
             <input id="candOtherSearch" class="form-control form-control-sm" autocomplete="off" placeholder="Buscar otra candidata..." aria-controls="candOtherResults">
@@ -122,7 +124,9 @@
           <span class="badge text-bg-secondary cand-identity-sticky__state" data-cand-identity-state>{{ estado_label }}</span>
         </div>
         <div class="cand-identity-sticky__actions">
+          {% if feature_enabled('llamadas') %}
           <button class="btn btn-primary btn-sm" type="button" data-cand-identity-call>Llamada</button>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -993,6 +997,7 @@
       <div class="small cand-muted">Estado público, asignación activa y compatibilidad.</div>
     </div>
     <div class="cand-grid cand-section-grid">
+      {% if feature_enabled('candidatas_web') %}
       <section class="cand-panel cand-span-6">
         <h2>Información pública</h2>
         <a class="btn btn-outline-primary btn-sm mt-2" href="{{ legacy_urls.public_profile }}">Editar perfil público</a>
@@ -1006,6 +1011,7 @@
           <div class="cand-muted small">Cargando información pública...</div>
         </div>
       </section>
+      {% endif %}
 
       <section class="cand-panel cand-span-6">
         <h2>Actividad laboral</h2>

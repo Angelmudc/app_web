@@ -61,10 +61,12 @@
           >Ver perfil</a>
 
           <!-- Finalizar proceso -->
+          {% if feature_enabled('finalizar_proceso') %}
           <a
             href="{{ url_for('finalizar_proceso', fila=c.fila) }}"
             class="btn btn-sm btn-success"
           >Finalizar</a>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}

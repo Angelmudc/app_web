@@ -84,7 +84,7 @@ def test_admin_global_nav_groups_secondary_modules_under_more():
     assert 'id="adminMoreDropdown"' in nav
 
     assert 'href="/admin/metricas"' in nav
-    assert 'href="/admin/matching/inteligente"' in nav
+    assert 'href="/admin/matching/inteligente"' not in nav
     assert 'href="/admin/chat"' in nav
     assert 'href="/admin/seguimiento-candidatas/cola"' in nav
     assert 'href="/admin/solicitudes/publicas/nuevas"' in nav
@@ -92,6 +92,8 @@ def test_admin_global_nav_groups_secondary_modules_under_more():
     assert "Control Room" in nav
     assert "Chat staff" in nav
     assert "Solicitudes de entrevistas" in nav
+    assert "Decisiones" not in nav
+    assert "Perfiles públicos" not in nav
 
 
 def test_admin_global_nav_marks_more_active_for_secondary_route():

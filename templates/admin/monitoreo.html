@@ -63,7 +63,9 @@
     <div class="col-md-2"><div class="card"><div class="card-body"><small>Candidatas en edicion</small><div class="h4 mb-0" data-op-metric="candidatas_editing_now">{{ summary_payload.operations.candidatas_editing_now if summary_payload.operations else 0 }}</div></div></div></div>
     <div class="col-md-2"><div class="card"><div class="card-body"><small>Solicitudes en proceso</small><div class="h4 mb-0" data-op-metric="solicitudes_en_proceso">{{ summary_payload.operations.solicitudes_en_proceso if summary_payload.operations else 0 }}</div></div></div></div>
     <div class="col-md-3"><div class="card"><div class="card-body"><small>Entrevistas hoy</small><div class="h4 mb-0" data-op-metric="entrevistas_hoy">{{ summary_payload.operations.entrevistas_hoy if summary_payload.operations else 0 }}</div></div></div></div>
+    {% if feature_enabled('matching') %}
     <div class="col-md-3"><div class="card"><div class="card-body"><small>Matching hoy</small><div class="h4 mb-0" data-op-metric="matching_hoy">{{ summary_payload.operations.matching_hoy if summary_payload.operations else 0 }}</div></div></div></div>
+    {% endif %}
   </div>
 
   <div id="conflictsBox" class="mb-4">

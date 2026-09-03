@@ -125,6 +125,7 @@ from utils.candidata_completitud_audit import (
     solo_sin_documentos,
     solo_sin_referencias,
 )
+from utils.feature_flags import feature_enabled
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
 from utils.envejeciente import format_envejeciente_resumen
@@ -6219,22 +6220,24 @@ def _build_operations_metrics_payload(active_rows: list[dict] | None = None) -> 
         .filter(StaffAuditLog.action_type.in_(["CANDIDATA_INTERVIEW_NEW_CREATE", "CANDIDATA_INTERVIEW_LEGACY_SAVE"]))
         .count()
     )
-    matching_hoy = (
-        StaffAuditLog.query
-        .filter(StaffAuditLog.created_at >= day_start, StaffAuditLog.action_type == "MATCHING_SEND")
-        .count()
-    )
     try:
         solicitudes_en_proceso = Solicitud.query.filter(Solicitud.estado == "proceso").count()
     except Exception:
         solicitudes_en_proceso = 0
-    return {
+    payload = {
         "active_secretarias": int(active_secretarias),
         "candidatas_editing_now": int(candidatas_editing),
         "solicitudes_en_proceso": int(solicitudes_en_proceso),
         "entrevistas_hoy": int(entrevistas_hoy),
-        "matching_hoy": int(matching_hoy),
     }
+    if feature_enabled("matching"):
+        matching_hoy = (
+            StaffAuditLog.query
+            .filter(StaffAuditLog.created_at >= day_start, StaffAuditLog.action_type == "MATCHING_SEND")
+            .count()
+        )
+        payload["matching_hoy"] = int(matching_hoy)
+    return payload
 
 
 def _build_activity_stream_payload(limit: int = 20) -> list[dict]:
@@ -7806,6 +7809,8 @@ def metricas_solicitudes_view():
 @login_required
 @staff_required
 def sugerencias_solicitud(solicitud_id: int):
+    if not feature_enabled("matching"):
+        abort(404)
     solicitud = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente))
@@ -7820,6 +7825,8 @@ def sugerencias_solicitud(solicitud_id: int):
 @login_required
 @staff_required
 def sugerencias_feedback(solicitud_id: int):
+    if not feature_enabled("matching"):
+        abort(404)
     solicitud = Solicitud.query.filter_by(id=solicitud_id).first_or_404()
     try:
         candidata_id = int(request.form.get("candidata_id") or "0")
@@ -7848,6 +7855,8 @@ def sugerencias_feedback(solicitud_id: int):
 @login_required
 @staff_required
 def matching_inteligente():
+    if not feature_enabled("matching"):
+        abort(404)
     solicitudes = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente))
@@ -20895,7 +20904,7 @@ def reemplazos_dashboard():
             fase_tooltip = "Candidata elegida internamente; falta aprobación/coordinación."
         indicador_critica = bool(prioridad == "critica")
         indicador_seguimiento_vencido = "Seguimiento atrasado" in set(alertas_activas)
-        publicacion_missing_fields = _reemplazo_publicacion_missing_fields(sol)
+        publicacion_missing_fields = _reemplazo_publicacion_missing_fields(sol) if feature_enabled("candidatas_web") else []
         cards_all.append(
             {
                 "reemplazo": row,
@@ -20918,7 +20927,7 @@ def reemplazos_dashboard():
                 "indicador_seguimiento_vencido": indicador_seguimiento_vencido,
                 "indicador_publicacion_incompleta": bool(publicacion_missing_fields),
                 "publicacion_missing_fields": publicacion_missing_fields,
-                "publicacion_texto": _reemplazo_publicacion_texto(reemplazo=row, solicitud=sol),
+                "publicacion_texto": _reemplazo_publicacion_texto(reemplazo=row, solicitud=sol) if feature_enabled("candidatas_web") else "",
                 "old_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_old", None), "cedula", None)),
                 "new_cedula_masked": _mask_cedula(getattr(getattr(row, "candidata_new", None), "cedula", None)),
             }
@@ -21016,7 +21025,7 @@ def reemplazo_detail(reemplazo_id):
     prioridad = _reemplazo_prioridad_derivada(reemplazo=reemplazo, solicitud=solicitud, seguimiento=seguimiento)
     alertas_activas = _reemplazo_alertas_activas(reemplazo=reemplazo)
     cliente_riesgo = _cliente_riesgo_desde_reemplazos(int(getattr(solicitud, "cliente_id", 0) or 0)) if solicitud else {"historico": 0, "ultimos_90_dias": 0, "activos": 0, "nivel": "bajo"}
-    publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud)
+    publicacion_texto = _reemplazo_publicacion_texto(reemplazo=reemplazo, solicitud=solicitud) if feature_enabled("candidatas_web") else ""
     resultado = str(getattr(reemplazo, "resultado_final", "") or "").strip().lower()
     has_new = bool(getattr(reemplazo, "candidata_new_id", None))
     fase_norm = _reemplazo_fase_normalizada(reemplazo)
@@ -21761,6 +21770,8 @@ def _matching_send_candidatas_result(
 @login_required
 @staff_required
 def matching_solicitudes():
+    if not feature_enabled("matching"):
+        abort(404)
     solicitudes = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente))
@@ -21789,6 +21800,8 @@ def matching_solicitudes():
 @login_required
 @staff_required
 def matching_detalle_solicitud(solicitud_id: int):
+    if not feature_enabled("matching"):
+        abort(404)
     solicitud = (
         Solicitud.query
         .options(joinedload(Solicitud.cliente), joinedload(Solicitud.reemplazos))
@@ -21853,6 +21866,8 @@ def matching_detalle_solicitud(solicitud_id: int):
 @login_required
 @staff_required
 def matching_enviar_candidatas(solicitud_id: int):
+    if not feature_enabled("matching"):
+        abort(404)
     candidata_ids = _parse_matching_candidata_ids(request.form.getlist("candidata_ids"))
     force_send = _matching_force_send_enabled(request.form.get("force_send"))
     result = _matching_send_candidatas_result(
@@ -21882,6 +21897,8 @@ def matching_enviar_candidatas(solicitud_id: int):
 @login_required
 @staff_required
 def matching_enviar_candidatas_ui(solicitud_id: int):
+    if not feature_enabled("matching"):
+        abort(404)
     candidata_ids = _parse_matching_candidata_ids(request.form.getlist("candidata_ids"))
     force_send = _matching_force_send_enabled(request.form.get("force_send"))
     detail_url = url_for("admin.matching_detalle_solicitud", solicitud_id=solicitud_id)
@@ -23785,18 +23802,22 @@ def _candidata_center_detail_context(fila: int) -> dict:
     if seguimiento:
         legacy_urls["tracking"] = url_for("admin.seguimiento_candidatas_caso_detail", caso_id=int(seguimiento.id))
     next_action = _candidata_center_next_action(candidata, readiness, seguimiento, legacy_urls)
-    compatibility_fields = [
-        ("Fecha", candidata.compat_test_candidata_at),
-        ("Fortalezas", ", ".join(candidata.compat_fortalezas or [])),
-        ("Ritmo preferido", candidata.compat_ritmo_preferido),
-        ("Estilo de trabajo", candidata.compat_estilo_trabajo),
-        ("Orden/detalle", candidata.compat_orden_detalle_nivel),
-        ("Relación con niños", candidata.compat_relacion_ninos),
-        ("Límites no negociables", ", ".join(candidata.compat_limites_no_negociables or [])),
-        ("Días disponibles", ", ".join(candidata.compat_disponibilidad_dias or [])),
-        ("Horario disponible", candidata.compat_disponibilidad_horario),
-    ]
-    compatibility_summary = _center_text(json.dumps(candidata.compat_test_candidata_json, ensure_ascii=False), 700) if candidata.compat_test_candidata_json else ""
+    if feature_enabled("compat"):
+        compatibility_fields = [
+            ("Fecha", candidata.compat_test_candidata_at),
+            ("Fortalezas", ", ".join(candidata.compat_fortalezas or [])),
+            ("Ritmo preferido", candidata.compat_ritmo_preferido),
+            ("Estilo de trabajo", candidata.compat_estilo_trabajo),
+            ("Orden/detalle", candidata.compat_orden_detalle_nivel),
+            ("Relación con niños", candidata.compat_relacion_ninos),
+            ("Límites no negociables", ", ".join(candidata.compat_limites_no_negociables or [])),
+            ("Días disponibles", ", ".join(candidata.compat_disponibilidad_dias or [])),
+            ("Horario disponible", candidata.compat_disponibilidad_horario),
+        ]
+        compatibility_summary = _center_text(json.dumps(candidata.compat_test_candidata_json, ensure_ascii=False), 700) if candidata.compat_test_candidata_json else ""
+    else:
+        compatibility_fields = []
+        compatibility_summary = ""
     finance_summary = build_candidate_finance_snapshot(candidata, audit_logs=audit_logs)
     return {
         "candidata": candidata,
@@ -23853,7 +23874,7 @@ def _candidata_center_detail_context(fila: int) -> dict:
         "porciento_summary": finance_summary,
         "porciento_history": finance_summary.get("history", []),
         "compatibility": {
-            "exists": bool(candidata.compat_test_candidata_json or any(_center_text(value) for _, value in compatibility_fields)),
+            "exists": bool(feature_enabled("compat") and (candidata.compat_test_candidata_json or any(_center_text(value) for _, value in compatibility_fields))),
             "fields": [(label, value) for label, value in compatibility_fields if _center_text(value)],
             "summary": compatibility_summary,
         },
@@ -29847,6 +29868,8 @@ def calc_score_compat(solicitud: Solicitud, candidata: Candidata):
 @login_required
 @admin_required
 def ver_compatibilidad(cliente_id, candidata_id):
+    if not feature_enabled("compat"):
+        abort(404)
     cliente = Cliente.query.get_or_404(cliente_id)
     solicitud = (Solicitud.query
                  .filter_by(cliente_id=cliente_id)
@@ -29874,6 +29897,8 @@ def ver_compatibilidad(cliente_id, candidata_id):
 @login_required
 @admin_required
 def pdf_compatibilidad(cliente_id, candidata_id):
+    if not feature_enabled("compat"):
+        abort(404)
     cliente = Cliente.query.get_or_404(cliente_id)
     solicitud = (Solicitud.query
                  .filter_by(cliente_id=cliente_id)
@@ -32671,6 +32696,8 @@ def _cw_has_interview(candidata: Candidata) -> bool:
 @login_required
 @staff_required
 def candidatas_web_list():
+    if not feature_enabled("candidatas_web"):
+        abort(404)
     q = (request.args.get("q") or "").strip()
     visible_filter = (request.args.get("visible") or "").strip().lower()
     destacada_filter = (request.args.get("destacada") or "").strip().lower()
@@ -32781,6 +32808,8 @@ def candidatas_web_list():
 @login_required
 @staff_required
 def candidatas_web_detail(fila: int):
+    if not feature_enabled("candidatas_web"):
+        abort(404)
     candidata = Candidata.query.get_or_404(int(fila))
     ficha = CandidataWeb.query.filter_by(candidata_id=int(fila)).first()
     selected_tags = _cw_parse_tags(getattr(ficha, "tags_publicos", None) if ficha else None)
@@ -32828,6 +32857,8 @@ def candidatas_web_detail(fila: int):
 @login_required
 @staff_required
 def candidatas_web_update(fila: int):
+    if not feature_enabled("candidatas_web"):
+        abort(404)
     candidata = Candidata.query.get_or_404(int(fila))
     ficha = CandidataWeb.query.filter_by(candidata_id=int(fila)).first()
     if ficha is None:
