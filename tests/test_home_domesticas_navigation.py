@@ -61,6 +61,7 @@ def test_home_owner_admin_prioriza_domesticas_y_relega_legacy():
     assert "Seguimientos pendientes/vencidos" in html
     assert "Listas para trabajar" in html
     assert "Registrar nueva" in html
+    assert "Gestionar Archivos" not in html
     assert "Inscripción legacy" not in html
     assert "Referencias legacy" not in html
 
@@ -108,6 +109,7 @@ def test_home_domesticas_navegacion_y_rutas_legacy_siguen_respondiendo():
 
     assert client.get("/admin/candidatas", follow_redirects=False).status_code == 200
     assert client.get("/admin/candidatas/busqueda-rapida.json?q=ana", follow_redirects=False).status_code == 200
+    assert client.get("/gestionar_archivos", follow_redirects=False).status_code == 200
 
     for route in (
         "/buscar",

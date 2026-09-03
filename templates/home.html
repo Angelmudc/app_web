@@ -262,8 +262,7 @@
         <div class="home-compact-grid">
           {% for item in [
             ('reporte_inscripciones', 'Reporte Inscripciones', 'Reporte mensual de inscripciones.'),
-            ('subir_fotos.subir_fotos', 'Subir Fotos', 'Carga de imágenes en base de datos.'),
-            ('gestionar_archivos', 'Gestionar Archivos', 'Descarga de documentos y archivos.')
+            ('subir_fotos.subir_fotos', 'Subir Fotos', 'Carga de imágenes en base de datos.')
           ] %}
             {% set url = url_for_safe(item[0]) %}
             {% if url %}
