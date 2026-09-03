@@ -379,9 +379,17 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
     def test_registrar_pago_get_async_devuelve_region(self):
         solicitud = _solicitud_stub(10, "activa")
         candidata = SimpleNamespace(fila=1, nombre_completo="Candidata Uno", cedula="001", codigo="C-1", numero_telefono="809")
+        real_session_get = admin_routes.db.session.get
+
+        def session_get(model, ident):
+            if model is admin_routes.Candidata:
+                return candidata
+            return real_session_get(model, ident)
+
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
-                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])):
+                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])), \
+                 patch.object(admin_routes.db.session, "get", side_effect=session_get):
                 resp = self.client.get(
                     "/admin/clientes/7/solicitudes/10/pago?q=uno",
                     headers=self._async_headers(),
@@ -397,9 +405,17 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
     def test_registrar_pago_post_async_invalid_input_devuelve_200_con_region(self):
         solicitud = _solicitud_stub(10, "activa")
         candidata = SimpleNamespace(fila=1, nombre_completo="Candidata Uno", cedula="001", codigo="C-1", numero_telefono="809")
+        real_session_get = admin_routes.db.session.get
+
+        def session_get(model, ident):
+            if model is admin_routes.Candidata:
+                return candidata
+            return real_session_get(model, ident)
+
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
-                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])):
+                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])), \
+                 patch.object(admin_routes.db.session, "get", side_effect=session_get):
                 resp = self.client.post(
                     "/admin/clientes/7/solicitudes/10/pago",
                     data={},
@@ -413,6 +429,132 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         self.assertEqual(data["error_code"], "invalid_input")
         self.assertEqual(data["update_target"], "#registrarPagoAsyncRegion")
         self.assertIn("Registrar Pago", data["replace_html"])
+
+    def test_registrar_pago_post_async_exitoso_refresca_cliente_detail(self):
+        solicitud = _solicitud_stub(10, "activa")
+        candidata = SimpleNamespace(fila=1, nombre_completo="Candidata Uno", cedula="001", codigo="C-1", numero_telefono="809", estado="lista_para_trabajar")
+        real_session_get = admin_routes.db.session.get
+
+        def session_get(model, ident):
+            if model is admin_routes.Candidata:
+                return candidata
+            return real_session_get(model, ident)
+
+        summary = {
+            "numero_ciclo": 1,
+            "precio_plan": 5000.00,
+            "abono_requerido": 2500.00,
+            "abono_pagado": 2500.00,
+            "total_pagado": 2500.00,
+            "saldo_pendiente": 2500.00,
+            "saldo_restante": 2500.00,
+            "legacy_abono_fallback": False,
+            "legacy_abono": 0.00,
+            "ciclo_estado": "pendiente",
+        }
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])), \
+                 patch.object(admin_routes.db.session, "get", side_effect=session_get), \
+                 patch("admin.routes.get_payment_summary", return_value=summary), \
+                 patch("admin.routes._critical_concurrency_guards_enabled", return_value=False), \
+                 patch("admin.routes._claim_idempotency", return_value=(SimpleNamespace(response_status=None), False)), \
+                 patch("admin.routes._set_idempotency_response"), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment"), \
+                 patch("admin.routes._mark_candidata_estado", return_value=None), \
+                 patch("admin.routes.crear_pago_solicitud"), \
+                 patch("admin.routes.apply_payment_state_from_summary", return_value="activa"), \
+                 patch("admin.routes.db.session.flush"), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/clientes/7/solicitudes/10/pago?next=/admin/clientes/7&modal=1",
+                    data={
+                        "candidata_id": "1",
+                        "payment_mode": "auto_saldo",
+                        "row_version": "0",
+                        "idempotency_key": "test-pay-1",
+                    },
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["update_target"], "#registrarPagoAsyncRegion")
+        self.assertEqual(data.get("invalidate_snapshots"), ["/admin/clientes/7"])
+        self.assertEqual(
+            [(item["target"], item.get("redirect_url")) for item in data.get("update_targets") or []],
+            [
+                ("#clienteSummaryAsyncRegion", "/admin/clientes/7"),
+                ("#clienteSolicitudesAsyncRegion", "/admin/clientes/7"),
+            ],
+        )
+        self.assertIn("Pago registrado correctamente.", data["message"])
+        commit_mock.assert_called_once()
+
+    def test_registrar_pago_post_async_exitoso_desde_solicitud_detail_refresca_operativa(self):
+        solicitud = _solicitud_stub(10, "activa")
+        candidata = SimpleNamespace(fila=1, nombre_completo="Candidata Uno", cedula="001", codigo="C-1", numero_telefono="809", estado="lista_para_trabajar")
+        real_session_get = admin_routes.db.session.get
+
+        def session_get(model, ident):
+            if model is admin_routes.Candidata:
+                return candidata
+            return real_session_get(model, ident)
+
+        summary = {
+            "numero_ciclo": 1,
+            "precio_plan": 5000.00,
+            "abono_requerido": 2500.00,
+            "abono_pagado": 2500.00,
+            "total_pagado": 2500.00,
+            "saldo_pendiente": 2500.00,
+            "saldo_restante": 2500.00,
+            "legacy_abono_fallback": False,
+            "legacy_abono": 0.00,
+            "ciclo_estado": "pendiente",
+        }
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])), \
+                 patch.object(admin_routes.Candidata, "query", _CandidataQueryStub([candidata])), \
+                 patch.object(admin_routes.db.session, "get", side_effect=session_get), \
+                 patch("admin.routes.get_payment_summary", return_value=summary), \
+                 patch("admin.routes._critical_concurrency_guards_enabled", return_value=False), \
+                 patch("admin.routes._claim_idempotency", return_value=(SimpleNamespace(response_status=None), False)), \
+                 patch("admin.routes._set_idempotency_response"), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment"), \
+                 patch("admin.routes._mark_candidata_estado", return_value=None), \
+                 patch("admin.routes.crear_pago_solicitud"), \
+                 patch("admin.routes.apply_payment_state_from_summary", return_value="activa"), \
+                 patch("admin.routes.db.session.flush"), \
+                 patch("admin.routes.db.session.commit") as commit_mock:
+                resp = self.client.post(
+                    "/admin/clientes/7/solicitudes/10/pago?next=/admin/clientes/7/solicitudes/10&modal=1",
+                    data={
+                        "candidata_id": "1",
+                        "payment_mode": "auto_saldo",
+                        "row_version": "0",
+                        "idempotency_key": "test-pay-2",
+                    },
+                    headers=self._async_headers(),
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        data = resp.get_json()
+        self.assertTrue(data["success"])
+        self.assertEqual(data["update_target"], "#registrarPagoAsyncRegion")
+        self.assertEqual(data.get("invalidate_snapshots"), ["/admin/clientes/7/solicitudes/10"])
+        self.assertEqual(
+            [(item["target"], item.get("redirect_url")) for item in data.get("update_targets") or []],
+            [
+                ("#solicitudSummaryAsyncRegion", "/admin/clientes/7/solicitudes/10"),
+                ("#solicitudOperativaCoreAsyncRegion", "/admin/clientes/7/solicitudes/10"),
+            ],
+        )
+        self.assertIn("Pago registrado correctamente.", data["message"])
+        commit_mock.assert_called_once()
 
     def test_proceso_acciones_get_async_devuelve_region(self):
         solicitud = _solicitud_stub(10, "proceso")

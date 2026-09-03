@@ -1,6 +1,6 @@
 {# Fallback seguro: si no llega cliente_id desde la ruta, usar el de la solicitud #}
 {% set _cliente_id = (cliente_id | default(None)) or (solicitud.cliente_id if solicitud is defined and solicitud is not none else none) %}
-{% set _registrar_pago_url = url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id) %}
+{% set _registrar_pago_url = url_for('admin.registrar_pago', cliente_id=_cliente_id, id=solicitud.id, modal=1) if _cliente_id else url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, modal=1) %}
 {% set _selected_payment_mode = (request.form.get('payment_mode') if request and request.method == 'POST' else '') or '' %}
 {% set _payment_context = (payment_context or '')|lower %}
 {% set _is_completion_context = _payment_context == 'completar_solicitud' %}
@@ -34,6 +34,7 @@
           data-async-target="#registrarPagoAsyncRegion"
           data-async-busy-container="#registrarPagoAsyncScope"
           data-async-preserve-scroll="true"
+          {% if is_modal_context %}data-no-loader="true"{% endif %}
           data-async-fallback="native">
       <input type="hidden" name="next" value="{{ next_url or '' }}">
       <input type="hidden" name="contexto" value="{{ _payment_context }}">
@@ -47,12 +48,13 @@
         <button type="submit" class="btn btn-primary" data-loading-text="Buscando...">
           <i class="bi bi-search me-1"></i> Buscar
         </button>
-        <a href="{{ _registrar_pago_url }}?{% if next_url %}next={{ next_url|urlencode }}&{% endif %}{% if _payment_context %}contexto={{ _payment_context|urlencode }}{% endif %}"
+          <a href="{{ _registrar_pago_url }}?{% if next_url %}next={{ next_url|urlencode }}&{% endif %}{% if _payment_context %}contexto={{ _payment_context|urlencode }}{% endif %}"
            class="btn btn-outline-secondary"
            data-admin-async-link
            data-async-target="#registrarPagoAsyncRegion"
            data-async-busy-container="#registrarPagoAsyncScope"
-           data-async-preserve-scroll="true">Limpiar</a>
+           data-async-preserve-scroll="true"
+           {% if is_modal_context %}data-no-loader="true"{% endif %}>Limpiar</a>
       </div>
       <div class="form-text mt-1">
         Escribe y presiona <strong>Buscar</strong>. Se cargarán resultados en el selector.
@@ -61,11 +63,13 @@
 
     <form method="POST"
           id="pago-form"
+          action="{{ _registrar_pago_url }}"
           novalidate
           data-admin-async-form
           data-async-target="#registrarPagoAsyncRegion"
           data-async-busy-container="#registrarPagoAsyncScope"
           data-async-preserve-scroll="true"
+          {% if is_modal_context %}data-no-loader="true"{% endif %}
           data-async-fallback="native">
       {{ form.hidden_tag() }}
       <input type="hidden" name="q" value="{{ q or '' }}">

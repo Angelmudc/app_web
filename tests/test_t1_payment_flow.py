@@ -1948,6 +1948,9 @@ def test_t1_solicitud_espera_pago_muestra_boton_pago_habilitado_en_cliente_detai
     resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
     html = resp.get_data(as_text=True)
     assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert 'data-registrar-pago-modal-trigger="1"' in html
+    assert 'data-registrar-pago-modal="#registrarPagoModal"' in html
+    assert 'modal=1' in html
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
 
 
@@ -2674,3 +2677,6 @@ def test_t1_cliente_detail_reactivada_con_ciclo_nuevo_pendiente_habilita_boton_p
     resp = client.get(f"/admin/clientes/{cliente_id}", follow_redirects=False)
     html = resp.get_data(as_text=True)
     assert f'data-testid="cliente-solicitud-registrar-pago-{solicitud_id}"' in html
+    assert 'data-registrar-pago-modal-trigger="1"' in html
+    assert 'data-registrar-pago-modal="#registrarPagoModal"' in html
+    assert 'modal=1' in html

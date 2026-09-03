@@ -24,6 +24,7 @@
   let secondaryBound = false;
   let modalGuardsBound = false;
   let gestionarPlanBound = false;
+  let registrarPagoBound = false;
   const scheduleIdle = (cb, timeout = 700) => {
     if (typeof window.requestIdleCallback === "function") {
       return window.requestIdleCallback(cb, { timeout });
@@ -1048,6 +1049,7 @@
     if (!url || !targetSelector) return false;
     const resp = await fetch(url, {
       credentials: "same-origin",
+      cache: "no-store",
       headers: wantsJsonHeaders({ "Accept": "text/html,application/xhtml+xml" }),
     });
     if (!resp.ok) return false;
@@ -1072,6 +1074,7 @@
 
     const resp = await fetch(url, {
       credentials: "same-origin",
+      cache: "no-store",
       headers: wantsJsonHeaders({ "Accept": "text/html,application/xhtml+xml" }),
     });
     if (!resp.ok) return false;
@@ -2049,6 +2052,152 @@
     openGestionarPlanModal(pseudoTrigger);
   }
 
+  function renderRegistrarPagoLoading() {
+    return [
+      '<div class="p-4">',
+      '  <div class="d-flex align-items-center gap-2 text-muted">',
+      '    <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>',
+      '    <span>Cargando formulario de pago...</span>',
+      '  </div>',
+      "</div>",
+    ].join("");
+  }
+
+  function renderRegistrarPagoError(message, retryLabel) {
+    const safeMessage = String(message || "No se pudo cargar el formulario de pago.").replace(/[&<>\"']/g, (ch) => {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[ch] || ch;
+    });
+    const safeRetry = String(retryLabel || "Reintentar").replace(/[&<>\"']/g, (ch) => {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" })[ch] || ch;
+    });
+    return [
+      '<div class="p-4">',
+      '  <div class="alert alert-danger mb-0" role="alert" aria-live="polite">',
+      '    <div class="fw-semibold">No se pudo cargar el pago.</div>',
+      `    <div class="small mt-1">${safeMessage}</div>`,
+      `    <button type="button" class="btn btn-outline-danger btn-sm mt-3" data-registrar-pago-modal-retry="1">${safeRetry}</button>`,
+      "  </div>",
+      "</div>",
+    ].join("");
+  }
+
+  function getRegistrarPagoModal(trigger) {
+    if (!trigger || !trigger.closest) return null;
+    const selector = (trigger.getAttribute("data-registrar-pago-modal") || "").trim() || "#registrarPagoModal";
+    return document.querySelector(selector);
+  }
+
+  function getRegistrarPagoUrl(trigger) {
+    if (!trigger || !trigger.getAttribute) return "";
+    return String(trigger.getAttribute("href") || trigger.getAttribute("data-registrar-pago-url") || "").trim();
+  }
+
+  function ensureRegistrarPagoModalShown(modal) {
+    if (!modal) return;
+    try {
+      if (window.bootstrap && window.bootstrap.Modal) {
+        window.bootstrap.Modal.getOrCreateInstance(modal).show();
+        return;
+      }
+    } catch (_) {}
+    modal.classList.add("show");
+    modal.style.display = "block";
+    modal.setAttribute("aria-hidden", "false");
+  }
+
+  async function openRegistrarPagoModal(trigger) {
+    const modal = getRegistrarPagoModal(trigger);
+    const url = getRegistrarPagoUrl(trigger);
+    if (!modal || !url) {
+      if (url) window.location.assign(url);
+      return false;
+    }
+
+    const region = modal.querySelector("#registrarPagoAsyncRegion");
+    if (!region) {
+      window.location.assign(url);
+      return false;
+    }
+
+    modal.dataset.registrarPagoUrl = url;
+    region.innerHTML = renderRegistrarPagoLoading();
+    ensureRegistrarPagoModalShown(modal);
+
+    if (!window.AdminAsync || typeof window.AdminAsync.request !== "function") {
+      window.location.assign(url);
+      return false;
+    }
+
+    const result = await window.AdminAsync.request({
+      url,
+      method: "GET",
+      body: null,
+      sourceEl: trigger,
+      busyContainer: modal.querySelector(".modal-body") || modal,
+      submitter: trigger,
+      updateTarget: "#registrarPagoAsyncRegion",
+      noLoader: true,
+      headers: {},
+      preserveScroll: false,
+      pushHistory: false,
+      historyFormSelector: "",
+      historyMode: "push",
+      allowCached: false,
+    });
+
+    if (result === false || result === null) {
+      const meta = window.AdminAsync.getLastResponseMeta ? window.AdminAsync.getLastResponseMeta() : null;
+      const fallbackMessage = meta && meta.message ? meta.message : "Intenta nuevamente.";
+      region.innerHTML = renderRegistrarPagoError(fallbackMessage, "Reintentar");
+      modal.dataset.registrarPagoLoadState = "error";
+      return false;
+    }
+
+    modal.dataset.registrarPagoLoadState = "ready";
+    return true;
+  }
+
+  function handleRegistrarPagoTriggerClick(ev) {
+    const trigger = ev && ev.target ? ev.target.closest("[data-registrar-pago-modal-trigger]") : null;
+    if (!trigger) return;
+    if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || (typeof ev.button === "number" && ev.button !== 0)) {
+      return;
+    }
+    ev.preventDefault();
+    openRegistrarPagoModal(trigger);
+  }
+
+  function handleRegistrarPagoRetryClick(ev) {
+    const btn = ev && ev.target ? ev.target.closest("[data-registrar-pago-modal-retry='1']") : null;
+    if (!btn) return;
+    ev.preventDefault();
+    const modal = btn.closest("#registrarPagoModal");
+    if (!modal) return;
+    const url = String(modal.dataset.registrarPagoUrl || "").trim();
+    if (!url) return;
+    const pseudoTrigger = {
+      getAttribute(name) {
+        const key = String(name || "");
+        if (key === "href" || key === "data-registrar-pago-url") return url;
+        if (key === "data-registrar-pago-modal") return "#registrarPagoModal";
+        return null;
+      },
+      closest(selector) {
+        if (selector === "#registrarPagoModal") return modal;
+        return null;
+      },
+    };
+    openRegistrarPagoModal(pseudoTrigger);
+  }
+
+  function bindRegistrarPagoRuntime() {
+    if (registrarPagoBound) return;
+    registrarPagoBound = true;
+
+    document.addEventListener("click", handleRegistrarPagoTriggerClick, true);
+    document.addEventListener("click", handleRegistrarPagoRetryClick, true);
+  }
+
   function bindGestionarPlanRuntime() {
     if (gestionarPlanBound) return;
     gestionarPlanBound = true;
@@ -2071,6 +2220,7 @@
     bindSecondaryListeners();
     bindCandidatasOperativoIndexRuntime();
     bindGestionarPlanRuntime();
+    bindRegistrarPagoRuntime();
     syncCollapseToggleLabels(document);
     syncRegistrarPagoManualFields(document);
     bindManagedModalGuards();

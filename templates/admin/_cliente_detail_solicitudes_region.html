@@ -298,9 +298,12 @@
                       {% set _can_pay = (solicitud_pago_habilitado.get(s.id) if solicitud_pago_habilitado is defined else False) %}
                       {% if est_norm in ['pendiente_servicio', 'reemplazo'] %}
                       {% elif _can_pay %}
-                        <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url) }}"
+                        <a href="{{ url_for('admin.registrar_pago', cliente_id=cliente.id, id=s.id, next=cliente_detail_url, modal=1) }}"
                            class="btn btn-sm btn-success"
                            data-testid="cliente-solicitud-registrar-pago-{{ s.id }}"
+                           data-no-loader="true"
+                           data-registrar-pago-modal-trigger="1"
+                           data-registrar-pago-modal="#registrarPagoModal"
                            data-bs-toggle="tooltip"
                            title="Registrar pago"
                            aria-label="Registrar pago">

@@ -214,6 +214,8 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('data-admin-nav="true"', cliente_detail_solicitudes_txt)
         self.assertIn('data-no-loader="true"', cliente_detail_solicitudes_txt)
         self.assertIn('data-gestionar-plan-modal-trigger="1"', cliente_detail_solicitudes_txt)
+        self.assertIn('data-registrar-pago-modal-trigger="1"', cliente_detail_solicitudes_txt)
+        self.assertIn('data-no-loader="true"', cliente_detail_solicitudes_txt)
 
         solicitudes_list_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
         with open(solicitudes_list_tpl, "r", encoding="utf-8") as f:
@@ -232,6 +234,8 @@ class AdminPjaxPilotTest(unittest.TestCase):
             solicitud_operativa_txt = f.read()
         self.assertIn('data-no-loader="true"', solicitud_operativa_txt)
         self.assertIn('data-gestionar-plan-modal-trigger="1"', solicitud_operativa_txt)
+        self.assertIn('data-registrar-pago-modal-trigger="1"', solicitud_operativa_txt)
+        self.assertIn('data-no-loader="true"', solicitud_operativa_txt)
 
         gestionar_plan_modal_tpl = os.path.join(os.getcwd(), "templates", "admin", "_gestionar_plan_modal.html")
         with open(gestionar_plan_modal_tpl, "r", encoding="utf-8") as f:
@@ -240,17 +244,28 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('id="gestionarPlanAsyncRegion"', gestionar_plan_modal_txt)
         self.assertIn('data-admin-body-modal="true"', gestionar_plan_modal_txt)
 
+        registrar_pago_modal_tpl = os.path.join(os.getcwd(), "templates", "admin", "_registrar_pago_modal.html")
+        with open(registrar_pago_modal_tpl, "r", encoding="utf-8") as f:
+            registrar_pago_modal_txt = f.read()
+        self.assertIn('id="registrarPagoModal"', registrar_pago_modal_txt)
+        self.assertIn('id="registrarPagoAsyncRegion"', registrar_pago_modal_txt)
+        self.assertIn('data-admin-body-modal="true"', registrar_pago_modal_txt)
+
         registrar_pago_tpl = os.path.join(os.getcwd(), "templates", "admin", "_registrar_pago_form_region.html")
         with open(registrar_pago_tpl, "r", encoding="utf-8") as f:
             registrar_pago_txt = f.read()
         self.assertIn("url_for('admin.listar_clientes')", registrar_pago_txt)
         self.assertNotIn("url_for('admin.clientes')", registrar_pago_txt)
+        self.assertIn('action="{{ _registrar_pago_url }}"', registrar_pago_txt)
+        self.assertIn('data-no-loader="true"', registrar_pago_txt)
 
         async_js_path = os.path.join(os.getcwd(), "static", "js", "core", "admin_async.js")
         with open(async_js_path, "r", encoding="utf-8") as f:
             async_js_txt = f.read()
         self.assertIn("bindGestionarPlanRuntime()", async_js_txt)
         self.assertIn('data-gestionar-plan-modal-trigger', async_js_txt)
+        self.assertIn("bindRegistrarPagoRuntime()", async_js_txt)
+        self.assertIn('data-registrar-pago-modal-trigger', async_js_txt)
 
     def test_bandeja_operativa_incluye_vista_rapida_mvp(self):
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")

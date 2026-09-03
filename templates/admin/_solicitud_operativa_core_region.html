@@ -306,7 +306,11 @@
       </a>
       {% endif %}
       {% if _puede_registrar_pago %}
-      <a href="{{ url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url) }}" class="btn btn-sm btn-success">
+      <a href="{{ url_for('admin.registrar_pago', cliente_id=solicitud.cliente_id, id=solicitud.id, next=_solicitud_detail_url, modal=1) }}"
+         class="btn btn-sm btn-success"
+         data-no-loader="true"
+         data-registrar-pago-modal-trigger="1"
+         data-registrar-pago-modal="#registrarPagoModal">
         Registrar pago
       </a>
       {% endif %}

@@ -14007,6 +14007,7 @@ def registrar_pago(cliente_id, id):
     s = Solicitud.query.filter_by(id=id, cliente_id=cliente_id).first_or_404()
     form = AdminPagoForm()
     form_idempotency_key = _new_form_idempotency_key()
+    modal_context = str(request.args.get("modal") or request.form.get("modal") or "").strip() == "1"
 
     q = (request.args.get('q') or request.form.get('q') or '').strip()
     payment_context = (request.args.get('contexto') or request.form.get('contexto') or '').strip().lower()
@@ -14030,6 +14031,7 @@ def registrar_pago(cliente_id, id):
             payment_summary=payment_summary,
             payment_context=payment_context,
             completion_due_amount=completion_due_amount,
+            is_modal_context=modal_context,
         )
 
     def _render_pago_page(async_feedback=None):
@@ -14047,6 +14049,7 @@ def registrar_pago(cliente_id, id):
             payment_summary=payment_summary,
             payment_context=payment_context,
             completion_due_amount=completion_due_amount,
+            is_modal_context=modal_context,
         )
 
     def _async_pago_response(
@@ -14058,6 +14061,8 @@ def registrar_pago(cliente_id, id):
         http_status: int = 200,
         error_code: str | None = None,
         include_region: bool = True,
+        update_targets: list | None = None,
+        invalidate_snapshots: list | None = None,
     ):
         payload = _admin_async_payload(
             success=bool(ok),
@@ -14066,10 +14071,48 @@ def registrar_pago(cliente_id, id):
             redirect_url=redirect_url,
             replace_html=_render_pago_region(async_feedback={"message": message, "category": category}) if include_region else None,
             update_target="#registrarPagoAsyncRegion",
+            update_targets=update_targets,
             error_code=error_code,
+            extra={"invalidate_snapshots": invalidate_snapshots or []},
         )
         payload["next"] = redirect_url or ""
         return jsonify(payload), http_status
+
+    def _payment_refresh_targets():
+        next_path = str(urlparse(safe_next).path or "").rstrip("/")
+        update_targets = []
+        invalidate_snapshots = []
+
+        if re.search(r"/clientes/\d+/solicitudes/\d+$", next_path):
+            update_targets = [
+                {
+                    "target": "#solicitudSummaryAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+                {
+                    "target": "#solicitudOperativaCoreAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+            ]
+            invalidate_snapshots = [next_path or url_for("admin.detalle_solicitud", cliente_id=cliente_id, id=id)]
+        elif re.search(r"/clientes/\d+$", next_path):
+            update_targets = [
+                {
+                    "target": "#clienteSummaryAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+                {
+                    "target": "#clienteSolicitudesAsyncRegion",
+                    "invalidate": True,
+                    "redirect_url": safe_next,
+                },
+            ]
+            invalidate_snapshots = [next_path or url_for("admin.detalle_cliente", cliente_id=cliente_id)]
+
+        return update_targets, invalidate_snapshots
 
     def _build_candidata_choices(search_text):
         query = Candidata.query.filter(candidatas_activas_filter(Candidata))
@@ -14207,12 +14250,15 @@ def registrar_pago(cliente_id, id):
             if 200 <= prev_status < 300:
                 msg = 'Pago ya procesado previamente. No se duplicó la operación.'
                 if _admin_async_wants_json():
+                    update_targets, invalidate_snapshots = _payment_refresh_targets()
                     return _async_pago_response(
                         ok=True,
                         message=msg,
                         category='info',
-                        redirect_url=safe_next,
-                        include_region=False,
+                        redirect_url=None,
+                        include_region=True,
+                        update_targets=update_targets,
+                        invalidate_snapshots=invalidate_snapshots,
                     )
                 flash(msg, 'info')
                 return redirect(safe_next)
@@ -14438,12 +14484,15 @@ def registrar_pago(cliente_id, id):
             return _render_pago_page()
 
         if _admin_async_wants_json():
+            update_targets, invalidate_snapshots = _payment_refresh_targets()
             return _async_pago_response(
                 ok=True,
                 message='Pago registrado correctamente.',
                 category='success',
-                redirect_url=safe_next,
-                include_region=False,
+                redirect_url=None,
+                include_region=True,
+                update_targets=update_targets,
+                invalidate_snapshots=invalidate_snapshots,
             )
         flash('Pago registrado correctamente.', 'success')
         return redirect(safe_next)
