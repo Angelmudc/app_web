@@ -552,6 +552,7 @@ def test_admin_candidata_ficha_readonly_flags_limites_legacy_y_sin_blobs():
     assert "Editar formulario" in html
     assert "Editar referencias" in html
     assert "Editar inscripción" in html
+    assert 'href="/referencias"' not in html
     assert 'href="/inscripcion"' not in html
     assert "Ver entrevistas" in html
     assert "Abrir seguimiento" in html
