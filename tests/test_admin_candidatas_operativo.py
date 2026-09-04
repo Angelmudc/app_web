@@ -972,8 +972,20 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     assert detail_resp.status_code == 200
     detail_html = detail_resp.get_data(as_text=True)
     assert "Subir varios documentos" in detail_html
-    assert "/admin/candidatas/990512/documentos/batch" in detail_html
+    assert "/admin/candidatas/990512/_documentos-batch-modal" in detail_html
+    assert "/admin/candidatas/990512/documentos/batch" not in detail_html
+    assert "data-doc-batch-modal-slot" in detail_html
+    assert 'id="docBatchModal"' not in detail_html
+    assert "data-doc-batch-form" not in detail_html
     assert "Subir Fotos" not in detail_html
+
+    batch_modal_resp = client.get("/admin/candidatas/990512/_documentos-batch-modal", follow_redirects=False)
+    assert batch_modal_resp.status_code == 200
+    batch_modal_html = batch_modal_resp.get_data(as_text=True)
+    assert "data-doc-batch-modal" in batch_modal_html
+    assert "data-doc-batch-form" in batch_modal_html
+    assert "/admin/candidatas/990512/documentos/batch" in batch_modal_html
+    assert "perfil" in batch_modal_html
 
     with flask_app.app_context():
         db.session.expire_all()

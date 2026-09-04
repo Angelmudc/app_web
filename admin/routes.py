@@ -23503,6 +23503,16 @@ def _candidata_center_upload_limits_view_context() -> dict:
     }
 
 
+def _candidata_center_document_batch_modal_context(fila: int) -> dict:
+    return {
+        "candidata_fila": int(fila),
+        "doc_labels": _CANDIDATA_CENTER_DOC_LABELS,
+        **_candidata_center_upload_limits_view_context(),
+        "batch_modal_url": url_for("admin.candidatas_operativo_documentos_batch_modal_fragment", fila=int(fila)),
+        "batch_endpoint_url": url_for("admin.candidatas_operativo_documentos_batch", fila=int(fila)),
+    }
+
+
 def _candidata_center_prepare_document_upload(
     candidata,
     field: str,
@@ -24663,6 +24673,20 @@ def candidatas_operativo_documentos_batch(fila: int):
         updated_fields=list(selected_fields),
     )
     return jsonify(payload)
+
+
+@admin_bp.route("/candidatas/<int:fila>/_documentos-batch-modal", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_documentos_batch_modal_fragment(fila: int):
+    with _p1c1_perf_scope("candidatas_operativo_documentos_batch_modal_fragment") as perf_done:
+        Candidata.query.options(load_only(Candidata.fila)).filter(Candidata.fila == int(fila)).first_or_404()
+        ctx = _candidata_center_document_batch_modal_context(int(fila))
+        html = render_template("admin/_candidata_operativo_documentos_batch_modal_fragment.html", **ctx)
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "candidataDocumentosBatchModalAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_documentos_batch_modal"})
 
 
 @admin_bp.route("/candidatas/<int:fila>/datos", methods=["POST"])

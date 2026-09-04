@@ -127,6 +127,7 @@ class FakeNode {
     this.id = "";
     this.hidden = false;
     this.style = {};
+    this.isConnected = true;
     this.value = "";
     this.textContent = "";
     this.innerHTML = "";
@@ -140,8 +141,19 @@ class FakeNode {
   appendChild(child) {
     if (!child) return child;
     child.parentNode = this;
+    child.isConnected = true;
     this.children.push(child);
+    if (child.textContent) {
+      this.textContent = String(this.textContent || "") + String(child.textContent || "");
+    }
     return child;
+  }
+
+  replaceChildren(...children) {
+    this.children = [];
+    this.textContent = "";
+    this.innerHTML = "";
+    children.forEach((child) => this.appendChild(child));
   }
 
   setAttribute(name, value) {
@@ -289,6 +301,111 @@ class FakeDocument extends FakeNode {
   }
 }
 
+function parseFragmentHtml(html) {
+  const raw = String(html || "").trim();
+  const root = new FakeNode("fragment", {});
+  if (!raw) return root.children;
+  const tokens = raw.match(/<!--[\s\S]*?-->|<[^>]+>|[^<]+/g) || [];
+  const stack = [root];
+  const voidTags = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+  const attrPattern = /([^\s=/>]+)(?:=(?:"([^"]*)"|'([^']*)'|([^\s"'>/]+)))?/g;
+  for (const token of tokens) {
+    if (!token) continue;
+    if (token.startsWith("<!--")) continue;
+    if (token.startsWith("</")) {
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+    if (token.startsWith("<")) {
+      const tagMatch = token.match(/^<\s*([a-zA-Z0-9-]+)/);
+      if (!tagMatch) continue;
+      const tag = tagMatch[1];
+      const node = new FakeNode(tag, {});
+      const attrChunk = token
+        .replace(/^<\s*[a-zA-Z0-9-]+/, "")
+        .replace(/\/?>\s*$/, "");
+      let match;
+      attrPattern.lastIndex = 0;
+      while ((match = attrPattern.exec(attrChunk))) {
+        const name = match[1];
+        const value = match[2] !== undefined ? match[2] : match[3] !== undefined ? match[3] : match[4] !== undefined ? match[4] : "";
+        node.setAttribute(name, value);
+      }
+      stack[stack.length - 1].appendChild(node);
+      if (!token.endsWith("/>") && !voidTags.has(tag.toLowerCase())) {
+        stack.push(node);
+      }
+      continue;
+    }
+    const text = token.replace(/\s+/g, " ");
+    if (!text.trim()) continue;
+    const parent = stack[stack.length - 1];
+    parent.textContent = (parent.textContent || "") + text;
+  }
+  return root.children;
+}
+
+class FakeDOMParser {
+  parseFromString(html) {
+    const doc = new FakeDocument();
+    parseFragmentHtml(html).forEach((node) => doc.body.appendChild(node));
+    return doc;
+  }
+}
+
+const BATCH_MODAL_HTML = `
+<div class="modal fade" id="docBatchModal" tabindex="-1" aria-hidden="true" data-doc-batch-modal data-max-bytes="3145728" data-candidata-fila="990501">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <form class="modal-content" data-doc-batch-form data-max-bytes="3145728" data-endpoint="/admin/candidatas/990501/documentos/batch">
+      <div class="modal-header">
+        <div>
+          <h2 class="h5 modal-title mb-1">Subir varios documentos</h2>
+          <div class="small text-muted">Selecciona 1, 2, 3 o 4 archivos. El guardado es atómico.</div>
+        </div>
+        <button type="button" class="btn-close" aria-label="Cerrar" data-doc-batch-close></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" name="csrf_token" value="csrf-token">
+        <div class="alert alert-info small mb-3">Puedes subir archivos de forma independiente y enviarlos en una sola operación.</div>
+        <div class="row g-3">
+          <div class="col-12 col-lg-6">
+            <div class="card h-100">
+              <div class="card-body d-flex flex-column gap-2">
+                <input type="file" class="form-control" accept=".jpg,.jpeg,.png" name="depuracion" data-doc-batch-input="depuracion">
+                <div class="small text-muted" data-doc-batch-filename="depuracion">Sin archivo seleccionado</div>
+                <div class="ratio ratio-4x3 d-none rounded overflow-hidden bg-light" data-doc-batch-preview-wrap="depuracion">
+                  <img class="w-100 h-100 object-fit-cover" alt="Vista previa Depuración" data-doc-batch-preview="depuracion">
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-doc-batch-clear="depuracion">Quitar</button>
+                <div class="text-danger small" data-error-for="depuracion"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-lg-6">
+            <div class="card h-100">
+              <div class="card-body d-flex flex-column gap-2">
+                <input type="file" class="form-control" accept=".jpg,.jpeg,.png" name="perfil" data-doc-batch-input="perfil">
+                <div class="small text-muted" data-doc-batch-filename="perfil">Sin archivo seleccionado</div>
+                <div class="ratio ratio-4x3 d-none rounded overflow-hidden bg-light" data-doc-batch-preview-wrap="perfil">
+                  <img class="w-100 h-100 object-fit-cover" alt="Vista previa Perfil" data-doc-batch-preview="perfil">
+                </div>
+                <button type="button" class="btn btn-outline-secondary btn-sm d-none" data-doc-batch-clear="perfil">Quitar</button>
+                <div class="text-danger small" data-error-for="perfil"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="small cand-feedback mt-3" data-feedback></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-doc-batch-close>Cancelar</button>
+        <button type="submit" class="btn btn-primary" data-doc-batch-submit>Guardar documentos</button>
+      </div>
+    </form>
+  </div>
+</div>
+`;
+
 class FakeFormData {
   constructor(form) {
     this.entries = [];
@@ -319,9 +436,12 @@ function createFetchMock(config = {}) {
       header: {},
       display: {},
     };
+    const body = next && Object.prototype.hasOwnProperty.call(next, "html")
+      ? String(next.html || "")
+      : JSON.stringify(payload);
     return Promise.resolve({
       ok,
-      text: async () => JSON.stringify(payload),
+      text: async () => body,
     });
   };
   return {
@@ -484,40 +604,14 @@ function makeDetailRoot(extraAttrs = {}) {
   docUpload.appendChild(docError);
   docUpload.appendChild(docFeedback);
 
-  const batchOpen = new FakeNode("button", { "data-doc-batch-open": "" });
-  const batchModal = new FakeNode("div", { class: "modal fade", "data-doc-batch-modal": "", id: "docBatchModal" });
-  const batchDialog = new FakeNode("div", { class: "modal-dialog" });
-  const batchForm = new FakeNode("form", {
-    "data-doc-batch-form": "",
-    "data-max-bytes": String(3 * 1024 * 1024),
-    "data-endpoint": "/admin/candidatas/990501/documentos/batch",
+  const batchOpen = new FakeNode("button", {
+    "data-doc-batch-open": "",
+    "data-doc-batch-modal-url": "/admin/candidatas/990501/_documentos-batch-modal",
   });
-  const batchFeedback = new FakeNode("div", { "data-feedback": "" });
-  batchForm.appendChild(batchFeedback);
-  ["depuracion", "perfil", "cedula1", "cedula2"].forEach((field) => {
-    const input = new FakeNode("input", {
-      "data-doc-batch-input": field,
-      name: field,
-      type: "file",
-    });
-    const filename = new FakeNode("div", { "data-doc-batch-filename": field });
-    const previewWrap = new FakeNode("div", { class: "d-none", "data-doc-batch-preview-wrap": field });
-    const preview = new FakeNode("img", { "data-doc-batch-preview": field });
-    const clearBtn = new FakeNode("button", { "data-doc-batch-clear": field });
-    const err = new FakeNode("div", { "data-error-for": field });
-    previewWrap.appendChild(preview);
-    batchForm.appendChild(input);
-    batchForm.appendChild(filename);
-    batchForm.appendChild(previewWrap);
-    batchForm.appendChild(clearBtn);
-    batchForm.appendChild(err);
+  const batchModalSlot = new FakeNode("div", {
+    "data-doc-batch-modal-slot": "",
+    "data-doc-batch-modal-url": "/admin/candidatas/990501/_documentos-batch-modal",
   });
-  const batchSubmit = new FakeNode("button", { "data-doc-batch-submit": "" });
-  const batchClose = new FakeNode("button", { "data-doc-batch-close": "" });
-  batchForm.appendChild(batchSubmit);
-  batchForm.appendChild(batchClose);
-  batchDialog.appendChild(batchForm);
-  batchModal.appendChild(batchDialog);
 
   root.appendChild(hero);
   root.appendChild(personal);
@@ -527,7 +621,7 @@ function makeDetailRoot(extraAttrs = {}) {
   root.appendChild(inlineShell);
   root.appendChild(docUpload);
   root.appendChild(batchOpen);
-  root.appendChild(batchModal);
+  root.appendChild(batchModalSlot);
 
   return {
     root,
@@ -576,11 +670,7 @@ function makeDetailRoot(extraAttrs = {}) {
     docError,
     docFeedback,
     batchOpen,
-    batchModal,
-    batchForm,
-    batchFeedback,
-    batchSubmit,
-    batchClose,
+    batchModalSlot,
   };
 }
 
@@ -623,6 +713,7 @@ function bootstrap(fetchConfig = {}) {
     },
     crypto: { randomUUID: () => "uuid-1" },
     location: { href: "http://test/admin/candidatas/990501", origin: "http://test" },
+    DOMParser: FakeDOMParser,
     listeners: {},
   };
   win.addEventListener = function (type, fn) {
@@ -686,6 +777,7 @@ function bootstrap(fetchConfig = {}) {
     FormData: FakeFormData,
     CustomEvent: FakeCustomEvent,
     Event: FakeEvent,
+    DOMParser: FakeDOMParser,
     setTimeout: win.setTimeout.bind(win),
     clearTimeout: win.clearTimeout.bind(win),
     requestAnimationFrame: win.requestAnimationFrame.bind(win),
@@ -710,36 +802,42 @@ async function runScenario(name) {
   const wait = () => new Promise((resolve) => setImmediate(resolve));
   const fetchConfig = {};
   if (name === "batch_modal_error_keeps_open") {
-    fetchConfig.responses = [{
-      deferred: true,
-      ok: false,
-      payload: {
+    fetchConfig.responses = [
+      { html: BATCH_MODAL_HTML },
+      {
+        deferred: true,
         ok: false,
-        message: "No se pudo guardar.",
-        errors: { perfil: "Archivo demasiado grande." },
+        payload: {
+          ok: false,
+          message: "No se pudo guardar.",
+          errors: { perfil: "Archivo demasiado grande." },
+        },
       },
-    }];
+    ];
   } else if (name === "batch_modal_success_flow") {
-    fetchConfig.responses = [{
-      deferred: true,
-      payload: {
-        ok: true,
-        message: "2 documentos actualizados correctamente.",
-        doc_flags: {
-          depuracion: true,
-          perfil: true,
-          cedula1: true,
-          cedula2: false,
+    fetchConfig.responses = [
+      { html: BATCH_MODAL_HTML },
+      {
+        deferred: true,
+        payload: {
+          ok: true,
+          message: "2 documentos actualizados correctamente.",
+          doc_flags: {
+            depuracion: true,
+            perfil: true,
+            cedula1: true,
+            cedula2: false,
+          },
+          doc_labels: {
+            depuracion: "Depuración",
+            perfil: "Perfil",
+            cedula1: "Cédula frente",
+            cedula2: "Cédula reverso",
+          },
+          updated_fields: ["depuracion", "perfil"],
         },
-        doc_labels: {
-          depuracion: "Depuración",
-          perfil: "Perfil",
-          cedula1: "Cédula frente",
-          cedula2: "Cédula reverso",
-        },
-        updated_fields: ["depuracion", "perfil"],
       },
-    }];
+    ];
   } else if (name === "labor_save_updates_only_labor") {
     fetchConfig.responses = [{
       deferred: true,
@@ -877,25 +975,52 @@ async function runScenario(name) {
       },
     }];
   } else if (name === "batch_modal_double_submit_blocks_second_fetch") {
-    fetchConfig.responses = [{
-      deferred: true,
-      payload: {
-        ok: true,
-        message: "Guardado.",
-        doc_flags: {
-          depuracion: true,
-          perfil: true,
-          cedula1: false,
-          cedula2: false,
-        },
-        doc_labels: {
-          depuracion: "Depuración",
-          perfil: "Perfil",
-          cedula1: "Cédula frente",
-          cedula2: "Cédula reverso",
+    fetchConfig.responses = [
+      { html: BATCH_MODAL_HTML },
+      {
+        deferred: true,
+        payload: {
+          ok: true,
+          message: "Guardado.",
+          doc_flags: {
+            depuracion: true,
+            perfil: true,
+            cedula1: false,
+            cedula2: false,
+          },
+          doc_labels: {
+            depuracion: "Depuración",
+            perfil: "Perfil",
+            cedula1: "Cédula frente",
+            cedula2: "Cédula reverso",
+          },
         },
       },
-    }];
+    ];
+  } else if (name === "batch_modal_load_error_then_retry") {
+    fetchConfig.responses = [
+      { ok: false, html: "No se pudo cargar." },
+      { html: BATCH_MODAL_HTML },
+      {
+        deferred: true,
+        payload: {
+          ok: true,
+          message: "Guardado.",
+          doc_flags: {
+            depuracion: true,
+            perfil: false,
+            cedula1: false,
+            cedula2: false,
+          },
+          doc_labels: {
+            depuracion: "Depuración",
+            perfil: "Perfil",
+            cedula1: "Cédula frente",
+            cedula2: "Cédula reverso",
+          },
+        },
+      },
+    ];
   }
   const env = bootstrap(fetchConfig);
   const first = env.makeDetailRoot();
@@ -928,36 +1053,42 @@ async function runScenario(name) {
   }
 
   if (name === "batch_modal_success_flow") {
-    const modalInstance = env.win.bootstrap.Modal.getOrCreateInstance(first.batchModal);
     first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    await wait();
+    await wait();
+    const batchModal = first.root.querySelector('[data-doc-batch-modal]');
+    const batchForm = batchModal.querySelector('[data-doc-batch-form]');
+    const batchFeedback = batchForm.querySelector('[data-feedback]');
+    const batchSubmit = batchForm.querySelector('[data-doc-batch-submit]');
+    const batchClose = batchForm.querySelector('[data-doc-batch-close]');
     const fileA = { name: "depuracion.jpg", type: "image/jpeg", size: 1200 };
     const fileB = { name: "perfil.png", type: "image/png", size: 900 };
-    const inputA = first.batchForm.querySelector('[data-doc-batch-input="depuracion"]');
-    const inputB = first.batchForm.querySelector('[data-doc-batch-input="perfil"]');
+    const inputA = batchForm.querySelector('[data-doc-batch-input="depuracion"]');
+    const inputB = batchForm.querySelector('[data-doc-batch-input="perfil"]');
     inputA.files = [fileA];
     inputB.files = [fileB];
     inputA.dispatchEvent(new FakeEvent("change", { target: inputA }));
     inputB.dispatchEvent(new FakeEvent("change", { target: inputB }));
-    const previewA = first.batchForm.querySelector('[data-doc-batch-preview="depuracion"]');
-    const filenameA = first.batchForm.querySelector('[data-doc-batch-filename="depuracion"]');
-    const previewB = first.batchForm.querySelector('[data-doc-batch-preview="perfil"]');
-    const filenameB = first.batchForm.querySelector('[data-doc-batch-filename="perfil"]');
-    const clearBtnA = first.batchForm.querySelector('[data-doc-batch-clear="depuracion"]');
+    const previewA = batchForm.querySelector('[data-doc-batch-preview="depuracion"]');
+    const filenameA = batchForm.querySelector('[data-doc-batch-filename="depuracion"]');
+    const previewB = batchForm.querySelector('[data-doc-batch-preview="perfil"]');
+    const filenameB = batchForm.querySelector('[data-doc-batch-filename="perfil"]');
+    const clearBtnA = batchForm.querySelector('[data-doc-batch-clear="depuracion"]');
     const previewBeforeSubmit = {
       dep: previewA.getAttribute("src"),
       perfil: previewB.getAttribute("src"),
       depName: filenameA.textContent,
       perfilName: filenameB.textContent,
-      depWrapHidden: first.batchForm.querySelector('[data-doc-batch-preview-wrap="depuracion"]').classList.contains("d-none"),
-      perfilWrapHidden: first.batchForm.querySelector('[data-doc-batch-preview-wrap="perfil"]').classList.contains("d-none"),
+      depWrapHidden: batchForm.querySelector('[data-doc-batch-preview-wrap="depuracion"]').classList.contains("d-none"),
+      perfilWrapHidden: batchForm.querySelector('[data-doc-batch-preview-wrap="perfil"]').classList.contains("d-none"),
     };
     clearBtnA.dispatchEvent(new FakeEvent("click", { target: clearBtnA }));
     inputA.files = [fileA];
     inputA.dispatchEvent(new FakeEvent("change", { target: inputA }));
-    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
-    submitEvent.submitter = first.batchSubmit;
-    first.batchForm.dispatchEvent(submitEvent);
-    const feedbackDuringSave = first.batchFeedback.textContent;
+    const submitEvent = new FakeEvent("submit", { target: batchForm });
+    submitEvent.submitter = batchSubmit;
+    batchForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = batchFeedback.textContent;
     env.fetchMock.resolvePending({
       ok: true,
       message: "2 documentos actualizados correctamente.",
@@ -978,6 +1109,11 @@ async function runScenario(name) {
     await wait();
     await wait();
     await wait();
+    batchClose.dispatchEvent(new FakeEvent("click", { target: batchClose }));
+    await wait();
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    await wait();
+    await wait();
 
     return {
       modalShown: env.modalState.showCount,
@@ -985,9 +1121,10 @@ async function runScenario(name) {
       modalVisible: env.modalState.visible,
       fetches: env.fetchMock.calls.length,
       firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      secondUrl: env.fetchMock.calls[1] ? env.fetchMock.calls[1].url : null,
       feedbackDuringSave,
       previewBeforeSubmit,
-      quickBusy: first.batchForm.dataset.quickBusy || "",
+      quickBusy: batchForm.dataset.quickBusy || "",
       updatedFields: JSON.stringify(["depuracion", "perfil"]),
     };
   }
@@ -1194,15 +1331,20 @@ async function runScenario(name) {
 
   if (name === "batch_modal_error_keeps_open") {
     first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
-    const input = first.batchForm.querySelector('[data-doc-batch-input="perfil"]');
+    await wait();
+    await wait();
+    const batchModal = first.root.querySelector('[data-doc-batch-modal]');
+    const batchForm = batchModal.querySelector('[data-doc-batch-form]');
+    const batchFeedback = batchForm.querySelector('[data-feedback]');
+    const input = batchForm.querySelector('[data-doc-batch-input="perfil"]');
     input.files = [{ name: "perfil.jpg", type: "image/jpeg", size: 50 }];
     input.dispatchEvent(new FakeEvent("change", { target: input }));
-    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
-    submitEvent.submitter = first.batchSubmit;
-    first.batchForm.dispatchEvent(submitEvent);
+    const submitEvent = new FakeEvent("submit", { target: batchForm });
+    submitEvent.submitter = batchForm.querySelector('[data-doc-batch-submit]');
+    batchForm.dispatchEvent(submitEvent);
     await wait();
     await wait();
-    const feedbackDuringSave = first.batchFeedback.textContent;
+    const feedbackDuringSave = batchFeedback.textContent;
     env.fetchMock.resolvePending({
       ok: false,
       message: "No se pudo guardar.",
@@ -1216,26 +1358,30 @@ async function runScenario(name) {
       modalHidden: env.modalState.hideCount,
       modalVisible: env.modalState.visible,
       fetches: env.fetchMock.calls.length,
-      feedback: first.batchFeedback.textContent,
+      feedback: batchFeedback.textContent,
       feedbackDuringSave,
-      error: first.batchForm.querySelector('[data-error-for="perfil"]').textContent,
-      quickBusy: first.batchForm.dataset.quickBusy || "",
+      error: batchForm.querySelector('[data-error-for="perfil"]').textContent,
+      quickBusy: batchForm.dataset.quickBusy || "",
     };
   }
 
   if (name === "batch_modal_double_submit_blocks_second_fetch") {
     first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
-    const input = first.batchForm.querySelector('[data-doc-batch-input="depuracion"]');
+    await wait();
+    await wait();
+    const batchModal = first.root.querySelector('[data-doc-batch-modal]');
+    const batchForm = batchModal.querySelector('[data-doc-batch-form]');
+    const input = batchForm.querySelector('[data-doc-batch-input="depuracion"]');
     input.files = [{ name: "depuracion.jpg", type: "image/jpeg", size: 300 }];
     input.dispatchEvent(new FakeEvent("change", { target: input }));
-    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
-    submitEvent.submitter = first.batchSubmit;
-    first.batchForm.dispatchEvent(submitEvent);
-    const feedbackDuringSave = first.batchFeedback.textContent;
+    const submitEvent = new FakeEvent("submit", { target: batchForm });
+    submitEvent.submitter = batchForm.querySelector('[data-doc-batch-submit]');
+    batchForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = batchForm.querySelector("[data-feedback]").textContent;
     const fetchesBefore = env.fetchMock.calls.length;
-    const secondSubmitEvent = new FakeEvent("submit", { target: first.batchForm });
-    secondSubmitEvent.submitter = first.batchSubmit;
-    first.batchForm.dispatchEvent(secondSubmitEvent);
+    const secondSubmitEvent = new FakeEvent("submit", { target: batchForm });
+    secondSubmitEvent.submitter = batchForm.querySelector('[data-doc-batch-submit]');
+    batchForm.dispatchEvent(secondSubmitEvent);
     await wait();
     const fetchesAfterSecondAttempt = env.fetchMock.calls.length;
     env.fetchMock.resolvePending({
@@ -1264,6 +1410,28 @@ async function runScenario(name) {
       finalFetches: env.fetchMock.calls.length,
       modalHidden: env.modalState.hideCount,
       feedbackDuringSave,
+    };
+  }
+
+  if (name === "batch_modal_load_error_then_retry") {
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    await wait();
+    await wait();
+    const slot = first.batchModalSlot;
+    const firstError = slot.textContent;
+    const fetchesAfterError = env.fetchMock.calls.length;
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    await wait();
+    await wait();
+    const batchModal = first.root.querySelector('[data-doc-batch-modal]');
+    return {
+      firstError,
+      fetchesAfterError,
+      finalFetches: env.fetchMock.calls.length,
+      modalShown: env.modalState.showCount,
+      modalVisible: env.modalState.visible,
+      modalExists: !!batchModal,
+      slotText: slot.textContent,
     };
   }
 
@@ -1309,11 +1477,12 @@ def test_candidate_detail_runtime_rebinds_after_snapshot_restore():
 
 def test_candidate_detail_runtime_batch_modal_success_flow():
     data = _run_node_case("batch_modal_success_flow")
-    assert data["modalShown"] >= 1
+    assert data["modalShown"] >= 2
     assert data["modalHidden"] >= 1
-    assert data["modalVisible"] is False
-    assert data["fetches"] == 1
-    assert data["firstUrl"] == "/admin/candidatas/990501/documentos/batch"
+    assert data["modalVisible"] is True
+    assert data["fetches"] == 2
+    assert data["firstUrl"] == "/admin/candidatas/990501/_documentos-batch-modal"
+    assert data["secondUrl"] == "/admin/candidatas/990501/documentos/batch"
     assert "Guardando..." in data["feedbackDuringSave"]
     preview = data["previewBeforeSubmit"]
     assert preview["depWrapHidden"] is False
@@ -1377,7 +1546,7 @@ def test_candidate_detail_runtime_batch_modal_error_keeps_open():
     assert data["modalShown"] >= 1
     assert data["modalHidden"] == 0
     assert data["modalVisible"] is True
-    assert data["fetches"] == 1
+    assert data["fetches"] == 2
     assert "No se pudo guardar" in data["feedback"]
     assert "Archivo demasiado grande" in data["error"]
     assert data["quickBusy"] == ""
@@ -1385,8 +1554,18 @@ def test_candidate_detail_runtime_batch_modal_error_keeps_open():
 
 def test_candidate_detail_runtime_batch_modal_blocks_double_submit():
     data = _run_node_case("batch_modal_double_submit_blocks_second_fetch")
-    assert data["fetchesBefore"] == 1
-    assert data["fetchesAfterSecondAttempt"] == 1
-    assert data["finalFetches"] == 1
+    assert data["fetchesBefore"] == 2
+    assert data["fetchesAfterSecondAttempt"] == 2
+    assert data["finalFetches"] == 2
     assert data["modalHidden"] >= 1
     assert "Guardando..." in data["feedbackDuringSave"]
+
+
+def test_candidate_detail_runtime_batch_modal_load_error_can_retry():
+    data = _run_node_case("batch_modal_load_error_then_retry")
+    assert "No se pudo cargar" in data["firstError"]
+    assert data["fetchesAfterError"] == 1
+    assert data["finalFetches"] == 2
+    assert data["modalShown"] >= 1
+    assert data["modalVisible"] is True
+    assert data["modalExists"] is True

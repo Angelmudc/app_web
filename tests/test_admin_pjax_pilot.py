@@ -143,6 +143,10 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('data-admin-nav="true"', detail_txt)
         self.assertIn('data-admin-nav-back="true"', detail_txt)
         self.assertIn('data-admin-lazy-fragment-url="{{ url_for(\'admin.candidatas_operativo_actividad_laboral_fragment\', fila=candidata.fila) }}"', detail_txt)
+        self.assertIn('data-doc-batch-open', detail_txt)
+        self.assertIn('data-doc-batch-modal-slot', detail_txt)
+        self.assertIn('data-doc-batch-modal-url="{{ url_for(\'admin.candidatas_operativo_documentos_batch_modal_fragment\', fila=candidata.fila) }}"', detail_txt)
+        self.assertNotIn('data-doc-batch-modal>', detail_txt)
         self.assertNotIn("setupStickyIdentityBar", detail_txt)
         self.assertNotIn("function clearGlobalLoaders()", detail_txt)
 

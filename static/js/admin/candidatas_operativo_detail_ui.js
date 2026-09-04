@@ -12,6 +12,7 @@
   const boundDocForms = new WeakSet();
   const boundBatchForms = new WeakSet();
   const batchPreviewUrls = new WeakMap();
+  const batchModalStates = new WeakMap();
 
   function getDetailRoot(scope) {
     const root = scope && scope.querySelector ? scope : document;
@@ -717,6 +718,201 @@
     return null;
   }
 
+  function getBatchModalState(detailRoot) {
+    let state = batchModalStates.get(detailRoot);
+    if (!state) {
+      state = {
+        promise: null,
+        loaded: false,
+        modalEl: null,
+      };
+      batchModalStates.set(detailRoot, state);
+    }
+    return state;
+  }
+
+  function getBatchModalSlot(detailRoot) {
+    return detailRoot.querySelector("[data-doc-batch-modal-slot]");
+  }
+
+  function getBatchModalUrl(detailRoot, trigger) {
+    if (trigger && trigger.getAttribute) {
+      const triggerUrl = trigger.getAttribute("data-doc-batch-modal-url");
+      if (triggerUrl) return triggerUrl;
+    }
+    const slot = getBatchModalSlot(detailRoot);
+    if (slot && slot.getAttribute) {
+      const slotUrl = slot.getAttribute("data-doc-batch-modal-url");
+      if (slotUrl) return slotUrl;
+    }
+    return "";
+  }
+
+  function setBatchModalLoading(detailRoot, trigger, isLoading) {
+    const button = trigger && trigger.getAttribute ? trigger : detailRoot.querySelector("[data-doc-batch-open]");
+    if (!button) return;
+    if (isLoading) {
+      if (!button.dataset.docBatchPrevText) {
+        button.dataset.docBatchPrevText = button.textContent || "";
+      }
+      button.textContent = "Cargando...";
+      button.disabled = true;
+    } else {
+      if (Object.prototype.hasOwnProperty.call(button.dataset, "docBatchPrevText")) {
+        button.textContent = button.dataset.docBatchPrevText || "Subir varios documentos";
+        delete button.dataset.docBatchPrevText;
+      }
+      button.disabled = false;
+    }
+  }
+
+  function clearBatchModalSlot(slot) {
+    if (!slot) return;
+    slot.textContent = "";
+    if (typeof slot.replaceChildren === "function") {
+      slot.replaceChildren();
+    } else if (Array.isArray(slot.children)) {
+      slot.children = [];
+    }
+    if (slot.innerHTML !== undefined) slot.innerHTML = "";
+    if (slot.dataset) {
+      delete slot.dataset.docBatchLoadState;
+    }
+  }
+
+  function renderBatchModalMessage(slot, message, kind) {
+    if (!slot) return;
+    if (typeof slot.replaceChildren === "function") {
+      slot.replaceChildren();
+    } else if (Array.isArray(slot.children)) {
+      slot.children = [];
+    }
+    slot.textContent = message || "";
+    if (slot.innerHTML !== undefined) {
+      slot.innerHTML = message ? '<div class="alert alert-danger small mb-0" data-doc-batch-load-error>' + String(message) + "</div>" : "";
+    }
+    if (slot.dataset) {
+      slot.dataset.docBatchLoadState = kind || "";
+    }
+  }
+
+  function parseFragmentNodes(html) {
+    const raw = String(html || "").trim();
+    if (!raw) return [];
+    if (window.DOMParser) {
+      try {
+        const parsed = new window.DOMParser().parseFromString(raw, "text/html");
+        if (parsed && parsed.body && parsed.body.children && parsed.body.children.length) {
+          return Array.from(parsed.body.children);
+        }
+      } catch (_) {}
+    }
+    const wrap = document.createElement("div");
+    wrap.innerHTML = raw;
+    return Array.from(wrap.children || []);
+  }
+
+  function mountBatchModalFragment(detailRoot, slot, html) {
+    const nodes = parseFragmentNodes(html);
+    clearBatchModalSlot(slot);
+    nodes.forEach((node) => {
+      if (node && node.parentNode && node.parentNode !== slot && typeof node.remove === "function") {
+        try { node.remove(); } catch (_) {}
+      }
+      slot.appendChild(node);
+    });
+    const modalEl = slot.querySelector("[data-doc-batch-modal]") || slot.querySelector(".modal");
+    if (modalEl) {
+      const form = modalEl.querySelector("[data-doc-batch-form]");
+      if (form) bindBatchDocumentForm(detailRoot, form);
+    }
+    return modalEl;
+  }
+
+  async function ensureBatchModalLoaded(detailRoot, trigger) {
+    const state = getBatchModalState(detailRoot);
+    const slot = getBatchModalSlot(detailRoot);
+    const url = getBatchModalUrl(detailRoot, trigger);
+    if (!slot || !url) return null;
+
+    const existing = slot.querySelector("[data-doc-batch-modal]");
+    if (existing) {
+      state.loaded = true;
+      state.modalEl = existing;
+      return existing;
+    }
+
+    if (state.promise) return state.promise;
+
+    setBatchModalLoading(detailRoot, trigger, true);
+    renderBatchModalMessage(slot, "Cargando...", "loading");
+
+    state.promise = (async () => {
+      try {
+        const resp = await fetch(url, {
+          method: "GET",
+          credentials: "same-origin",
+          headers: {
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "text/html",
+          },
+        });
+        const html = await resp.text();
+        if (!resp.ok) {
+          throw new Error("load_failed");
+        }
+        if (!detailRoot.isConnected) return null;
+        const modalEl = mountBatchModalFragment(detailRoot, slot, html);
+        if (!modalEl) {
+          throw new Error("missing_modal");
+        }
+        state.loaded = true;
+        state.modalEl = modalEl;
+        return modalEl;
+      } catch (err) {
+        if (detailRoot.isConnected) {
+          renderBatchModalMessage(slot, "No se pudo cargar el modal. Intenta de nuevo.", "error");
+        }
+        throw err;
+      } finally {
+        state.promise = null;
+        setBatchModalLoading(detailRoot, trigger, false);
+      }
+    })();
+
+    return state.promise;
+  }
+
+  function openBatchModal(detailRoot, trigger) {
+    const state = getBatchModalState(detailRoot);
+    const slot = getBatchModalSlot(detailRoot);
+    const existing = slot ? slot.querySelector("[data-doc-batch-modal]") : null;
+    if (existing) {
+      state.loaded = true;
+      state.modalEl = existing;
+      const modal = getModalInstance(existing);
+      if (modal && typeof modal.show === "function") {
+        modal.show();
+      } else {
+        existing.classList.add("show");
+        existing.style.display = "block";
+      }
+      return;
+    }
+    ensureBatchModalLoaded(detailRoot, trigger)
+      .then((modalEl) => {
+        if (!modalEl) return;
+        const modal = getModalInstance(modalEl);
+        if (modal && typeof modal.show === "function") {
+          modal.show();
+        } else {
+          modalEl.classList.add("show");
+          modalEl.style.display = "block";
+        }
+      })
+      .catch(() => {});
+  }
+
   function getBatchPreviewMap(form) {
     let map = batchPreviewUrls.get(form);
     if (!map) {
@@ -802,7 +998,6 @@
     boundBatchForms.add(form);
 
     const modalEl = form.closest(".modal");
-    const openButton = root.querySelector("[data-doc-batch-open]");
     const maxBytes = (() => {
       const text = String((modalEl && modalEl.dataset && modalEl.dataset.maxBytes) || form.dataset.maxBytes || "");
       const parsed = Number(text);
@@ -829,13 +1024,6 @@
       }
       const first = form.querySelector("[data-doc-batch-input]");
       if (first) window.setTimeout(() => first.focus(), 120);
-    }
-
-    if (openButton) {
-      openButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        showModal();
-      });
     }
 
     form.querySelectorAll("[data-doc-batch-input]").forEach((input) => {
@@ -868,6 +1056,15 @@
           batchClearField(form, field);
         });
       }
+    });
+
+    form.querySelectorAll("[data-doc-batch-close]").forEach((closeBtn) => {
+      if (closeBtn.dataset.docBatchCloseBound === "1") return;
+      closeBtn.dataset.docBatchCloseBound = "1";
+      closeBtn.addEventListener("click", (event) => {
+        event.preventDefault();
+        hideModal();
+      });
     });
 
     if (modalEl) {
@@ -1012,6 +1209,12 @@
       if (toggle) {
         const panel = toggle.closest("[data-edit-section]");
         if (panel) panel.classList.add("cand-editing");
+      }
+      const batchOpen = event.target.closest("[data-doc-batch-open]");
+      if (batchOpen) {
+        event.preventDefault();
+        openBatchModal(root, batchOpen);
+        return;
       }
       const shortcut = event.target.closest("[data-edit-shortcut]");
       if (shortcut) {
