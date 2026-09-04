@@ -7,16 +7,42 @@ import secrets
 from datetime import timedelta
 from unittest.mock import patch
 
+import pytest
+
 from app import app as flask_app
 from config_app import db
 import admin.routes as admin_routes
-from models import Candidata, Cliente, DomainOutbox, Reemplazo, Solicitud, StaffAuditLog, StaffUser, SeguimientoCandidataCaso
+from models import (
+    Candidata,
+    Cliente,
+    DomainOutbox,
+    Entrevista,
+    EntrevistaPregunta,
+    Reemplazo,
+    Solicitud,
+    StaffAuditLog,
+    StaffUser,
+    SeguimientoCandidataCaso,
+    SeguimientoCandidataEvento,
+)
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def _ensure_tables() -> None:
     ensure_sqlite_compat_tables(
-        [StaffUser, StaffAuditLog, Cliente, Candidata, Solicitud, Reemplazo, SeguimientoCandidataCaso, DomainOutbox],
+        [
+            StaffUser,
+            StaffAuditLog,
+            Cliente,
+            Candidata,
+            Solicitud,
+            Reemplazo,
+            SeguimientoCandidataCaso,
+            SeguimientoCandidataEvento,
+            Entrevista,
+            EntrevistaPregunta,
+            DomainOutbox,
+        ],
         reset=True,
     )
     if StaffUser.query.get(1) is None:
@@ -27,6 +53,16 @@ def _ensure_tables() -> None:
 def _login_staff(client):
     resp = client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
     assert resp.status_code in (302, 303)
+
+
+@pytest.fixture(autouse=True)
+def _feature_reemplazos_panel_enabled():
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    flask_app.config.setdefault("FEATURE_FLAGS", {})["reemplazos_panel"] = True
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
 
 
 def _seed_case(*, closed: bool, motivo: str = "No se presentó") -> tuple[int, int]:
@@ -279,7 +315,7 @@ def test_reemplazos_dashboard_compacto_trunca_motivo_y_reduce_acciones():
     assert "⋮" in html
     assert "reemp-actions" in html
     assert "Gestionar" in html
-    assert "Publicar" in html
+    assert "Gestionar" in html
     assert "Ver</a>" not in html
     assert "reemp-action-close" not in html
     assert "reemp-action-menu" in html

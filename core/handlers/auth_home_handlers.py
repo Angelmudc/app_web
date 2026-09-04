@@ -4,6 +4,7 @@ import os
 
 from core import legacy_handlers as legacy
 from utils.audit_logger import log_auth_event
+from utils.feature_flags import feature_enabled
 
 
 def _admin_mfa_helpers():
@@ -59,7 +60,7 @@ def home():
     # Evita UTC si tu app es local/DR; suficiente con fecha local del servidor
     reemplazos_badge = {"activos": 0, "criticos": 0}
     admin_routes = _admin_mfa_helpers()
-    if admin_routes is not None:
+    if admin_routes is not None and feature_enabled("reemplazos_panel"):
         try:
             reemplazos_badge = dict(admin_routes.reemplazos_badge_counts() or {})
         except Exception:
@@ -67,11 +68,13 @@ def home():
     domesticas_home = {"counts": {}, "dashboard": {}}
     if admin_routes is not None:
         try:
-            counts = dict(admin_routes._candidata_center_queue_counts() or {})
-            domesticas_home = {
-                "counts": counts,
-                "dashboard": dict(admin_routes._candidata_center_dashboard_summary(counts) or {}),
-            }
+            dashboard = {}
+            if feature_enabled("tareas_seguimiento"):
+                counts = dict(admin_routes._candidata_center_queue_counts() or {})
+                dashboard = dict(admin_routes._candidata_center_dashboard_summary(counts) or {})
+            else:
+                counts = {}
+            domesticas_home = {"counts": counts, "dashboard": dashboard}
         except Exception:
             try:
                 legacy.current_app.logger.exception("HOME_DOMESTICAS_DASHBOARD_ERROR")

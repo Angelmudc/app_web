@@ -10,6 +10,8 @@ FEATURE_NAMES = (
     "matching",
     "candidatas_web",
     "candidatas_dashboard",
+    "reemplazos_panel",
+    "tareas_seguimiento",
 )
 
 

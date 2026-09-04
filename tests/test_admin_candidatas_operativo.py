@@ -3138,51 +3138,56 @@ def test_admin_candidata_proxima_accion_prioriza_estado_seguimiento_y_preparacio
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    flask_app.config.setdefault("FEATURE_FLAGS", {})["tareas_seguimiento"] = True
 
-    now = utc_now_naive()
-    with flask_app.app_context():
-        _ensure_tables()
-        _seed_center_candidate(fila=990582)
-        tracked = Candidata.query.get(990582)
-        tracked.nombre_completo = "Accion Seguimiento"
-        SeguimientoCandidataCaso.query.filter_by(candidata_id=990582).update(
-            {"due_at": now - timedelta(days=1), "proxima_accion_detalle": "Llamar por vencimiento"},
-            synchronize_session=False,
-        )
-        _seed_center_candidate(fila=990583)
-        incomplete = Candidata.query.get(990583)
-        incomplete.nombre_completo = "Accion Incompleta"
-        incomplete.codigo = None
-        _seed_center_candidate(fila=990584)
-        disq = Candidata.query.get(990584)
-        disq.nombre_completo = "Accion Descalificada"
-        disq.estado = "descalificada"
-        disq.cedula2 = None
-        _seed_center_candidate(fila=990585)
-        working = Candidata.query.get(990585)
-        working.nombre_completo = "Accion Trabajando"
-        working.estado = "trabajando"
-        working.cedula2 = None
-        db.session.commit()
+    try:
+        now = utc_now_naive()
+        with flask_app.app_context():
+            _ensure_tables()
+            _seed_center_candidate(fila=990582)
+            tracked = Candidata.query.get(990582)
+            tracked.nombre_completo = "Accion Seguimiento"
+            SeguimientoCandidataCaso.query.filter_by(candidata_id=990582).update(
+                {"due_at": now - timedelta(days=1), "proxima_accion_detalle": "Llamar por vencimiento"},
+                synchronize_session=False,
+            )
+            _seed_center_candidate(fila=990583)
+            incomplete = Candidata.query.get(990583)
+            incomplete.nombre_completo = "Accion Incompleta"
+            incomplete.codigo = None
+            _seed_center_candidate(fila=990584)
+            disq = Candidata.query.get(990584)
+            disq.nombre_completo = "Accion Descalificada"
+            disq.estado = "descalificada"
+            disq.cedula2 = None
+            _seed_center_candidate(fila=990585)
+            working = Candidata.query.get(990585)
+            working.nombre_completo = "Accion Trabajando"
+            working.estado = "trabajando"
+            working.cedula2 = None
+            db.session.commit()
 
-    assert _login(client, "Cruz", "8998").status_code in (302, 303)
-    tracked_html = client.get("/admin/candidatas/990582", follow_redirects=False).get_data(as_text=True)
-    assert "Seguimiento pendiente" in tracked_html
-    assert "Llamar por vencimiento" in tracked_html
+        assert _login(client, "Cruz", "8998").status_code in (302, 303)
+        tracked_html = client.get("/admin/candidatas/990582", follow_redirects=False).get_data(as_text=True)
+        assert "Seguimiento pendiente" in tracked_html
+        assert "Llamar por vencimiento" in tracked_html
 
-    incomplete_html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
-    assert "Falta código" in incomplete_html
-    assert "Completar inscripción" in incomplete_html
+        incomplete_html = client.get("/admin/candidatas/990583", follow_redirects=False).get_data(as_text=True)
+        assert "Falta código" in incomplete_html
+        assert "Completar inscripción" in incomplete_html
 
-    disq_html = client.get("/admin/candidatas/990584", follow_redirects=False).get_data(as_text=True)
-    assert "Descalificada" in disq_html
-    assert "Revisar motivo operativo antes de continuar preparación." in disq_html
-    assert "Subir cédula trasera" not in disq_html
+        disq_html = client.get("/admin/candidatas/990584", follow_redirects=False).get_data(as_text=True)
+        assert "Descalificada" in disq_html
+        assert "Revisar motivo operativo antes de continuar preparación." in disq_html
+        assert "Subir cédula trasera" not in disq_html
 
-    working_html = client.get("/admin/candidatas/990585", follow_redirects=False).get_data(as_text=True)
-    assert "Trabajando" in working_html
-    assert "No hay acción de preparación como prioridad mientras está trabajando." in working_html
-    assert "Subir cédula trasera" not in working_html
+        working_html = client.get("/admin/candidatas/990585", follow_redirects=False).get_data(as_text=True)
+        assert "Trabajando" in working_html
+        assert "No hay acción de preparación como prioridad mientras está trabajando." in working_html
+        assert "Subir cédula trasera" not in working_html
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
 
 
 def test_admin_candidata_estado_lista_json_usa_invariant_audit_y_outbox():

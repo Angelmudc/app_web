@@ -169,10 +169,15 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
+        self._previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+        flask_app.config.setdefault("FEATURE_FLAGS", {})["tareas_seguimiento"] = True
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
         login = self.client.post("/admin/login", data={"usuario": "Cruz", "clave": "8998"}, follow_redirects=False)
         self.assertIn(login.status_code, (302, 303))
+
+    def tearDown(self):
+        flask_app.config["FEATURE_FLAGS"] = self._previous_flags
 
     def _async_headers(self):
         return {

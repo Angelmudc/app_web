@@ -44,12 +44,14 @@
       {% if _style == 'cliente' %}✅ Cierre rápido{% else %}Cierre rápido{% endif %}
     </button>
 
+    {% if feature_enabled('reemplazos_panel') %}
     <a
       href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}"
       class="btn btn-sm btn-outline-primary"
       title="Cierre completo (flujo con búsqueda y selección)">
       {% if _style == 'cliente' %}Cierre completo{% else %}Cierre completo{% endif %}
     </a>
+    {% endif %}
   {% else %}
     <button type="button" class="btn btn-sm btn-outline-secondary" disabled title="Estado desfasado: revisa la solicitud">
       {% if _style == 'cliente' %}⚠️{% else %}Reemplazo no operable{% endif %}
@@ -173,9 +175,11 @@
           <input type="hidden" name="idempotency_key" value="{{ form_idempotency_key or '' }}">
           <div class="alert alert-info py-2 mb-3">
             <strong>Cierre rápido:</strong> usa ID de candidata para una culminación operativa.
+            {% if feature_enabled('reemplazos_panel') %}
             <a href="{{ url_for('admin.finalizar_reemplazo', s_id=solicitud.id, reemplazo_id=repl_activo.id) }}" class="alert-link">
               Ir a cierre completo
             </a>.
+            {% endif %}
           </div>
           <div data-reemplazo-quick-close>
             <label class="form-label">Buscar candidata nueva</label>

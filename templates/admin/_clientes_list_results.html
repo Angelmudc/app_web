@@ -52,6 +52,7 @@
           <td data-label="Acciones">
             {% set _repl_act = (reemplazos_activos_por_cliente.get(c.id, 0) if reemplazos_activos_por_cliente is defined else 0) %}
             {% set _repl_total = (reemplazos_total_por_cliente.get(c.id, 0) if reemplazos_total_por_cliente is defined else 0) %}
+            {% if feature_enabled('reemplazos_panel') %}
             <div class="small mb-2">
               <strong>Reemplazos:</strong> {{ _repl_act }} activos / {{ _repl_total }} total
               {% if _repl_act > 0 %}
@@ -65,6 +66,7 @@
                 <span class="badge text-bg-info ms-1">Riesgo medio</span>
               {% endif %}
             </div>
+            {% endif %}
             <div class="d-flex flex-wrap gap-2">
               <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.detalle_cliente', cliente_id=c.id) }}" data-admin-nav="true">Ver</a>
               <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.editar_cliente', cliente_id=c.id) }}">Editar</a>
@@ -73,8 +75,10 @@
               {% else %}
               <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}" data-admin-nav="true">Solicitudes</a>
               {% endif %}
+              {% if feature_enabled('reemplazos_panel') %}
               <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">Reemplazos</a>
               <a class="btn btn-sm btn-info text-white" href="{{ url_for('admin.reemplazo_nuevo_panel', cliente_id=c.id) }}">Nuevo reemplazo</a>
+              {% endif %}
               <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
               {% if has_endpoint('admin.tienda_intereses_list') %}
               {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}
@@ -116,6 +120,7 @@
           <div>
             <h3 class="h6 mb-1">{{ c.nombre_completo }}</h3>
             <div class="small text-muted">Código: {{ c.codigo or '—' }}</div>
+            {% if feature_enabled('reemplazos_panel') %}
             <div class="small mt-1">
               <strong>Reemplazos:</strong> {{ _repl_act }} activos / {{ _repl_total }} total
               {% if _repl_act > 0 %}
@@ -129,6 +134,7 @@
                 <span class="badge text-bg-info ms-1">Riesgo medio</span>
               {% endif %}
             </div>
+            {% endif %}
           </div>
           {% set estado_cliente = (c.estado if c.estado is defined else None) %}
           {% if estado_cliente %}
@@ -149,8 +155,10 @@
           {% else %}
           <a class="btn btn-sm btn-outline-dark" href="{{ url_for('admin.listar_solicitudes', q=(c.codigo or c.nombre_completo or '')) }}" data-admin-nav="true">Solicitudes</a>
           {% endif %}
+          {% if feature_enabled('reemplazos_panel') %}
           <a class="btn btn-sm btn-outline-info" href="{{ url_for('admin.reemplazos_dashboard', cliente_id=c.id) }}">Reemplazos</a>
           <a class="btn btn-sm btn-info text-white" href="{{ url_for('admin.reemplazo_nuevo_panel', cliente_id=c.id) }}">Nuevo reemplazo</a>
+          {% endif %}
           <a class="btn btn-sm btn-outline-success" href="{{ url_for('admin.catalogos_privados_new', cliente_id=c.id) }}">Crear catálogo</a>
           {% if has_endpoint('admin.tienda_intereses_list') %}
           {% set _tienda_total = (tienda_intereses_counts.get(c.id, 0) if tienda_intereses_counts is defined and tienda_intereses_counts else 0) %}

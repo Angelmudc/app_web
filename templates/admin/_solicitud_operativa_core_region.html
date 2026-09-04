@@ -79,6 +79,7 @@
         {{ async_feedback.message }}
       </div>
     {% endif %}
+    {% if feature_enabled('tareas_seguimiento') %}
     <div class="alert alert-light solicitud-callout solicitud-callout-neutral mb-3" data-testid="manual-followup-panel">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>
@@ -147,6 +148,7 @@
         {% endif %}
       </div>
     </div>
+    {% endif %}
     {% endif %}
 
     <div class="row g-3 mb-3">

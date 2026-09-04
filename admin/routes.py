@@ -8052,6 +8052,11 @@ def admin_action_limit_LEGACY(bucket: str = "default", max_actions: int | None =
         return wrapper
     return deco
 
+
+def _feature_disabled_404(feature_name: str):
+    if not feature_enabled(feature_name):
+        abort(404)
+
 # =============================================================================
 #                            CLIENTES (CRUD BÁSICO)
 # =============================================================================
@@ -8236,7 +8241,7 @@ def listar_clientes():
     cliente_ids = [int(getattr(c, "id", 0) or 0) for c in (clientes or []) if int(getattr(c, "id", 0) or 0) > 0]
     reemplazos_activos_por_cliente: dict[int, int] = {}
     reemplazos_total_por_cliente: dict[int, int] = {}
-    if cliente_ids:
+    if feature_enabled("reemplazos_panel") and cliente_ids:
         try:
             activos_rows = (
                 db.session.query(Solicitud.cliente_id, func.count(Reemplazo.id))
@@ -11225,18 +11230,20 @@ def detalle_cliente(cliente_id):
         # ------------------------------
         # TAREAS DEL CLIENTE
         # ------------------------------
-        with _admin_cliente_detail_measure_block("tareas_query", enabled=measure_enabled):
-            tareas = (
-                TareaCliente.query
-                .filter_by(cliente_id=cliente_id)
-                .order_by(
-                    TareaCliente.estado != 'pendiente',             # primero pendientes
-                    TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
-                    TareaCliente.fecha_vencimiento.asc(),           # las que vencen antes van arriba
-                    TareaCliente.fecha_creacion.desc()              # últimas creadas al final dentro del mismo grupo
+        tareas = []
+        if feature_enabled("tareas_seguimiento"):
+            with _admin_cliente_detail_measure_block("tareas_query", enabled=measure_enabled):
+                tareas = (
+                    TareaCliente.query
+                    .filter_by(cliente_id=cliente_id)
+                    .order_by(
+                        TareaCliente.estado != 'pendiente',             # primero pendientes
+                        TareaCliente.fecha_vencimiento.is_(None),       # luego las que no tienen fecha
+                        TareaCliente.fecha_vencimiento.asc(),           # las que vencen antes van arriba
+                        TareaCliente.fecha_creacion.desc()              # últimas creadas al final dentro del mismo grupo
+                    )
+                    .all()
                 )
-                .all()
-            )
         with _admin_cliente_detail_measure_block("template_render", enabled=measure_enabled):
             render_ctx = dict(region_ctx)
             render_ctx["solicitudes"] = region_ctx.get("solicitudes_render_rows") or []
@@ -11312,6 +11319,7 @@ def tareas_pendientes():
     """
     Lista todas las tareas que NO están completadas, ordenadas por fecha de vencimiento.
     """
+    _feature_disabled_404("tareas_seguimiento")
     hoy = rd_today()
 
     tareas = (
@@ -11566,6 +11574,7 @@ def tareas_hoy():
     - Seguimientos manuales de solicitud vencidos/hoy.
     - Tareas de cliente vencidas/hoy (no completadas).
     """
+    _feature_disabled_404("tareas_seguimiento")
     hoy = rd_today()
     task_rows = (
         TareaCliente.query
@@ -11656,6 +11665,7 @@ def tareas_hoy():
 @staff_required
 @admin_action_limit(bucket="tareas", max_actions=80, window_sec=60)
 def completar_tarea_cliente(id):
+    _feature_disabled_404("tareas_seguimiento")
     tarea = TareaCliente.query.get_or_404(id)
     next_url = request.form.get("next") or request.referrer or url_for("admin.tareas_hoy")
 
@@ -11679,6 +11689,7 @@ def completar_tarea_cliente(id):
 @staff_required
 @admin_action_limit(bucket="tareas", max_actions=80, window_sec=60)
 def reprogramar_tarea_cliente(id):
+    _feature_disabled_404("tareas_seguimiento")
     tarea = TareaCliente.query.get_or_404(id)
     next_url = request.form.get("next") or request.referrer or url_for("admin.tareas_hoy")
     raw_date = (request.form.get("fecha_vencimiento") or "").strip()
@@ -11717,6 +11728,7 @@ def crear_tarea_rapida(cliente_id):
       - fecha_vencimiento: hoy
       - estado: pendiente
     """
+    _feature_disabled_404("tareas_seguimiento")
     cliente = Cliente.query.get_or_404(cliente_id)
 
     titulo = (request.form.get('titulo') or '').strip()
@@ -15038,6 +15050,7 @@ def nuevo_reemplazo(s_id):
 @login_required
 @admin_required
 def finalizar_reemplazo(s_id, reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     s = (
         Solicitud.query
         .options(
@@ -15546,6 +15559,7 @@ def _search_candidatas_reemplazo(search_text: str, *, limit: int = 25):
 @login_required
 @staff_required
 def candidatas_reemplazo_quick_search():
+    _feature_disabled_404("reemplazos_panel")
     q = (request.args.get("q") or "").strip()
     try:
         limit = int((request.args.get("limit") or 20))
@@ -20142,6 +20156,8 @@ def _reemplazo_prioridad_derivada(*, reemplazo: Reemplazo, solicitud: Solicitud 
 
 
 def reemplazos_badge_counts() -> dict[str, int]:
+    if not feature_enabled("reemplazos_panel"):
+        return {"activos": 0, "criticos": 0}
     try:
         activos = int(
             db.session.query(func.count(Reemplazo.id))
@@ -20199,6 +20215,7 @@ def reemplazos_badge_counts() -> dict[str, int]:
 @login_required
 @staff_required
 def reemplazo_nuevo_panel():
+    _feature_disabled_404("reemplazos_panel")
     cliente_id = max(0, _safe_int(request.values.get("cliente_id"), default=0))
     solicitud_id = max(0, _safe_int(request.values.get("solicitud_id"), default=0))
 
@@ -20293,6 +20310,7 @@ def reemplazo_nuevo_panel():
 @login_required
 @staff_required
 def reemplazos_clientes_search():
+    _feature_disabled_404("reemplazos_panel")
     q = (request.args.get("q") or "").strip()
     if len(q) < 2:
         return jsonify({"ok": True, "results": []}), 200
@@ -20370,6 +20388,7 @@ def reemplazos_clientes_search():
 @login_required
 @staff_required
 def reemplazos_solicitudes_por_cliente(cliente_id: int):
+    _feature_disabled_404("reemplazos_panel")
     cid = int(cliente_id or 0)
     if cid <= 0:
         return jsonify({"ok": True, "results": []}), 200
@@ -20420,6 +20439,7 @@ def _reemplazo_candidata_disponibilidad_rank(cand: Candidata | None) -> int:
 @login_required
 @staff_required
 def reemplazos_candidatas_search():
+    _feature_disabled_404("reemplazos_panel")
     q = (request.args.get("q") or "").strip()
     reemplazo_id = _safe_int(request.args.get("reemplazo_id"), default=0)
     if len(q) < 2:
@@ -20493,6 +20513,7 @@ def reemplazos_candidatas_search():
 @staff_required
 @admin_action_limit(bucket="reemplazos", max_actions=20, window_sec=60)
 def reemplazo_seleccionar_candidata(reemplazo_id: int):
+    _feature_disabled_404("reemplazos_panel")
     reemplazo = Reemplazo.query.get_or_404(int(reemplazo_id))
     solicitud = Solicitud.query.get_or_404(int(reemplazo.solicitud_id))
 
@@ -20649,6 +20670,7 @@ def reemplazo_seleccionar_candidata(reemplazo_id: int):
 @login_required
 @staff_required
 def reemplazo_avanzar_fase_panel(reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     r = Reemplazo.query.get_or_404(int(reemplazo_id))
     fase = (request.form.get("fase") or "").strip().lower()
     if fase not in _REEMPLAZO_FASES:
@@ -20719,6 +20741,7 @@ def reemplazo_avanzar_fase_panel(reemplazo_id):
 @login_required
 @admin_required
 def reemplazo_cancelar_panel(reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     r = Reemplazo.query.get_or_404(int(reemplazo_id))
     return cancelar_reemplazo(int(r.solicitud_id), int(r.id))
 
@@ -20727,6 +20750,7 @@ def reemplazo_cancelar_panel(reemplazo_id):
 @login_required
 @staff_required
 def reemplazo_cerrar_panel(reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     r = Reemplazo.query.get_or_404(int(reemplazo_id))
     s = Solicitud.query.get_or_404(int(r.solicitud_id))
     resultado_actual = (getattr(r, "resultado_final", "") or "").strip().lower()
@@ -20777,6 +20801,7 @@ def reemplazo_cerrar_panel(reemplazo_id):
 @login_required
 @staff_required
 def reemplazo_publicacion_texto(reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     r = Reemplazo.query.options(joinedload(Reemplazo.solicitud)).get_or_404(int(reemplazo_id))
     return jsonify({"ok": True, "texto": _reemplazo_publicacion_texto(reemplazo=r, solicitud=getattr(r, "solicitud", None))}), 200
 
@@ -20785,6 +20810,7 @@ def reemplazo_publicacion_texto(reemplazo_id):
 @login_required
 @staff_required
 def reemplazos_dashboard():
+    _feature_disabled_404("reemplazos_panel")
     schema_ok, missing_cols = _reemplazos_schema_check()
     if not schema_ok:
         return (
@@ -20993,6 +21019,7 @@ def reemplazos_dashboard():
 @login_required
 @staff_required
 def reemplazo_detail(reemplazo_id):
+    _feature_disabled_404("reemplazos_panel")
     schema_ok, missing_cols = _reemplazos_schema_check()
     if not schema_ok:
         return (
@@ -22702,6 +22729,8 @@ def _candidata_center_due_label(due_at) -> str:
 
 
 def _candidata_center_dashboard_tracking(limit: int = 5) -> list[dict]:
+    if not feature_enabled("tareas_seguimiento"):
+        return []
     today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
     cases = (
         SeguimientoCandidataCaso.query.options(
@@ -22836,7 +22865,7 @@ def _candidata_center_dashboard_activity(limit: int = 6) -> list[dict]:
 
 
 def _candidata_center_dashboard_summary(counts: dict) -> dict:
-    tracking_items = _candidata_center_dashboard_tracking(limit=5)
+    tracking_items = _candidata_center_dashboard_tracking(limit=5) if feature_enabled("tareas_seguimiento") else []
     incomplete_items = _candidata_center_dashboard_incomplete(limit=6)
     by_fila: dict[int, dict] = {}
     for item in tracking_items + incomplete_items:
@@ -22850,15 +22879,18 @@ def _candidata_center_dashboard_summary(counts: dict) -> dict:
             existing["detail"] = f"{existing.get('detail') or 'Seguimiento pendiente'}; {item.get('title') or 'preparacion incompleta'}"
     priority_items = sorted(by_fila.values(), key=lambda item: (int(item.get("priority", 99)), item.get("meta") or "", item.get("nombre") or ""))[:8]
     return {
-        "attention_kpis": [
-            {
-                "key": "seguimiento",
-                "label": "Seguimientos vencidos",
-                "count": int(counts.get("seguimiento", 0) or 0),
-                "url": url_for("admin.seguimiento_candidatas_cola"),
-                "tone": "danger",
-                "note": "Casos abiertos con proxima accion hasta hoy.",
-            },
+        "attention_kpis": (
+            [
+                {
+                    "key": "seguimiento",
+                    "label": "Seguimientos vencidos",
+                    "count": int(counts.get("seguimiento", 0) or 0),
+                    "url": url_for("admin.seguimiento_candidatas_cola"),
+                    "tone": "danger",
+                    "note": "Casos abiertos con proxima accion hasta hoy.",
+                }
+            ] if feature_enabled("tareas_seguimiento") else []
+        ) + [
             {
                 "key": "por_completar",
                 "label": "Por completar",
@@ -22968,15 +23000,16 @@ def _candidata_center_queue_counts() -> dict:
     }
     if _candidata_center_can_view_descalificadas():
         counts["descalificadas"] = int(getattr(aggregate, "descalificadas", 0) or 0)
-    today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
-    counts["seguimiento"] = int(
-        SeguimientoCandidataCaso.query.filter(
-            SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
-            SeguimientoCandidataCaso.is_merged.is_(False),
-            SeguimientoCandidataCaso.due_at.isnot(None),
-            SeguimientoCandidataCaso.due_at <= today_end,
-        ).count() or 0
-    )
+    if feature_enabled("tareas_seguimiento"):
+        today_end = utc_now_naive().replace(hour=23, minute=59, second=59, microsecond=999999)
+        counts["seguimiento"] = int(
+            SeguimientoCandidataCaso.query.filter(
+                SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
+                SeguimientoCandidataCaso.is_merged.is_(False),
+                SeguimientoCandidataCaso.due_at.isnot(None),
+                SeguimientoCandidataCaso.due_at <= today_end,
+            ).count() or 0
+        )
     return counts
 
 
@@ -23741,29 +23774,31 @@ def _candidata_center_detail_context(fila: int) -> dict:
         .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
         .first()
     )
-    seguimiento = (
-        SeguimientoCandidataCaso.query.options(
-            load_only(
-                SeguimientoCandidataCaso.id,
-                SeguimientoCandidataCaso.public_id,
-                SeguimientoCandidataCaso.estado,
-                SeguimientoCandidataCaso.owner_staff_user_id,
-                SeguimientoCandidataCaso.proxima_accion_tipo,
-                SeguimientoCandidataCaso.proxima_accion_detalle,
-                SeguimientoCandidataCaso.due_at,
-                SeguimientoCandidataCaso.last_movement_at,
-                SeguimientoCandidataCaso.updated_at,
-            ),
-            joinedload(SeguimientoCandidataCaso.owner_staff_user).load_only(StaffUser.id, StaffUser.username),
+    seguimiento = None
+    if feature_enabled("tareas_seguimiento"):
+        seguimiento = (
+            SeguimientoCandidataCaso.query.options(
+                load_only(
+                    SeguimientoCandidataCaso.id,
+                    SeguimientoCandidataCaso.public_id,
+                    SeguimientoCandidataCaso.estado,
+                    SeguimientoCandidataCaso.owner_staff_user_id,
+                    SeguimientoCandidataCaso.proxima_accion_tipo,
+                    SeguimientoCandidataCaso.proxima_accion_detalle,
+                    SeguimientoCandidataCaso.due_at,
+                    SeguimientoCandidataCaso.last_movement_at,
+                    SeguimientoCandidataCaso.updated_at,
+                ),
+                joinedload(SeguimientoCandidataCaso.owner_staff_user).load_only(StaffUser.id, StaffUser.username),
+            )
+            .filter(
+                SeguimientoCandidataCaso.candidata_id == int(fila),
+                SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
+                SeguimientoCandidataCaso.is_merged.is_(False),
+            )
+            .order_by(SeguimientoCandidataCaso.last_movement_at.desc(), SeguimientoCandidataCaso.id.desc())
+            .first()
         )
-        .filter(
-            SeguimientoCandidataCaso.candidata_id == int(fila),
-            SeguimientoCandidataCaso.estado.notin_(["cerrado_exitoso", "cerrado_no_exitoso", "duplicado"]),
-            SeguimientoCandidataCaso.is_merged.is_(False),
-        )
-        .order_by(SeguimientoCandidataCaso.last_movement_at.desc(), SeguimientoCandidataCaso.id.desc())
-        .first()
-    )
     audit_logs = (
         StaffAuditLog.query.options(
             load_only(
@@ -28723,6 +28758,7 @@ def activar_solicitud_directa(id):
 @login_required
 @staff_required
 def actualizar_seguimiento_manual_solicitud(id):
+    _feature_disabled_404("tareas_seguimiento")
     s = Solicitud.query.get_or_404(id)
     next_url = request.form.get('next') or request.referrer
     fallback = url_for('admin.detalle_solicitud', cliente_id=s.cliente_id, id=s.id)
@@ -31917,6 +31953,8 @@ def _seguimiento_candidatas_badge_count_uncached() -> int:
 @admin_bp.app_template_global("seguimiento_candidatas_badge_count")
 def seguimiento_candidatas_badge_count() -> int:
     try:
+        if not feature_enabled("tareas_seguimiento"):
+            return 0
         if not _staff_session_allows("owner", "admin", "secretaria"):
             return 0
         cached = _request_local_cache_get("seguimiento_candidatas_badge_count")
@@ -31950,6 +31988,7 @@ def seguimiento_candidatas_badge_count() -> int:
 @login_required
 @staff_required
 def seguimiento_candidatas_cola():
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         abort(503)
     return render_template("admin/seguimiento_candidatas_cola.html")
@@ -31959,6 +31998,7 @@ def seguimiento_candidatas_cola():
 @login_required
 @staff_required
 def seguimiento_candidatas_cola_json():
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     now = _seg_now()
@@ -32017,6 +32057,7 @@ def seguimiento_candidatas_cola_json():
 @login_required
 @staff_required
 def seguimiento_candidatas_crear_caso():
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     payload = request.get_json(silent=True) or {}
@@ -32115,6 +32156,7 @@ def seguimiento_candidatas_crear_caso():
 @login_required
 @staff_required
 def seguimiento_candidatas_caso_detail(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         abort(503)
     caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
@@ -32131,6 +32173,7 @@ def seguimiento_candidatas_caso_detail(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_casos_index():
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         abort(503)
     return redirect(url_for("admin.seguimiento_candidatas_cola"))
@@ -32149,6 +32192,7 @@ def _seg_require_open_case(caso_id: int) -> SeguimientoCandidataCaso:
 @login_required
 @staff_required
 def seguimiento_candidatas_tomar(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     caso = _seg_require_open_case(int(caso_id))
     prev_owner = int(caso.owner_staff_user_id or 0)
     now = _seg_now()
@@ -32180,6 +32224,7 @@ def seguimiento_candidatas_tomar(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_reasignar(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     caso = _seg_require_open_case(int(caso_id))
     role = str(role_for_user(current_user) or "").strip().lower()
     if role not in {"owner", "admin"}:
@@ -32201,6 +32246,7 @@ def seguimiento_candidatas_reasignar(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_estado(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
@@ -32229,6 +32275,7 @@ def seguimiento_candidatas_estado(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_nota(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
@@ -32247,6 +32294,7 @@ def seguimiento_candidatas_nota(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_proxima_accion(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     caso = _seg_require_open_case(int(caso_id))
@@ -32271,6 +32319,7 @@ def seguimiento_candidatas_proxima_accion(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_cerrar(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
@@ -32308,6 +32357,7 @@ def seguimiento_candidatas_cerrar(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_reabrir(caso_id):
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     caso = SeguimientoCandidataCaso.query.get_or_404(int(caso_id))
@@ -32330,6 +32380,7 @@ def seguimiento_candidatas_reabrir(caso_id):
 @login_required
 @staff_required
 def seguimiento_candidatas_badge_json():
+    _feature_disabled_404("tareas_seguimiento")
     if not _seg_tables_ready():
         return jsonify({"ok": False, "error": "tracking_tables_unavailable"}), 503
     return jsonify({"ok": True, "overdue_count": seguimiento_candidatas_badge_count(), "ts": iso_utc_z()})

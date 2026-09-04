@@ -603,6 +603,8 @@ def create_app():
         "matching": _is_true(os.getenv("FEATURE_MATCHING", "0")),
         "candidatas_web": _is_true(os.getenv("FEATURE_CANDIDATAS_WEB", "0")),
         "candidatas_dashboard": _is_true(os.getenv("FEATURE_CANDIDATAS_DASHBOARD", "0")),
+        "reemplazos_panel": _is_true(os.getenv("FEATURE_REEMPLAZOS_PANEL", "0")),
+        "tareas_seguimiento": _is_true(os.getenv("FEATURE_TAREAS_SEGUIMIENTO", "0")),
     }
     app.config["FEATURE_FLAGS"] = feature_flags
     for feature_name, is_enabled in feature_flags.items():

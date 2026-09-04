@@ -76,7 +76,9 @@
         </div>
         <div class="d-flex gap-2 flex-wrap">
           <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="btn btn-sm btn-outline-danger" data-admin-nav="true">Revisar urgentes</a>
+          {% if feature_enabled('tareas_seguimiento') %}
           <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-sm btn-outline-primary">Trabajo del día</a>
+          {% endif %}
           {% set _chat_enabled = (chat_feature_enabled if chat_feature_enabled is defined else True) %}
           {% if _chat_enabled %}
           <a href="{{ url_for('admin.chat_staff_inbox') }}" class="btn btn-sm btn-outline-success">Chat staff</a>

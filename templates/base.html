@@ -232,7 +232,7 @@
 ) %}
 {% set _candidatas_finalizar_island_enabled = is_internal_surface and (not _presence_path.startswith('/home')) and has_endpoint('admin.candidatas_por_finalizar') %}
 {% set _candidatas_finalizar_badge_count = (candidatas_por_finalizar_badge_count() if _candidatas_finalizar_island_enabled and (candidatas_por_finalizar_badge_count is defined) else 0) %}
-{% set _seg_candidatas_island_enabled = is_internal_surface and has_endpoint('admin.seguimiento_candidatas_cola') %}
+{% set _seg_candidatas_island_enabled = is_internal_surface and feature_enabled('tareas_seguimiento') and has_endpoint('admin.seguimiento_candidatas_cola') %}
 {% set _seg_candidatas_badge_count = (seguimiento_candidatas_badge_count() if _seg_candidatas_island_enabled and (seguimiento_candidatas_badge_count is defined) else 0) %}
 {% set _client_public_message_island_enabled = is_internal_surface and (_staff_role in ['owner', 'admin']) and has_endpoint('admin.generar_link_publico_cliente_nuevo_json') %}
 {% set _has_admin_floating_islands = _candidatas_finalizar_island_enabled or _seg_candidatas_island_enabled or _client_public_message_island_enabled %}
@@ -294,7 +294,6 @@
     'admin.monitoreo_staff', 'admin.monitoreo_logs',
     'admin.metricas_dashboard', 'admin.metricas_secretarias_view', 'admin.metricas_solicitudes_view',
     'admin.chat_staff_inbox',
-    'admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail',
     'admin.bandeja_formularios_publicos_nuevos',
     'admin.tienda_intereses_list', 'admin.tienda_intereses_detail',
     'admin.catalogos_privados_list', 'admin.catalogos_privados_new', 'admin.catalogos_privados_create',
@@ -304,6 +303,9 @@
     'buscar_candidata', 'inscripcion', 'porciento', 'pagos',
     'admin.alertas_canales'
   ] %}
+  {% if feature_enabled('tareas_seguimiento') %}
+    {% set _admin_more_active_endpoints = _admin_more_active_endpoints + ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}
+  {% endif %}
   {% if feature_enabled('matching') %}
     {% set _admin_more_active_endpoints = _admin_more_active_endpoints + ['admin.matching_inteligente', 'admin.sugerencias_solicitud'] %}
   {% endif %}
@@ -390,7 +392,7 @@
             or (has_endpoint('admin.metricas_dashboard') and (_staff_role in ['owner', 'admin']))
             or (feature_enabled('matching') and has_endpoint('admin.matching_inteligente') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or (has_endpoint('admin.chat_staff_inbox') and (_staff_role in ['owner', 'admin', 'secretaria']))
-            or (has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']))
+            or (feature_enabled('tareas_seguimiento') and has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']))
             or _public_intake_badge_enabled
             or _tienda_intereses_badge_enabled
             or has_endpoint('admin.acciones_solicitudes_proceso')
@@ -449,7 +451,7 @@
               </li>
               {% endif %}
 
-              {% if has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
+              {% if feature_enabled('tareas_seguimiento') and has_endpoint('admin.seguimiento_candidatas_cola') and (_staff_role in ['owner', 'admin', 'secretaria']) %}
               <li>
                 <a class="dropdown-item {% if request.endpoint in ['admin.seguimiento_candidatas_cola', 'admin.seguimiento_candidatas_caso_detail'] %}active{% endif %}"
                    href="{{ url_for('admin.seguimiento_candidatas_cola') }}">

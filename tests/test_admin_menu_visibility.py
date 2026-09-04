@@ -99,7 +99,7 @@ def test_admin_global_nav_groups_secondary_modules_under_more():
     assert 'href="/admin/metricas"' in nav
     assert 'href="/admin/matching/inteligente"' not in nav
     assert 'href="/admin/chat"' in nav
-    assert 'href="/admin/seguimiento-candidatas/cola"' in nav
+    assert 'href="/admin/seguimiento-candidatas/cola"' not in nav
     assert 'href="/admin/solicitudes/publicas/nuevas"' in nav
     assert 'href="/admin/tienda-intereses"' in nav
     assert "Control Room" in nav

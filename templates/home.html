@@ -61,10 +61,12 @@
             <span>Por completar</span>
             <strong>{{ dom_counts.get('por_completar', 0) }}</strong>
           </a>
+          {% if feature_enabled('tareas_seguimiento') %}
           <a class="home-kpi home-kpi-attention" href="{{ url_for('admin.seguimiento_candidatas_cola') }}">
             <span>Seguimientos pendientes/vencidos</span>
             <strong>{{ dom_counts.get('seguimiento', 0) }}</strong>
           </a>
+          {% endif %}
           <a class="home-kpi" href="{{ url_for('admin.candidatas_operativo_index', filtro='listas') }}">
             <span>Listas para trabajar</span>
             <strong>{{ dom_counts.get('listas', 0) }}</strong>

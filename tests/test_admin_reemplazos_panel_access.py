@@ -4,6 +4,8 @@ from __future__ import annotations
 import os
 import secrets
 
+import pytest
+
 from app import app as flask_app
 import admin.routes as admin_routes
 from config_app import db
@@ -18,6 +20,16 @@ def _ensure_tables() -> None:
 def _login_staff(client):
     resp = client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
     assert resp.status_code in (302, 303)
+
+
+@pytest.fixture(autouse=True)
+def _feature_reemplazos_panel_enabled():
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    flask_app.config.setdefault("FEATURE_FLAGS", {})["reemplazos_panel"] = True
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
 
 
 def test_clientes_list_and_home_expose_reemplazos_panel_access():
@@ -48,7 +60,7 @@ def test_clientes_list_and_home_expose_reemplazos_panel_access():
 
     resp_home = client.get("/home", follow_redirects=False)
     assert resp_home.status_code == 200
-    assert "Panel de reemplazos" in resp_home.get_data(as_text=True)
+    assert "Panel de reemplazos" not in resp_home.get_data(as_text=True)
 
     resp_clientes = client.get(f"/admin/clientes?q={token}&per_page=10", follow_redirects=False)
     assert resp_clientes.status_code == 200

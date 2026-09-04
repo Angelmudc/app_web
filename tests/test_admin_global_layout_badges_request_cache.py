@@ -48,16 +48,21 @@ def test_tienda_intereses_badge_count_uses_request_cache_for_same_cliente():
 def test_seguimiento_badge_and_tables_ready_use_request_cache():
     flask_app.config["TESTING"] = True
     fake_user = _fake_staff_user(role="secretaria")
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    flask_app.config.setdefault("FEATURE_FLAGS", {})["tareas_seguimiento"] = True
 
-    with patch("flask_login.utils._get_user", return_value=fake_user):
-        with flask_app.test_request_context("/admin/solicitudes", method="GET"):
-            session["role"] = "secretaria"
-            with patch("admin.routes._seg_tables_ready_uncached", return_value=True) as tables_mock:
-                with patch("admin.routes._seguimiento_candidatas_badge_count_uncached", return_value=4) as count_mock:
-                    assert admin_routes.seguimiento_candidatas_badge_count() == 4
-                    assert admin_routes.seguimiento_candidatas_badge_count() == 4
-                    assert tables_mock.call_count == 1
-                    assert count_mock.call_count == 1
+    try:
+        with patch("flask_login.utils._get_user", return_value=fake_user):
+            with flask_app.test_request_context("/admin/solicitudes", method="GET"):
+                session["role"] = "secretaria"
+                with patch("admin.routes._seg_tables_ready_uncached", return_value=True) as tables_mock:
+                    with patch("admin.routes._seguimiento_candidatas_badge_count_uncached", return_value=4) as count_mock:
+                        assert admin_routes.seguimiento_candidatas_badge_count() == 4
+                        assert admin_routes.seguimiento_candidatas_badge_count() == 4
+                        assert tables_mock.call_count == 1
+                        assert count_mock.call_count == 1
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
 
 
 def test_seg_tables_ready_caches_positive_result_across_non_testing_requests():

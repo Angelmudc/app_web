@@ -68,7 +68,7 @@
                 {% set _cta.kind = 'link' %}
                 {% set _cta.href = url_for('admin.nuevo_reemplazo', s_id=s.id) %}
                 {% set _cta.btn_class = 'btn-warning text-dark' %}
-              {% elif _estado_norm == 'activa' and _is_followup_hot %}
+              {% elif feature_enabled('tareas_seguimiento') and _estado_norm == 'activa' and _is_followup_hot %}
                 {% set _cta.label = 'Dar seguimiento' %}
                 {% set _cta.kind = 'link' %}
                 {% set _cta.href = _detail_url %}
@@ -90,7 +90,7 @@
                     {% if s.priority_source_estimated %}
                       <span class="badge text-bg-warning" data-testid="priority-source-estimated-badge">Estimado</span>
                     {% endif %}
-                    {% if s.needs_followup_today %}
+                    {% if feature_enabled('tareas_seguimiento') and s.needs_followup_today %}
                       <span class="badge bg-primary" data-testid="followup-today-badge">Hoy</span>
                     {% endif %}
                   </div>
@@ -116,11 +116,13 @@
                       {% if _is_unassigned %}
                         <span class="badge text-bg-warning ms-1">Sin responsable</span>
                       {% endif %}
-                      · Seg:
-                      {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
-                        <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
-                      {% else %}
-                        <span>Sin fecha</span>
+                      {% if feature_enabled('tareas_seguimiento') %}
+                        · Seg:
+                        {% if s.manual_followup_state in ['pendiente', 'hoy', 'vencida'] %}
+                          <span class="badge {{ s.manual_followup_badge_class }} ms-1" title="{{ s.manual_followup_hint }}" data-testid="manual-followup-badge">{{ s.manual_followup_label }}</span>
+                        {% else %}
+                          <span>Sin fecha</span>
+                        {% endif %}
                       {% endif %}
                       · Act:
                       <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span>
@@ -182,7 +184,7 @@
                       </form>
                     {% endif %}
 
-                    {% if _is_followup_hot and _today_iso and _estado_norm in ['proceso', 'activa', 'reemplazo', 'espera_pago'] and s.manual_followup_state != 'hoy' %}
+                    {% if feature_enabled('tareas_seguimiento') and _is_followup_hot and _today_iso and _estado_norm in ['proceso', 'activa', 'reemplazo', 'espera_pago'] and s.manual_followup_state != 'hoy' %}
                       <form method="post"
                             action="{{ url_for('admin.actualizar_seguimiento_manual_solicitud', id=s.id) }}"
                             class="d-inline"

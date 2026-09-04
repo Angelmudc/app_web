@@ -84,6 +84,7 @@
       </div>
     </section>
 
+    {% if feature_enabled('tareas_seguimiento') %}
     <details class="detail-section">
       <summary class="detail-section__header">
         <div>
@@ -121,6 +122,7 @@
         {% endif %}
       </div>
     </details>
+    {% endif %}
 
     <section class="detail-section">
       <div class="detail-section__header">

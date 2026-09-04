@@ -58,7 +58,7 @@ def test_home_owner_admin_prioriza_domesticas_y_relega_legacy():
     assert 'data-home-candidate-search' in html
     assert 'data-search-url="/admin/candidatas/busqueda-rapida.json"' in html
     assert "Por completar" in html
-    assert "Seguimientos pendientes/vencidos" in html
+    assert "Seguimientos pendientes/vencidos" not in html
     assert "Listas para trabajar" in html
     assert "Registrar nueva" in html
     assert "Subir Fotos" not in html

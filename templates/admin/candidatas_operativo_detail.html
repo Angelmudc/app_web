@@ -179,6 +179,7 @@
                 <span class="small cand-muted mt-1" data-state-note></span>
               {% endif %}
             </div>
+            {% if feature_enabled('tareas_seguimiento') %}
             <div class="detail-metric detail-metric--center">
               <span class="detail-metric__label">Seguimiento</span>
               <span class="detail-metric__value">{% if seguimiento %}Activo{% else %}Sin caso{% endif %}</span>
@@ -190,6 +191,7 @@
                 {% endif %}
               </span>
             </div>
+            {% endif %}
           </div>
         </div>
       </section>
@@ -278,6 +280,7 @@
         </div>
       </section>
 
+      {% if feature_enabled('tareas_seguimiento') %}
       <section class="detail-section" aria-label="Caso de seguimiento">
         <div class="detail-section__header">
           <div>
@@ -317,6 +320,7 @@
           {% endif %}
         </div>
       </section>
+      {% endif %}
 
       <section class="detail-section" aria-label="Estado de la candidata" data-state-card>
         <div class="detail-section__header">
