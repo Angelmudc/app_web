@@ -23425,6 +23425,82 @@ def _candidata_center_document_upload_response(fila: int, message: str, changes:
     return payload
 
 
+def _candidata_center_upload_limits_view_context() -> dict:
+    max_file_bytes = int(MAX_FILE_BYTES(current_app))
+    total_limit = int(current_app.config.get("MAX_CONTENT_LENGTH") or 0)
+    return {
+        "upload_max_file_bytes": max_file_bytes,
+        "upload_max_file_mb": f"{(max_file_bytes / float(1024 * 1024)):.1f}",
+        "upload_total_limit_text": human_size(total_limit) if total_limit > 0 else "sin límite",
+    }
+
+
+def _candidata_center_prepare_document_upload(
+    candidata,
+    field: str,
+    archivo,
+    *,
+    source: str,
+    error_key: str = "archivo",
+):
+    max_file = int(MAX_FILE_BYTES(current_app))
+    if file_too_large(archivo, max_file):
+        detected_size = int(get_filestorage_size(archivo) or 0)
+        max_txt = human_size(max_file)
+        size_txt = human_size(detected_size)
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SIZE_REJECT",
+            candidata=candidata,
+            summary=f"Archivo rechazado por tamaño en {field}",
+            metadata={
+                "candidata_id": int(getattr(candidata, "fila", 0) or 0),
+                "field": field,
+                "max_bytes": int(max_file),
+                "size_bytes": int(detected_size),
+                "source": source,
+            },
+            success=False,
+            error="Archivo supera límite por campo.",
+        )
+        return None, {
+            "ok": False,
+            "message": f"Archivo demasiado pesado para {field}. Máximo: {max_txt}. Tu archivo: {size_txt}.",
+            "errors": {error_key: "Archivo demasiado grande."},
+        }, 400
+
+    _candidata_center_seek_upload(archivo)
+    ok, data, err, meta = validate_upload_file(archivo, max_bytes=max_file)
+    if not ok:
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
+            candidata=candidata,
+            summary=f"Archivo inválido en {field}",
+            metadata={
+                "candidata_id": int(getattr(candidata, "fila", 0) or 0),
+                "field": field,
+                "source": source,
+                "filename": (meta or {}).get("filename_safe", ""),
+                "error": err or "",
+            },
+            success=False,
+            error=err or "Archivo inválido.",
+        )
+        return None, {
+            "ok": False,
+            "message": f"❌ Archivo inválido en {field}: {err}",
+            "errors": {error_key: err or "Archivo inválido."},
+        }, 400
+
+    if safe_bytes_length(data) <= 0:
+        return None, {
+            "ok": False,
+            "message": f"❌ Archivo inválido en {field}: el archivo está vacío.",
+            "errors": {error_key: "El archivo está vacío."},
+        }, 400
+
+    return data, None, None
+
+
 def _candidata_center_seek_upload(file_storage) -> None:
     try:
         if file_storage is not None and getattr(file_storage, "stream", None) is not None:
@@ -23824,6 +23900,7 @@ def _candidata_center_detail_context(fila: int) -> dict:
         "center_next_url": _candidata_center_return_path(int(fila)),
         "center_back_url": _candidata_center_clean_list_url(),
         "legacy_urls": legacy_urls,
+        **_candidata_center_upload_limits_view_context(),
         "status_badges": {
             "inscrita": bool(candidata.inscripcion),
             "lista": str(candidata.estado or "") == "lista_para_trabajar",
@@ -24370,52 +24447,14 @@ def candidatas_operativo_documentos_subir(fila: int, campo: str):
     if not archivo or not getattr(archivo, "filename", ""):
         return jsonify({"ok": False, "message": "Debes seleccionar un archivo.", "errors": {"archivo": "Archivo requerido."}}), 400
 
-    max_file = int(MAX_FILE_BYTES(current_app))
-    if file_too_large(archivo, max_file):
-        detected_size = int(get_filestorage_size(archivo) or 0)
-        max_txt = human_size(max_file)
-        size_txt = human_size(detected_size)
-        log_candidata_action(
-            action_type="CANDIDATA_UPLOAD_DOCS_SIZE_REJECT",
-            candidata=candidata,
-            summary=f"Archivo rechazado por tamaño en {field}",
-            metadata={
-                "candidata_id": int(fila),
-                "field": field,
-                "max_bytes": int(max_file),
-                "size_bytes": int(detected_size),
-                "source": "admin_candidatas_operativo_detail",
-            },
-            success=False,
-            error="Archivo supera límite por campo.",
-        )
-        return jsonify({
-            "ok": False,
-            "message": f"Archivo demasiado pesado para {field}. Máximo: {max_txt}. Tu archivo: {size_txt}.",
-            "errors": {"archivo": "Archivo demasiado grande."},
-        }), 400
-
-    _candidata_center_seek_upload(archivo)
-    ok, data, err, meta = validate_upload_file(archivo, max_bytes=max_file)
-    if not ok:
-        log_candidata_action(
-            action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
-            candidata=candidata,
-            summary=f"Archivo inválido en {field}",
-            metadata={
-                "candidata_id": int(fila),
-                "field": field,
-                "source": "admin_candidatas_operativo_detail",
-                "filename": (meta or {}).get("filename_safe", ""),
-                "error": err or "",
-            },
-            success=False,
-            error=err or "Archivo inválido.",
-        )
-        return jsonify({"ok": False, "message": f"❌ Archivo inválido en {field}: {err}", "errors": {"archivo": err or "Archivo inválido."}}), 400
-
-    if safe_bytes_length(data) <= 0:
-        return jsonify({"ok": False, "message": f"❌ Archivo inválido en {field}: el archivo está vacío.", "errors": {"archivo": "El archivo está vacío."}}), 400
+    data, error_payload, status_code = _candidata_center_prepare_document_upload(
+        candidata,
+        field,
+        archivo,
+        source="admin_candidatas_operativo_detail",
+    )
+    if error_payload:
+        return jsonify(error_payload), int(status_code or 400)
 
     def _persist_document(_attempt: int):
         setattr(candidata, field, data)
@@ -24466,6 +24505,107 @@ def candidatas_operativo_documentos_subir(fila: int, campo: str):
         success=True,
     )
     return jsonify(_candidata_center_document_upload_response(int(fila), f"{_CANDIDATA_CENTER_DOC_LABELS[field]} actualizado correctamente.", {"documento": field}))
+
+
+@admin_bp.route("/candidatas/<int:fila>/documentos/batch", methods=["POST"])
+@login_required
+@staff_required
+def candidatas_operativo_documentos_batch(fila: int):
+    candidata = Candidata.query.filter(Candidata.fila == int(fila)).first()
+    if not candidata:
+        return jsonify({"ok": False, "message": "Candidata no encontrada.", "errors": {"archivo": "No existe la candidata."}}), 404
+
+    selected_fields = []
+    payload_bytes = {}
+    for field in _CANDIDATA_CENTER_DOC_LABELS.keys():
+        archivo = request.files.get(field)
+        if not archivo or not getattr(archivo, "filename", ""):
+            continue
+        selected_fields.append(field)
+        data, error_payload, status_code = _candidata_center_prepare_document_upload(
+            candidata,
+            field,
+            archivo,
+            source="admin_candidatas_operativo_detail_batch",
+            error_key=field,
+        )
+        if error_payload:
+            error_payload["updated_fields"] = list(selected_fields)
+            return jsonify(error_payload), int(status_code or 400)
+        payload_bytes[field] = data
+
+    if not selected_fields:
+        return jsonify({
+            "ok": False,
+            "message": "Debes seleccionar al menos un archivo.",
+            "errors": {"archivo": "Archivo requerido."},
+        }), 400
+
+    def _persist_documents(_attempt: int):
+        for field_name, data in payload_bytes.items():
+            setattr(candidata, field_name, data)
+        try:
+            maybe_update_estado_por_completitud(candidata, actor=_staff_actor_name())
+        except Exception:
+            pass
+
+    expected_lengths = {field_name: int(safe_bytes_length(data)) for field_name, data in payload_bytes.items()}
+    result = execute_robust_save(
+        session=db.session,
+        persist_fn=_persist_documents,
+        verify_fn=lambda: all(
+            safe_bytes_length(getattr(Candidata.query.filter(Candidata.fila == int(fila)).first(), field_name, None)) > 0
+            for field_name in payload_bytes.keys()
+        ),
+    )
+
+    metadata_base = {
+        "candidata_id": int(fila),
+        "fields": list(selected_fields),
+        "source": "admin_candidatas_operativo_detail_batch",
+        "attempt_count": int(result.attempts),
+        "bytes_length": expected_lengths,
+    }
+    if not result.ok:
+        log_candidata_action(
+            action_type="CANDIDATA_UPLOAD_DOCS_SAVE_FAIL",
+            candidata=candidata,
+            summary="Fallo guardado robusto batch de documentos de candidata",
+            metadata={**metadata_base, "error_message": (result.error_message or "")[:200]},
+            success=False,
+            error="No se pudo guardar documentos de forma verificada.",
+        )
+        return jsonify({
+            "ok": False,
+            "message": "No se pudo guardar. Intente de nuevo.",
+            "errors": {"archivo": "No se pudo guardar."},
+            "updated_fields": list(selected_fields),
+        }), 500
+
+    log_candidata_action(
+        action_type="CANDIDATA_UPLOAD_DOCS_SAVE_OK",
+        candidata=candidata,
+        summary="Guardado robusto batch de documentos de candidata",
+        metadata=metadata_base,
+        success=True,
+    )
+    log_candidata_action(
+        action_type="CANDIDATA_UPLOAD_DOCS",
+        candidata=candidata,
+        summary="Carga/actualización batch de documentos de candidata",
+        metadata={
+            "fields": list(selected_fields),
+            "source": "admin_candidatas_operativo_detail_batch",
+        },
+        success=True,
+    )
+    payload = _candidata_center_document_upload_response(
+        int(fila),
+        f"{len(selected_fields)} documento(s) actualizado(s) correctamente.",
+        {"documentos": {"updated_fields": list(selected_fields)}},
+    )
+    payload["updated_fields"] = list(selected_fields)
+    return jsonify(payload)
 
 
 @admin_bp.route("/candidatas/<int:fila>/datos", methods=["POST"])

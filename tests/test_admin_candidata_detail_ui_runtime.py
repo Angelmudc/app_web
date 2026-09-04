@@ -74,6 +74,16 @@ function matchesSelector(node, selector) {
   const sel = String(selector).trim();
   if (!sel) return false;
   if (sel.includes(",")) return sel.split(",").some((part) => matchesSelector(node, part));
+  const attrMatch = sel.match(/^\[([^\]=]+)(?:=(["']?)(.*?)\2)?\]$/);
+  if (attrMatch) {
+    if (!node.getAttribute) return false;
+    const attrName = attrMatch[1];
+    const expected = attrMatch[3];
+    const actual = node.getAttribute(attrName);
+    if (actual === null) return false;
+    if (expected === undefined) return true;
+    return String(actual) === String(expected);
+  }
   if (sel === "[data-candidata-center]") return !!node.getAttribute && node.getAttribute("data-candidata-center") !== null;
   if (sel === "[data-cand-identity-sticky]") return !!node.getAttribute && node.getAttribute("data-cand-identity-sticky") !== null;
   if (sel === ".detail-hero") return (node.className || "").split(/\s+/).includes("detail-hero");
@@ -83,6 +93,16 @@ function matchesSelector(node, selector) {
   if (sel === "[data-edit-section]") return !!node.getAttribute && node.getAttribute("data-edit-section") !== null;
   if (sel === "[data-quick-form]") return !!node.getAttribute && node.getAttribute("data-quick-form") !== null;
   if (sel === "[data-feedback]") return !!node.getAttribute && node.getAttribute("data-feedback") !== null;
+  if (sel === ".modal") return (node.className || "").split(/\s+/).includes("modal");
+  if (sel === "[data-doc-batch-modal]") return !!node.getAttribute && node.getAttribute("data-doc-batch-modal") !== null;
+  if (sel === "[data-doc-batch-form]") return !!node.getAttribute && node.getAttribute("data-doc-batch-form") !== null;
+  if (sel === "[data-doc-batch-open]") return !!node.getAttribute && node.getAttribute("data-doc-batch-open") !== null;
+  if (sel === "[data-doc-batch-input]") return !!node.getAttribute && node.getAttribute("data-doc-batch-input") !== null;
+  if (sel === "[data-doc-batch-clear]") return !!node.getAttribute && node.getAttribute("data-doc-batch-clear") !== null;
+  if (sel === "[data-doc-batch-preview-wrap]") return !!node.getAttribute && node.getAttribute("data-doc-batch-preview-wrap") !== null;
+  if (sel === "[data-doc-batch-preview]") return !!node.getAttribute && node.getAttribute("data-doc-batch-preview") !== null;
+  if (sel === "[data-doc-batch-filename]") return !!node.getAttribute && node.getAttribute("data-doc-batch-filename") !== null;
+  if (sel === "[data-doc-batch-submit]") return !!node.getAttribute && node.getAttribute("data-doc-batch-submit") !== null;
   if (sel === "button") return node.tagName === "BUTTON";
   if (sel === "form") return node.tagName === "FORM";
   if (sel === "input") return node.tagName === "INPUT";
@@ -106,6 +126,7 @@ class FakeNode {
     this.classList = new FakeClassList(this);
     this.id = "";
     this.hidden = false;
+    this.style = {};
     this.value = "";
     this.textContent = "";
     this.innerHTML = "";
@@ -260,21 +281,52 @@ class FakeFormData {
   }
 }
 
-function createFetchMock() {
+function createFetchMock(config = {}) {
   const calls = [];
+  const responses = Array.isArray(config.responses) ? config.responses.slice() : [];
+  let pending = null;
   const fetch = (url, options = {}) => {
     calls.push({ url, options });
-    return Promise.resolve({
+    const next = responses.length ? responses.shift() : null;
+    if (next && next.deferred) {
+      return new Promise((resolve, reject) => {
+        pending = { resolve, reject, ok: next.ok !== false, payload: next.payload || null };
+      });
+    }
+    const ok = next ? next.ok !== false : true;
+    const payload = next && next.payload ? next.payload : {
       ok: true,
-      text: async () => JSON.stringify({
-        ok: true,
-        message: "Guardado.",
-        header: {},
-        display: {},
-      }),
+      message: "Guardado.",
+      header: {},
+      display: {},
+    };
+    return Promise.resolve({
+      ok,
+      text: async () => JSON.stringify(payload),
     });
   };
-  return { fetch, calls };
+  return {
+    fetch,
+    calls,
+    responses,
+    pending: () => pending,
+    resolvePending(payload) {
+      if (!pending) return false;
+      const nextPayload = payload || pending.payload || {
+        ok: pending.ok,
+        message: pending.ok ? "Guardado." : "No se pudo guardar.",
+        header: {},
+        display: {},
+      };
+      const resolver = pending.resolve;
+      pending = null;
+      resolver({
+        ok: !!nextPayload.ok,
+        text: async () => JSON.stringify(nextPayload),
+      });
+      return true;
+    },
+  };
 }
 
 function makeDetailRoot(extraAttrs = {}) {
@@ -350,12 +402,49 @@ function makeDetailRoot(extraAttrs = {}) {
   docUpload.appendChild(fileInput);
   docUpload.appendChild(pick);
 
+  const batchOpen = new FakeNode("button", { "data-doc-batch-open": "" });
+  const batchModal = new FakeNode("div", { class: "modal fade", "data-doc-batch-modal": "", id: "docBatchModal" });
+  const batchDialog = new FakeNode("div", { class: "modal-dialog" });
+  const batchForm = new FakeNode("form", {
+    "data-doc-batch-form": "",
+    "data-max-bytes": String(3 * 1024 * 1024),
+    "data-endpoint": "/admin/candidatas/990501/documentos/batch",
+  });
+  const batchFeedback = new FakeNode("div", { "data-feedback": "" });
+  batchForm.appendChild(batchFeedback);
+  ["depuracion", "perfil", "cedula1", "cedula2"].forEach((field) => {
+    const input = new FakeNode("input", {
+      "data-doc-batch-input": field,
+      name: field,
+      type: "file",
+    });
+    const filename = new FakeNode("div", { "data-doc-batch-filename": field });
+    const previewWrap = new FakeNode("div", { class: "d-none", "data-doc-batch-preview-wrap": field });
+    const preview = new FakeNode("img", { "data-doc-batch-preview": field });
+    const clearBtn = new FakeNode("button", { "data-doc-batch-clear": field });
+    const err = new FakeNode("div", { "data-error-for": field });
+    previewWrap.appendChild(preview);
+    batchForm.appendChild(input);
+    batchForm.appendChild(filename);
+    batchForm.appendChild(previewWrap);
+    batchForm.appendChild(clearBtn);
+    batchForm.appendChild(err);
+  });
+  const batchSubmit = new FakeNode("button", { "data-doc-batch-submit": "" });
+  const batchClose = new FakeNode("button", { "data-doc-batch-close": "" });
+  batchForm.appendChild(batchSubmit);
+  batchForm.appendChild(batchClose);
+  batchDialog.appendChild(batchForm);
+  batchModal.appendChild(batchDialog);
+
   root.appendChild(hero);
   root.appendChild(personal);
   root.appendChild(labor);
   root.appendChild(refs);
   root.appendChild(inlineShell);
   root.appendChild(docUpload);
+  root.appendChild(batchOpen);
+  root.appendChild(batchModal);
 
   return {
     root,
@@ -381,13 +470,25 @@ function makeDetailRoot(extraAttrs = {}) {
     docUpload,
     fileInput,
     pick,
+    batchOpen,
+    batchModal,
+    batchForm,
+    batchFeedback,
+    batchSubmit,
+    batchClose,
   };
 }
 
-function bootstrap() {
+function bootstrap(fetchConfig = {}) {
   const doc = new FakeDocument();
-  const fetchMock = createFetchMock();
+  const fetchMock = createFetchMock(fetchConfig);
   const timers = [];
+  const modalState = {
+    showCount: 0,
+    hideCount: 0,
+    visible: false,
+  };
+  const modalInstances = new WeakMap();
   const win = {
     document: doc,
     window: null,
@@ -438,7 +539,31 @@ function bootstrap() {
   win.IntersectionObserver = undefined;
   win.bootstrap = {
     Modal: {
-      getInstance() { return null; },
+      getInstance(modalEl) {
+        return modalInstances.get(modalEl) || null;
+      },
+      getOrCreateInstance(modalEl) {
+        let instance = modalInstances.get(modalEl);
+        if (!instance) {
+          instance = {
+            show() {
+              modalState.visible = true;
+              modalState.showCount += 1;
+              modalEl.hidden = false;
+              modalEl.classList.add("show");
+            },
+            hide() {
+              modalState.visible = false;
+              modalState.hideCount += 1;
+              modalEl.hidden = true;
+              modalEl.classList.remove("show");
+              modalEl.dispatchEvent(new FakeEvent("hidden.bs.modal", { target: modalEl }));
+            },
+          };
+          modalInstances.set(modalEl, instance);
+        }
+        return instance;
+      },
     },
   };
   win.window = win;
@@ -473,11 +598,65 @@ function bootstrap() {
     target.dispatchEvent(ev);
   }
 
-  return { win, doc, fetchMock, timers, dispatch, makeDetailRoot };
+  return { win, doc, fetchMock, timers, dispatch, makeDetailRoot, modalState };
 }
 
-function runScenario(name) {
-  const env = bootstrap();
+async function runScenario(name) {
+  const wait = () => new Promise((resolve) => setImmediate(resolve));
+  const fetchConfig = {};
+  if (name === "batch_modal_error_keeps_open") {
+    fetchConfig.responses = [{
+      deferred: true,
+      ok: false,
+      payload: {
+        ok: false,
+        message: "No se pudo guardar.",
+        errors: { perfil: "Archivo demasiado grande." },
+      },
+    }];
+  } else if (name === "batch_modal_success_flow") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "2 documentos actualizados correctamente.",
+        doc_flags: {
+          depuracion: true,
+          perfil: true,
+          cedula1: true,
+          cedula2: false,
+        },
+        doc_labels: {
+          depuracion: "Depuración",
+          perfil: "Perfil",
+          cedula1: "Cédula frente",
+          cedula2: "Cédula reverso",
+        },
+        updated_fields: ["depuracion", "perfil"],
+      },
+    }];
+  } else if (name === "batch_modal_double_submit_blocks_second_fetch") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "Guardado.",
+        doc_flags: {
+          depuracion: true,
+          perfil: true,
+          cedula1: false,
+          cedula2: false,
+        },
+        doc_labels: {
+          depuracion: "Depuración",
+          perfil: "Perfil",
+          cedula1: "Cédula frente",
+          cedula2: "Cédula reverso",
+        },
+      },
+    }];
+  }
+  const env = bootstrap(fetchConfig);
   const first = env.makeDetailRoot();
   env.doc.body.appendChild(first.root);
   env.win.AdminCandidataDetailUI.init();
@@ -507,11 +686,155 @@ function runScenario(name) {
     };
   }
 
+  if (name === "batch_modal_success_flow") {
+    const modalInstance = env.win.bootstrap.Modal.getOrCreateInstance(first.batchModal);
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    const fileA = { name: "depuracion.jpg", type: "image/jpeg", size: 1200 };
+    const fileB = { name: "perfil.png", type: "image/png", size: 900 };
+    const inputA = first.batchForm.querySelector('[data-doc-batch-input="depuracion"]');
+    const inputB = first.batchForm.querySelector('[data-doc-batch-input="perfil"]');
+    inputA.files = [fileA];
+    inputB.files = [fileB];
+    inputA.dispatchEvent(new FakeEvent("change", { target: inputA }));
+    inputB.dispatchEvent(new FakeEvent("change", { target: inputB }));
+    const previewA = first.batchForm.querySelector('[data-doc-batch-preview="depuracion"]');
+    const filenameA = first.batchForm.querySelector('[data-doc-batch-filename="depuracion"]');
+    const previewB = first.batchForm.querySelector('[data-doc-batch-preview="perfil"]');
+    const filenameB = first.batchForm.querySelector('[data-doc-batch-filename="perfil"]');
+    const clearBtnA = first.batchForm.querySelector('[data-doc-batch-clear="depuracion"]');
+    const previewBeforeSubmit = {
+      dep: previewA.getAttribute("src"),
+      perfil: previewB.getAttribute("src"),
+      depName: filenameA.textContent,
+      perfilName: filenameB.textContent,
+      depWrapHidden: first.batchForm.querySelector('[data-doc-batch-preview-wrap="depuracion"]').classList.contains("d-none"),
+      perfilWrapHidden: first.batchForm.querySelector('[data-doc-batch-preview-wrap="perfil"]').classList.contains("d-none"),
+    };
+    clearBtnA.dispatchEvent(new FakeEvent("click", { target: clearBtnA }));
+    inputA.files = [fileA];
+    inputA.dispatchEvent(new FakeEvent("change", { target: inputA }));
+    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
+    submitEvent.submitter = first.batchSubmit;
+    first.batchForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = first.batchFeedback.textContent;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "2 documentos actualizados correctamente.",
+      doc_flags: {
+        depuracion: true,
+        perfil: true,
+        cedula1: true,
+        cedula2: false,
+      },
+      doc_labels: {
+        depuracion: "Depuración",
+        perfil: "Perfil",
+        cedula1: "Cédula frente",
+        cedula2: "Cédula reverso",
+      },
+      updated_fields: ["depuracion", "perfil"],
+    });
+    await wait();
+    await wait();
+    await wait();
+
+    return {
+      modalShown: env.modalState.showCount,
+      modalHidden: env.modalState.hideCount,
+      modalVisible: env.modalState.visible,
+      fetches: env.fetchMock.calls.length,
+      firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      feedbackDuringSave,
+      previewBeforeSubmit,
+      quickBusy: first.batchForm.dataset.quickBusy || "",
+      updatedFields: JSON.stringify(["depuracion", "perfil"]),
+    };
+  }
+
+  if (name === "batch_modal_error_keeps_open") {
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    const input = first.batchForm.querySelector('[data-doc-batch-input="perfil"]');
+    input.files = [{ name: "perfil.jpg", type: "image/jpeg", size: 50 }];
+    input.dispatchEvent(new FakeEvent("change", { target: input }));
+    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
+    submitEvent.submitter = first.batchSubmit;
+    first.batchForm.dispatchEvent(submitEvent);
+    await wait();
+    await wait();
+    const feedbackDuringSave = first.batchFeedback.textContent;
+    env.fetchMock.resolvePending({
+      ok: false,
+      message: "No se pudo guardar.",
+      errors: { perfil: "Archivo demasiado grande." },
+    });
+    await wait();
+    await wait();
+
+    return {
+      modalShown: env.modalState.showCount,
+      modalHidden: env.modalState.hideCount,
+      modalVisible: env.modalState.visible,
+      fetches: env.fetchMock.calls.length,
+      feedback: first.batchFeedback.textContent,
+      feedbackDuringSave,
+      error: first.batchForm.querySelector('[data-error-for="perfil"]').textContent,
+      quickBusy: first.batchForm.dataset.quickBusy || "",
+    };
+  }
+
+  if (name === "batch_modal_double_submit_blocks_second_fetch") {
+    first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
+    const input = first.batchForm.querySelector('[data-doc-batch-input="depuracion"]');
+    input.files = [{ name: "depuracion.jpg", type: "image/jpeg", size: 300 }];
+    input.dispatchEvent(new FakeEvent("change", { target: input }));
+    const submitEvent = new FakeEvent("submit", { target: first.batchForm });
+    submitEvent.submitter = first.batchSubmit;
+    first.batchForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = first.batchFeedback.textContent;
+    const fetchesBefore = env.fetchMock.calls.length;
+    const secondSubmitEvent = new FakeEvent("submit", { target: first.batchForm });
+    secondSubmitEvent.submitter = first.batchSubmit;
+    first.batchForm.dispatchEvent(secondSubmitEvent);
+    await wait();
+    const fetchesAfterSecondAttempt = env.fetchMock.calls.length;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "Guardado.",
+      doc_flags: {
+        depuracion: true,
+        perfil: false,
+        cedula1: false,
+        cedula2: false,
+      },
+      doc_labels: {
+        depuracion: "Depuración",
+        perfil: "Perfil",
+        cedula1: "Cédula frente",
+        cedula2: "Cédula reverso",
+      },
+      updated_fields: ["depuracion"],
+    });
+    await wait();
+    await wait();
+    await wait();
+    return {
+      fetchesBefore,
+      fetchesAfterSecondAttempt,
+      finalFetches: env.fetchMock.calls.length,
+      modalHidden: env.modalState.hideCount,
+      feedbackDuringSave,
+    };
+  }
+
   throw new Error("unknown scenario: " + name);
 }
 
-const result = runScenario(process.argv[2]);
-process.stdout.write(JSON.stringify(result));
+runScenario(process.argv[2]).then((result) => {
+  process.stdout.write(JSON.stringify(result));
+}).catch((err) => {
+  process.stderr.write(String(err && err.stack ? err.stack : err));
+  process.exit(1);
+});
 """
 
 
@@ -541,3 +864,41 @@ def test_candidate_detail_runtime_rebinds_after_snapshot_restore():
     assert data["fetches"] == 1
     assert data["firstUrl"] == "/admin/candidatas/990501/datos"
     assert data["currentShellBound"] is True
+
+
+def test_candidate_detail_runtime_batch_modal_success_flow():
+    data = _run_node_case("batch_modal_success_flow")
+    assert data["modalShown"] >= 1
+    assert data["modalHidden"] >= 1
+    assert data["modalVisible"] is False
+    assert data["fetches"] == 1
+    assert data["firstUrl"] == "/admin/candidatas/990501/documentos/batch"
+    assert "Guardando..." in data["feedbackDuringSave"]
+    preview = data["previewBeforeSubmit"]
+    assert preview["depWrapHidden"] is False
+    assert preview["perfilWrapHidden"] is False
+    assert preview["depName"] == "depuracion.jpg"
+    assert preview["perfilName"] == "perfil.png"
+    assert data["quickBusy"] == ""
+    assert "depuracion" in data["updatedFields"]
+    assert "perfil" in data["updatedFields"]
+
+
+def test_candidate_detail_runtime_batch_modal_error_keeps_open():
+    data = _run_node_case("batch_modal_error_keeps_open")
+    assert data["modalShown"] >= 1
+    assert data["modalHidden"] == 0
+    assert data["modalVisible"] is True
+    assert data["fetches"] == 1
+    assert "No se pudo guardar" in data["feedback"]
+    assert "Archivo demasiado grande" in data["error"]
+    assert data["quickBusy"] == ""
+
+
+def test_candidate_detail_runtime_batch_modal_blocks_double_submit():
+    data = _run_node_case("batch_modal_double_submit_blocks_second_fetch")
+    assert data["fetchesBefore"] == 1
+    assert data["fetchesAfterSecondAttempt"] == 1
+    assert data["finalFetches"] == 1
+    assert data["modalHidden"] >= 1
+    assert "Guardando..." in data["feedbackDuringSave"]

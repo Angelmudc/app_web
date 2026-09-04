@@ -10,6 +10,8 @@
   const boundQuickForms = new WeakSet();
   const boundStateForms = new WeakSet();
   const boundDocForms = new WeakSet();
+  const boundBatchForms = new WeakSet();
+  const batchPreviewUrls = new WeakMap();
 
   function getDetailRoot(scope) {
     const root = scope && scope.querySelector ? scope : document;
@@ -669,6 +671,228 @@
     });
   }
 
+  function getModalInstance(modalEl) {
+    if (!modalEl || !window.bootstrap || !window.bootstrap.Modal) return null;
+    if (typeof window.bootstrap.Modal.getOrCreateInstance === "function") {
+      return window.bootstrap.Modal.getOrCreateInstance(modalEl);
+    }
+    if (typeof window.bootstrap.Modal.getInstance === "function") {
+      const existing = window.bootstrap.Modal.getInstance(modalEl);
+      if (existing) return existing;
+    }
+    if (typeof window.bootstrap.Modal === "function") {
+      try {
+        return new window.bootstrap.Modal(modalEl);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
+  }
+
+  function getBatchPreviewMap(form) {
+    let map = batchPreviewUrls.get(form);
+    if (!map) {
+      map = new Map();
+      batchPreviewUrls.set(form, map);
+    }
+    return map;
+  }
+
+  function batchClearField(form, field) {
+    const input = form.querySelector('[data-doc-batch-input="' + field + '"]');
+    const previewWrap = form.querySelector('[data-doc-batch-preview-wrap="' + field + '"]');
+    const preview = form.querySelector('[data-doc-batch-preview="' + field + '"]');
+    const filename = form.querySelector('[data-doc-batch-filename="' + field + '"]');
+    const clearBtn = form.querySelector('[data-doc-batch-clear="' + field + '"]');
+    const map = getBatchPreviewMap(form);
+    const url = map.get(field);
+    if (url && window.URL && typeof window.URL.revokeObjectURL === "function") {
+      try { window.URL.revokeObjectURL(url); } catch (_) {}
+    }
+    map.delete(field);
+    if (input) input.value = "";
+    if (preview) preview.removeAttribute("src");
+    if (previewWrap) previewWrap.classList.add("d-none");
+    if (filename) filename.textContent = "Sin archivo seleccionado";
+    if (clearBtn) clearBtn.classList.add("d-none");
+    const error = form.querySelector('[data-error-for="' + field + '"]');
+    if (error) error.textContent = "";
+  }
+
+  function batchPaintPreview(form, field, file) {
+    const previewWrap = form.querySelector('[data-doc-batch-preview-wrap="' + field + '"]');
+    const preview = form.querySelector('[data-doc-batch-preview="' + field + '"]');
+    const filename = form.querySelector('[data-doc-batch-filename="' + field + '"]');
+    const clearBtn = form.querySelector('[data-doc-batch-clear="' + field + '"]');
+    const map = getBatchPreviewMap(form);
+    const previousUrl = map.get(field);
+    if (previousUrl && window.URL && typeof window.URL.revokeObjectURL === "function") {
+      try { window.URL.revokeObjectURL(previousUrl); } catch (_) {}
+    }
+    let nextUrl = "";
+    if (window.URL && typeof window.URL.createObjectURL === "function") {
+      try {
+        nextUrl = window.URL.createObjectURL(file);
+      } catch (_) {
+        nextUrl = "";
+      }
+    }
+    if (nextUrl) map.set(field, nextUrl);
+    if (preview) {
+      if (nextUrl) preview.src = nextUrl;
+      else preview.removeAttribute("src");
+    }
+    if (previewWrap) previewWrap.classList.remove("d-none");
+    if (filename) filename.textContent = file && file.name ? file.name : "Archivo seleccionado";
+    if (clearBtn) clearBtn.classList.remove("d-none");
+    const error = form.querySelector('[data-error-for="' + field + '"]');
+    if (error) error.textContent = "";
+  }
+
+  function batchClearForm(form) {
+    const map = getBatchPreviewMap(form);
+    Array.from(map.keys()).forEach((field) => batchClearField(form, field));
+    map.clear();
+    form.querySelectorAll("[data-error-for]").forEach((el) => { el.textContent = ""; });
+    form.querySelectorAll("[data-doc-batch-input]").forEach((input) => {
+      input.value = "";
+    });
+    const feedback = form.querySelector("[data-feedback]");
+    if (feedback) feedback.textContent = "";
+  }
+
+  function batchValidateFile(file, maxBytes) {
+    if (!file) return "Selecciona un archivo.";
+    const type = String(file.type || "").toLowerCase();
+    if (type && !type.startsWith("image/")) return "El archivo debe ser una imagen JPG o PNG.";
+    if (file.size > maxBytes) return "La imagen supera el límite permitido.";
+    return null;
+  }
+
+  function bindBatchDocumentForm(root, form) {
+    if (!form || boundBatchForms.has(form)) return;
+    boundBatchForms.add(form);
+
+    const modalEl = form.closest(".modal");
+    const openButton = root.querySelector("[data-doc-batch-open]");
+    const maxBytes = (() => {
+      const text = String((modalEl && modalEl.dataset && modalEl.dataset.maxBytes) || form.dataset.maxBytes || "");
+      const parsed = Number(text);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : 3 * 1024 * 1024;
+    })();
+
+    function hideModal() {
+      const modal = getModalInstance(modalEl);
+      if (modal && typeof modal.hide === "function") {
+        modal.hide();
+      } else if (modalEl) {
+        modalEl.classList.remove("show");
+        modalEl.style.display = "none";
+      }
+    }
+
+    function showModal() {
+      const modal = getModalInstance(modalEl);
+      if (modal && typeof modal.show === "function") {
+        modal.show();
+      } else if (modalEl) {
+        modalEl.classList.add("show");
+        modalEl.style.display = "block";
+      }
+      const first = form.querySelector("[data-doc-batch-input]");
+      if (first) window.setTimeout(() => first.focus(), 120);
+    }
+
+    if (openButton) {
+      openButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        showModal();
+      });
+    }
+
+    form.querySelectorAll("[data-doc-batch-input]").forEach((input) => {
+      const field = input.getAttribute("data-doc-batch-input") || input.getAttribute("name") || "";
+      if (!field) return;
+      input.addEventListener("change", () => {
+        const file = input.files && input.files[0] ? input.files[0] : null;
+        if (!file) {
+          batchClearField(form, field);
+          return;
+        }
+        const error = batchValidateFile(file, maxBytes);
+        if (error) {
+          batchClearField(form, field);
+          const feedback = form.querySelector("[data-feedback]");
+          if (feedback) {
+            feedback.textContent = error;
+            feedback.className = "small cand-feedback text-danger";
+          }
+          const fieldError = form.querySelector('[data-error-for="' + field + '"]');
+          if (fieldError) fieldError.textContent = error;
+          return;
+        }
+        batchPaintPreview(form, field, file);
+      });
+      const clearBtn = form.querySelector('[data-doc-batch-clear="' + field + '"]');
+      if (clearBtn) {
+        clearBtn.addEventListener("click", (event) => {
+          event.preventDefault();
+          batchClearField(form, field);
+        });
+      }
+    });
+
+    if (modalEl) {
+      modalEl.addEventListener("hidden.bs.modal", () => {
+        batchClearForm(form);
+      });
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (form.dataset.quickBusy === "1" || form.__docBatchBusy === true) return;
+      form.__docBatchBusy = true;
+      const selected = Array.from(form.querySelectorAll("[data-doc-batch-input]")).filter((input) => input.files && input.files.length > 0);
+      clearErrors(form);
+      if (!selected.length) {
+        setFeedback(form, "Debes seleccionar al menos un archivo.", false);
+        form.__docBatchBusy = false;
+        return;
+      }
+      const submitter = event.submitter || form.querySelector('[data-doc-batch-submit]');
+      setFeedback(form, "Guardando...", true);
+      setFormBusy(form, true, submitter);
+      const headers = { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" };
+      const csrf = csrfToken();
+      if (csrf) headers["X-CSRFToken"] = csrf;
+      try {
+        const { resp, payload } = await fetchJsonWithTimeout(form.getAttribute("data-endpoint"), {
+          method: "POST",
+          credentials: "same-origin",
+          headers,
+          body: new FormData(form),
+        }, 15000);
+        if (!resp.ok || !payload.ok) {
+          paintErrors(form, payload.errors || {});
+          setFeedback(form, payload.message || "No se pudo guardar.", false);
+          return;
+        }
+        applyPayload(root, payload);
+        invalidateSnapshots(payload);
+        setFeedback(form, payload.message || "Guardado.", true);
+        batchClearForm(form);
+        hideModal();
+      } catch (err) {
+        setFeedback(form, err && err.name === "AbortError" ? "El servidor tardó demasiado. Intenta de nuevo." : "No se pudo guardar. Intenta de nuevo.", false);
+      } finally {
+        form.__docBatchBusy = false;
+        setFormBusy(form, false, submitter);
+        clearGlobalLoaders();
+      }
+    });
+  }
+
   function toggleFinancePanel(detailRoot, key) {
     const panel = detailRoot.querySelector('[data-finance-panel="' + key + '"]');
     if (!panel) return;
@@ -953,6 +1177,10 @@
       if (input) {
         input.addEventListener("change", () => submitIfFileSelected());
       }
+    });
+
+    root.querySelectorAll("[data-doc-batch-form]").forEach((form) => {
+      bindBatchDocumentForm(root, form);
     });
 
     ensureFinanceIdempotencyKeys(root);

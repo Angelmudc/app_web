@@ -957,6 +957,12 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     assert "Pendiente" in html
     assert "perfil-binary-not-html" not in html
 
+    detail_resp = client.get("/admin/candidatas/990512", follow_redirects=False)
+    assert detail_resp.status_code == 200
+    detail_html = detail_resp.get_data(as_text=True)
+    assert "Subir varios documentos" in detail_html
+    assert "/admin/candidatas/990512/documentos/batch" in detail_html
+
     with flask_app.app_context():
         db.session.expire_all()
         after = Candidata.query.get(990512)
@@ -1066,6 +1072,182 @@ def test_admin_candidata_documentos_rapidos_rechazan_archivo_invalido_y_campo_no
     forbidden_payload = forbidden_resp.get_json() or {}
     assert forbidden_resp.status_code == 400
     assert forbidden_payload["ok"] is False
+
+
+def test_admin_candidata_documentos_batch_suben_varios_y_actualizan_estado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        cand = _seed_center_candidate(fila=990545)
+        cand.depuracion = None
+        cand.perfil = None
+        cand.cedula1 = None
+        cand.cedula2 = None
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990545/documentos/batch",
+        data={
+            "depuracion": (io.BytesIO(b"\xFF\xD8\xFF\xE0dep"), "depuracion.jpg"),
+            "perfil": (io.BytesIO(b"\xFF\xD8\xFF\xE0per"), "perfil.jpg"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert sorted(payload["updated_fields"]) == ["depuracion", "perfil"]
+    assert payload["doc_flags"]["depuracion"] is True
+    assert payload["doc_flags"]["perfil"] is True
+
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990545)
+        assert cand.depuracion is not None
+        assert cand.perfil is not None
+
+
+def test_admin_candidata_documentos_batch_suben_cuatro_y_actualizan_estado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        cand = _seed_center_candidate(fila=990549)
+        cand.depuracion = None
+        cand.perfil = None
+        cand.cedula1 = None
+        cand.cedula2 = None
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990549/documentos/batch",
+        data={
+            "depuracion": (io.BytesIO(b"\xFF\xD8\xFF\xE0dep"), "depuracion.jpg"),
+            "perfil": (io.BytesIO(b"\xFF\xD8\xFF\xE0per"), "perfil.jpg"),
+            "cedula1": (io.BytesIO(b"\xFF\xD8\xFF\xE0c1"), "cedula1.jpg"),
+            "cedula2": (io.BytesIO(b"\xFF\xD8\xFF\xE0c2"), "cedula2.jpg"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert sorted(payload["updated_fields"]) == ["cedula1", "cedula2", "depuracion", "perfil"]
+    assert payload["doc_flags"]["depuracion"] is True
+    assert payload["doc_flags"]["perfil"] is True
+    assert payload["doc_flags"]["cedula1"] is True
+    assert payload["doc_flags"]["cedula2"] is True
+
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990549)
+        assert cand.depuracion is not None
+        assert cand.perfil is not None
+        assert cand.cedula1 is not None
+        assert cand.cedula2 is not None
+
+
+def test_admin_candidata_documentos_batch_rechaza_invalidos_y_no_persiste_parcial():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        cand = _seed_center_candidate(fila=990546)
+        before = {
+            "depuracion": cand.depuracion,
+            "perfil": cand.perfil,
+            "cedula1": cand.cedula1,
+            "cedula2": cand.cedula2,
+        }
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990546/documentos/batch",
+        data={
+            "depuracion": (io.BytesIO(b"\xFF\xD8\xFF\xE0ok"), "depuracion.jpg"),
+            "perfil": (io.BytesIO(b"bad-data"), "perfil.txt"),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 400
+    assert payload["ok"] is False
+    assert "perfil" in payload["errors"]
+
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990546)
+        assert cand.depuracion == before["depuracion"]
+        assert cand.perfil == before["perfil"]
+        assert cand.cedula1 == before["cedula1"]
+        assert cand.cedula2 == before["cedula2"]
+
+
+def test_admin_candidata_documentos_batch_rechaza_sin_archivos_y_permiso():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    anon = flask_app.test_client()
+    assert anon.post("/admin/candidatas/990547/documentos/batch", follow_redirects=False).status_code in (302, 303)
+
+    client = flask_app.test_client()
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990547)
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990547/documentos/batch",
+        data={},
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 400
+    assert payload["ok"] is False
+    assert "archivo" in payload["errors"]
+
+
+def test_admin_candidata_documentos_batch_rollback_on_persist_failure():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        cand = _seed_center_candidate(fila=990548)
+        before = cand.depuracion
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    with patch.object(db.session, "commit", side_effect=Exception("boom")):
+        resp = client.post(
+            "/admin/candidatas/990548/documentos/batch",
+            data={"depuracion": (io.BytesIO(b"\xFF\xD8\xFF\xE0ok"), "depuracion.jpg")},
+            content_type="multipart/form-data",
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 500
+    assert payload["ok"] is False
+
+    with flask_app.app_context():
+        db.session.expire_all()
+        cand = Candidata.query.get(990548)
+        assert cand.depuracion == before
 
 
 def test_admin_candidatas_seguridad_y_404():
