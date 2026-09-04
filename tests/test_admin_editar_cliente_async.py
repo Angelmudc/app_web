@@ -232,6 +232,18 @@ class AdminEditarClienteAsyncTest(unittest.TestCase):
         self.assertIn("/admin/clientes/7", resp.location)
         commit_mock.assert_called_once()
 
+    def test_editar_cliente_async_form_renders_explicit_action(self):
+        cliente = _cliente_stub()
+        query = _ClienteQueryStub(cliente)
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Cliente, "query", query):
+                html = self._invoke(method="GET")
+
+        rendered = html.get_data(as_text=True) if hasattr(html, "get_data") else str(html)
+        self.assertIn('action="/admin/clientes/7/editar"', rendered)
+        self.assertIn('data-async-target="#editarClienteAsyncRegion"', rendered)
+
 
 if __name__ == "__main__":
     unittest.main()

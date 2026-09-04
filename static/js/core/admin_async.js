@@ -432,6 +432,41 @@
     }
   }
 
+  function clearAsyncEndpointError(form) {
+    if (!form) return;
+    const alertEl = form.__adminAsyncEndpointErrorEl || null;
+    if (alertEl && alertEl.parentNode) {
+      try { alertEl.remove(); } catch (_) {}
+    }
+    form.__adminAsyncEndpointErrorEl = null;
+  }
+
+  function showAsyncEndpointError(form, message, context) {
+    if (!form) return;
+    const text = String(message || "No se pudo enviar el formulario porque falta la ruta de guardado.");
+    let alertEl = form.__adminAsyncEndpointErrorEl || null;
+    if (!alertEl || !alertEl.isConnected) {
+      const host = form.parentElement || form.parentNode || null;
+      if (!host || typeof host.insertBefore !== "function") {
+        try { console.error("[AdminAsync] missing async endpoint", context || {}); } catch (_) {}
+        return;
+      }
+      alertEl = document.createElement("div");
+      alertEl.className = "alert alert-danger border-0 mb-3";
+      alertEl.setAttribute("role", "alert");
+      alertEl.setAttribute("aria-live", "polite");
+      alertEl.setAttribute("data-admin-async-endpoint-error", "1");
+      try {
+        host.insertBefore(alertEl, form);
+      } catch (_) {
+        try { host.appendChild(alertEl); } catch (_) {}
+      }
+      form.__adminAsyncEndpointErrorEl = alertEl;
+    }
+    alertEl.textContent = text;
+    try { console.error("[AdminAsync] missing async endpoint", context || {}); } catch (_) {}
+  }
+
   function resolvePreserveScroll(targetSelector, explicit) {
     if (typeof explicit === "boolean") return explicit;
     if (!targetSelector) return false;
@@ -1653,13 +1688,24 @@
   function buildFormRequest(form, submitter) {
     const method = String(form.getAttribute("method") || "POST").toUpperCase();
     const submitterAction = submitter && submitter.getAttribute ? (submitter.getAttribute("formaction") || "") : "";
-    const action = submitterAction || form.getAttribute("action") || window.location.href;
+    const action = submitterAction || form.getAttribute("action") || "";
     const asyncAction = (form.getAttribute("data-async-action") || "").trim();
-    const requestUrl = asyncAction || action;
+    const requestUrl = (asyncAction || action).trim();
     const submitterMethod = submitter && submitter.getAttribute ? (submitter.getAttribute("formmethod") || "") : "";
     const requestMethod = String(submitterMethod || method || "POST").toUpperCase();
     const noLoader = form.hasAttribute("data-no-loader");
     const updateTarget = (form.getAttribute("data-async-target") || "").trim();
+
+    if (!requestUrl) {
+      return {
+        errorMessage: "No se pudo enviar el formulario porque falta la ruta de guardado.",
+        method: requestMethod,
+        body: null,
+        updateTarget,
+        noLoader,
+        headers: { "X-CSRFToken": getCSRFToken(form) },
+      };
+    }
 
     if (requestMethod === "GET") {
       const params = new URLSearchParams(new FormData(form));
@@ -1715,7 +1761,17 @@
     if (lastSubmitterByForm.has(form)) {
       lastSubmitterByForm.delete(form);
     }
+    clearAsyncEndpointError(form);
     const req = buildFormRequest(form, submitter);
+    if (req && req.errorMessage) {
+      showAsyncEndpointError(form, req.errorMessage, {
+        formId: String(form.id || ""),
+        action: String(form.getAttribute("action") || ""),
+        dataAsyncAction: String(form.getAttribute("data-async-action") || ""),
+        submitterAction: submitter && submitter.getAttribute ? String(submitter.getAttribute("formaction") || "") : "",
+      });
+      return;
+    }
     const containerSel = (form.getAttribute("data-async-busy-container") || "").trim();
     const busyContainer = containerSel ? document.querySelector(containerSel) : form;
     const preserveScroll = form.getAttribute("data-async-preserve-scroll") === "true";

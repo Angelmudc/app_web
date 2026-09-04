@@ -8,6 +8,7 @@
 
   <form
     id="cliente-form"
+    action="{{ url_for('admin.editar_cliente', cliente_id=cliente.id) }}"
     method="POST"
     novalidate
     data-admin-async-form

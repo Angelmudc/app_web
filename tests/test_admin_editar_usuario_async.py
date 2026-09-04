@@ -216,6 +216,24 @@ def test_editar_usuario_fallback_clasico_still_redirects_and_saves():
     assert updated.check_password("Pass12345") is True
 
 
+def test_editar_usuario_async_form_renders_explicit_action():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        user = _create_staff_user(role="secretaria")
+        user_id = int(user.id)
+
+    client = flask_app.test_client()
+    assert _login_owner(client).status_code in (302, 303)
+
+    resp = client.get(f"/admin/usuarios/{user_id}/editar", follow_redirects=False)
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert f'action="/admin/usuarios/{user_id}/editar"' in html
+    assert 'data-async-target="#editarUsuarioAsyncRegion"' in html
+
+
 def test_editar_usuario_async_ignores_role_change_even_if_post_is_tampered():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
