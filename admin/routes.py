@@ -23129,6 +23129,35 @@ def _candidata_center_recent_calls(fila: int):
     )
 
 
+def _candidata_center_activity_laboral_links(fila: int):
+    return (
+        SolicitudCandidata.query.options(
+            load_only(
+                SolicitudCandidata.id,
+                SolicitudCandidata.solicitud_id,
+                SolicitudCandidata.candidata_id,
+                SolicitudCandidata.status,
+                SolicitudCandidata.created_at,
+            ),
+            joinedload(SolicitudCandidata.solicitud).load_only(
+                Solicitud.id,
+                Solicitud.codigo_solicitud,
+                Solicitud.estado,
+                Solicitud.cliente_id,
+                Solicitud.fecha_solicitud,
+            ).joinedload(Solicitud.cliente).load_only(
+                Cliente.id,
+                Cliente.codigo,
+                Cliente.nombre_completo,
+            ),
+        )
+        .filter(SolicitudCandidata.candidata_id == int(fila))
+        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
+        .limit(8)
+        .all()
+    )
+
+
 def _candidata_center_doc_flags(candidata) -> dict[str, bool]:
     return {
         "depuracion": bool(getattr(candidata, "depuracion", None)),
@@ -23725,38 +23754,6 @@ def _candidata_center_detail_context(fila: int) -> dict:
         .order_by(SeguimientoCandidataCaso.last_movement_at.desc(), SeguimientoCandidataCaso.id.desc())
         .first()
     )
-    active_assignment = Solicitud.query.options(
-        load_only(Solicitud.id, Solicitud.codigo_solicitud, Solicitud.estado, Solicitud.candidata_id, Solicitud.fecha_solicitud)
-    ).filter(
-        Solicitud.candidata_id == int(fila),
-        Solicitud.estado.in_(["proceso", "activa", "reemplazo", "pendiente_servicio"]),
-    ).order_by(Solicitud.fecha_solicitud.desc(), Solicitud.id.desc()).first()
-    solicitud_links = (
-        SolicitudCandidata.query.options(
-            load_only(
-                SolicitudCandidata.id,
-                SolicitudCandidata.solicitud_id,
-                SolicitudCandidata.candidata_id,
-                SolicitudCandidata.status,
-                SolicitudCandidata.created_at,
-            ),
-            joinedload(SolicitudCandidata.solicitud).load_only(
-                Solicitud.id,
-                Solicitud.codigo_solicitud,
-                Solicitud.estado,
-                Solicitud.cliente_id,
-                Solicitud.fecha_solicitud,
-            ).joinedload(Solicitud.cliente).load_only(
-                Cliente.id,
-                Cliente.codigo,
-                Cliente.nombre_completo,
-            ),
-        )
-        .filter(SolicitudCandidata.candidata_id == int(fila))
-        .order_by(SolicitudCandidata.created_at.desc(), SolicitudCandidata.id.desc())
-        .limit(6)
-        .all()
-    )
     audit_logs = (
         StaffAuditLog.query.options(
             load_only(
@@ -23975,8 +23972,6 @@ def _candidata_center_detail_context(fila: int) -> dict:
         "legacy_entrevista_display": legacy_entrevista_display,
         "seguimiento": seguimiento,
         "next_action": next_action,
-        "active_assignment": active_assignment,
-        "solicitud_links": solicitud_links,
         "audit_logs": audit_logs,
         "audit_history_items": _candidata_history_items(audit_logs, candidata),
         "inscription_summary": {
@@ -24417,6 +24412,24 @@ def candidatas_operativo_actividad_publica_fragment(fila: int):
         response.headers["Content-Type"] = "text/html; charset=utf-8"
         response.headers["X-Async-Fragment-Region"] = "candidataPublicProfileAsyncRegion"
         return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_public_profile"})
+
+
+@admin_bp.route("/candidatas/<int:fila>/_actividad-laboral", methods=["GET"])
+@login_required
+@staff_required
+def candidatas_operativo_actividad_laboral_fragment(fila: int):
+    with _p1c1_perf_scope("candidatas_operativo_actividad_laboral_fragment") as perf_done:
+        candidata = Candidata.query.options(load_only(Candidata.fila, Candidata.nombre_completo, Candidata.codigo)).filter(Candidata.fila == int(fila)).first_or_404()
+        solicitud_links = _candidata_center_activity_laboral_links(int(fila))
+        html = render_template(
+            "admin/_candidata_operativo_actividad_laboral_fragment.html",
+            candidata=candidata,
+            solicitud_links=solicitud_links,
+        )
+        response = make_response(html, 200)
+        response.headers["Content-Type"] = "text/html; charset=utf-8"
+        response.headers["X-Async-Fragment-Region"] = "candidataActividadLaboralAsyncRegion"
+        return perf_done(response, html_bytes=len(html.encode("utf-8")), extra={"mode": "fragment_actividad_laboral"})
 
 
 @admin_bp.route("/candidatas/busqueda-rapida.json", methods=["GET"])

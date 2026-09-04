@@ -142,6 +142,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('data-lazy-script-candidata-detail-ui', detail_txt)
         self.assertIn('data-admin-nav="true"', detail_txt)
         self.assertIn('data-admin-nav-back="true"', detail_txt)
+        self.assertIn('data-admin-lazy-fragment-url="{{ url_for(\'admin.candidatas_operativo_actividad_laboral_fragment\', fila=candidata.fila) }}"', detail_txt)
         self.assertNotIn("setupStickyIdentityBar", detail_txt)
         self.assertNotIn("function clearGlobalLoaders()", detail_txt)
 

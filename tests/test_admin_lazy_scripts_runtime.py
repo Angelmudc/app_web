@@ -493,6 +493,24 @@ async function runScenario(name) {
     };
   }
 
+  if (name === "io_intersect_fetches_activity") {
+    const env = bootstrap({
+      useIntersectionObserver: true,
+      useRequestIdleCallback: true,
+      fetchMode: { type: "success", html: "<div>activity-fragment</div>" },
+    });
+    env.region.setAttribute("data-admin-lazy-fragment-url", "/admin/candidatas/990539/_actividad-laboral");
+    const observer = env.getObserver();
+    observer.trigger([{ target: env.region, isIntersecting: true }]);
+    await waitTick();
+    return {
+      fetches: env.fetchMock.calls.length,
+      url: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      html: env.region.innerHTML,
+      loaded: env.region.dataset.lazyLoaded || null,
+    };
+  }
+
   if (name === "io_no_double_fetch") {
     const env = bootstrap({ useIntersectionObserver: true, useRequestIdleCallback: true, fetchMode: { type: "pending" } });
     const observer = env.getObserver();
@@ -628,6 +646,14 @@ def test_admin_lazy_scripts_fetches_when_fragment_intersects():
     assert data["loaded"] == "1"
     assert data["state"] == "loaded"
     assert "fragment" in data["html"]
+
+
+def test_admin_lazy_scripts_fetches_candidate_activity_fragment_when_fragment_intersects():
+    data = _run_node_case("io_intersect_fetches_activity")
+    assert data["fetches"] == 1
+    assert data["url"] == "/admin/candidatas/990539/_actividad-laboral"
+    assert data["loaded"] == "1"
+    assert "activity-fragment" in data["html"]
 
 
 def test_admin_lazy_scripts_fallback_without_intersection_observer():

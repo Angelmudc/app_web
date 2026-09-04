@@ -1071,29 +1071,23 @@
 
       <section class="cand-panel cand-span-6">
         <h2>Actividad laboral</h2>
-        {% if active_assignment %}
+        {% if state_capabilities.assignment.solicitud %}
           <div class="mb-2">
             <strong>Asignación activa:</strong>
-            {{ active_assignment.codigo_solicitud }} · {{ active_assignment.estado }}
+            {{ state_capabilities.assignment.solicitud.codigo }} · {{ state_capabilities.assignment.solicitud.estado }}{% if state_capabilities.assignment.solicitud.status %} · {{ state_capabilities.assignment.solicitud.status }}{% endif %}
           </div>
         {% else %}
           <div class="cand-muted mb-2">Sin asignación activa.</div>
         {% endif %}
-        {% if solicitud_links %}
-          <ul class="cand-list small">
-            {% for link in solicitud_links %}
-              <li>
-                {{ link.solicitud.codigo_solicitud if link.solicitud else ('Solicitud ' ~ link.solicitud_id) }}
-                · <strong>{{ link.status }}</strong>
-                · {{ link.solicitud.estado if link.solicitud else 'sin estado' }}
-                {% if link.solicitud and link.solicitud.cliente %}
-                  · {{ link.solicitud.cliente.nombre_completo }}{% if link.solicitud.cliente.codigo %} ({{ link.solicitud.cliente.codigo }}){% endif %}
-                {% endif %}
-                · {{ link.created_at|rd_datetime('%d/%m/%Y %I:%M %p') if link.created_at else 'sin fecha' }}
-              </li>
-            {% endfor %}
-          </ul>
-        {% endif %}
+        <div id="candidataActividadLaboralAsyncRegion"
+             class="cand-lazy-fragment mt-3"
+             data-async-preserve-scroll="true"
+             data-admin-lazy-fragment-url="{{ url_for('admin.candidatas_operativo_actividad_laboral_fragment', fila=candidata.fila) }}"
+             data-lazy-state="loading"
+             role="status"
+             aria-live="polite">
+          <div class="cand-muted small">Cargando detalle de actividad laboral...</div>
+        </div>
       </section>
 
       {% if compatibility.exists %}

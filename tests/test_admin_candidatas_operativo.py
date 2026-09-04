@@ -667,8 +667,6 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
         "Documentos",
         "Inscripción y Porciento",
         "Información pública y actividad laboral",
-        "Cliente Historial",
-        "CLI-HIST",
         "Historial limitado",
         "Compatibilidad",
         "Ver respuestas/resultado",
@@ -678,6 +676,9 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
 
     assert "Cargando información pública..." in html
     assert "data-admin-lazy-fragment-url" in html
+    assert "/admin/candidatas/990539/_actividad-laboral" in html
+    assert "Cargando detalle de actividad laboral..." in html
+    assert "data-actividad-laboral-link" not in html
     assert "Leer respuestas" not in html
 
     assert html.index("Empleo anterior") < html.index("Ver datos secundarios")
@@ -711,6 +712,14 @@ def test_admin_candidata_ficha_centraliza_informacion_operativa_completa():
     assert actividad_fragment.status_code == 200
     actividad_html = actividad_fragment.get_data(as_text=True)
     assert "Perfil público" in actividad_html or "No existe perfil público." in actividad_html
+
+    actividad_laboral_fragment = client.get("/admin/candidatas/990539/_actividad-laboral", follow_redirects=False)
+    assert actividad_laboral_fragment.status_code == 200
+    actividad_laboral_html = actividad_laboral_fragment.get_data(as_text=True)
+    assert "Solicitudes relacionadas" in actividad_laboral_html
+    assert "data-actividad-laboral-link=\"1\"" in actividad_laboral_html
+    assert "Cliente Historial" in actividad_laboral_html
+    assert "SOL-990539" in actividad_laboral_html
 
     assert 'data-summary-section="inscription"' in html
     assert 'data-summary-section="porciento"' in html

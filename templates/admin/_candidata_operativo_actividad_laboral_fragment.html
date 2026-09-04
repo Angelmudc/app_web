@@ -1,0 +1,22 @@
+<div id="candidataActividadLaboralAsyncRegion">
+  {% if solicitud_links %}
+    <div class="mb-2">
+      <strong>Solicitudes relacionadas</strong>
+    </div>
+    <ul class="cand-list small mb-0">
+      {% for link in solicitud_links %}
+        <li data-actividad-laboral-link="1">
+          {{ link.solicitud.codigo_solicitud if link.solicitud else ('Solicitud ' ~ link.solicitud_id) }}
+          · <strong>{{ link.status }}</strong>
+          · {{ link.solicitud.estado if link.solicitud else 'sin estado' }}
+          {% if link.solicitud and link.solicitud.cliente %}
+            · {{ link.solicitud.cliente.nombre_completo }}{% if link.solicitud.cliente.codigo %} ({{ link.solicitud.cliente.codigo }}){% endif %}
+          {% endif %}
+          · {{ link.created_at|rd_datetime('%d/%m/%Y %I:%M %p') if link.created_at else 'sin fecha' }}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="cand-muted small">Sin solicitudes relacionadas.</div>
+  {% endif %}
+</div>
