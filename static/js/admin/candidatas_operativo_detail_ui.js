@@ -388,6 +388,24 @@
     }
   }
 
+  function refreshReferenceSummary(detailRoot, summary) {
+    const panel = detailRoot.querySelector('[data-edit-section="form_references"]');
+    if (!panel || !summary) return;
+    const badges = panel.querySelectorAll("[data-reference-summary-badge]");
+    if (!badges || !badges.length) return;
+    const items = [
+      { key: "laboral", label: "Laboral" },
+      { key: "familiar", label: "Familiar" },
+    ];
+    items.forEach((item, index) => {
+      const badge = badges[index];
+      if (!badge) return;
+      const ok = Boolean(summary[item.key]);
+      badge.textContent = item.label + " " + (ok ? "✓" : "pendiente");
+      badge.className = "badge " + (ok ? "text-bg-success" : "text-bg-warning");
+    });
+  }
+
   function syncIdentity(detailRoot, payload) {
     const header = payload.header || {};
     const name = detailRoot.querySelector('[data-cand-header="nombre"]');
@@ -928,6 +946,7 @@
       }, "");
       refreshReferenceCards(detailRoot, display);
     }
+    if (Object.prototype.hasOwnProperty.call(payload, "references_summary")) refreshReferenceSummary(detailRoot, payload.references_summary);
     if (Object.prototype.hasOwnProperty.call(display, "secretary_references")) {
       renderKv(detailRoot.querySelector('[data-display="secretary-references"]'), {
         Laborales: (display.secretary_references || {}).laboral || "No informado",

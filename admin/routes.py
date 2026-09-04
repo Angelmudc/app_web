@@ -23265,10 +23265,14 @@ def _candidata_center_partial_response_payload(
     changes: dict | None = None,
     finance_event: dict | None = None,
     *,
+    include_header: bool = True,
+    include_candidate: bool = True,
+    include_status_badges: bool = True,
     include_personal: bool = False,
     include_labor: bool = False,
     include_form_references: bool = False,
     include_secretary_references: bool = False,
+    include_reference_summary: bool = False,
     include_inscription: bool = False,
     include_readiness: bool = False,
     include_state_capabilities: bool = False,
@@ -23279,25 +23283,28 @@ def _candidata_center_partial_response_payload(
         "message": message,
         "changes": changes or {},
         "invalidate_snapshots": ["/admin/candidatas"],
-        "header": {
+    }
+    if include_header:
+        payload["header"] = {
             "nombre": candidata.nombre_completo or "",
             "edad": candidata.edad or "",
             "telefono": candidata.numero_telefono or "",
             "codigo": candidata.codigo or "",
             "estado": candidata.estado or "",
             "estado_label": _center_state_label(candidata.estado),
-        },
-        "candidate": {
+        }
+    if include_candidate:
+        payload["candidate"] = {
             "codigo": candidata.codigo or "",
             "estado": candidata.estado or "",
-        },
-        "status_badges": {
+        }
+    if include_status_badges:
+        payload["status_badges"] = {
             "inscrita": bool(candidata.inscripcion),
             "lista": str(candidata.estado or "") == "lista_para_trabajar",
             "trabajando": str(candidata.estado or "") == "trabajando",
             "descalificada": str(candidata.estado or "") == "descalificada",
-        },
-    }
+        }
     if include_personal:
         payload.setdefault("display", {})["personal"] = _candidata_center_personal_display(candidata)
         payload.setdefault("values", {})["personal"] = {
@@ -23349,6 +23356,11 @@ def _candidata_center_partial_response_payload(
                 "contactos_referencias_laborales": getattr(candidata, "contactos_referencias_laborales", "") or "",
                 "referencias_familiares_detalle": getattr(candidata, "referencias_familiares_detalle", "") or "",
             }
+            if include_reference_summary:
+                payload["references_summary"] = {
+                    "laboral": bool(getattr(candidata, "contactos_referencias_laborales", "") or ""),
+                    "familiar": bool(getattr(candidata, "referencias_familiares_detalle", "") or ""),
+                }
         if include_secretary_references:
             payload.setdefault("display", {})["secretary_references"] = refs["secretary_references"]
             payload.setdefault("values", {})["secretary_references"] = {
@@ -24692,10 +24704,14 @@ def candidatas_operativo_update_perfil_laboral(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(
-        int(fila),
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
         result.message,
         result.changes,
+        include_header=False,
+        include_candidate=False,
+        include_status_badges=False,
+        include_labor=True,
     ))
 
 
@@ -24741,10 +24757,17 @@ def candidatas_operativo_update_referencias_formulario(fila: int):
             "error_code": result.error_code,
         }), int(result.status_code or 400)
     session["last_edited_candidata_fila"] = int(fila)
-    return jsonify(_candidata_center_response_payload(
-        int(fila),
+    return jsonify(_candidata_center_partial_response_payload(
+        candidata,
         result.message,
         result.changes,
+        include_header=False,
+        include_candidate=False,
+        include_status_badges=False,
+        include_form_references=True,
+        include_reference_summary=True,
+        include_readiness=True,
+        include_state_capabilities=True,
     ))
 
 

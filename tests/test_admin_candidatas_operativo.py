@@ -2294,6 +2294,77 @@ def test_admin_candidata_update_perfil_laboral_limpia_opcionales_y_bool_null():
         assert cand.calificacion == "Excelente"
 
 
+def test_admin_candidata_update_perfil_laboral_devuelve_solo_regiones_necesarias():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990607)
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990607/perfil-laboral",
+            data={
+                "modalidad": "Salida diaria",
+                "rutas": "Ruta A",
+                "disponibilidad_inicio": "inmediata",
+                "empleo_anterior": "Hotel",
+                "anos_experiencia": "6",
+                "areas_experiencia": "Limpieza",
+                "sabe_planchar": "si",
+                "trabaja_con_ninos": "si",
+                "trabaja_con_mascotas": "no",
+                "puede_dormir_fuera": "no",
+                "acepta_porcentaje_sueldo": "si",
+                "sueldo_esperado": "25000",
+                "motivacion_trabajo": "Busca estabilidad",
+            },
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["display"]["labor"]["Modalidad preferida"] == "Salida diaria"
+    assert payload["values"]["labor"]["modalidad"] == "Salida diaria"
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
+    assert "header" not in payload
+    assert "candidate" not in payload
+    assert "status_badges" not in payload
+    assert "readiness" not in payload
+    assert "state_capabilities" not in payload
+    assert "recent_calls" not in payload
+    assert "porciento" not in payload
+    assert "porciento_history" not in payload
+    assert "doc_flags" not in payload
+
+
+def test_admin_candidata_update_perfil_laboral_rechaza_solicitud_vacia():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990608)
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990608/perfil-laboral",
+        data={},
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 400
+    assert payload["ok"] is False
+    assert payload["error_code"] == "empty_payload"
+    assert "display" not in payload
+    assert "readiness" not in payload
+
+
 def test_admin_candidata_update_referencias_mantiene_independencia_entrevista_y_formulario():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -2329,6 +2400,70 @@ def test_admin_candidata_update_referencias_mantiene_independencia_entrevista_y_
         assert audit.action_type == "CANDIDATA_REFERENCES_EDIT"
         assert audit.success is True
         assert "referencias_laboral" in (audit.changes_json or {})
+
+
+def test_admin_candidata_update_referencias_formulario_devuelve_solo_regiones_necesarias():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990609)
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990609/referencias-formulario",
+            data={
+                "contactos_referencias_laborales": "FORM-LAB-111",
+                "referencias_familiares_detalle": "FORM-FAM-222",
+            },
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["display"]["references"]["laboral"] == "FORM-LAB-111"
+    assert payload["display"]["references"]["familiar"] == "FORM-FAM-222"
+    assert payload["values"]["form_references"]["contactos_referencias_laborales"] == "FORM-LAB-111"
+    assert payload["references_summary"]["laboral"] is True
+    assert payload["references_summary"]["familiar"] is True
+    assert payload["readiness"]["flags"]["referencias_laboral"] is True
+    assert payload["readiness"]["flags"]["referencias_familiares"] is True
+    assert payload["state_capabilities"]["preparation"]["label"]
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
+    assert "header" not in payload
+    assert "candidate" not in payload
+    assert "status_badges" not in payload
+    assert "inscription" not in payload
+    assert "recent_calls" not in payload
+    assert "porciento" not in payload
+    assert "porciento_history" not in payload
+    assert "doc_flags" not in payload
+
+
+def test_admin_candidata_update_referencias_formulario_rechaza_solicitud_vacia():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990610)
+
+    assert _login(client).status_code in (302, 303)
+    resp = client.post(
+        "/admin/candidatas/990610/referencias-formulario",
+        data={},
+        follow_redirects=False,
+    )
+    payload = resp.get_json() or {}
+    assert resp.status_code == 400
+    assert payload["ok"] is False
+    assert payload["error_code"] == "validation_error"
+    assert "display" not in payload
 
 
 def test_admin_candidata_update_referencias_devuelve_solo_regiones_necesarias():

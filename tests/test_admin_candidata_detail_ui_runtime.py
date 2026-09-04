@@ -389,7 +389,18 @@ function makeDetailRoot(extraAttrs = {}) {
     "data-endpoint": "/admin/candidatas/990501/datos-laborales",
     "data-quick-form-bound": "1",
   });
-  laborForm._formDataFields = { modalidad: "Con dormida" };
+  laborForm._formDataFields = { modalidad: "Con dormida", rutas: "Ruta X", disponibilidad_inicio: "mañana" };
+  const laborInputModalidad = new FakeNode("input", { name: "modalidad" });
+  laborInputModalidad.value = "Con dormida";
+  const laborInputRutas = new FakeNode("input", { name: "rutas" });
+  laborInputRutas.value = "Ruta X";
+  const laborInputInicio = new FakeNode("input", { name: "disponibilidad_inicio" });
+  laborInputInicio.value = "mañana";
+  const laborFeedback = new FakeNode("div", { "data-feedback": "" });
+  laborForm.appendChild(laborInputModalidad);
+  laborForm.appendChild(laborInputRutas);
+  laborForm.appendChild(laborInputInicio);
+  laborForm.appendChild(laborFeedback);
   labor.appendChild(laborToggle);
   labor.appendChild(laborDisplay);
   labor.appendChild(laborForm);
@@ -406,6 +417,40 @@ function makeDetailRoot(extraAttrs = {}) {
   refs.appendChild(refsToggle);
   refs.appendChild(refsDisplay);
   refs.appendChild(refsForm);
+
+  const formRefs = new FakeNode("section", { "data-edit-section": "form_references" });
+  const formRefsToggle = new FakeNode("button", { "data-edit-toggle": "" });
+  const formRefsDisplay = new FakeNode("div", { "data-display": "references", class: "cand-display" });
+  formRefsDisplay.textContent = "REFERENCIAS-FORM-ORIGINAL";
+  const formRefsBadgeWrap = new FakeNode("div", { class: "detail-badges" });
+  const formRefsBadgeLabor = new FakeNode("span", { class: "badge text-bg-warning", "data-reference-summary-badge": "laboral" });
+  const formRefsBadgeFam = new FakeNode("span", { class: "badge text-bg-warning", "data-reference-summary-badge": "familiar" });
+  formRefsBadgeLabor.textContent = "Laboral pendiente";
+  formRefsBadgeFam.textContent = "Familiar pendiente";
+  formRefsBadgeWrap.appendChild(formRefsBadgeLabor);
+  formRefsBadgeWrap.appendChild(formRefsBadgeFam);
+  const formRefsCardLabor = new FakeNode("article", { "data-cand-ref-card": "form-laboral" });
+  const formRefsCardFam = new FakeNode("article", { "data-cand-ref-card": "form-familiar" });
+  const formRefsForm = new FakeNode("form", {
+    "data-quick-form": "",
+    "data-endpoint": "/admin/candidatas/990501/referencias-formulario",
+    "data-quick-form-bound": "1",
+  });
+  formRefsForm._formDataFields = { contactos_referencias_laborales: "Texto", referencias_familiares_detalle: "Texto" };
+  const formRefsInputLab = new FakeNode("textarea", { name: "contactos_referencias_laborales" });
+  formRefsInputLab.value = "Texto";
+  const formRefsInputFam = new FakeNode("textarea", { name: "referencias_familiares_detalle" });
+  formRefsInputFam.value = "Texto";
+  const formRefsFeedback = new FakeNode("div", { "data-feedback": "" });
+  formRefsForm.appendChild(formRefsInputLab);
+  formRefsForm.appendChild(formRefsInputFam);
+  formRefsForm.appendChild(formRefsFeedback);
+  formRefs.appendChild(formRefsToggle);
+  formRefs.appendChild(formRefsBadgeWrap);
+  formRefs.appendChild(formRefsDisplay);
+  formRefs.appendChild(formRefsCardLabor);
+  formRefs.appendChild(formRefsCardFam);
+  formRefs.appendChild(formRefsForm);
 
   const inlineShell = new FakeNode("div", { "data-cand-inline-search": "", "data-search-url": "/admin/candidatas/buscar" });
   const inlineInput = new FakeNode("input", {});
@@ -478,6 +523,7 @@ function makeDetailRoot(extraAttrs = {}) {
   root.appendChild(personal);
   root.appendChild(labor);
   root.appendChild(refs);
+  root.appendChild(formRefs);
   root.appendChild(inlineShell);
   root.appendChild(docUpload);
   root.appendChild(batchOpen);
@@ -498,10 +544,26 @@ function makeDetailRoot(extraAttrs = {}) {
     laborToggle,
     laborDisplay,
     laborForm,
+    laborInputModalidad,
+    laborInputRutas,
+    laborInputInicio,
+    laborFeedback,
     refs,
     refsToggle,
     refsDisplay,
     refsForm,
+    formRefs,
+    formRefsToggle,
+    formRefsDisplay,
+    formRefsBadgeWrap,
+    formRefsBadgeLabor,
+    formRefsBadgeFam,
+    formRefsCardLabor,
+    formRefsCardFam,
+    formRefsForm,
+    formRefsInputLab,
+    formRefsInputFam,
+    formRefsFeedback,
     inlineShell,
     inlineInput,
     docUpload,
@@ -676,6 +738,88 @@ async function runScenario(name) {
           cedula2: "Cédula reverso",
         },
         updated_fields: ["depuracion", "perfil"],
+      },
+    }];
+  } else if (name === "labor_save_updates_only_labor") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "Guardado.",
+        changes: {
+          modalidad_trabajo_preferida: { from: "Con dormida", to: "Salida diaria" },
+        },
+        display: {
+          labor: {
+            "Modalidad preferida": "Salida diaria",
+            "Rutas": "Ruta A",
+            "Disponibilidad/inicio": "inmediata",
+          },
+        },
+        values: {
+          labor: {
+            modalidad: "Salida diaria",
+            rutas: "Ruta A",
+            disponibilidad_inicio: "inmediata",
+          },
+        },
+      },
+    }];
+  } else if (name === "form_references_save_updates_only_region") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "Referencias actualizadas.",
+        changes: {
+          contactos_referencias_laborales: { from: "Texto viejo", to: "FORM-NEW-LAB" },
+          referencias_familiares_detalle: { from: "Texto viejo", to: "FORM-NEW-FAM" },
+        },
+        display: {
+          references: {
+            laboral: "FORM-NEW-LAB",
+            familiar: "FORM-NEW-FAM",
+            laboral_full: "FORM-NEW-LAB",
+            familiar_full: "FORM-NEW-FAM",
+          },
+        },
+        values: {
+          form_references: {
+            contactos_referencias_laborales: "FORM-NEW-LAB",
+            referencias_familiares_detalle: "FORM-NEW-FAM",
+          },
+        },
+        references_summary: {
+          laboral: true,
+          familiar: true,
+        },
+        readiness: {
+          ready: true,
+          completed: 8,
+          total: 8,
+          label: "8/8",
+          flags: {
+            codigo: true,
+            inscripcion: true,
+            referencias_laboral: true,
+            referencias_familiares: true,
+            entrevista: true,
+            depuracion: true,
+            perfil: true,
+            cedula1: true,
+            cedula2: true,
+          },
+          labels: {},
+          reasons: [],
+        },
+        state_capabilities: {
+          process: { label: "Inscripción completa" },
+          preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+          situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+          assignment: { solicitud: null },
+          actions: { can_mark_ready: false, can_mark_working: false, can_disqualify: true, can_reactivate: false },
+          reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+        },
       },
     }];
   } else if (name === "doc_upload_success_updates_only_documents") {
@@ -927,6 +1071,127 @@ async function runScenario(name) {
     };
   }
 
+  if (name === "labor_save_updates_only_labor") {
+    const submitEvent = new FakeEvent("submit", { target: first.laborForm });
+    submitEvent.submitter = null;
+    first.laborForm._formDataFields = {
+      modalidad: "Salida diaria",
+      rutas: "Ruta A",
+      disponibilidad_inicio: "inmediata",
+    };
+    first.laborForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = first.laborForm.querySelector("[data-feedback]").textContent;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "Guardado.",
+      changes: {
+        modalidad_trabajo_preferida: { from: "Con dormida", to: "Salida diaria" },
+      },
+      display: {
+        labor: {
+          "Modalidad preferida": "Salida diaria",
+          "Rutas": "Ruta A",
+          "Disponibilidad/inicio": "inmediata",
+        },
+      },
+      values: {
+        labor: {
+          modalidad: "Salida diaria",
+          rutas: "Ruta A",
+          disponibilidad_inicio: "inmediata",
+        },
+      },
+    });
+    await wait();
+    await wait();
+    await wait();
+    return {
+      fetches: env.fetchMock.calls.length,
+      firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      feedbackDuringSave,
+      feedback: first.laborForm.querySelector("[data-feedback]").textContent,
+      laborDisplay: first.laborDisplay.textContent,
+      laborDisplayChildCount: first.laborDisplay.children.length,
+      personalDisplay: first.personalDisplay.textContent,
+      laborModalidad: first.laborForm.querySelector('[name="modalidad"]').value,
+      laborRutas: first.laborForm.querySelector('[name="rutas"]').value,
+      laborBusy: first.laborForm.dataset.quickBusy || "",
+    };
+  }
+
+  if (name === "form_references_save_updates_only_region") {
+    const submitEvent = new FakeEvent("submit", { target: first.formRefsForm });
+    submitEvent.submitter = null;
+    first.formRefsForm._formDataFields = {
+      contactos_referencias_laborales: "FORM-NEW-LAB",
+      referencias_familiares_detalle: "FORM-NEW-FAM",
+    };
+    first.formRefsForm.dispatchEvent(submitEvent);
+    const feedbackDuringSave = first.formRefsForm.querySelector("[data-feedback]").textContent;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "Referencias actualizadas.",
+      changes: {
+        contactos_referencias_laborales: { from: "Texto viejo", to: "FORM-NEW-LAB" },
+        referencias_familiares_detalle: { from: "Texto viejo", to: "FORM-NEW-FAM" },
+      },
+      display: {
+        references: {
+          laboral: "FORM-NEW-LAB",
+          familiar: "FORM-NEW-FAM",
+          laboral_full: "FORM-NEW-LAB",
+          familiar_full: "FORM-NEW-FAM",
+        },
+      },
+      values: {
+        form_references: {
+          contactos_referencias_laborales: "FORM-NEW-LAB",
+          referencias_familiares_detalle: "FORM-NEW-FAM",
+        },
+      },
+      references_summary: {
+        laboral: true,
+        familiar: true,
+      },
+      readiness: {
+        ready: true,
+        completed: 8,
+        total: 8,
+        label: "8/8",
+        flags: {},
+        labels: {},
+        reasons: [],
+      },
+      state_capabilities: {
+        process: { label: "Inscripción completa" },
+        preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+        situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+        assignment: { solicitud: null },
+        actions: { can_mark_ready: false, can_mark_working: false, can_disqualify: true, can_reactivate: false },
+        reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+      },
+    });
+    await wait();
+    await wait();
+    await wait();
+    return {
+      fetches: env.fetchMock.calls.length,
+      firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      feedbackDuringSave,
+      feedback: first.formRefsForm.querySelector("[data-feedback]").textContent,
+      refsDisplay: first.formRefsDisplay.textContent,
+      personalDisplay: first.personalDisplay.textContent,
+      laborDisplay: first.laborDisplay.textContent,
+      refsBadgeLabor: first.formRefsBadgeLabor.textContent,
+      refsBadgeFam: first.formRefsBadgeFam.textContent,
+      refsBadgeLaborClass: first.formRefsBadgeLabor.className,
+      refsBadgeFamClass: first.formRefsBadgeFam.className,
+      refsLabValue: first.formRefsForm.querySelector('[name="contactos_referencias_laborales"]').value,
+      refsFamValue: first.formRefsForm.querySelector('[name="referencias_familiares_detalle"]').value,
+      refsBusy: first.formRefsForm.dataset.quickBusy || "",
+    };
+  }
+
   if (name === "batch_modal_error_keeps_open") {
     first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
     const input = first.batchForm.querySelector('[data-doc-batch-input="perfil"]');
@@ -1074,6 +1339,37 @@ def test_candidate_detail_runtime_document_upload_success_updates_only_documents
     assert data["personalDisplay"] == "PERSONAL-ORIGINAL"
     assert data["laborDisplay"] == "LABOR-ORIGINAL"
     assert data["quickBusy"] == ""
+
+
+def test_candidate_detail_runtime_labor_save_updates_only_labor():
+    data = _run_node_case("labor_save_updates_only_labor")
+    assert data["fetches"] == 1
+    assert data["firstUrl"] == "/admin/candidatas/990501/datos-laborales"
+    assert "Guardando..." in data["feedbackDuringSave"]
+    assert "Guardado" in data["feedback"]
+    assert data["laborDisplayChildCount"] > 0
+    assert data["personalDisplay"] == "PERSONAL-ORIGINAL"
+    assert data["laborModalidad"] == "Salida diaria"
+    assert data["laborRutas"] == "Ruta A"
+    assert data["laborBusy"] == ""
+
+
+def test_candidate_detail_runtime_referencias_formulario_updates_only_region():
+    data = _run_node_case("form_references_save_updates_only_region")
+    assert data["fetches"] == 1
+    assert data["firstUrl"] == "/admin/candidatas/990501/referencias-formulario"
+    assert "Guardando..." in data["feedbackDuringSave"]
+    assert "Referencias actualizadas" in data["feedback"]
+    assert "FORM-NEW-LAB" in data["refsDisplay"]
+    assert data["personalDisplay"] == "PERSONAL-ORIGINAL"
+    assert data["laborDisplay"] == "LABOR-ORIGINAL"
+    assert data["refsBadgeLabor"] == "Laboral ✓"
+    assert data["refsBadgeFam"] == "Familiar ✓"
+    assert "text-bg-success" in data["refsBadgeLaborClass"]
+    assert "text-bg-success" in data["refsBadgeFamClass"]
+    assert data["refsLabValue"] == "FORM-NEW-LAB"
+    assert data["refsFamValue"] == "FORM-NEW-FAM"
+    assert data["refsBusy"] == ""
 
 
 def test_candidate_detail_runtime_batch_modal_error_keeps_open():
