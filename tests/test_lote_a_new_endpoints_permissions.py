@@ -22,6 +22,20 @@ def _mark_cliente_session(client):
         sess["logged_at"] = "2026-05-05T10:00:00"
 
 
+@pytest.fixture(autouse=True)
+def _enable_solicitudes_bandeja_feature():
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    new_flags = dict(previous_flags)
+    new_flags["solicitudes_bandeja"] = True
+    flask_app.config["FEATURE_FLAGS"] = new_flags
+    flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(previous_flags.get("solicitudes_bandeja", False))
+
+
 def _pick_solicitud_id_for(client):
     resp = client.get("/admin/solicitudes", follow_redirects=False)
     if resp.status_code != 200:

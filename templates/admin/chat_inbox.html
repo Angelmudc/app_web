@@ -37,7 +37,9 @@
       <p class="mb-0 text-muted small">Concentrador operativo para atender, coordinar y cerrar conversaciones con clientes.</p>
     </div>
     <div class="admin-chat-page-actions">
+      {% if feature_enabled('solicitudes_bandeja') %}
       <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary btn-sm">Volver a bandeja</a>
+      {% endif %}
       {% if feature_enabled('tareas_seguimiento') %}
       <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-outline-secondary btn-sm">Trabajo del día</a>
       {% endif %}

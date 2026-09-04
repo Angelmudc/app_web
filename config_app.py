@@ -605,6 +605,8 @@ def create_app():
         "candidatas_dashboard": _is_true(os.getenv("FEATURE_CANDIDATAS_DASHBOARD", "0")),
         "reemplazos_panel": _is_true(os.getenv("FEATURE_REEMPLAZOS_PANEL", "0")),
         "tareas_seguimiento": _is_true(os.getenv("FEATURE_TAREAS_SEGUIMIENTO", "0")),
+        "solicitudes_bandeja": _is_true(os.getenv("FEATURE_SOLICITUDES_BANDEJA", "0")),
+        "solicitudes_prioridad": _is_true(os.getenv("FEATURE_SOLICITUDES_PRIORIDAD", "0")),
     }
     app.config["FEATURE_FLAGS"] = feature_flags
     for feature_name, is_enabled in feature_flags.items():

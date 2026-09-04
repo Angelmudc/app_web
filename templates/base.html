@@ -353,7 +353,7 @@
 
           {# ================= Admin: Solicitudes / Reportes / Registro Interno ================= #}
 
-          {% if has_endpoint('admin.listar_solicitudes') %}
+          {% if feature_enabled('solicitudes_bandeja') and has_endpoint('admin.listar_solicitudes') %}
           <li class="nav-item">
             <a class="nav-link {% if request.endpoint=='admin.listar_solicitudes' %}active{% endif %}"
                href="{{ url_for('admin.listar_solicitudes') }}">Solicitudes</a>

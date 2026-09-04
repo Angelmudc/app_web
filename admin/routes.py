@@ -18014,6 +18014,7 @@ def _solicitudes_prioridad_context(*, include_rows: bool = True, include_filter_
 @login_required
 @admin_required
 def solicitudes_prioridad():
+    _feature_disabled_404("solicitudes_prioridad")
     with _p1c1_perf_scope("solicitudes_prioridad") as perf_done:
         list_ctx = _solicitudes_prioridad_context()
         if _admin_async_wants_json():
@@ -18057,6 +18058,7 @@ def solicitudes_prioridad():
 @login_required
 @admin_required
 def solicitudes_prioridad_summary_fragment():
+    _feature_disabled_404("solicitudes_prioridad")
     with _p1c1_perf_scope("solicitudes_prioridad_summary_fragment") as perf_done:
         list_ctx = _solicitudes_prioridad_context(include_rows=False, include_filter_options=False)
         html = render_template('admin/_solicitudes_prioridad_summary_region.html', **list_ctx)
@@ -18070,6 +18072,7 @@ def solicitudes_prioridad_summary_fragment():
 @login_required
 @admin_required
 def solicitudes_prioridad_responsables_fragment():
+    _feature_disabled_404("solicitudes_prioridad")
     with _p1c1_perf_scope("solicitudes_prioridad_responsables_fragment") as perf_done:
         list_ctx = _solicitudes_prioridad_context(include_rows=False, include_filter_options=False)
         html = render_template('admin/_solicitudes_prioridad_responsables_region.html', **list_ctx)
@@ -18181,6 +18184,7 @@ def api_candidatas():
 @login_required
 @staff_required
 def listar_solicitudes():
+    _feature_disabled_404("solicitudes_bandeja")
     with _p1c1_perf_scope("solicitudes_list") as perf_done:
         measure_enabled = _admin_solicitudes_measurement_enabled()
         if measure_enabled:
@@ -18664,6 +18668,7 @@ def listar_solicitudes():
 @login_required
 @staff_required
 def solicitudes_summary_fragment():
+    _feature_disabled_404("solicitudes_bandeja")
     with _p1c1_perf_scope("solicitudes_summary_fragment") as perf_done:
         proc_count, copiable_count, _warning = _solicitudes_summary_counts()
         html = render_template(
@@ -18681,6 +18686,7 @@ def solicitudes_summary_fragment():
 @login_required
 @staff_required
 def solicitud_quick_view_fragment(id: int):
+    _feature_disabled_404("solicitudes_bandeja")
     with _p1c1_perf_scope("solicitud_quick_view_fragment") as perf_done:
         load_cols = [
             Solicitud.id,

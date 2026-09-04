@@ -59,12 +59,16 @@ def test_feature_flags_default_paused_routes_and_navigation():
     assert "Test de compatibilidad" not in html
     assert "Decisiones" not in html
     assert "Perfiles públicos" not in html
+    assert 'href="/admin/solicitudes"' not in html
+    assert 'href="/admin/solicitudes/prioridad"' not in html
 
     assert client.get("/finalizar_proceso/buscar", follow_redirects=False).status_code == 404
     assert client.get("/candidatas/llamadas", follow_redirects=False).status_code == 404
     assert client.get("/secretarias/compat/candidata", follow_redirects=False).status_code == 404
     assert client.get("/admin/matching/inteligente", follow_redirects=False).status_code == 404
     assert client.get("/admin/candidatas-web", follow_redirects=False).status_code == 404
+    assert client.get("/admin/solicitudes", follow_redirects=False).status_code == 404
+    assert client.get("/admin/solicitudes/prioridad", follow_redirects=False).status_code == 404
 
 
 def test_feature_flags_default_paused_candidatas_dashboard_and_reenable():
@@ -102,6 +106,34 @@ def test_feature_flags_default_paused_candidatas_dashboard_and_reenable():
     finally:
         flask_app.config["FEATURE_FLAGS"] = old_flags
         flask_app.config["FEATURE_CANDIDATAS_DASHBOARD"] = bool(old_flags.get("candidatas_dashboard", False))
+
+
+def test_feature_flags_can_reenable_solicitudes_bandeja_and_prioridad_temporarily():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_home_tables()
+
+    old_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    try:
+        new_flags = dict(old_flags)
+        new_flags["solicitudes_bandeja"] = True
+        new_flags["solicitudes_prioridad"] = True
+        flask_app.config["FEATURE_FLAGS"] = new_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
+        flask_app.config["FEATURE_SOLICITUDES_PRIORIDAD"] = True
+
+        with flask_app.app_context():
+            assert feature_enabled("solicitudes_bandeja") is True
+            assert feature_enabled("solicitudes_prioridad") is True
+
+        client = flask_app.test_client()
+        assert _login(client, "Owner", "admin123").status_code in (302, 303)
+        assert client.get("/admin/solicitudes", follow_redirects=False).status_code == 200
+        assert client.get("/admin/solicitudes/prioridad", follow_redirects=False).status_code == 200
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = old_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(old_flags.get("solicitudes_bandeja", False))
+        flask_app.config["FEATURE_SOLICITUDES_PRIORIDAD"] = bool(old_flags.get("solicitudes_prioridad", False))
 
 
 def test_feature_flag_can_reenable_finalizar_proceso_temporarily():

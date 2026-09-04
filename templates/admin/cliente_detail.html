@@ -16,7 +16,9 @@
      data-live-observability-url="{{ url_for('admin.live_observability_ingest') }}">
   <div class="page-stack">
     <div class="d-none" aria-hidden="true">
+      {% if feature_enabled('solicitudes_bandeja') %}
       <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja operativa</a>
+      {% endif %}
     </div>
 
     <section class="page-header">

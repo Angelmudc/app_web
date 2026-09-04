@@ -30,6 +30,7 @@
         <small>Flujo operativo de solicitudes</small>
       </span>
     </a>
+    {% if feature_enabled('solicitudes_bandeja') %}
     <a href="{{ url_for('admin.listar_solicitudes') }}" class="clientes-quick-card">
       <span class="clientes-quick-icon"><i class="fa-solid fa-table-list"></i></span>
       <span class="clientes-quick-copy">
@@ -37,6 +38,7 @@
         <small>Panel general de solicitudes</small>
       </span>
     </a>
+    {% endif %}
     {% if feature_enabled('reemplazos_panel') %}
     <a href="{{ url_for('admin.reemplazos_dashboard') }}" class="clientes-quick-card">
       <span class="clientes-quick-icon"><i class="fa-solid fa-arrow-rotate-right"></i></span>
@@ -90,6 +92,7 @@
         <small>Acciones de proceso urgentes</small>
       </span>
     </a>
+    {% if feature_enabled('solicitudes_prioridad') %}
     <a href="{{ url_for('admin.solicitudes_prioridad') }}" class="clientes-quick-card">
       <span class="clientes-quick-icon"><i class="fa-solid fa-triangle-exclamation"></i></span>
       <span class="clientes-quick-copy">
@@ -97,6 +100,7 @@
         <small>Solicitudes por prioridad</small>
       </span>
     </a>
+    {% endif %}
     {% if feature_enabled('tareas_seguimiento') and has_endpoint('admin.seguimiento_candidatas_cola') %}
     <a href="{{ url_for('admin.seguimiento_candidatas_cola') }}" class="clientes-quick-card">
       <span class="clientes-quick-icon"><i class="fa-solid fa-route"></i></span>

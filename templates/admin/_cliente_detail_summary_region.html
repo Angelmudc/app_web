@@ -1,6 +1,8 @@
 <section class="detail-section mb-4" aria-label="Información general del cliente">
   <div class="d-none" aria-hidden="true">
+    {% if feature_enabled('solicitudes_bandeja') %}
     <a href="{{ url_for('admin.listar_solicitudes') }}" data-admin-nav="true" tabindex="-1">Bandeja de solicitudes</a>
+    {% endif %}
   </div>
   <div class="detail-section__header">
     <div>

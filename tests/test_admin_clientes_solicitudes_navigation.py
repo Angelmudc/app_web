@@ -112,9 +112,9 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
         self.assertIn('href="/admin/solicitudes/copiar"', html)
-        self.assertIn('href="/admin/solicitudes"', html)
+        self.assertNotIn('href="/admin/solicitudes"', html)
+        self.assertNotIn('href="/admin/solicitudes/prioridad"', html)
         self.assertIn('href="/admin/solicitudes/proceso/acciones"', html)
-        self.assertIn('href="/admin/solicitudes/prioridad"', html)
         self.assertIn('href="/admin/clientes/resumen_diario"', html)
         self.assertIn('href="/admin/solicitudes/nueva-publica/link"', html)
 
@@ -134,13 +134,23 @@ class AdminClientesSolicitudesNavigationTest(unittest.TestCase):
             rutas_cercanas="Monumental",
         )
 
-        with flask_app.app_context():
-            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])):
-                resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+        previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+        try:
+            new_flags = dict(previous_flags)
+            new_flags["solicitudes_bandeja"] = True
+            flask_app.config["FEATURE_FLAGS"] = new_flags
+            flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
+
+            with flask_app.app_context():
+                with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])):
+                    resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+        finally:
+            flask_app.config["FEATURE_FLAGS"] = previous_flags
+            flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(previous_flags.get("solicitudes_bandeja", False))
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("Panel de Solicitudes", html)
+        self.assertIn("Bandeja de solicitudes", html)
         self.assertIn("SOL-010", html)
         self.assertIn('href="/admin/solicitudes/copiar"', html)
         self.assertIn('action="/admin/chat/open"', html)

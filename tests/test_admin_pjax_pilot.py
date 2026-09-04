@@ -377,9 +377,19 @@ class AdminPjaxPilotTest(unittest.TestCase):
 
     def test_ssr_clasico_de_solicitudes_permanece_intacto(self):
         rows = [_solicitud_stub(sol_id=10, cliente_id=7)]
-        with flask_app.app_context():
-            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
-                resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+        previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+        try:
+            new_flags = dict(previous_flags)
+            new_flags["solicitudes_bandeja"] = True
+            flask_app.config["FEATURE_FLAGS"] = new_flags
+            flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
+
+            with flask_app.app_context():
+                with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(rows)):
+                    resp = self.client.get("/admin/solicitudes", follow_redirects=False)
+        finally:
+            flask_app.config["FEATURE_FLAGS"] = previous_flags
+            flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(previous_flags.get("solicitudes_bandeja", False))
 
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)

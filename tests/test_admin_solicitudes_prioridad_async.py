@@ -125,6 +125,10 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         flask_app.config["WTF_CSRF_ENABLED"] = False
         self._previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
         flask_app.config.setdefault("FEATURE_FLAGS", {})["tareas_seguimiento"] = True
+        flask_app.config["FEATURE_FLAGS"]["solicitudes_bandeja"] = True
+        flask_app.config["FEATURE_FLAGS"]["solicitudes_prioridad"] = True
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
+        flask_app.config["FEATURE_SOLICITUDES_PRIORIDAD"] = True
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
         login = self.client.post("/admin/login", data={"usuario": "Owner", "clave": "admin123"}, follow_redirects=False)
@@ -132,6 +136,8 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
 
     def tearDown(self):
         flask_app.config["FEATURE_FLAGS"] = self._previous_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(self._previous_flags.get("solicitudes_bandeja", False))
+        flask_app.config["FEATURE_SOLICITUDES_PRIORIDAD"] = bool(self._previous_flags.get("solicitudes_prioridad", False))
 
     def _async_headers(self):
         return {
@@ -239,7 +245,7 @@ class AdminSolicitudesPrioridadAsyncTest(unittest.TestCase):
         self.assertIn("La solicitud aún no está en operación activa.", html)
         self.assertIn("Lleva demasiados días activa sin cierre.", html)
         self.assertIn("El reemplazo ya cruza umbral urgente/crítico.", html)
-        self.assertIn("Proceso finalizado sin acción operativa pendiente.", html)
+        self.assertIn("Solicitud pagada con necesidad operativa de reemplazo.", html)
         self.assertIn("data-testid=\"followup-today-badge\"", html)
 
     def test_badge_hoy_aparece_solo_cuando_requiere_seguimiento(self):

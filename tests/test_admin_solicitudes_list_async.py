@@ -142,10 +142,19 @@ class AdminSolicitudesListAsyncTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
+        self._previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+        new_flags = dict(self._previous_flags)
+        new_flags["solicitudes_bandeja"] = True
+        flask_app.config["FEATURE_FLAGS"] = new_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = True
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
         login = self.client.post("/admin/login", data={"usuario": "Karla", "clave": "9989"}, follow_redirects=False)
         self.assertIn(login.status_code, (302, 303))
+
+    def tearDown(self):
+        flask_app.config["FEATURE_FLAGS"] = self._previous_flags
+        flask_app.config["FEATURE_SOLICITUDES_BANDEJA"] = bool(self._previous_flags.get("solicitudes_bandeja", False))
 
     def _async_headers(self):
         return {

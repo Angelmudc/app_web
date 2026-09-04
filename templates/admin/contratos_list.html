@@ -9,7 +9,9 @@
       <div class="text-muted small">Listado operativo con filtros por estado</div>
     </div>
     <div class="d-flex gap-2">
+      {% if feature_enabled('solicitudes_bandeja') %}
       <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">Solicitudes</a>
+      {% endif %}
     </div>
   </div>
 

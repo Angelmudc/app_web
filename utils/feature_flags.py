@@ -12,6 +12,8 @@ FEATURE_NAMES = (
     "candidatas_dashboard",
     "reemplazos_panel",
     "tareas_seguimiento",
+    "solicitudes_bandeja",
+    "solicitudes_prioridad",
 )
 
 
