@@ -23409,7 +23409,7 @@ def _candidata_center_legacy_urls(fila: int) -> dict:
             for key in _CANDIDATA_CENTER_INTERVIEW_TYPE_LABELS
         },
         "documents": url_for("admin.candidatas_operativo_documentos", fila=fila),
-        "upload_documents": url_for("subir_fotos.subir_fotos", accion="subir", fila=fila, next=next_url),
+        "upload_documents": url_for("admin.candidatas_operativo_detail", fila=fila) + "#documentos",
         "finalize": url_for("finalizar_proceso", fila=fila, next=next_url),
         "inscription": url_for("inscripcion", candidata_seleccionada=fila),
         "tracking": url_for("admin.seguimiento_candidatas_cola"),
@@ -24418,7 +24418,7 @@ def candidatas_operativo_documentos(fila: int):
                 "available": available,
                 "view_url": url_for("subir_fotos.ver_imagen", fila=int(fila), campo=key),
                 "download_url": url_for("descargar_uno_db", id=int(fila), doc=key),
-                "replace_url": url_for("subir_fotos.subir_fotos", accion="subir", fila=int(fila), next=next_url) + f"#{key}",
+                "replace_url": url_for("admin.candidatas_operativo_detail", fila=int(fila)) + "#documentos",
             }
         )
     return render_template(
@@ -25164,21 +25164,21 @@ def _siguiente_paso_finalizacion(
         return {
             "label": "subir depuración",
             "accion_label": "Subir depuración",
-            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "url": url_for("admin.candidatas_operativo_detail", fila=candidata_id) + "#documentos",
             "method": "get",
         }
     if "perfil" in faltantes_set:
         return {
             "label": "subir perfil",
             "accion_label": "Subir perfil",
-            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "url": url_for("admin.candidatas_operativo_detail", fila=candidata_id) + "#documentos",
             "method": "get",
         }
     if faltantes_set.intersection({"cedula1", "cedula2"}):
         return {
             "label": "subir cédulas",
             "accion_label": "Subir cédulas",
-            "url": url_for("subir_fotos.subir_fotos", accion="subir", fila=candidata_id),
+            "url": url_for("admin.candidatas_operativo_detail", fila=candidata_id) + "#documentos",
             "method": "get",
         }
     if ready_real and estado_actual != "lista_para_trabajar":

@@ -952,8 +952,8 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     assert "Buscar por nombre" not in html
     assert "/subir_fotos/imagen/990512/perfil" in html
     assert "/gestionar_archivos/descargar_uno?id=990512&amp;doc=perfil" in html
-    assert "/subir_fotos?accion=subir&amp;fila=990512&amp;next=/admin/candidatas/990512#perfil" in html
-    assert "/subir_fotos?accion=subir&amp;fila=990512&amp;next=/admin/candidatas/990512#cedula2" in html
+    assert "/subir_fotos?accion=subir" not in html
+    assert "/admin/candidatas/990512#documentos" in html
     assert "Pendiente" in html
     assert "perfil-binary-not-html" not in html
 
@@ -962,6 +962,7 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     detail_html = detail_resp.get_data(as_text=True)
     assert "Subir varios documentos" in detail_html
     assert "/admin/candidatas/990512/documentos/batch" in detail_html
+    assert "Subir Fotos" not in detail_html
 
     with flask_app.app_context():
         db.session.expire_all()

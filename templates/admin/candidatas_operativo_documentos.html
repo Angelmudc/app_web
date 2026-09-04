@@ -50,9 +50,9 @@
             {% if doc.available %}
               <a class="btn btn-outline-primary btn-sm" href="{{ doc.view_url }}" target="_blank" rel="noopener">Ver</a>
               <a class="btn btn-outline-secondary btn-sm" href="{{ doc.download_url }}">Descargar</a>
-              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Reemplazar documento</a>
+              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Editar en ficha</a>
             {% else %}
-              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Subir</a>
+              <a class="btn btn-primary btn-sm" href="{{ doc.replace_url }}">Subir en ficha</a>
             {% endif %}
           </div>
         </div>
