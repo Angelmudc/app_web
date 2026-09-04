@@ -8,6 +8,7 @@
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <form class="modal-content"
           data-doc-batch-form
+          data-no-loader="true"
           data-max-bytes="{{ upload_max_file_bytes or 3145728 }}"
           data-endpoint="{{ batch_endpoint_url }}">
       <div class="modal-header">

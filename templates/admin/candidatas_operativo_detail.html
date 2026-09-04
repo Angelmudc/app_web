@@ -807,9 +807,10 @@
       <div class="cand-doc-quick-list mt-3">
         {% for key, label in doc_labels.items() %}
           {% set ok = doc_flags.get(key) %}
-          <form class="cand-doc-quick-row{% if ok %} is-available{% endif %}"
+            <form class="cand-doc-quick-row{% if ok %} is-available{% endif %}"
                 data-quick-form
                 data-doc-upload-form
+                data-no-loader="true"
                 data-doc-key="{{ key }}"
                 data-endpoint="{{ url_for('admin.candidatas_operativo_documentos_subir', fila=candidata.fila, campo=key) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

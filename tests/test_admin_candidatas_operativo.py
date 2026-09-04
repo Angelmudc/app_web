@@ -977,6 +977,8 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     assert "data-doc-batch-modal-slot" in detail_html
     assert 'id="docBatchModal"' not in detail_html
     assert "data-doc-batch-form" not in detail_html
+    assert "data-doc-upload-form" in detail_html
+    assert 'data-no-loader="true"' in detail_html
     assert "Subir Fotos" not in detail_html
 
     batch_modal_resp = client.get("/admin/candidatas/990512/_documentos-batch-modal", follow_redirects=False)
@@ -984,6 +986,7 @@ def test_admin_candidata_documentos_dedicados_sin_busqueda_y_sin_blobs():
     batch_modal_html = batch_modal_resp.get_data(as_text=True)
     assert "data-doc-batch-modal" in batch_modal_html
     assert "data-doc-batch-form" in batch_modal_html
+    assert 'data-no-loader="true"' in batch_modal_html
     assert "/admin/candidatas/990512/documentos/batch" in batch_modal_html
     assert "perfil" in batch_modal_html
 
@@ -1954,11 +1957,16 @@ def test_admin_candidata_pdf_entrevista_historica_usa_solo_legacy_y_respeta_perm
 
 def test_admin_candidatas_operativo_async_forms_limpian_loader_y_bloquean_doble_submit():
     template = Path("templates/admin/candidatas_operativo_detail.html").read_text(encoding="utf-8")
+    batch_modal_template = Path("templates/admin/_candidata_operativo_documentos_batch_modal_fragment.html").read_text(encoding="utf-8")
     js = Path("static/js/admin/candidatas_operativo_detail_ui.js").read_text(encoding="utf-8")
 
     assert 'data-quick-form data-no-loader="true"' in template
     assert 'data-state-action data-no-loader="true"' in template
+    assert "data-doc-upload-form" in template
+    assert 'data-no-loader="true"' in template
     assert 'type="submit" data-no-loader="true"' in template
+    assert "data-doc-batch-form" in batch_modal_template
+    assert 'data-no-loader="true"' in batch_modal_template
     assert "function clearGlobalLoaders()" in js
     assert "function setFormBusy(form, isBusy, submitter)" in js
     assert 'if (form.dataset.quickBusy === "1") return;' in js
