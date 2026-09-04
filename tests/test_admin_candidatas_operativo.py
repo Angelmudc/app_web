@@ -1666,9 +1666,9 @@ def test_admin_candidatas_operativo_index_simplifica_paneles_sin_perder_busqueda
     normal = client.get("/admin/candidatas?filtro=todas&page=1", follow_redirects=False)
     normal_html = normal.get_data(as_text=True)
     assert normal.status_code == 200
-    assert "<h2>Pendientes</h2>" in normal_html
-    assert "<h2>Atender ahora</h2>" in normal_html
     assert "Limpiar búsqueda" not in normal_html
+    assert "cand-attention-kpis" not in normal_html
+    assert "candPriorityCriteria" not in normal_html
 
     resp = client.get("/admin/candidatas?q=Dashboard&filtro=todas&page=1", follow_redirects=False)
     html = resp.get_data(as_text=True)
@@ -1690,6 +1690,14 @@ def test_admin_candidatas_operativo_index_simplifica_paneles_sin_perder_busqueda
     assert "Limpiar búsqueda" in html
     assert 'placeholder="Nombre, teléfono, cédula o código"' in html
     assert "Falta" in html
+
+    with _feature_flag("candidatas_dashboard", True):
+        on_resp = client.get("/admin/candidatas?filtro=todas&page=1", follow_redirects=False)
+    assert on_resp.status_code == 200
+    on_html = on_resp.get_data(as_text=True)
+    assert "<h2>Pendientes</h2>" in on_html
+    assert "<h2>Atender ahora</h2>" in on_html
+    assert "cand-attention-kpis" in on_html
 
 
 def test_admin_candidatas_descalificadas_no_es_principal_para_secretaria():

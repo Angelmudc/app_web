@@ -9,6 +9,7 @@ FEATURE_NAMES = (
     "compat",
     "matching",
     "candidatas_web",
+    "candidatas_dashboard",
 )
 
 

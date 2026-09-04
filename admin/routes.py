@@ -24317,8 +24317,11 @@ def candidatas_operativo_index():
         chip = "todas"
     page = _safe_int(request.args.get("page"), default=1)
     listing = _candidata_center_listing_rows(q, chip, page, request.args)
-    counts = _candidata_center_queue_counts()
-    dashboard = None if q else _candidata_center_dashboard_summary(counts)
+    dashboard_enabled = feature_enabled("candidatas_dashboard")
+    counts = _candidata_center_queue_counts() if dashboard_enabled else {}
+    dashboard = None
+    if dashboard_enabled and not q:
+        dashboard = _candidata_center_dashboard_summary(counts)
     page_args = request.args.to_dict()
     page_args.pop("page", None)
     return render_template(

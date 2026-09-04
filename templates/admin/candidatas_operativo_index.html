@@ -44,56 +44,58 @@
       {% endif %}
     </div>
   {% else %}
-    <section class="cand-section">
-      <div class="cand-section-heading">
-        <h2>Pendientes</h2>
-        <div class="small cand-muted">Solo tareas que requieren acción inmediata.</div>
-      </div>
-      <div class="cand-panel">
-        <div class="cand-attention-kpis">
-          {% for kpi in dashboard.attention_kpis %}
-            <a class="cand-kpi cand-kpi-{{ kpi.tone }}" href="{{ kpi.url }}">
-              <span>{{ kpi.label }}</span>
-              <strong>{{ kpi.count }}</strong>
-            </a>
-          {% endfor %}
+    {% if dashboard %}
+      <section class="cand-section">
+        <div class="cand-section-heading">
+          <h2>Pendientes</h2>
+          <div class="small cand-muted">Solo tareas que requieren acción inmediata.</div>
         </div>
-      </div>
-    </section>
-
-    <section class="cand-section">
-      <div class="cand-section-heading">
-        <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
-          <div>
-            <h2>Atender ahora</h2>
-            <div class="small cand-muted">Sigue la prioridad operativa ya calculada por el sistema.</div>
-          </div>
-          <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#candPriorityCriteria">Criterio</button>
-        </div>
-      </div>
-      <div class="cand-panel cand-panel-compact">
-        <div class="collapse mb-2" id="candPriorityCriteria">
-          <div class="small cand-muted">{{ dashboard.priority_explanation }}</div>
-        </div>
-        {% if dashboard.priority_items %}
-          <div class="cand-priority-list">
-            {% for item in dashboard.priority_items %}
-              <div class="cand-priority-item">
-                <div class="min-w-0">
-                  <a class="fw-semibold cand-row-link" href="{{ item.detail_url }}">{{ item.nombre }}</a>
-                  <div class="small cand-muted">
-                    <strong>Motivo:</strong> {{ item.title }}{% if item.detail %} · {{ item.detail }}{% endif %}
-                  </div>
-                </div>
-                <a class="btn btn-sm btn-primary" href="{{ item.action_url or item.detail_url }}">{{ item.action_label or 'Continuar' }}</a>
-              </div>
+        <div class="cand-panel">
+          <div class="cand-attention-kpis">
+            {% for kpi in dashboard.attention_kpis %}
+              <a class="cand-kpi cand-kpi-{{ kpi.tone }}" href="{{ kpi.url }}">
+                <span>{{ kpi.label }}</span>
+                <strong>{{ kpi.count }}</strong>
+              </a>
             {% endfor %}
           </div>
-        {% else %}
-          <div class="alert alert-light border mb-0">No hay candidatas que requieran atención inmediata.</div>
-        {% endif %}
-      </div>
-    </section>
+        </div>
+      </section>
+
+      <section class="cand-section">
+        <div class="cand-section-heading">
+          <div class="d-flex align-items-center justify-content-between gap-2 flex-wrap">
+            <div>
+              <h2>Atender ahora</h2>
+              <div class="small cand-muted">Sigue la prioridad operativa ya calculada por el sistema.</div>
+            </div>
+            <button class="btn btn-sm btn-link px-0" type="button" data-bs-toggle="collapse" data-bs-target="#candPriorityCriteria">Criterio</button>
+          </div>
+        </div>
+        <div class="cand-panel cand-panel-compact">
+          <div class="collapse mb-2" id="candPriorityCriteria">
+            <div class="small cand-muted">{{ dashboard.priority_explanation }}</div>
+          </div>
+          {% if dashboard.priority_items %}
+            <div class="cand-priority-list">
+              {% for item in dashboard.priority_items %}
+                <div class="cand-priority-item">
+                  <div class="min-w-0">
+                    <a class="fw-semibold cand-row-link" href="{{ item.detail_url }}">{{ item.nombre }}</a>
+                    <div class="small cand-muted">
+                      <strong>Motivo:</strong> {{ item.title }}{% if item.detail %} · {{ item.detail }}{% endif %}
+                    </div>
+                  </div>
+                  <a class="btn btn-sm btn-primary" href="{{ item.action_url or item.detail_url }}">{{ item.action_label or 'Continuar' }}</a>
+                </div>
+              {% endfor %}
+            </div>
+          {% else %}
+            <div class="alert alert-light border mb-0">No hay candidatas que requieran atención inmediata.</div>
+          {% endif %}
+        </div>
+      </section>
+    {% endif %}
   {% endif %}
 
   <section class="cand-section">
