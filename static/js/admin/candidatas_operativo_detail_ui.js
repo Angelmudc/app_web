@@ -646,6 +646,15 @@
     if (empty) empty.classList.toggle("d-none", calls.length > 0);
   }
 
+  function applyDocumentUploadPayload(detailRoot, payload) {
+    if (!payload) return;
+    if (payload.header || payload.candidate) syncIdentity(detailRoot, payload);
+    if (Object.prototype.hasOwnProperty.call(payload, "doc_flags")) refreshDocuments(detailRoot, payload);
+    if (Object.prototype.hasOwnProperty.call(payload, "readiness")) refreshReadiness(detailRoot, payload.readiness);
+    if (Object.prototype.hasOwnProperty.call(payload, "state_capabilities")) refreshStateCapabilities(detailRoot, payload);
+    if (Object.prototype.hasOwnProperty.call(payload, "status_badges")) refreshStatusBadges(detailRoot, payload);
+  }
+
   function refreshDocuments(detailRoot, payload) {
     if (!payload || !payload.doc_flags) return;
     const flags = payload.doc_flags || {};
@@ -878,7 +887,7 @@
           setFeedback(form, payload.message || "No se pudo guardar.", false);
           return;
         }
-        applyPayload(root, payload);
+        applyDocumentUploadPayload(root, payload);
         invalidateSnapshots(payload);
         setFeedback(form, payload.message || "Guardado.", true);
         batchClearForm(form);
@@ -1029,7 +1038,11 @@
             setFeedback(form, payload.message || "No se pudo guardar.", false);
             return;
           }
-          applyPayload(root, payload);
+          if (form.closest("[data-doc-upload-form]")) {
+            applyDocumentUploadPayload(root, payload);
+          } else {
+            applyPayload(root, payload);
+          }
           invalidateSnapshots(payload);
           if (form.closest("[data-finance-panel]")) {
             form.reset();

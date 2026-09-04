@@ -1029,6 +1029,16 @@ def test_admin_candidata_documentos_rapidos_suben_reemplazan_y_actualizan_readin
     assert payload["doc_flags"]["depuracion"] is True
     assert payload["readiness"]["flags"]["depuracion"] is True
     assert payload["readiness"]["ready"] is True
+    assert payload["status_badges"]["lista"] is True
+    assert payload["status_badges"]["inscrita"] is True
+    assert payload["doc_labels"]["depuracion"] == "Depuración"
+    assert "audit_logs" not in payload
+    assert "porciento" not in payload
+    assert "porciento_history" not in payload
+    assert "recent_calls" not in payload
+    assert "display" not in payload
+    assert "values" not in payload
+    assert "inscription" not in payload
 
     with flask_app.app_context():
         db.session.expire_all()
@@ -1107,6 +1117,10 @@ def test_admin_candidata_documentos_batch_suben_varios_y_actualizan_estado():
     assert sorted(payload["updated_fields"]) == ["depuracion", "perfil"]
     assert payload["doc_flags"]["depuracion"] is True
     assert payload["doc_flags"]["perfil"] is True
+    assert payload["status_badges"]["inscrita"] is True
+    assert "audit_logs" not in payload
+    assert "porciento" not in payload
+    assert "recent_calls" not in payload
 
     with flask_app.app_context():
         db.session.expire_all()
@@ -1149,6 +1163,11 @@ def test_admin_candidata_documentos_batch_suben_cuatro_y_actualizan_estado():
     assert payload["doc_flags"]["perfil"] is True
     assert payload["doc_flags"]["cedula1"] is True
     assert payload["doc_flags"]["cedula2"] is True
+    assert payload["status_badges"]["inscrita"] is True
+    assert "audit_logs" not in payload
+    assert "porciento_history" not in payload
+    assert "recent_calls" not in payload
+    assert "display" not in payload
 
     with flask_app.app_context():
         db.session.expire_all()

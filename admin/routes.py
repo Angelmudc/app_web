@@ -23417,11 +23417,38 @@ def _candidata_center_legacy_urls(fila: int) -> dict:
     }
 
 
-def _candidata_center_document_upload_response(fila: int, message: str, changes: dict | None = None) -> dict:
-    payload = _candidata_center_response_payload(int(fila), message, changes)
-    ctx = _candidata_center_detail_context(int(fila))
-    payload["doc_flags"] = ctx["doc_flags"]
-    payload["doc_labels"] = ctx["doc_labels"]
+def _candidata_center_document_upload_response(candidata, message: str, changes: dict | None = None, *, updated_fields: list[str] | None = None) -> dict:
+    doc_flags = _candidata_center_doc_flags(candidata)
+    payload = {
+        "ok": True,
+        "message": message,
+        "changes": changes or {},
+        "invalidate_snapshots": ["/admin/candidatas"],
+        "header": {
+            "nombre": candidata.nombre_completo or "",
+            "edad": candidata.edad or "",
+            "telefono": candidata.numero_telefono or "",
+            "codigo": candidata.codigo or "",
+            "estado": candidata.estado or "",
+            "estado_label": _center_state_label(candidata.estado),
+        },
+        "status_badges": {
+            "inscrita": bool(candidata.inscripcion),
+            "lista": str(candidata.estado or "") == "lista_para_trabajar",
+            "trabajando": str(candidata.estado or "") == "trabajando",
+            "descalificada": str(candidata.estado or "") == "descalificada",
+        },
+        "doc_flags": doc_flags,
+        "doc_labels": _CANDIDATA_CENTER_DOC_LABELS,
+    }
+    payload.update(_candidata_center_state_snapshot_payload(
+        candidata,
+        include_readiness=True,
+        include_state_capabilities=True,
+    ))
+    payload.pop("active_assignment", None)
+    if updated_fields:
+        payload["updated_fields"] = list(updated_fields)
     return payload
 
 
@@ -24504,7 +24531,12 @@ def candidatas_operativo_documentos_subir(fila: int, campo: str):
         },
         success=True,
     )
-    return jsonify(_candidata_center_document_upload_response(int(fila), f"{_CANDIDATA_CENTER_DOC_LABELS[field]} actualizado correctamente.", {"documento": field}))
+    return jsonify(_candidata_center_document_upload_response(
+        candidata,
+        f"{_CANDIDATA_CENTER_DOC_LABELS[field]} actualizado correctamente.",
+        {"documento": field},
+        updated_fields=[field],
+    ))
 
 
 @admin_bp.route("/candidatas/<int:fila>/documentos/batch", methods=["POST"])
@@ -24600,11 +24632,11 @@ def candidatas_operativo_documentos_batch(fila: int):
         success=True,
     )
     payload = _candidata_center_document_upload_response(
-        int(fila),
+        candidata,
         f"{len(selected_fields)} documento(s) actualizado(s) correctamente.",
         {"documentos": {"updated_fields": list(selected_fields)}},
+        updated_fields=list(selected_fields),
     )
-    payload["updated_fields"] = list(selected_fields)
     return jsonify(payload)
 
 

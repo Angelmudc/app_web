@@ -235,6 +235,25 @@ class FakeNode {
     this.dispatchEvent(event);
   }
 
+  reset() {
+    const visit = (node) => {
+      if (!node) return;
+      if (node.tagName === "INPUT") {
+        if (String(node.getAttribute("type") || "").toLowerCase() === "file") {
+          node.files = [];
+        } else {
+          node.value = "";
+        }
+      } else if (node.tagName === "TEXTAREA") {
+        node.value = "";
+      } else if (node.tagName === "SELECT") {
+        node.value = "";
+      }
+      (node.children || []).forEach(visit);
+    };
+    (this.children || []).forEach(visit);
+  }
+
   scrollIntoView() {}
   focus() {}
   getBoundingClientRect() {
@@ -348,6 +367,7 @@ function makeDetailRoot(extraAttrs = {}) {
   const personal = new FakeNode("section", { "data-edit-section": "personal" });
   const personalToggle = new FakeNode("button", { "data-edit-toggle": "" });
   const personalDisplay = new FakeNode("div", { "data-display": "personal", class: "cand-display" });
+  personalDisplay.textContent = "PERSONAL-ORIGINAL";
   const personalForm = new FakeNode("form", {
     "data-quick-form": "",
     "data-endpoint": "/admin/candidatas/990501/datos",
@@ -363,6 +383,7 @@ function makeDetailRoot(extraAttrs = {}) {
   const labor = new FakeNode("section", { "data-edit-section": "labor" });
   const laborToggle = new FakeNode("button", { "data-edit-toggle": "" });
   const laborDisplay = new FakeNode("div", { "data-display": "labor", class: "cand-display" });
+  laborDisplay.textContent = "LABOR-ORIGINAL";
   const laborForm = new FakeNode("form", {
     "data-quick-form": "",
     "data-endpoint": "/admin/candidatas/990501/datos-laborales",
@@ -398,9 +419,25 @@ function makeDetailRoot(extraAttrs = {}) {
     "data-doc-form-bound": "1",
   });
   const fileInput = new FakeNode("input", { "data-doc-file-input": "" });
+  const docStatus = new FakeNode("span", { "data-doc-status": "" });
+  const docHint = new FakeNode("div", { "data-doc-hint": "" });
+  const docView = new FakeNode("a", { "data-doc-action": "view" });
+  const docDownload = new FakeNode("a", { "data-doc-action": "download" });
   const pick = new FakeNode("button", { "data-doc-action": "pick" });
+  const docError = new FakeNode("div", { "data-error-for": "archivo" });
+  const docFeedback = new FakeNode("div", { "data-feedback": "" });
+  docStatus.textContent = "Pendiente";
+  docHint.textContent = "Arrastra aquí o haz clic para subir.";
+  docView.className = "d-none";
+  docDownload.className = "d-none";
   docUpload.appendChild(fileInput);
+  docUpload.appendChild(docStatus);
+  docUpload.appendChild(docHint);
+  docUpload.appendChild(docView);
+  docUpload.appendChild(docDownload);
   docUpload.appendChild(pick);
+  docUpload.appendChild(docError);
+  docUpload.appendChild(docFeedback);
 
   const batchOpen = new FakeNode("button", { "data-doc-batch-open": "" });
   const batchModal = new FakeNode("div", { class: "modal fade", "data-doc-batch-modal": "", id: "docBatchModal" });
@@ -469,7 +506,13 @@ function makeDetailRoot(extraAttrs = {}) {
     inlineInput,
     docUpload,
     fileInput,
+    docStatus,
+    docHint,
+    docView,
+    docDownload,
     pick,
+    docError,
+    docFeedback,
     batchOpen,
     batchModal,
     batchForm,
@@ -635,6 +678,60 @@ async function runScenario(name) {
         updated_fields: ["depuracion", "perfil"],
       },
     }];
+  } else if (name === "doc_upload_success_updates_only_documents") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "Cédula frontal actualizado correctamente.",
+        header: {
+          nombre: "Ana Centro Operativo",
+          edad: "34",
+          telefono: "809-555-0101",
+          codigo: "CTR-990501",
+          estado: "lista_para_trabajar",
+          estado_label: "Lista para trabajar",
+        },
+        candidate: {
+          codigo: "CTR-990501",
+          estado: "lista_para_trabajar",
+        },
+        status_badges: {
+          inscrita: true,
+          lista: true,
+          trabajando: false,
+          descalificada: false,
+        },
+        doc_flags: {
+          depuracion: true,
+          perfil: true,
+          cedula1: true,
+          cedula2: true,
+        },
+        doc_labels: {
+          depuracion: "Depuración",
+          perfil: "Perfil",
+          cedula1: "Cédula frente",
+          cedula2: "Cédula reverso",
+        },
+        readiness: {
+          ready: true,
+          completed: 8,
+          total: 8,
+          label: "8/8",
+          flags: {},
+          labels: {},
+          reasons: [],
+        },
+        state_capabilities: {
+          process: { label: "Inscripción completa" },
+          preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+          situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+          actions: { can_mark_ready: false, can_mark_working: true, can_disqualify: true, can_reactivate: false },
+          reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+        },
+      },
+    }];
   } else if (name === "batch_modal_double_submit_blocks_second_fetch") {
     fetchConfig.responses = [{
       deferred: true,
@@ -748,6 +845,85 @@ async function runScenario(name) {
       previewBeforeSubmit,
       quickBusy: first.batchForm.dataset.quickBusy || "",
       updatedFields: JSON.stringify(["depuracion", "perfil"]),
+    };
+  }
+
+  if (name === "doc_upload_success_updates_only_documents") {
+    const input = first.fileInput;
+    const file = { name: "cedula1.jpg", type: "image/jpeg", size: 1200 };
+    input.files = [file];
+    input.dispatchEvent(new FakeEvent("change", { target: input }));
+    const submitEvent = new FakeEvent("submit", { target: first.docUpload });
+    submitEvent.submitter = first.pick;
+    first.docUpload.dispatchEvent(submitEvent);
+    const feedbackDuringSave = first.docFeedback.textContent;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "Cédula frontal actualizado correctamente.",
+      header: {
+        nombre: "Ana Centro Operativo",
+        edad: "34",
+        telefono: "809-555-0101",
+        codigo: "CTR-990501",
+        estado: "lista_para_trabajar",
+        estado_label: "Lista para trabajar",
+      },
+      candidate: {
+        codigo: "CTR-990501",
+        estado: "lista_para_trabajar",
+      },
+      status_badges: {
+        inscrita: true,
+        lista: true,
+        trabajando: false,
+        descalificada: false,
+      },
+      doc_flags: {
+        depuracion: true,
+        perfil: true,
+        cedula1: true,
+        cedula2: true,
+      },
+      doc_labels: {
+        depuracion: "Depuración",
+        perfil: "Perfil",
+        cedula1: "Cédula frente",
+        cedula2: "Cédula reverso",
+      },
+      readiness: {
+        ready: true,
+        completed: 8,
+        total: 8,
+        label: "8/8",
+        flags: {},
+        labels: {},
+        reasons: [],
+      },
+      state_capabilities: {
+        process: { label: "Inscripción completa" },
+        preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+        situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+        actions: { can_mark_ready: false, can_mark_working: true, can_disqualify: true, can_reactivate: false },
+        reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+      },
+    });
+    await wait();
+    await wait();
+    await wait();
+
+    return {
+      feedbackDuringSave,
+      feedback: first.docFeedback.textContent,
+      fetches: env.fetchMock.calls.length,
+      firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      docStatus: first.docStatus.textContent,
+      docHint: first.docHint.textContent,
+      docViewHidden: first.docView.classList.contains("d-none"),
+      docDownloadHidden: first.docDownload.classList.contains("d-none"),
+      docPickText: first.pick.textContent,
+      personalDisplay: first.personalDisplay.textContent,
+      laborDisplay: first.laborDisplay.textContent,
+      quickBusy: first.docUpload.dataset.quickBusy || "",
     };
   }
 
@@ -882,6 +1058,22 @@ def test_candidate_detail_runtime_batch_modal_success_flow():
     assert data["quickBusy"] == ""
     assert "depuracion" in data["updatedFields"]
     assert "perfil" in data["updatedFields"]
+
+
+def test_candidate_detail_runtime_document_upload_success_updates_only_documents():
+    data = _run_node_case("doc_upload_success_updates_only_documents")
+    assert data["fetches"] == 1
+    assert data["firstUrl"] == "/admin/candidatas/990501/documentos/cedula1"
+    assert "Guardando..." in data["feedbackDuringSave"]
+    assert "actualizado correctamente" in data["feedback"]
+    assert data["docStatus"] == "Disponible"
+    assert data["docHint"] == "Arrastra otro archivo para reemplazarlo."
+    assert data["docViewHidden"] is False
+    assert data["docDownloadHidden"] is False
+    assert data["docPickText"] == "Reemplazar"
+    assert data["personalDisplay"] == "PERSONAL-ORIGINAL"
+    assert data["laborDisplay"] == "LABOR-ORIGINAL"
+    assert data["quickBusy"] == ""
 
 
 def test_candidate_detail_runtime_batch_modal_error_keeps_open():
