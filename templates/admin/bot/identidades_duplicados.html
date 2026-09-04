@@ -42,7 +42,7 @@
                 <td>{{ cand.estado or '-' }}</td>
                 <td>
                   {% if cand.fila %}
-                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('buscar_candidata', candidata_id=cand.fila) }}">Ver candidata</a>
+                  <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.candidatas_operativo_detail', fila=cand.fila) }}">Ver candidata</a>
                   {% endif %}
                 </td>
               </tr>

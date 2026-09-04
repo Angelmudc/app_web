@@ -8,6 +8,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import app as flask_app
+from models import Candidata, Entrevista, Reemplazo, SeguimientoCandidataCaso, StaffAuditLog
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 def _mk_row(
@@ -47,6 +49,11 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
     def setUp(self):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
+        with flask_app.app_context():
+            ensure_sqlite_compat_tables(
+                [Candidata, Entrevista, Reemplazo, SeguimientoCandidataCaso, StaffAuditLog],
+                reset=False,
+            )
         self.client = flask_app.test_client()
         os.environ["ADMIN_LEGACY_ENABLED"] = "1"
 
@@ -112,7 +119,7 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
         self.assertIn("/subir_fotos", html)
         self.assertIn("/entrevistas/candidata/10", html)
         self.assertIn("/referencias?candidata=10", html)
-        self.assertIn("/buscar?candidata_id=10", html)
+        self.assertIn("/admin/candidatas/10", html)
         self.assertNotIn("foto_perfil", html.lower())
         self.assertIn("Perfil", html)
 
@@ -120,7 +127,7 @@ class AdminCandidatasAuditoriaCompletitudTest(unittest.TestCase):
         resp = self.client.get("/home")
         self.assertEqual(resp.status_code, 200)
         html = resp.get_data(as_text=True)
-        self.assertIn("Auditoría de completitud de candidatas", html)
+        self.assertIn("Auditoría de completitud", html)
         self.assertIn("/admin/candidatas/auditoria-completitud", html)
 
     def test_endpoints_existen_en_url_map(self):

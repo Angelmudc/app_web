@@ -11,6 +11,7 @@ from config_app import db
 from models import BotCandidateDraft, Candidata, Cliente, StaffAuditLog
 from sqlalchemy import text
 from services.bot_rate_limit_service import reset_rate_limits
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 @pytest.fixture(autouse=True)
@@ -18,6 +19,16 @@ def _reset_bot_rate_limits_each_test():
     reset_rate_limits()
     yield
     reset_rate_limits()
+
+
+@pytest.fixture(autouse=True)
+def _ensure_bot_compat_tables():
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables(
+            [BotCandidateDraft, Candidata, Cliente, StaffAuditLog],
+            reset=False,
+        )
+    yield
 
 
 def _login_staff(client, usuario: str = "Owner", clave: str = "admin123") -> None:
@@ -194,7 +205,7 @@ def test_bot_created_candidates_lists_only_bot_created_and_handles_malformed_rou
     assert "77" in html
     assert "bot_draft:not-an-int" in html
     assert "/admin/bot/conversaciones/901" in html
-    assert "/buscar?candidata_id=110" in html
+    assert "/admin/candidatas/110" in html
 
 
 def test_bot_created_candidates_metrics_and_read_only():

@@ -108,7 +108,7 @@
                 </form>
               </div>
             </td>
-            <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('buscar_candidata', candidata_id=cand.fila) }}">Ver candidata</a></td>
+            <td><a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.candidatas_operativo_detail', fila=cand.fila) }}">Ver candidata</a></td>
           </tr>
           {% else %}
           <tr><td colspan="15" class="text-center text-muted py-4">No hay candidatas creadas desde bot draft.</td></tr>

@@ -523,16 +523,9 @@
                 </li>
                 {% endif %}
 
-                {% if has_endpoint('buscar_candidata') or has_endpoint('inscripcion') or has_endpoint('porciento') or has_endpoint('pagos') %}
+                {% if has_endpoint('inscripcion') or has_endpoint('porciento') or has_endpoint('pagos') %}
                 <li><hr class="dropdown-divider"></li>
                 <li><h6 class="dropdown-header">Herramientas legacy candidatas</h6></li>
-                {% endif %}
-
-                {% if has_endpoint('buscar_candidata') %}
-                <li>
-                  <a class="dropdown-item {% if request.endpoint=='buscar_candidata' %}active{% endif %}"
-                     href="{{ url_for('buscar_candidata') }}">Buscar/Editar legacy</a>
-                </li>
                 {% endif %}
 
                 {% if has_endpoint('porciento') %}

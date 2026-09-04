@@ -36,7 +36,7 @@ def _notif_review_url(notif: StaffNotificacion) -> str:
     if entity_id <= 0:
         return url_for("home")
     if entity_type == "candidata":
-        return url_for("buscar_candidata", candidata_id=entity_id)
+        return url_for("admin.candidatas_operativo_detail", fila=entity_id)
     if entity_type == "recluta_perfil":
         return url_for("reclutas.detalle", recluta_id=entity_id)
     return url_for("home")

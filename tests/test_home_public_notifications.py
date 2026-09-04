@@ -65,7 +65,7 @@ def test_home_public_notifications_count_list_and_mark_read():
     assert int(payload.get("unread") or 0) == 2
     assert payload.get("has_more_pending") is False
     assert payload.get("has_more_reviewed") is False
-    assert any((it.get("entity_type") == "candidata" and "/buscar?candidata_id=101" in (it.get("review_url") or "")) for it in items)
+    assert any((it.get("entity_type") == "candidata" and "/admin/candidatas/101" in (it.get("review_url") or "")) for it in items)
     assert any((it.get("entity_type") == "recluta_perfil" and "/reclutas/202" in (it.get("review_url") or "")) for it in items)
 
     target_id = int(items[0]["id"])

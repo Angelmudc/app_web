@@ -544,7 +544,9 @@ def test_admin_candidata_ficha_readonly_flags_limites_legacy_y_sin_blobs():
         ">Más<",
     ):
         assert redundant not in header_html
-    assert "/buscar?candidata_id=990502&amp;next=/admin/candidatas/990502" in html
+    assert "/admin/candidatas/990502" in html
+    assert "/buscar?candidata_id=990502" not in html
+    assert "Abrir flujo anterior" not in html
     assert "/admin/candidatas/990502/documentos" in html
     assert "Administrar documentos" in html
     assert "/admin/candidatas/990502/referencias-formulario" in html

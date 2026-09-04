@@ -22090,7 +22090,7 @@ def _links_completar_por_faltantes(candidata_id: int, faltantes: list[str]) -> l
     links.append(
         {
             "label": "Editar candidata",
-            "url": url_for("buscar_candidata", candidata_id=candidata_id),
+            "url": url_for("admin.candidatas_operativo_detail", fila=candidata_id),
         }
     )
     return links
@@ -23399,7 +23399,7 @@ def _candidata_center_legacy_urls(fila: int) -> dict:
     next_url = _candidata_center_return_path(fila)
     return {
         "call": url_for("registrar_llamada_candidata", fila=fila, next=next_url),
-        "edit": url_for("buscar_candidata", candidata_id=fila, next=next_url),
+        "edit": url_for("admin.candidatas_operativo_detail", fila=fila),
         "references": url_for("referencias", candidata=fila, next=next_url),
         "interviews": url_for("entrevistas_de_candidata", fila=fila, next=next_url),
         "historical_pdf": url_for("generar_pdf_entrevista", fila=fila),
@@ -25325,7 +25325,7 @@ def _build_candidatas_por_finalizar_rows(q: str = "", *, count_only: bool = Fals
             links.append(
                 {
                     "label": "Revisar estado",
-                    "url": url_for("buscar_candidata", candidata_id=int(cand.fila)),
+                    "url": url_for("admin.candidatas_operativo_detail", fila=int(cand.fila)),
                 }
             )
 
@@ -25533,7 +25533,7 @@ def descalificar_candidata(candidata_id: int):
     cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
     motivo = (request.form.get("motivo") or "").strip()
     next_url = (request.form.get("next") or "").strip()
-    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+    fallback = url_for("admin.candidatas_operativo_detail", fila=cand.fila)
 
     if not motivo:
         flash("Debes indicar el motivo de descalificación.", "warning")
@@ -25614,7 +25614,7 @@ def descalificar_candidata(candidata_id: int):
 def reactivar_candidata(candidata_id: int):
     cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
     next_url = (request.form.get("next") or "").strip()
-    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+    fallback = url_for("admin.candidatas_operativo_detail", fila=cand.fila)
 
     actor = (
         getattr(current_user, "username", None)
@@ -25687,7 +25687,7 @@ def reactivar_candidata(candidata_id: int):
 def marcar_candidata_trabajando(candidata_id: int):
     cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
     next_url = (request.form.get("next") or "").strip()
-    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+    fallback = url_for("admin.candidatas_operativo_detail", fila=cand.fila)
 
     if candidata_esta_descalificada(cand):
         flash("No se puede marcar como trabajando una candidata descalificada.", "danger")
@@ -25755,7 +25755,7 @@ def marcar_candidata_trabajando(candidata_id: int):
 def marcar_candidata_lista_para_trabajar(candidata_id: int):
     cand = Candidata.query.filter_by(fila=candidata_id).first_or_404()
     next_url = (request.form.get("next") or "").strip()
-    fallback = url_for("buscar_candidata", candidata_id=cand.fila)
+    fallback = url_for("admin.candidatas_operativo_detail", fila=cand.fila)
 
     if candidata_esta_descalificada(cand):
         flash("No se puede marcar como lista para trabajar una candidata descalificada.", "danger")

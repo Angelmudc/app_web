@@ -27,6 +27,7 @@ def test_owner_sees_create_user_link_and_can_open_route():
     assert b'href="/admin/usuarios"' in home.data
     assert "Usuarios y roles".encode("utf-8") in home.data
     assert "Registrar candidata".encode("utf-8") in home.data
+    assert "Buscar/Editar legacy".encode("utf-8") not in home.data
     assert "Subir Fotos".encode("utf-8") not in home.data
     assert "Gestionar Archivos".encode("utf-8") not in home.data
     assert "Inscripción legacy".encode("utf-8") not in home.data
@@ -49,6 +50,7 @@ def test_admin_sees_register_candidate_link_and_can_open_route():
     assert home.status_code == 200
     assert "Registrar candidata".encode("utf-8") in home.data
     assert "Usuarios y roles".encode("utf-8") not in home.data
+    assert "Buscar/Editar legacy".encode("utf-8") not in home.data
     assert "Subir Fotos".encode("utf-8") not in home.data
     assert "Gestionar Archivos".encode("utf-8") not in home.data
     assert "Inscripción legacy".encode("utf-8") not in home.data
@@ -69,6 +71,7 @@ def test_secretaria_does_not_see_admin_menu_links():
     assert home.status_code == 200
     assert "Usuarios y roles".encode("utf-8") not in home.data
     assert "Registrar candidata".encode("utf-8") not in home.data
+    assert "Buscar/Editar legacy".encode("utf-8") not in home.data
     assert "Subir Fotos".encode("utf-8") not in home.data
     assert "Gestionar Archivos".encode("utf-8") not in home.data
 
