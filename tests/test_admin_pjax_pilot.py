@@ -200,14 +200,14 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(solicitud_detail_tpl, "r", encoding="utf-8") as f:
             solicitud_detail_txt = f.read()
         self.assertIn('data-admin-nav="true"', solicitud_detail_txt)
-        self.assertIn('data-admin-nav-back="true"', solicitud_detail_txt)
+        self.assertNotIn('data-admin-nav-back="true"', solicitud_detail_txt)
         self.assertIn("url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id)", solicitud_detail_txt)
 
         solicitud_summary_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_detail_summary_region.html")
         with open(solicitud_summary_tpl, "r", encoding="utf-8") as f:
             solicitud_summary_txt = f.read()
         self.assertIn('data-admin-nav="true"', solicitud_summary_txt)
-        self.assertIn('data-admin-nav-back="true"', solicitud_summary_txt)
+        self.assertNotIn('data-admin-nav-back="true"', solicitud_summary_txt)
 
         publico_tpl = os.path.join(os.getcwd(), "templates", "admin", "cliente_link_publico_solicitud.html")
         with open(publico_tpl, "r", encoding="utf-8") as f:
