@@ -278,6 +278,14 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('data-registrar-pago-modal-trigger="1"', cliente_detail_solicitudes_txt)
         self.assertIn('data-no-loader="true"', cliente_detail_solicitudes_txt)
 
+        solicitud_form_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitud_form.html")
+        with open(solicitud_form_tpl, "r", encoding="utf-8") as f:
+            solicitud_form_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitud_form_txt)
+        self.assertIn("initAdminSolicitudForm", solicitud_form_txt)
+        self.assertIn("window.SolicitudSharedFields.init", solicitud_form_txt)
+        self.assertNotIn("{% block scripts %}", solicitud_form_txt)
+
         solicitudes_list_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
         with open(solicitudes_list_tpl, "r", encoding="utf-8") as f:
             solicitudes_list_txt = f.read()
@@ -359,11 +367,13 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("resp.status === 401 || resp.status === 403", txt)
         self.assertIn("if (!nextViewport)", txt)
         self.assertIn("if (!currentViewport)", txt)
+        self.assertIn("replayViewportScripts", txt)
         self.assertIn("^\\/admin\\/clientes\\/?$", txt)
         self.assertIn("^\\/admin\\/solicitudes\\/?$", txt)
         self.assertIn("^\\/admin\\/solicitudes\\/prioridad\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/?$", txt)
+        self.assertIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/editar\\/?$", txt)
         self.assertIn("updateCurrentHistoryScrollY", txt)
         self.assertIn("restoreScrollY", txt)
         self.assertIn("admin:navigation-fallback", txt)

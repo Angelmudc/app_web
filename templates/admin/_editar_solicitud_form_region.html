@@ -195,7 +195,7 @@
 
       <div class="sticky-actions mt-4">
         <div class="d-flex gap-2 justify-content-end">
-          <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+          <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary" data-admin-nav="true">
             <i class="fa-solid fa-circle-xmark me-1"></i> Cancelar
           </a>
           <button type="submit" class="btn btn-primary px-4">

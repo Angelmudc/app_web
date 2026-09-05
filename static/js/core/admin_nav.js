@@ -47,6 +47,7 @@
     if (/^\/admin\/candidatas\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/?$/.test(path)) return true;
+    if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/editar\/?$/.test(path)) return true;
     return false;
   }
 
@@ -57,6 +58,34 @@
   function parseHtml(text) {
     const parser = new DOMParser();
     return parser.parseFromString(String(text || ""), "text/html");
+  }
+
+  function replayViewportScripts(viewport) {
+    const root = viewport || getViewport(document);
+    if (!root || !root.querySelectorAll) return;
+    const scripts = Array.from(root.querySelectorAll("script"));
+    if (!scripts.length) return;
+
+    scripts.forEach((oldScript) => {
+      if (!oldScript || oldScript.dataset.adminPjaxExecuted === "1") return;
+      if (String(oldScript.getAttribute("src") || "").trim()) return;
+      const newScript = document.createElement("script");
+      Array.from(oldScript.attributes || []).forEach((attr) => {
+        try {
+          newScript.setAttribute(attr.name, attr.value);
+        } catch (_) {}
+      });
+      newScript.text = String(oldScript.textContent || "");
+      oldScript.dataset.adminPjaxExecuted = "1";
+      try {
+        oldScript.parentNode.replaceChild(newScript, oldScript);
+      } catch (_) {
+        try {
+          oldScript.remove();
+          root.appendChild(newScript);
+        } catch (_) {}
+      }
+    });
   }
 
   function fallbackLoad(url) {
@@ -682,6 +711,7 @@
     if (snapshot.title) document.title = snapshot.title;
     const uiState = (opts && opts.restoreUiState) || snapshot.uiState || null;
     applyUiState(viewport, uiState);
+    replayViewportScripts(viewport);
     applyScrollPolicy(finalUrl, viewport, {
       fromPopstate: !!(opts && opts.fromPopstate),
       restoreScrollY: opts && opts.restoreScrollY,
@@ -756,6 +786,7 @@
         }
 
         applyUiState(currentViewport, opts.restoreUiState || null);
+        replayViewportScripts(currentViewport);
 
         const state = {
           ...(history.state && typeof history.state === "object" ? history.state : {}),
@@ -841,6 +872,7 @@
       }
 
       applyUiState(currentViewport, opts.restoreUiState || null);
+      replayViewportScripts(currentViewport);
 
       const state = {
         ...(history.state && typeof history.state === "object" ? history.state : {}),

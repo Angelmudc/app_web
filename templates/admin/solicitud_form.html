@@ -199,7 +199,7 @@
           Completa los campos y guarda. <span class="badge-soft"><i class="fa-solid fa-shield-check"></i> Datos cifrados</span>
         </div>
       </div>
-      <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary">
+      <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary" data-admin-nav="true">
         <i class="fa-solid fa-circle-arrow-left me-1"></i> Volver
       </a>
     </div>
@@ -212,10 +212,6 @@
       </div>
     </div>
   </div>
-</div>
-{% endblock %}
-
-{% block scripts %}
 <script>
 (function(){
   function setVisible(el, show){
@@ -297,4 +293,5 @@
   });
 })();
 </script>
+</div>
 {% endblock %}
