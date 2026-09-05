@@ -135,6 +135,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(nav_path, "r", encoding="utf-8") as f:
             nav_txt = f.read()
         self.assertIn("^\\/admin\\/candidatas\\/\\d+\\/?$", nav_txt)
+        self.assertNotIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/editar\\/?$", nav_txt)
 
         detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "candidatas_operativo_detail.html")
         with open(detail_tpl, "r", encoding="utf-8") as f:
@@ -382,7 +383,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn("^\\/admin\\/solicitudes\\/prioridad\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/?$", txt)
         self.assertIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/?$", txt)
-        self.assertIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/editar\\/?$", txt)
+        self.assertNotIn("^\\/admin\\/clientes\\/\\d+\\/solicitudes\\/\\d+\\/editar\\/?$", txt)
         self.assertIn("updateCurrentHistoryScrollY", txt)
         self.assertIn("restoreScrollY", txt)
         self.assertIn("admin:navigation-fallback", txt)

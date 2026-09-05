@@ -47,7 +47,6 @@
     if (/^\/admin\/candidatas\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/?$/.test(path)) return true;
     if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/?$/.test(path)) return true;
-    if (/^\/admin\/clientes\/\d+\/solicitudes\/\d+\/editar\/?$/.test(path)) return true;
     return false;
   }
 
