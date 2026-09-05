@@ -8,6 +8,7 @@ FEATURE_NAMES = (
     "llamadas",
     "compat",
     "matching",
+    "bot_candidatas_legacy",
     "candidatas_web",
     "candidatas_dashboard",
     "reemplazos_panel",

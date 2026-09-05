@@ -73,10 +73,20 @@ def test_practica_routes_require_staff():
     assert r2.status_code in (302, 303)
 
 
-def test_practica_page_renders_and_has_chat_ui_structure():
+def test_practica_page_renders_and_has_chat_ui_structure(monkeypatch):
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
+
+    monkeypatch.setenv("APP_ENV", "testing")
+    monkeypatch.setenv("WHATSAPP_ENABLED", "false")
+    monkeypatch.setenv("BOT_DRY_RUN", "true")
+    monkeypatch.setenv("BOT_AUTOREPLY_ENABLED", "false")
+    monkeypatch.setenv("BOT_ALLOW_REAL_CANDIDATE_CREATION_LOCAL", "false")
+
+    with flask_app.app_context():
+        _ensure_bot_tables()
+        _reset_bot_tables()
 
     _login_staff(client)
     list_page = client.get("/admin/bot/practica", follow_redirects=False)

@@ -601,6 +601,7 @@ def create_app():
         "llamadas": _is_true(os.getenv("FEATURE_LLAMADAS", "0")),
         "compat": _is_true(os.getenv("FEATURE_COMPAT", "0")),
         "matching": _is_true(os.getenv("FEATURE_MATCHING", "0")),
+        "bot_candidatas_legacy": _is_true(os.getenv("FEATURE_BOT_CANDIDATAS_LEGACY", "0")),
         "candidatas_web": _is_true(os.getenv("FEATURE_CANDIDATAS_WEB", "0")),
         "candidatas_dashboard": _is_true(os.getenv("FEATURE_CANDIDATAS_DASHBOARD", "0")),
         "reemplazos_panel": _is_true(os.getenv("FEATURE_REEMPLAZOS_PANEL", "0")),

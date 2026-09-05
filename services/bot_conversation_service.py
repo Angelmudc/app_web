@@ -16,7 +16,7 @@ from services.bot_protocol_service import load_protocol
 from utils.timezone import utc_now_naive
 
 DEFAULT_PROTOCOL_STEP = "WELCOME"
-DEFAULT_PROTOCOL_CODE = "domesticas_v1"
+DEFAULT_PROTOCOL_CODE = "bot_generic_v1"
 
 
 def get_conversation_by_id(conversation_id: int) -> BotConversation | None:

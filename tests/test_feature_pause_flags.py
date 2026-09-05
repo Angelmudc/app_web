@@ -2,11 +2,22 @@
 
 from app import app as flask_app
 from models import (
+    BotCandidateDraft,
+    BotContactIdentity,
+    BotConversation,
+    BotDecisionLog,
+    BotEscalation,
+    BotMessage,
+    BotSandboxOutbound,
+    BotSandboxReviewQueue,
+    BotSetting,
     Candidata,
     CandidataWeb,
     DomainOutbox,
     Entrevista,
     EntrevistaPregunta,
+    ChatConversation,
+    ChatMessage,
     LlamadaCandidata,
     Reemplazo,
     SeguimientoCandidataCaso,
@@ -31,12 +42,23 @@ def _ensure_home_tables() -> None:
                 DomainOutbox,
                 Entrevista,
                 EntrevistaPregunta,
+                ChatConversation,
+                ChatMessage,
                 LlamadaCandidata,
                 Reemplazo,
                 SeguimientoCandidataCaso,
                 Solicitud,
                 SolicitudCandidata,
                 StaffAuditLog,
+                BotCandidateDraft,
+                BotContactIdentity,
+                BotConversation,
+                BotDecisionLog,
+                BotEscalation,
+                BotMessage,
+                BotSandboxOutbound,
+                BotSandboxReviewQueue,
+                BotSetting,
             ],
             reset=False,
         )
@@ -69,6 +91,13 @@ def test_feature_flags_default_paused_routes_and_navigation():
     assert client.get("/admin/candidatas-web", follow_redirects=False).status_code == 404
     assert client.get("/admin/solicitudes", follow_redirects=False).status_code == 404
     assert client.get("/admin/solicitudes/prioridad", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/candidatas-creadas", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/candidate-intake", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/conversaciones", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/practica", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/sandbox", follow_redirects=False).status_code == 404
+    assert client.get("/admin/bot/identidades/duplicados", follow_redirects=False).status_code == 404
+    assert client.get("/admin/chat", follow_redirects=False).status_code == 200
 
 
 def test_feature_flags_default_paused_candidatas_dashboard_and_reenable():
@@ -162,3 +191,42 @@ def test_feature_flag_can_reenable_finalizar_proceso_temporarily():
     finally:
         flask_app.config["FEATURE_FLAGS"] = old_flags
         flask_app.config["FEATURE_FINALIZAR_PROCESO"] = bool(old_flags.get("finalizar_proceso", False))
+
+
+def test_feature_flag_bot_candidate_legacy_off_and_on():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    _ensure_home_tables()
+
+    client = flask_app.test_client()
+    assert _login(client, "Owner", "admin123").status_code in (302, 303)
+
+    old_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    try:
+        new_flags = dict(old_flags)
+        new_flags["bot_candidatas_legacy"] = False
+        flask_app.config["FEATURE_FLAGS"] = new_flags
+        flask_app.config["FEATURE_BOT_CANDIDATAS_LEGACY"] = False
+
+        assert client.get("/admin/bot/conversaciones", follow_redirects=False).status_code == 404
+        assert client.get("/admin/bot/candidate-intake", follow_redirects=False).status_code == 404
+        assert client.get("/admin/bot/candidatas-creadas", follow_redirects=False).status_code == 404
+        assert client.get("/admin/bot/practica", follow_redirects=False).status_code == 404
+        assert client.get("/admin/bot/sandbox", follow_redirects=False).status_code == 404
+        assert client.get("/admin/bot/identidades/duplicados", follow_redirects=False).status_code == 404
+        assert client.get("/admin/chat", follow_redirects=False).status_code == 200
+
+        on_flags = dict(new_flags)
+        on_flags["bot_candidatas_legacy"] = True
+        flask_app.config["FEATURE_FLAGS"] = on_flags
+        flask_app.config["FEATURE_BOT_CANDIDATAS_LEGACY"] = True
+
+        assert client.get("/admin/bot/conversaciones", follow_redirects=False).status_code == 200
+        assert client.get("/admin/bot/candidate-intake", follow_redirects=False).status_code == 200
+        assert client.get("/admin/bot/candidatas-creadas", follow_redirects=False).status_code == 200
+        assert client.get("/admin/bot/practica", follow_redirects=False).status_code == 200
+        assert client.get("/admin/bot/sandbox", follow_redirects=False).status_code == 200
+        assert client.get("/admin/bot/identidades/duplicados", follow_redirects=False).status_code == 200
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = old_flags
+        flask_app.config["FEATURE_BOT_CANDIDATAS_LEGACY"] = bool(old_flags.get("bot_candidatas_legacy", False))

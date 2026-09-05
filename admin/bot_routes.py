@@ -10,7 +10,7 @@ import hashlib
 from datetime import datetime
 import requests
 
-from flask import current_app, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import abort, current_app, flash, jsonify, redirect, render_template, request, session, url_for
 from flask_login import current_user
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy import inspect as sa_inspect, or_, text
@@ -18,6 +18,7 @@ from sqlalchemy import inspect as sa_inspect, or_, text
 from config_app import csrf, db
 from decorators import roles_required, staff_required
 from models import BotCandidateDraft, BotConversation, BotDecisionLog, BotMessage, BotSandboxOutbound, BotSandboxReviewQueue, BotSetting, Candidata
+from utils.feature_flags import feature_enabled
 from services.bot_constants import (
     MESSAGE_DIRECTION_INBOUND,
     MESSAGE_SOURCE_WHATSAPP_USER,
@@ -142,6 +143,38 @@ from . import admin_bp
 _DRAFT_ROUTE_RE = re.compile(r"^bot_draft:(\d+)$")
 _BOT_REVIEW_STATUSES = {"bot_pending_review", "bot_reviewing", "bot_approved", "bot_rejected"}
 _LOCAL_PRACTICE_TYPE = "local_practice"
+_BOT_CANDIDATE_LEGACY_ALLOWED_ENDPOINTS = {
+    "admin.bot_sandbox_assistant",
+    "admin.bot_sandbox_assistant_pending_json",
+    "admin.bot_sandbox_assistant_review_json",
+    "admin.bot_sandbox_assistant_approve",
+    "admin.bot_sandbox_assistant_edit_approve",
+    "admin.bot_sandbox_assistant_reject",
+    "admin.bot_sandbox_assistant_block",
+    "admin.bot_sandbox_assistant_worker_run",
+    "admin.bot_sandbox_assistant_outbox_housekeeping",
+    "admin.bot_sandbox_assistant_metrics_json",
+    "admin.bot_sandbox_assistant_auto_reply_pause",
+    "admin.bot_sandbox_assistant_auto_reply_resume",
+    "admin.bot_sandbox_assistant_conversation_reset",
+    "admin.bot_sandbox_assistant_real_sandbox_pause",
+    "admin.bot_sandbox_assistant_real_sandbox_resume",
+    "admin.bot_sandbox_assistant_real_sandbox_delivery_webhook",
+    "admin.bot_debug_send_real_whatsapp",
+    "admin.bot_sandbox_webhook_inbound",
+}
+
+
+@admin_bp.before_request
+def _bot_candidate_legacy_gate():
+    if feature_enabled("bot_candidatas_legacy"):
+        return None
+    endpoint = str(request.endpoint or "").strip()
+    if not endpoint.startswith("admin.bot_"):
+        return None
+    if endpoint in _BOT_CANDIDATE_LEGACY_ALLOWED_ENDPOINTS:
+        return None
+    return abort(404)
 
 
 def _normalize_pending_corrections(raw_items) -> list[dict]:

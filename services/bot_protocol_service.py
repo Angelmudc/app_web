@@ -9,7 +9,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from utils.feature_flags import feature_enabled
+
 DATA_PATH = Path(__file__).resolve().parents[1] / "data" / "bot_protocol_domesticas_v1.json"
+NEUTRAL_PROTOCOL_CODE = "bot_generic_v1"
 SUPPORTED_CITIES = ("santiago", "puerto plata")
 YES_WORDS = ("si", "sí", "yes", "ok", "claro")
 NO_WORDS = ("no", "nop", "negativo")
@@ -146,8 +149,10 @@ SKILL_EXPERIENCE_HINTS = ("se ", "trabaje", "trabajé", "experiencia", "hago", "
 CEDULA_CONTEXT_HINTS = ("cedula", "cédula", "documento", "identidad")
 
 
-@lru_cache(maxsize=1)
-def load_protocol() -> dict[str, Any]:
+@lru_cache(maxsize=2)
+def _load_protocol_cached(candidate_legacy_enabled: bool) -> dict[str, Any]:
+    if not candidate_legacy_enabled:
+        return {"protocol_code": NEUTRAL_PROTOCOL_CODE, "steps": []}
     try:
         with DATA_PATH.open("r", encoding="utf-8") as fh:
             payload = json.load(fh)
@@ -183,6 +188,10 @@ def load_protocol() -> dict[str, Any]:
         if not isinstance(expected_answers, list):
             raise ValueError(f"Protocolo inválido: step {step.get('step_code')} con expected_answers inválido")
     return payload
+
+
+def load_protocol() -> dict[str, Any]:
+    return _load_protocol_cached(bool(feature_enabled("bot_candidatas_legacy")))
 
 
 def get_step(step_code: str) -> dict[str, Any] | None:

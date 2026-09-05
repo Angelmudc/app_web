@@ -3,6 +3,7 @@
 import os
 import tempfile
 import uuid
+from pathlib import Path
 
 # Fuerza entorno de pruebas aislado para que pytest nunca use la BD real.
 os.environ["APP_ENV"] = "test"
@@ -20,6 +21,26 @@ from app import app as flask_app
 from config_app import db
 from models import Cliente, PagoSolicitud
 from tests.t1_testkit import ensure_sqlite_compat_tables
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _default_bot_legacy_enabled_for_bot_suites(request):
+    filename = Path(str(getattr(request.node, "fspath", "") or "")).name
+    if not (filename.startswith("test_bot_") or filename.startswith("test_admin_bot_")):
+        yield
+        return
+    previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
+    previous_value = bool(previous_flags.get("bot_candidatas_legacy", False))
+    new_flags = dict(previous_flags)
+    new_flags["bot_candidatas_legacy"] = True
+    flask_app.config["FEATURE_FLAGS"] = new_flags
+    flask_app.config["FEATURE_BOT_CANDIDATAS_LEGACY"] = True
+    try:
+        yield
+    finally:
+        flask_app.config["FEATURE_FLAGS"] = previous_flags
+        flask_app.config["FEATURE_BOT_CANDIDATAS_LEGACY"] = previous_value
 
 
 def pytest_sessionstart(session):

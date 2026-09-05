@@ -15,6 +15,7 @@ from services.bot_candidate_summary_service import (
     get_candidate_summary_status,
 )
 from services.bot_data_safety_helpers import as_dict, as_list, mask_sensitive_doc_fields
+from utils.feature_flags import feature_enabled
 from utils.audit_logger import log_action
 from utils.timezone import utc_now_naive
 
@@ -67,9 +68,10 @@ def build_candidate_draft_payload(conversation: Any) -> dict[str, Any]:
 
     masked_entities = mask_sensitive_doc_fields(copy.deepcopy(protocol_entities))
     masked_pending = mask_sensitive_doc_fields(copy.deepcopy(pending_corrections))
+    protocol_version = "domesticas_v1" if feature_enabled("bot_candidatas_legacy") else "bot_generic_v1"
 
     return {
-        "protocol_version": str((metadata.get("protocol_version") or "domesticas_v1")),
+        "protocol_version": str((metadata.get("protocol_version") or protocol_version)),
         "summary_status": summary_status,
         "requires_human": bool(summary_status == SUMMARY_STATUS_REQUIRES_HUMAN),
         "sensitive_detected": bool(summary.get("has_sensitive_fields")),
