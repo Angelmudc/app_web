@@ -20,9 +20,15 @@
         <h1 class="h4 mb-1">💰 Registrar Pago</h1>
         <div class="text-muted small">Solicitud <strong>{{ solicitud.codigo_solicitud }}</strong></div>
       </div>
-      <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.listar_clientes')) }}" class="btn btn-outline-secondary">
-        <i class="bi bi-arrow-left-circle me-1"></i> Volver
-      </a>
+      {% if is_modal_context %}
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-arrow-left-circle me-1"></i> Volver
+        </button>
+      {% else %}
+        <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.listar_clientes')) }}" class="btn btn-outline-secondary">
+          <i class="bi bi-arrow-left-circle me-1"></i> Volver
+        </a>
+      {% endif %}
     </div>
 
     <hr class="my-4">
@@ -182,9 +188,15 @@
       <hr class="my-4">
 
       <div class="d-flex justify-content-end gap-2">
-        <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.listar_clientes')) }}" class="btn btn-outline-secondary">
-          <i class="bi bi-x-circle me-1"></i> Cancelar
-        </a>
+        {% if is_modal_context %}
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+            <i class="bi bi-x-circle me-1"></i> Cancelar
+          </button>
+        {% else %}
+          <a href="{{ next_url or (_cliente_id and url_for('admin.detalle_cliente', cliente_id=_cliente_id) or url_for('admin.listar_clientes')) }}" class="btn btn-outline-secondary">
+            <i class="bi bi-x-circle me-1"></i> Cancelar
+          </a>
+        {% endif %}
         <button type="submit" class="btn btn-success" data-loading-text="Registrando...">
           <i class="bi bi-save-fill me-1"></i> {{ form.submit.label.text }}
         </button>

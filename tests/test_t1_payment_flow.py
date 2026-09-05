@@ -1954,6 +1954,41 @@ def test_t1_solicitud_espera_pago_muestra_boton_pago_habilitado_en_cliente_detai
     assert f'data-testid="cliente-solicitud-registrar-pago-disabled-{solicitud_id}"' not in html
 
 
+def test_t1_registrar_pago_modal_contexto_usa_cierre_local_y_pagina_conserva_href():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    os.environ["ADMIN_LEGACY_ENABLED"] = "1"
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_core_tables()
+        cliente_id, _candidata_id, solicitud_id = _seed_payment_fixture(tipo_plan="premium", abono="0.00")
+        solicitud = Solicitud.query.get(solicitud_id)
+        assert solicitud is not None
+        solicitud.estado = "espera_pago"
+        db.session.commit()
+
+    _login_admin(client)
+
+    modal_resp = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago?modal=1",
+        follow_redirects=False,
+    )
+    assert modal_resp.status_code == 200
+    modal_html = modal_resp.get_data(as_text=True)
+    assert 'data-bs-dismiss="modal"' in modal_html
+    assert 'Registrar Pago' in modal_html
+
+    page_resp = client.get(
+        f"/admin/clientes/{cliente_id}/solicitudes/{solicitud_id}/pago",
+        follow_redirects=False,
+    )
+    assert page_resp.status_code == 200
+    page_html = page_resp.get_data(as_text=True)
+    assert f'href="/admin/clientes/{cliente_id}"' in page_html
+    assert 'data-bs-dismiss="modal"' not in page_html
+
+
 def test_t1_solicitud_puede_registrar_pago_equivale_en_estados_clave():
     with flask_app.app_context():
         _ensure_core_tables()

@@ -333,6 +333,26 @@ class AdminGestionarPlanAsyncTest(unittest.TestCase):
         self.assertIn('id="plan-summary-deposit"', html)
         self.assertIn('id="plan-summary-balance"', html)
 
+    def test_gestionar_plan_modal_context_renderiza_cancelar_local(self):
+        solicitud = _solicitud_stub()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers=self._async_headers())
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn('data-bs-dismiss="modal"', html)
+        self.assertIn('Cancelar', html)
+        self.assertNotIn('href="/admin/clientes/7/solicitudes/101/plan', html)
+
+    def test_gestionar_plan_pagina_completa_conserva_cancelar_con_href(self):
+        solicitud = _solicitud_stub()
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub(solicitud)):
+                resp = self._invoke(method="GET", headers={})
+        html = resp if isinstance(resp, str) else resp.get_data(as_text=True)
+        self.assertIn('href="/admin/clientes/7"', html)
+        self.assertIn('Cancelar', html)
+        self.assertNotIn('data-bs-dismiss="modal"', html)
+
     def test_gestionar_plan_basico_emoji_normaliza_correctamente(self):
         solicitud = _solicitud_stub()
         solicitud.tipo_plan = "Básico 💼"

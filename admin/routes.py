@@ -13526,6 +13526,10 @@ def gestionar_plan(cliente_id, id):
     fallback_detail = url_for('admin.detalle_cliente', cliente_id=cliente_id)
     safe_next = next_url if _is_safe_redirect_url(next_url) else fallback_detail
     show_whatsapp_cta = str(request.args.get("show_whatsapp_cta") or "").strip() == "1"
+    modal_context = (
+        str(request.args.get("modal") or request.form.get("modal") or "").strip() == "1"
+        or str(request.headers.get("X-Requested-With") or "").strip().lower() == "xmlhttprequest"
+    )
 
     def _build_gestionar_plan_whatsapp_cta():
         payment_ctx = _build_payment_summary_ctx(s, readonly=True)
@@ -13570,6 +13574,7 @@ def gestionar_plan(cliente_id, id):
             has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
+            is_modal_context=modal_context,
             post_save_whatsapp_activation=_build_gestionar_plan_whatsapp_cta() if show_whatsapp_cta else None,
         )
 
@@ -13596,6 +13601,7 @@ def gestionar_plan(cliente_id, id):
             has_payments_current_cycle=cycle_has_payments,
             cycle_is_paid=cycle_is_paid,
             can_create_new_cycle=can_create_new_cycle,
+            is_modal_context=modal_context,
             post_save_whatsapp_activation=_build_gestionar_plan_whatsapp_cta() if show_whatsapp_cta else None,
         )
 

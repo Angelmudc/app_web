@@ -116,9 +116,15 @@
           + Crear nuevo ciclo de pago
         </button>
       {% endif %}
-      <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
-        <i class="bi bi-x-circle me-1"></i> Cancelar
-      </a>
+      {% if is_modal_context %}
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </button>
+      {% else %}
+        <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=cliente_id) }}" class="btn btn-secondary">
+          <i class="bi bi-x-circle me-1"></i> Cancelar
+        </a>
+      {% endif %}
       <button type="submit" class="btn btn-primary" id="btn-submit" name="plan_action" value="update" data-loading-text="Guardando...">
         {% if _estado_cancelada %}
           <i class="bi bi-arrow-clockwise me-1"></i> Reactivar solicitud con nuevo ciclo
