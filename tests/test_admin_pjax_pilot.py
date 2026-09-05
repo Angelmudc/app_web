@@ -193,7 +193,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(cliente_detail_tpl_for_back, "r", encoding="utf-8") as f:
             cliente_detail_back_txt = f.read()
         self.assertIn('data-admin-nav="true"', cliente_detail_back_txt)
-        self.assertIn('data-admin-nav-back="true"', cliente_detail_back_txt)
+        self.assertNotIn('data-admin-nav-back="true"', cliente_detail_back_txt)
         self.assertIn("url_for('admin.listar_clientes')", cliente_detail_back_txt)
 
         solicitud_detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitud_detail.html")
@@ -268,6 +268,7 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(cliente_detail_tpl, "r", encoding="utf-8") as f:
             cliente_detail_txt = f.read()
         self.assertIn('data-admin-nav="true"', cliente_detail_txt)
+        self.assertNotIn('data-admin-nav-back="true"', cliente_detail_txt)
         cliente_detail_solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_cliente_detail_solicitudes_region.html")
         with open(cliente_detail_solicitudes_tpl, "r", encoding="utf-8") as f:
             cliente_detail_solicitudes_txt = f.read()
@@ -282,9 +283,17 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(solicitud_form_tpl, "r", encoding="utf-8") as f:
             solicitud_form_txt = f.read()
         self.assertIn('data-admin-nav="true"', solicitud_form_txt)
+        self.assertIn('data-admin-pjax-replay="1"', solicitud_form_txt)
         self.assertIn("initAdminSolicitudForm", solicitud_form_txt)
+        self.assertIn("adminSolicitudInit", solicitud_form_txt)
         self.assertIn("window.SolicitudSharedFields.init", solicitud_form_txt)
         self.assertNotIn("{% block scripts %}", solicitud_form_txt)
+
+        shared_fields_tpl = os.path.join(os.getcwd(), "templates", "clientes", "_solicitud_form_fields.html")
+        with open(shared_fields_tpl, "r", encoding="utf-8") as f:
+            shared_fields_txt = f.read()
+        self.assertIn('data-admin-pjax-replay="1"', shared_fields_txt)
+        self.assertIn("solicitudSharedInit", shared_fields_txt)
 
         solicitudes_list_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
         with open(solicitudes_list_tpl, "r", encoding="utf-8") as f:

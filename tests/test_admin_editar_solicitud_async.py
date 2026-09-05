@@ -340,6 +340,7 @@ class AdminEditarSolicitudAsyncTest(unittest.TestCase):
         path = os.path.join(os.getcwd(), "templates", "clientes", "_solicitud_form_fields.html")
         with open(path, "r", encoding="utf-8") as fh:
             txt = fh.read()
+        self.assertIn('data-admin-pjax-replay="1"', txt)
         self.assertIn("window.SolicitudSharedFields", txt)
         self.assertIn("window.SolicitudSharedFields.init", txt)
         self.assertIn("modalidad_trabajo_hidden", txt)

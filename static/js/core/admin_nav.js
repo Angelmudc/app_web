@@ -63,7 +63,7 @@
   function replayViewportScripts(viewport) {
     const root = viewport || getViewport(document);
     if (!root || !root.querySelectorAll) return;
-    const scripts = Array.from(root.querySelectorAll("script"));
+    const scripts = Array.from(root.querySelectorAll('script[data-admin-pjax-replay="1"]'));
     if (!scripts.length) return;
 
     scripts.forEach((oldScript) => {
