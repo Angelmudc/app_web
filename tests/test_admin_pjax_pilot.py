@@ -193,7 +193,45 @@ class AdminPjaxPilotTest(unittest.TestCase):
         with open(cliente_detail_tpl_for_back, "r", encoding="utf-8") as f:
             cliente_detail_back_txt = f.read()
         self.assertIn('data-admin-nav="true"', cliente_detail_back_txt)
+        self.assertIn('data-admin-nav-back="true"', cliente_detail_back_txt)
         self.assertIn("url_for('admin.listar_clientes')", cliente_detail_back_txt)
+
+        solicitud_detail_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitud_detail.html")
+        with open(solicitud_detail_tpl, "r", encoding="utf-8") as f:
+            solicitud_detail_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitud_detail_txt)
+        self.assertIn('data-admin-nav-back="true"', solicitud_detail_txt)
+        self.assertIn("url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id)", solicitud_detail_txt)
+
+        solicitud_summary_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitud_detail_summary_region.html")
+        with open(solicitud_summary_tpl, "r", encoding="utf-8") as f:
+            solicitud_summary_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitud_summary_txt)
+        self.assertIn('data-admin-nav-back="true"', solicitud_summary_txt)
+
+        publico_tpl = os.path.join(os.getcwd(), "templates", "admin", "cliente_link_publico_solicitud.html")
+        with open(publico_tpl, "r", encoding="utf-8") as f:
+            publico_txt = f.read()
+        self.assertIn('data-admin-nav="true"', publico_txt)
+        self.assertIn('data-admin-nav-back="true"', publico_txt)
+
+        compat_tpl = os.path.join(os.getcwd(), "templates", "admin", "compat_resumen.html")
+        with open(compat_tpl, "r", encoding="utf-8") as f:
+            compat_txt = f.read()
+        self.assertIn('data-admin-nav="true"', compat_txt)
+        self.assertIn('data-admin-nav-back="true"', compat_txt)
+
+        solicitudes_pub_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_publicas_bandeja.html")
+        with open(solicitudes_pub_tpl, "r", encoding="utf-8") as f:
+            solicitudes_pub_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitudes_pub_txt)
+        self.assertIn('data-admin-nav-back="true"', solicitudes_pub_txt)
+
+        solicitudes_list_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_list.html")
+        with open(solicitudes_list_tpl, "r", encoding="utf-8") as f:
+            solicitudes_list_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitudes_list_txt)
+        self.assertIn('data-admin-nav-back="true"', solicitudes_list_txt)
 
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")
         with open(solicitudes_tpl, "r", encoding="utf-8") as f:

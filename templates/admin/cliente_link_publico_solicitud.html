@@ -124,7 +124,7 @@ Al finalizar, avísame para dar seguimiento a tu solicitud.</textarea>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button class="btn btn-primary" type="button" onclick="copyLink()">Copiar enlace</button>
         <button class="btn btn-outline-primary" type="button" onclick="copyWaMessage()">Copiar mensaje WhatsApp</button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}">Volver al cliente</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.detalle_cliente', cliente_id=cliente.id) }}" data-admin-nav="true" data-admin-nav-back="true">Volver al cliente</a>
       </div>
 
       <small id="copyMsg" class="text-muted d-block mt-2"></small>

@@ -58,7 +58,7 @@
         <i class="bi bi-list-ul me-1"></i> Bandeja de solicitudes
       </a>
       {% endif %}
-      <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary" data-admin-nav="true">
+      <a href="{{ url_for('admin.detalle_cliente', cliente_id=solicitud.cliente_id) }}" class="btn btn-secondary" data-admin-nav="true" data-admin-nav-back="true">
         <i class="bi bi-arrow-left-circle me-1"></i> Volver al cliente
       </a>
     </div>

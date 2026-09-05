@@ -31,7 +31,7 @@
         </p>
       </div>
       <div class="page-header__actions">
-        <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary" data-admin-nav="true">
+        <a href="{{ url_for('admin.listar_clientes') }}" class="btn btn-outline-secondary" data-admin-nav="true" data-admin-nav-back="true">
           <i class="bi bi-arrow-left-short me-1"></i> Volver a clientes
         </a>
         {% if (chat_feature_enabled if chat_feature_enabled is defined else True) %}

@@ -9,7 +9,7 @@
       <div class="text-muted small">Intake pendiente de revisión y seguimiento comercial.</div>
     </div>
     {% if feature_enabled('solicitudes_bandeja') %}
-    <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm">Volver a solicitudes</a>
+    <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary btn-sm" data-admin-nav="true" data-admin-nav-back="true">Volver a solicitudes</a>
     {% endif %}
   </div>
 
