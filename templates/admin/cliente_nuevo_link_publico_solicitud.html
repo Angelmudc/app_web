@@ -173,7 +173,7 @@ Cuando lo completes, envíame tu nombre y dime que ya terminaste.</textarea>
       <div class="d-flex flex-wrap gap-2 mt-3">
         <button class="btn btn-primary" type="button" onclick="copyLinkNuevo()">Copiar enlace</button>
         <button class="btn btn-outline-primary" type="button" onclick="copyWaMessageNuevo()">Copiar mensaje WhatsApp</button>
-        <a class="btn btn-outline-secondary" href="{{ url_for('admin.listar_clientes') }}">Volver a clientes</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('admin.listar_clientes') }}" data-admin-nav="true" data-admin-nav-back="true">Volver a clientes</a>
       </div>
 
       <small id="copyMsgNuevo" class="text-muted d-block mt-2"></small>

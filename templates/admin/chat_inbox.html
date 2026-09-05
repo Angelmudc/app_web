@@ -38,7 +38,7 @@
     </div>
     <div class="admin-chat-page-actions">
       {% if feature_enabled('solicitudes_bandeja') %}
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary btn-sm">Volver a bandeja</a>
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-primary btn-sm" data-admin-nav="true" data-admin-nav-back="true">Volver a bandeja</a>
       {% endif %}
       {% if feature_enabled('tareas_seguimiento') %}
       <a href="{{ url_for('admin.tareas_hoy') }}" class="btn btn-outline-secondary btn-sm">Trabajo del día</a>

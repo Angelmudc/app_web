@@ -215,6 +215,12 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertIn('data-admin-nav="true"', publico_txt)
         self.assertIn('data-admin-nav-back="true"', publico_txt)
 
+        nuevo_link_tpl = os.path.join(os.getcwd(), "templates", "admin", "cliente_nuevo_link_publico_solicitud.html")
+        with open(nuevo_link_tpl, "r", encoding="utf-8") as f:
+            nuevo_link_txt = f.read()
+        self.assertIn('data-admin-nav="true"', nuevo_link_txt)
+        self.assertIn('data-admin-nav-back="true"', nuevo_link_txt)
+
         compat_tpl = os.path.join(os.getcwd(), "templates", "admin", "compat_resumen.html")
         with open(compat_tpl, "r", encoding="utf-8") as f:
             compat_txt = f.read()
@@ -232,6 +238,18 @@ class AdminPjaxPilotTest(unittest.TestCase):
             solicitudes_list_txt = f.read()
         self.assertIn('data-admin-nav="true"', solicitudes_list_txt)
         self.assertIn('data-admin-nav-back="true"', solicitudes_list_txt)
+
+        solicitudes_copiar_tpl = os.path.join(os.getcwd(), "templates", "admin", "solicitudes_copiar.html")
+        with open(solicitudes_copiar_tpl, "r", encoding="utf-8") as f:
+            solicitudes_copiar_txt = f.read()
+        self.assertIn('data-admin-nav="true"', solicitudes_copiar_txt)
+        self.assertIn('data-admin-nav-back="true"', solicitudes_copiar_txt)
+
+        chat_inbox_tpl = os.path.join(os.getcwd(), "templates", "admin", "chat_inbox.html")
+        with open(chat_inbox_tpl, "r", encoding="utf-8") as f:
+            chat_inbox_txt = f.read()
+        self.assertIn('data-admin-nav="true"', chat_inbox_txt)
+        self.assertIn('data-admin-nav-back="true"', chat_inbox_txt)
 
         solicitudes_tpl = os.path.join(os.getcwd(), "templates", "admin", "_solicitudes_list_results.html")
         with open(solicitudes_tpl, "r", encoding="utf-8") as f:

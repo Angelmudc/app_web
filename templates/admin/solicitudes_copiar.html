@@ -26,7 +26,7 @@
     <h1 class="h4 mb-0">📋 Copiar Solicitudes Disponibles</h1>
     <div class="d-flex flex-wrap gap-2">
       {% if feature_enabled('solicitudes_bandeja') %}
-      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary">
+      <a href="{{ url_for('admin.listar_solicitudes') }}" class="btn btn-outline-secondary" data-admin-nav="true" data-admin-nav-back="true">
         <i class="bi bi-arrow-left-circle me-1"></i> Volver al Listado
       </a>
       {% endif %}
