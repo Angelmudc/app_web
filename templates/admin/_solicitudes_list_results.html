@@ -29,7 +29,7 @@
     </div>
 
     <div class="table-responsive data-table-shell__scroll">
-      <table class="table table-hover align-middle data-table">
+        <table class="table table-hover align-middle data-table data-table--stackable">
         <thead>
           <tr>
             <th>Solicitud</th>
@@ -51,7 +51,7 @@
           {% set quick_view_id = 'sol-quick-view-' ~ s.id %}
           {% set is_unassigned = ((s.last_actor_label or '')|lower == 'sin responsable') %}
           <tr class="{% if is_unassigned %}table-warning-subtle{% endif %}">
-            <td>
+            <td data-label="Solicitud">
               <div class="fw-semibold">{{ s.cliente_nombre or 'Sin cliente' }}</div>
               <div class="small text-muted mt-1">{% if s.ciudad_sector %}{{ s.ciudad_sector }}{% else %}Zona sin especificar{% endif %}</div>
               <div class="d-flex flex-wrap gap-2 mt-2">
@@ -61,11 +61,11 @@
                 {% endif %}
               </div>
             </td>
-            <td>
+            <td data-label="Estado">
               <span class="badge {{ s.operational_signal_badge_class }}" title="{{ s.operational_signal_hint }}">{{ s.operational_signal_label }}</span>
               <div class="small text-muted mt-1">{{ s.days_in_state }} días en estado</div>
             </td>
-            <td>
+            <td data-label="Situación">
               <div class="small text-muted">Siguiente paso</div>
               <div class="small">{{ s.primary_cta_help }}</div>
               <div class="small text-muted mt-2">Seguimiento</div>
@@ -75,12 +75,12 @@
                 <div class="small mt-1 text-muted">Sin fecha</div>
               {% endif %}
             </td>
-            <td>
+            <td data-label="Responsable">
               <div class="small"><span class="text-muted">Responsable:</span> <span class="fw-semibold">{{ s.last_actor_label }}</span>{% if is_unassigned %} <span class="badge text-bg-warning ms-1">Sin responsable</span>{% endif %}</div>
               <div class="small mt-1"><span class="text-muted">Última actividad:</span> <span class="fw-semibold">{{ s.last_activity_at and s.last_activity_at|rd_datetime('%Y-%m-%d %H:%M') or 'Sin actividad registrada' }}</span></div>
               <div class="small mt-1"><span class="text-muted">Bloque:</span> {{ triage_label or 'Todas' }}</div>
             </td>
-            <td>
+            <td data-label="Acciones">
               <div class="data-table__actions">
                 {% if s.primary_cta_kind == 'form' %}
                 <form method="post"

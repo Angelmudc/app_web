@@ -46,7 +46,7 @@
       <div class="data-table-shell">
         <div class="data-table-shell__body">
           <div class="table-responsive data-table-shell__scroll">
-            <table class="table table-hover align-middle data-table">
+            <table class="table table-hover align-middle data-table data-table--stackable">
               <thead>
                 <tr>
                   <th>Código</th>
@@ -73,16 +73,16 @@
                 {% set contract_link = contract_links_by_solicitud.get(s.id) if contract_links_by_solicitud is defined else '' %}
                 {% set wa_activation = solicitud_whatsapp_activation.get(s.id) if solicitud_whatsapp_activation is defined else None %}
                 <tr id="sol-{{ s.id }}">
-                  <td class="fw-semibold text-primary">{{ s.codigo_solicitud | default('—') }}</td>
-                  <td>
+                  <td class="fw-semibold text-primary" data-label="Código">{{ s.codigo_solicitud | default('—') }}</td>
+                  <td data-label="Fecha">
                     {% if s.fecha_solicitud %}
                       {{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}
                     {% else %}
                       —
                     {% endif %}
                   </td>
-                  <td>{{ s.ciudad_sector | default('—') }}</td>
-                  <td>
+                  <td data-label="Ciudad/Sector">{{ s.ciudad_sector | default('—') }}</td>
+                  <td data-label="Tipo servicio">
                     {% set ts = s.tipo_servicio or '' %}
                     {% if ts == 'NINERA' %}
                       Niñera
@@ -96,9 +96,9 @@
                       {{ ts }}
                     {% endif %}
                   </td>
-                  <td>{{ s.modalidad_trabajo | default('—') }}</td>
-                  <td>{{ s.tipo_plan | default('—') }}</td>
-                  <td>
+                  <td data-label="Modalidad">{{ s.modalidad_trabajo | default('—') }}</td>
+                  <td data-label="Plan">{{ s.tipo_plan | default('—') }}</td>
+                  <td data-label="Estado">
                     {% set est = s.estado or '' %}
                     {% set badge_class =
                       'bg-secondary' if est == 'proceso' else
@@ -115,7 +115,7 @@
                       <span class="badge bg-warning text-dark ms-1">Reemplazo activo</span>
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-label="Contrato digital">
                     {% if contracts_schema_ready is defined and not contracts_schema_ready %}
                       <span class="text-muted small">Módulo no disponible</span>
                     {% elif contract %}
@@ -226,7 +226,7 @@
                       </form>
                     {% endif %}
                   </td>
-                  <td>
+                  <td data-label="Acciones">
                     <div class="data-table__actions">
                       <a href="{{ url_for('admin.detalle_solicitud', cliente_id=cliente.id, id=s.id) }}"
                          class="btn btn-sm btn-info" data-bs-toggle="tooltip" title="Ver detalle" aria-label="Ver detalle"

@@ -202,6 +202,8 @@ label.form-label{
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable both-edges;
 }
 
 .data-table-shell__footer{
@@ -244,6 +246,45 @@ label.form-label{
   display: flex;
   flex-wrap: wrap;
   gap: .45rem;
+}
+
+@media (max-width: 991.98px){
+  .data-table-shell__scroll{
+    margin-inline: -1rem;
+    padding-inline: 1rem;
+  }
+
+  .data-table-shell__footer{
+    padding: .9rem .9rem .95rem;
+  }
+
+  .data-table-shell__scroll > .table{
+    min-width: 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+
+  .data-table-shell__scroll > .table th,
+  .data-table-shell__scroll > .table td{
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .data-table-shell__scroll > .table thead th{
+    white-space: normal;
+  }
+
+  .data-table-shell__scroll > .table th:last-child,
+  .data-table-shell__scroll > .table td:last-child{
+    position: sticky;
+    right: 0;
+    z-index: 2;
+    background: linear-gradient(90deg, rgba(255,255,255,0), var(--panel) 26%);
+  }
+
+  .data-table-shell__scroll > .table td:last-child .data-table__actions{
+    justify-content: flex-end;
+  }
 }
 
 .empty-state{
@@ -582,11 +623,6 @@ summary.detail-section__header::-webkit-details-marker{
   }
 }
 
-/* Evita que textos largos estiren raro columnas */
-.table td, .table th{
-  white-space: nowrap;
-}
-
 /* Footer */
 footer{
   margin-top: 26px;
@@ -690,5 +726,66 @@ body[data-admin-runtime="1"] .modal-backdrop{
   }
   .dropdown-toggle.btn{
     width: 100%;              /* ✅ fácil de tocar */
+  }
+}
+
+@media (max-width: 767.98px){
+  .data-table--stackable{
+    border-collapse: separate;
+    border-spacing: 0 .75rem;
+  }
+
+  .data-table--stackable thead{
+    display: none;
+  }
+
+  .data-table--stackable tbody tr{
+    display: block;
+    border: 1px solid var(--border-2);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    box-shadow: var(--shadow-sm);
+    overflow: hidden;
+  }
+
+  .data-table--stackable tbody td{
+    display: flex;
+    justify-content: space-between;
+    gap: .85rem;
+    width: 100%;
+    padding: .7rem .9rem;
+    border: 0;
+    border-top: 1px solid var(--border-2);
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .data-table--stackable tbody td:first-child{
+    border-top: 0;
+  }
+
+  .data-table--stackable tbody td::before{
+    content: attr(data-label);
+    flex: 0 0 42%;
+    max-width: 42%;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  .data-table--stackable tbody td[data-label=""]::before{
+    display: none;
+  }
+
+  .data-table--stackable tbody td[data-label="Acciones"]{
+    display: block;
+  }
+
+  .data-table--stackable tbody td[data-label="Acciones"]::before{
+    display: block;
+    margin-bottom: .45rem;
+  }
+
+  .data-table--stackable tbody td[data-label="Acciones"] .data-table__actions{
+    justify-content: flex-start;
   }
 }

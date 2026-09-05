@@ -31,7 +31,7 @@
 
   {% if candidatas %}
   <div class="table-responsive">
-    <table class="table table-hover align-middle">
+    <table class="table table-hover align-middle data-table data-table--stackable">
       <thead>
         <tr>
           <th>ID</th>
@@ -46,11 +46,11 @@
         {% for c in candidatas %}
         {% set estado = (c.estado or '')|lower %}
         <tr>
-          <td>{{ c.fila }}</td>
-          <td>{{ c.codigo or '—' }}</td>
-          <td>{{ c.nombre_completo or 'Sin nombre' }}</td>
-          <td>{{ c.cedula or '—' }}</td>
-          <td>
+          <td data-label="ID">{{ c.fila }}</td>
+          <td data-label="Código">{{ c.codigo or '—' }}</td>
+          <td data-label="Nombre">{{ c.nombre_completo or 'Sin nombre' }}</td>
+          <td data-label="Cédula">{{ c.cedula or '—' }}</td>
+          <td data-label="Estado">
             {% if estado == 'descalificada' %}
               <span class="badge bg-danger">Descalificada</span>
               {% if c.nota_descalificacion %}
@@ -60,7 +60,7 @@
               <span class="badge bg-success">{{ (c.estado or 'sin estado')|replace('_',' ')|capitalize }}</span>
             {% endif %}
           </td>
-          <td>
+          <td data-label="Acciones">
             <div class="d-flex gap-2 flex-wrap">
               <a
                 href="{{ url_for('admin.candidatas_operativo_detail', fila=c.fila) }}"

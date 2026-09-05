@@ -9,7 +9,7 @@
   <div class="card">
     <div class="card-body p-0">
       <div class="table-responsive">
-        <table class="table table-hover align-middle mb-0">
+        <table class="table table-hover align-middle mb-0 data-table data-table--stackable">
           <thead class="table-light">
             <tr>
               <th scope="col">Código</th>
@@ -21,10 +21,10 @@
           <tbody>
             {% for s in solicitudes %}
             <tr>
-              <td class="fw-semibold">{{ s.codigo_solicitud }}</td>
-              <td>{{ s.cliente.nombre_completo }}</td>
-              <td>{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}</td>
-              <td class="text-end">
+              <td class="fw-semibold" data-label="Código">{{ s.codigo_solicitud }}</td>
+              <td data-label="Cliente">{{ s.cliente.nombre_completo }}</td>
+              <td data-label="Fecha solicitud">{{ s.fecha_solicitud|rd_datetime('%Y-%m-%d %H:%M') }}</td>
+              <td class="text-end" data-label="Acciones">
 
                 <a href="{{ url_for('admin.editar_solicitud_admin', cliente_id=s.cliente_id, id=s.id) }}"
                    class="btn btn-sm btn-outline-secondary me-1">
