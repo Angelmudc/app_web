@@ -527,14 +527,33 @@ function makeDetailRoot(extraAttrs = {}) {
 
   const refs = new FakeNode("section", { "data-edit-section": "secretary_references" });
   const refsToggle = new FakeNode("button", { "data-edit-toggle": "" });
+  const refsBadgeWrap = new FakeNode("div", { class: "detail-badges" });
+  const refsBadgeLabor = new FakeNode("span", { class: "badge text-bg-warning", "data-reference-summary-badge": "laboral" });
+  const refsBadgeFam = new FakeNode("span", { class: "badge text-bg-warning", "data-reference-summary-badge": "familiar" });
+  refsBadgeLabor.textContent = "Laboral pendiente";
+  refsBadgeFam.textContent = "Familiar pendiente";
+  refsBadgeWrap.appendChild(refsBadgeLabor);
+  refsBadgeWrap.appendChild(refsBadgeFam);
   const refsDisplay = new FakeNode("div", { "data-display": "secretary-references", class: "cand-display" });
+  const refsStatus = new FakeNode("span", { "data-reference-status": "" });
+  refsStatus.textContent = "Referencias verificadas pendientes.";
+  refsDisplay.appendChild(refsStatus);
   const refsForm = new FakeNode("form", {
     "data-quick-form": "",
     "data-endpoint": "/admin/candidatas/990501/referencias",
     "data-quick-form-bound": "1",
   });
   refsForm._formDataFields = { referencias_laboral: "Texto" };
+  const refsInputLab = new FakeNode("textarea", { name: "referencias_laboral" });
+  refsInputLab.value = "Texto";
+  const refsInputFam = new FakeNode("textarea", { name: "referencias_familiares" });
+  refsInputFam.value = "Texto";
+  const refsFeedback = new FakeNode("div", { "data-feedback": "" });
+  refsForm.appendChild(refsInputLab);
+  refsForm.appendChild(refsInputFam);
+  refsForm.appendChild(refsFeedback);
   refs.appendChild(refsToggle);
+  refs.appendChild(refsBadgeWrap);
   refs.appendChild(refsDisplay);
   refs.appendChild(refsForm);
 
@@ -644,7 +663,11 @@ function makeDetailRoot(extraAttrs = {}) {
     laborFeedback,
     refs,
     refsToggle,
+    refsBadgeWrap,
+    refsBadgeLabor,
+    refsBadgeFam,
     refsDisplay,
+    refsStatus,
     refsForm,
     formRefs,
     formRefsToggle,
@@ -920,6 +943,53 @@ async function runScenario(name) {
         },
       },
     }];
+  } else if (name === "secretary_references_save_updates_only_region") {
+    fetchConfig.responses = [{
+      deferred: true,
+      payload: {
+        ok: true,
+        message: "Referencias verificadas actualizadas.",
+        changes: {
+          referencias_laboral: { from: "Texto viejo", to: "INT-LAB-RENOVADA" },
+          referencias_familiares: { from: "Texto viejo", to: "INT-FAM-RENOVADA" },
+        },
+        display: {
+          secretary_references: {
+            laboral: "INT-LAB-RENOVADA",
+            familiar: "INT-FAM-RENOVADA",
+            laboral_full: "INT-LAB-RENOVADA",
+            familiar_full: "INT-FAM-RENOVADA",
+          },
+        },
+        values: {
+          secretary_references: {
+            referencias_laboral: "INT-LAB-RENOVADA",
+            referencias_familiares: "INT-FAM-RENOVADA",
+          },
+        },
+        secretary_references_summary: {
+          laboral: true,
+          familiar: true,
+        },
+        readiness: {
+          ready: true,
+          completed: 8,
+          total: 8,
+          label: "8/8",
+          flags: {},
+          labels: {},
+          reasons: [],
+        },
+        state_capabilities: {
+          process: { label: "Inscripción completa" },
+          preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+          situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+          assignment: { solicitud: null },
+          actions: { can_mark_ready: false, can_mark_working: false, can_disqualify: true, can_reactivate: false },
+          reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+        },
+      },
+    }];
   } else if (name === "doc_upload_success_updates_only_documents") {
     fetchConfig.responses = [{
       deferred: true,
@@ -1106,6 +1176,8 @@ async function runScenario(name) {
       },
       updated_fields: ["depuracion", "perfil"],
     });
+    await wait();
+    await wait();
     await wait();
     await wait();
     await wait();
@@ -1329,6 +1401,81 @@ async function runScenario(name) {
     };
   }
 
+  if (name === "secretary_references_save_updates_only_region") {
+    const submitEvent = new FakeEvent("submit", { target: first.refsForm });
+    submitEvent.submitter = null;
+    first.refsForm._formDataFields = {
+      referencias_laboral: "INT-LAB-RENOVADA",
+      referencias_familiares: "INT-FAM-RENOVADA",
+    };
+    first.refsForm.dispatchEvent(submitEvent);
+    await Promise.resolve();
+    const feedbackDuringSave = first.refsForm.querySelector("[data-feedback]").textContent;
+    env.fetchMock.resolvePending({
+      ok: true,
+      message: "Referencias verificadas actualizadas.",
+      changes: {
+        referencias_laboral: { from: "Texto viejo", to: "INT-LAB-RENOVADA" },
+        referencias_familiares: { from: "Texto viejo", to: "INT-FAM-RENOVADA" },
+      },
+      display: {
+        secretary_references: {
+          laboral: "INT-LAB-RENOVADA",
+          familiar: "INT-FAM-RENOVADA",
+          laboral_full: "INT-LAB-RENOVADA",
+          familiar_full: "INT-FAM-RENOVADA",
+        },
+      },
+      values: {
+        secretary_references: {
+          referencias_laboral: "INT-LAB-RENOVADA",
+          referencias_familiares: "INT-FAM-RENOVADA",
+        },
+      },
+      secretary_references_summary: {
+        laboral: true,
+        familiar: true,
+      },
+      readiness: {
+        ready: true,
+        completed: 8,
+        total: 8,
+        label: "8/8",
+        flags: {},
+        labels: {},
+        reasons: [],
+      },
+      state_capabilities: {
+        process: { label: "Inscripción completa" },
+        preparation: { label: "8/8", missing: [], labels: {}, operational_blockers: [] },
+        situation: { label: "Lista para trabajar", nota_descalificacion: "" },
+        assignment: { solicitud: null },
+        actions: { can_mark_ready: false, can_mark_working: false, can_disqualify: true, can_reactivate: false },
+        reasons: { can_mark_ready: [], can_mark_working: [], can_disqualify: [], can_reactivate: [] },
+      },
+    });
+    await wait();
+    await wait();
+    await wait();
+    return {
+      fetches: env.fetchMock.calls.length,
+      firstUrl: env.fetchMock.calls[0] ? env.fetchMock.calls[0].url : null,
+      feedbackDuringSave,
+      feedback: first.refsForm.querySelector("[data-feedback]").textContent,
+      refsDisplay: first.refsDisplay.textContent,
+      refsBadgeLabor: first.refsBadgeLabor.textContent,
+      refsBadgeFam: first.refsBadgeFam.textContent,
+      refsBadgeLaborClass: first.refsBadgeLabor.className,
+      refsBadgeFamClass: first.refsBadgeFam.className,
+      refsStatus: (first.refsDisplay.querySelector('[data-reference-status]') || { textContent: "" }).textContent,
+      refsLabValue: first.refsForm.querySelector('[name="referencias_laboral"]').value,
+      refsFamValue: first.refsForm.querySelector('[name="referencias_familiares"]').value,
+      refsBusy: first.refsForm.dataset.quickBusy || "",
+      personalDisplay: first.personalDisplay.textContent,
+      laborDisplay: first.laborDisplay.textContent,
+    };
+  }
+
   if (name === "batch_modal_error_keeps_open") {
     first.batchOpen.dispatchEvent(new FakeEvent("click", { target: first.batchOpen }));
     await wait();
@@ -1538,6 +1685,24 @@ def test_candidate_detail_runtime_referencias_formulario_updates_only_region():
     assert "text-bg-success" in data["refsBadgeFamClass"]
     assert data["refsLabValue"] == "FORM-NEW-LAB"
     assert data["refsFamValue"] == "FORM-NEW-FAM"
+    assert data["refsBusy"] == ""
+
+
+def test_candidate_detail_runtime_referencias_verificadas_updates_only_region():
+    data = _run_node_case("secretary_references_save_updates_only_region")
+    assert data["fetches"] == 1
+    assert data["firstUrl"] == "/admin/candidatas/990501/referencias"
+    assert "Guardando..." in data["feedbackDuringSave"]
+    assert "Referencias verificadas actualizadas." in data["feedback"]
+    assert data["personalDisplay"] == "PERSONAL-ORIGINAL"
+    assert data["laborDisplay"] == "LABOR-ORIGINAL"
+    assert data["refsBadgeLabor"] == "Laboral ✓"
+    assert data["refsBadgeFam"] == "Familiar ✓"
+    assert "text-bg-success" in data["refsBadgeLaborClass"]
+    assert "text-bg-success" in data["refsBadgeFamClass"]
+    assert data["refsStatus"] == "Referencias verificadas completas."
+    assert data["refsLabValue"] == "INT-LAB-RENOVADA"
+    assert data["refsFamValue"] == "INT-FAM-RENOVADA"
     assert data["refsBusy"] == ""
 
 

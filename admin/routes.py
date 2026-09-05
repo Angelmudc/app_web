@@ -23429,12 +23429,16 @@ def _candidata_center_partial_response_payload(
                     "laboral": bool(getattr(candidata, "contactos_referencias_laborales", "") or ""),
                     "familiar": bool(getattr(candidata, "referencias_familiares_detalle", "") or ""),
                 }
-        if include_secretary_references:
-            payload.setdefault("display", {})["secretary_references"] = refs["secretary_references"]
-            payload.setdefault("values", {})["secretary_references"] = {
-                "referencias_laboral": getattr(candidata, "referencias_laboral", "") or "",
-                "referencias_familiares": getattr(candidata, "referencias_familiares", "") or "",
-            }
+    if include_secretary_references:
+        payload.setdefault("display", {})["secretary_references"] = refs["secretary_references"]
+        payload.setdefault("values", {})["secretary_references"] = {
+            "referencias_laboral": getattr(candidata, "referencias_laboral", "") or "",
+            "referencias_familiares": getattr(candidata, "referencias_familiares", "") or "",
+        }
+        payload["secretary_references_summary"] = {
+            "laboral": bool(getattr(candidata, "referencias_laboral", "") or ""),
+            "familiar": bool(getattr(candidata, "referencias_familiares", "") or ""),
+        }
     if include_inscription:
         inscription_payload = _candidata_center_inscription_display(candidata)
         payload.setdefault("display", {}).update(inscription_payload["display"])

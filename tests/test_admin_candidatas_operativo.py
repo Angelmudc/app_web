@@ -2532,6 +2532,52 @@ def test_admin_candidata_update_referencias_devuelve_solo_regiones_necesarias():
     assert payload["ok"] is True
     assert payload["display"]["secretary_references"]["laboral"] == "INT-LAB-RENOVADA"
     assert payload["display"]["secretary_references"]["familiar"] == "INT-FAM-RENOVADA"
+    assert payload["secretary_references_summary"]["laboral"] is True
+    assert payload["secretary_references_summary"]["familiar"] is True
+    assert payload["readiness"]["flags"]["referencias_laboral"] is True
+    assert payload["readiness"]["flags"]["referencias_familiares"] is True
+    assert payload["state_capabilities"]["assignment"]
+    assert payload["invalidate_snapshots"] == ["/admin/candidatas"]
+    assert "personal" not in payload.get("display", {})
+    assert "labor" not in payload.get("display", {})
+    assert "references" not in payload.get("display", {})
+    assert "inscription" not in payload.get("display", {})
+    assert "recent_calls" not in payload
+    assert "finance_event" not in payload
+    assert "doc_flags" not in payload
+
+
+def test_admin_candidata_update_referencias_devuelve_solo_region_verificada_y_refresca_estado():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    client = flask_app.test_client()
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990611)
+        cand = Candidata.query.get(990611)
+        cand.referencias_laboral = "INT-LAB-ORIGINAL"
+        cand.referencias_familiares = "INT-FAM-ORIGINAL"
+        db.session.commit()
+
+    assert _login(client).status_code in (302, 303)
+    with patch("admin.routes._candidata_center_detail_context", side_effect=AssertionError("no debe reconstruirse la ficha completa")):
+        resp = client.post(
+            "/admin/candidatas/990611/referencias",
+            data={
+                "referencias_laboral": "INT-LAB-RENOVADA",
+                "referencias_familiares": "INT-FAM-RENOVADA",
+            },
+            follow_redirects=False,
+        )
+
+    payload = resp.get_json() or {}
+    assert resp.status_code == 200
+    assert payload["ok"] is True
+    assert payload["display"]["secretary_references"]["laboral"] == "INT-LAB-RENOVADA"
+    assert payload["display"]["secretary_references"]["familiar"] == "INT-FAM-RENOVADA"
+    assert payload["secretary_references_summary"]["laboral"] is True
+    assert payload["secretary_references_summary"]["familiar"] is True
     assert payload["readiness"]["flags"]["referencias_laboral"] is True
     assert payload["readiness"]["flags"]["referencias_familiares"] is True
     assert payload["state_capabilities"]["assignment"]

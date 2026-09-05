@@ -389,8 +389,8 @@
     }
   }
 
-  function refreshReferenceSummary(detailRoot, summary) {
-    const panel = detailRoot.querySelector('[data-edit-section="form_references"]');
+  function refreshReferenceSummary(detailRoot, summary, sectionKey) {
+    const panel = detailRoot.querySelector('[data-edit-section="' + String(sectionKey || "form_references") + '"]');
     if (!panel || !summary) return;
     const badges = panel.querySelectorAll("[data-reference-summary-badge]");
     if (!badges || !badges.length) return;
@@ -401,10 +401,54 @@
     items.forEach((item, index) => {
       const badge = badges[index];
       if (!badge) return;
-      const ok = Boolean(summary[item.key]);
+      const ok = Boolean(summary[item.key] || summary[item.key + "_full"]);
       badge.textContent = item.label + " " + (ok ? "✓" : "pendiente");
       badge.className = "badge " + (ok ? "text-bg-success" : "text-bg-warning");
     });
+    const state = panel.querySelector("[data-reference-status]");
+    if (state) {
+      const allOk = Boolean((summary.laboral || summary.laboral_full) && (summary.familiar || summary.familiar_full));
+      state.textContent = allOk ? "Referencias " + (sectionKey === "secretary_references" ? "verificadas" : "del formulario") + " completas." : "Referencias " + (sectionKey === "secretary_references" ? "verificadas" : "del formulario") + " pendientes.";
+    }
+  }
+
+  function refreshSecretaryReferencesSection(detailRoot, payload) {
+    const panel = detailRoot.querySelector('[data-edit-section="secretary_references"]');
+    if (!panel || !payload) return;
+    const display = payload.display && payload.display.secretary_references ? payload.display.secretary_references : null;
+    const summary = payload.secretary_references_summary || display;
+    const values = payload.values && payload.values.secretary_references ? payload.values.secretary_references : null;
+    if (display) {
+      renderKv(panel.querySelector('[data-display="secretary-references"]'), {
+        Laborales: display.laboral || "No informado",
+        Familiares: display.familiar || "No informado",
+      }, "");
+    }
+    if (summary) {
+      const badges = panel.querySelectorAll("[data-reference-summary-badge]");
+      const items = [
+        { key: "laboral", label: "Laboral" },
+        { key: "familiar", label: "Familiar" },
+      ];
+      items.forEach((item, index) => {
+        const badge = badges[index];
+        if (!badge) return;
+        const ok = Boolean(summary[item.key] || summary[item.key + "_full"] || (display && display[item.key]));
+        badge.textContent = item.label + " " + (ok ? "✓" : "pendiente");
+        badge.className = "badge " + (ok ? "text-bg-success" : "text-bg-warning");
+      });
+      const state = panel.querySelector("[data-reference-status]");
+      if (state) {
+        const allOk = Boolean((summary.laboral || summary.laboral_full || (display && display.laboral)) && (summary.familiar || summary.familiar_full || (display && display.familiar)));
+        state.textContent = allOk ? "Referencias verificadas completas." : "Referencias verificadas pendientes.";
+      }
+    }
+    if (values) {
+      Object.keys(values).forEach((name) => {
+        const field = panel.querySelector('[name="' + name + '"]');
+        if (field) field.value = values[name] || "";
+      });
+    }
   }
 
   function syncIdentity(detailRoot, payload) {
@@ -1143,12 +1187,10 @@
       }, "");
       refreshReferenceCards(detailRoot, display);
     }
-    if (Object.prototype.hasOwnProperty.call(payload, "references_summary")) refreshReferenceSummary(detailRoot, payload.references_summary);
-    if (Object.prototype.hasOwnProperty.call(display, "secretary_references")) {
-      renderKv(detailRoot.querySelector('[data-display="secretary-references"]'), {
-        Laborales: (display.secretary_references || {}).laboral || "No informado",
-        Familiares: (display.secretary_references || {}).familiar || "No informado",
-      }, "");
+    if (Object.prototype.hasOwnProperty.call(payload, "references_summary")) refreshReferenceSummary(detailRoot, payload.references_summary, "form_references");
+    if (Object.prototype.hasOwnProperty.call(payload, "secretary_references_summary")) refreshReferenceSummary(detailRoot, payload.secretary_references_summary, "secretary_references");
+    if (display.secretary_references || Object.prototype.hasOwnProperty.call(payload, "secretary_references_summary")) {
+      refreshSecretaryReferencesSection(detailRoot, payload);
       refreshReferenceCards(detailRoot, display);
     }
     if (Object.prototype.hasOwnProperty.call(payload, "inscription")) {
