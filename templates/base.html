@@ -597,30 +597,30 @@
     </div>
   </nav>
 
+  <!-- Global flash host: keep notifications outside animated/content containers. -->
+  <div class="app-flash-container" role="region" aria-label="Notificaciones">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, text in messages %}
+        <div class="toast align-items-center text-bg-{{ 'danger' if category in ['error','danger']
+            else 'warning' if category in ['warn','warning']
+            else 'success' if category=='success'
+            else 'primary' }}"
+             role="alert" data-bs-delay="5000">
+          <div class="d-flex">
+            <div class="toast-body">{{ text }}</div>
+            <button type="button" class="btn-close btn-close-white me-2 m-auto"
+                    data-bs-dismiss="toast" aria-label="Cerrar"></button>
+          </div>
+        </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
   {% block hero %}{% endblock %}
 
   <main class="container">
-
-    <!-- Toaster -->
-    <div class="position-fixed top-0 start-50 translate-middle-x p-3" style="z-index:1080">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, text in messages %}
-          <div class="toast align-items-center text-bg-{{ 'danger' if category in ['error','danger']
-              else 'warning' if category in ['warn','warning']
-              else 'success' if category=='success'
-              else 'primary' }}"
-               role="alert" data-bs-delay="5000">
-            <div class="d-flex">
-              <div class="toast-body">{{ text }}</div>
-              <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                      data-bs-dismiss="toast" aria-label="Cerrar"></button>
-            </div>
-          </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-    </div>
 
     <div id="adminMainViewport" data-admin-nav-viewport="true">
       {% block content %}{% endblock %}

@@ -59,6 +59,33 @@ main.container{
   padding-bottom: 28px;
 }
 
+/* Keep global flash messages above the page content and below the navbar. */
+.app-flash-container{
+  position: fixed;
+  top: 4.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1080;
+  width: min(520px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.app-flash-container > .toast{
+  position: relative;
+  inset: auto;
+  width: 100%;
+  pointer-events: auto;
+}
+
+@media (max-width: 576px){
+  .app-flash-container{
+    top: 4.25rem;
+  }
+}
+
 hr{
   border:0;
   border-top:1px solid var(--border);

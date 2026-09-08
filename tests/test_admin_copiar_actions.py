@@ -473,6 +473,17 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('data-lookup-url="/admin/solicitudes/copiar/candidatas_lookup"', html)
         self.assertIn('src="/static/js/admin/solicitudes_copiar.js"', html)
 
+    def test_copiar_runtime_inicializa_tambien_si_el_script_se_carga_con_dom_listo(self):
+        js_path = os.path.join(os.getcwd(), "static", "js", "admin", "solicitudes_copiar.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            js = f.read()
+
+        self.assertIn("function initSolicitudesCopiar()", js)
+        self.assertIn("document.readyState === 'loading'", js)
+        self.assertIn("initSolicitudesCopiar();", js)
+        self.assertIn("admin:content-updated", js)
+        self.assertIn("#copiarSolicitudesResults", js)
+
     def test_candidatas_lookup_copiar_busca_fuera_de_subconjunto_inicial(self):
         self._login("Cruz", "8998")
         rows = [_CandidataStub(fila=i, nombre_completo=f"Ana {i:03d}") for i in range(1, 401)]

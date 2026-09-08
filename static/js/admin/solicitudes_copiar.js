@@ -1,4 +1,5 @@
-document.addEventListener('DOMContentLoaded', () => {
+(function () {
+  function initSolicitudesCopiar() {
   const actionPanel = document.getElementById('contextActionPanel');
   const panelTitle = document.getElementById('contextActionPanelTitle');
   const panelClose = document.getElementById('contextActionPanelClose');
@@ -637,10 +638,17 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.addEventListener('click', closeActionPanel);
   });
 
-  document.addEventListener('admin:content-updated', (ev) => {
+    document.addEventListener('admin:content-updated', (ev) => {
     const detail = ev.detail || {};
     if (detail.targetSelector !== '#copiarSolicitudesResults') return;
     bindDynamicHandlers(detail.container || document);
     clearUiLoaders();
-  });
-});
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSolicitudesCopiar, { once: true });
+  } else {
+    initSolicitudesCopiar();
+  }
+})();
