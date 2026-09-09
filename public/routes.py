@@ -6,6 +6,7 @@ import urllib.parse
 import time
 import imghdr
 import re
+from pathlib import Path
 from threading import Lock
 from typing import Optional
 
@@ -21,6 +22,7 @@ from flask import (
     url_for,
     current_app,
     g,
+    send_file,
 )
 from flask_login import current_user
 from sqlalchemy import func
@@ -50,6 +52,8 @@ PUBLIC_LIVE_ALLOWED_EVENT_TYPES = {
 }
 _PUBLIC_LIVE_RL_LOCK = Lock()
 _PUBLIC_LIVE_RL_LOCAL: dict[str, tuple[int, float]] = {}
+
+CLIENT_AI_PLANS_ASSET_PATH = Path(__file__).resolve().parents[1] / "static" / "media" / "client_ai" / "planes_domestica.jpg"
 
 
 def _safe_page(value, default=1):
@@ -131,6 +135,16 @@ def _public_external_url(endpoint: str, **values) -> str:
             rel = url_for(endpoint, _external=False, **values).lstrip("/")
             return urllib.parse.urljoin(base.rstrip("/") + "/", rel)
     return url_for(endpoint, _external=True, **values)
+
+
+@public_bp.route("/public-assets/client-ai/planes-domestica", methods=["GET", "HEAD"])
+def public_client_ai_plans_asset():
+    """Serve only the official Client AI plans image to external providers."""
+    if not CLIENT_AI_PLANS_ASSET_PATH.is_file():
+        abort(404)
+    response = make_response(send_file(CLIENT_AI_PLANS_ASSET_PATH, mimetype="image/jpeg", conditional=True))
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
 
 
 def _catalogo_token_hash(token: str) -> str:

@@ -32,6 +32,14 @@ def build_graph_url() -> str:
     return f"{base}/{version}/{phone_number_id}/messages"
 
 
+def build_public_asset_url(asset_path: str) -> str:
+    base = (os.getenv("PUBLIC_BASE_URL") or "https://www.domesticadelcibao.com").strip().rstrip("/")
+    path = str(asset_path or "").strip().lstrip("/")
+    if path == "static/media/client_ai/planes_domestica.jpg":
+        path = "public-assets/client-ai/planes-domestica"
+    return f"{base}/{path}"
+
+
 def _mask_token(token: str) -> str:
     raw = str(token or "").strip()
     if not raw:
@@ -168,6 +176,14 @@ def send_text_message(to_phone_e164: str, text: str, *, timeout_seconds: int = 8
         if isinstance(messages, list) and messages:
             first = messages[0] if isinstance(messages[0], dict) else {}
             msg_id = str(first.get("id") or "").strip() or None
+        if not msg_id:
+            return {
+                "ok": False,
+                "status": "failed",
+                "error_code": "missing_wa_message_id",
+                "error_message": "Graph API no devolvió un message id.",
+                "http_status": int(resp.status_code),
+            }
         return {
             "ok": True,
             "status": "sent",
@@ -192,3 +208,48 @@ def send_text_message(to_phone_e164: str, text: str, *, timeout_seconds: int = 8
         "raw_response_text": raw_body,
         "http_status": int(resp.status_code),
     }
+
+
+def send_image_message(to_phone_e164: str, image_url: str, *, timeout_seconds: int = 8) -> dict[str, Any]:
+    to_phone = (to_phone_e164 or "").strip()
+    link = (image_url or "").strip()
+    if not to_phone or not link:
+        return {"ok": False, "status": "failed", "error_code": "invalid_input", "error_message": "to_phone/image_url requeridos"}
+    if is_staging_offline_active():
+        try:
+            assert_no_real_outbound_allowed()
+        except SandboxSafetyError as exc:
+            return {"ok": False, "status": "blocked", "error_code": "sandbox_security_block", "error_message": str(exc)}
+    if not is_whatsapp_enabled():
+        return {"ok": False, "skipped": True, "status": "queued", "reason": "whatsapp_disabled", "http_status": None}
+    if is_bot_dry_run():
+        return {"ok": False, "skipped": True, "status": "queued", "reason": "dry_run", "http_status": None}
+    access_token = (os.getenv("WHATSAPP_ACCESS_TOKEN") or "").strip()
+    phone_number_id = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
+    if not access_token or not phone_number_id:
+        return {"ok": False, "status": "failed", "error_code": "misconfigured", "error_message": "Faltan credenciales WhatsApp", "http_status": None}
+    url = build_graph_url()
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    payload = {"messaging_product": "whatsapp", "to": to_phone.lstrip("+"), "type": "image", "image": {"link": link}}
+    log_bot_event("meta_send_image_request_started", metadata={"endpoint": url, "phone_number_id": phone_number_id, "payload": payload, "timeout": int(timeout_seconds), "headers_masked": _masked_headers(access_token)})
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)
+    except requests.Timeout:
+        return {"ok": False, "status": "failed", "error_code": "timeout", "error_message": "Timeout al llamar Graph API", "http_status": None}
+    except Exception as exc:
+        return {"ok": False, "status": "failed", "error_code": "network_error", "error_message": f"{exc.__class__.__name__}", "http_status": None}
+    try:
+        body = resp.json() if resp.content else {}
+    except Exception:
+        body = {}
+    log_bot_event("meta_send_image_response", metadata={"http_status": int(resp.status_code), "parsed_json": body})
+    if 200 <= int(resp.status_code) < 300:
+        messages = body.get("messages") if isinstance(body, dict) else None
+        msg_id = str((messages[0] if messages and isinstance(messages[0], dict) else {}).get("id") or "").strip() or None
+        if not msg_id:
+            return {"ok": False, "status": "failed", "error_code": "missing_wa_message_id", "error_message": "Graph API no devolvió un message id.", "http_status": int(resp.status_code)}
+        return {"ok": True, "status": "sent", "wa_message_id": msg_id, "raw_response": body, "http_status": int(resp.status_code)}
+    error_node = body.get("error") if isinstance(body, dict) and isinstance(body.get("error"), dict) else {}
+    error_code = str(error_node.get("code") or resp.status_code)
+    error_message = str(error_node.get("message") or "Graph API error").strip()
+    return {"ok": False, "status": "failed", "error_code": error_code, "error_kind": _classify_meta_error(int(resp.status_code), body), "error_message": error_message[:255], "raw_response": body, "http_status": int(resp.status_code)}
