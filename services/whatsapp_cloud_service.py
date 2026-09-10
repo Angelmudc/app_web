@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
+from urllib.parse import urlsplit
 
 import requests
 from services.bot_sandbox_service import SandboxSafetyError, assert_no_real_outbound_allowed, is_staging_offline_active
@@ -38,6 +40,28 @@ def build_public_asset_url(asset_path: str) -> str:
     if path == "static/media/client_ai/planes_domestica.jpg":
         path = "public-assets/client-ai/planes-domestica"
     return f"{base}/{path}"
+
+
+def _contains_official_form_link(text: str) -> bool:
+    """Return true only for the public form paths on our configured domain."""
+    public_base = (os.getenv("PUBLIC_BASE_URL") or "https://www.domesticadelcibao.com").strip().rstrip("/")
+    base_parts = urlsplit(public_base)
+    base_netloc = base_parts.netloc.lower()
+    if not base_netloc:
+        return False
+
+    for raw_candidate in re.findall(r"https?://[^\s<>]+|/clientes/[fn]/[^\s<>]+", text or ""):
+        candidate = raw_candidate.rstrip(".,;:!?)]}")
+        if candidate.startswith("/"):
+            path = urlsplit(candidate).path
+        else:
+            parts = urlsplit(candidate)
+            if parts.scheme not in {"http", "https"} or parts.netloc.lower() != base_netloc:
+                continue
+            path = parts.path
+        if path.startswith(("/clientes/f/", "/clientes/n/")) and len(path.rsplit("/", 1)[-1]) > 0:
+            return True
+    return False
 
 
 def _mask_token(token: str) -> str:
@@ -78,7 +102,13 @@ def _classify_meta_error(http_status: int | None, body: dict[str, Any]) -> str:
     return "meta_delivery_failed"
 
 
-def send_text_message(to_phone_e164: str, text: str, *, timeout_seconds: int = 8) -> dict[str, Any]:
+def send_text_message(
+    to_phone_e164: str,
+    text: str,
+    *,
+    timeout_seconds: int = 8,
+    preview_url: bool | None = None,
+) -> dict[str, Any]:
     to_phone = (to_phone_e164 or "").strip()
     text_body = (text or "").strip()
     if not to_phone or not text_body:
@@ -117,6 +147,8 @@ def send_text_message(to_phone_e164: str, text: str, *, timeout_seconds: int = 8
         "type": "text",
         "text": {"body": text_body},
     }
+    if preview_url is True or (preview_url is None and _contains_official_form_link(text_body)):
+        payload["text"]["preview_url"] = True
     log_bot_event(
         "meta_send_request_started",
         metadata={
