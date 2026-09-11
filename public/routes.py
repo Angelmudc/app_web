@@ -54,6 +54,7 @@ _PUBLIC_LIVE_RL_LOCK = Lock()
 _PUBLIC_LIVE_RL_LOCAL: dict[str, tuple[int, float]] = {}
 
 CLIENT_AI_PLANS_ASSET_PATH = Path(__file__).resolve().parents[1] / "static" / "media" / "client_ai" / "planes_domestica.jpg"
+CLIENT_AI_CLEANING_EXPRESS_ASSET_PATH = Path(__file__).resolve().parents[1] / "static" / "media" / "client_ai" / "limpieza_express.png"
 
 
 def _safe_page(value, default=1):
@@ -143,6 +144,16 @@ def public_client_ai_plans_asset():
     if not CLIENT_AI_PLANS_ASSET_PATH.is_file():
         abort(404)
     response = make_response(send_file(CLIENT_AI_PLANS_ASSET_PATH, mimetype="image/jpeg", conditional=True))
+    response.headers["Cache-Control"] = "public, max-age=86400"
+    return response
+
+
+@public_bp.route("/public-assets/client-ai/limpieza-express", methods=["GET", "HEAD"])
+def public_client_ai_cleaning_express_asset():
+    """Serve only the official Client AI cleaning Express image."""
+    if not CLIENT_AI_CLEANING_EXPRESS_ASSET_PATH.is_file():
+        abort(404)
+    response = make_response(send_file(CLIENT_AI_CLEANING_EXPRESS_ASSET_PATH, mimetype="image/png", conditional=True))
     response.headers["Cache-Control"] = "public, max-age=86400"
     return response
 
