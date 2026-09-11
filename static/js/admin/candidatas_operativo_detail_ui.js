@@ -452,7 +452,22 @@
   }
 
   function syncIdentity(detailRoot, payload) {
-    const header = payload.header || {};
+    const header = payload && payload.header;
+    if (!header || typeof header !== "object" || Array.isArray(header)) return;
+
+    const has = (key) => Object.prototype.hasOwnProperty.call(header, key);
+    const identityKeys = ["nombre", "edad", "telefono", "codigo"];
+    const hasCompleteIdentity = identityKeys.every(has);
+    const valueFor = (key, fallback) => {
+      if (!has(key)) return null;
+      const value = header[key];
+      // Un payload parcial no puede borrar el HTML inicial con null/"".
+      // En un header completo, un valor vacío sí representa ausencia real.
+      if (!hasCompleteIdentity && (value === null || value === undefined || String(value).trim() === "")) {
+        return null;
+      }
+      return value || fallback;
+    };
     const name = detailRoot.querySelector('[data-cand-header="nombre"]');
     const age = detailRoot.querySelector('[data-cand-header="edad"]');
     const phone = detailRoot.querySelector('[data-cand-header="telefono"]');
@@ -461,15 +476,26 @@
     const stickyCode = detailRoot.querySelector("[data-cand-identity-code]");
     const stickyState = detailRoot.querySelector("[data-cand-identity-state]");
     const breadcrumbName = detailRoot.querySelector("[data-cand-breadcrumb-name]");
-    if (name) name.textContent = header.nombre || "";
-    if (age) age.textContent = header.edad || "edad no informada";
-    if (phone) phone.textContent = header.telefono || "sin teléfono";
-    if (code) code.textContent = header.codigo || "sin código";
-    if (stickyName) stickyName.textContent = header.nombre || "";
-    if (stickyCode) stickyCode.textContent = header.codigo || "sin código";
-    if (stickyState) stickyState.textContent = header.estado_label || header.estado || "";
-    if (breadcrumbName) breadcrumbName.textContent = header.nombre || "";
-    if (header.nombre) document.title = header.nombre + " · Domésticas";
+    const nextName = valueFor("nombre", "");
+    const nextAge = valueFor("edad", "edad no informada");
+    const nextPhone = valueFor("telefono", "sin teléfono");
+    const nextCode = valueFor("codigo", "sin código");
+    if (nextName !== null) {
+      if (name) name.textContent = nextName;
+      if (stickyName) stickyName.textContent = nextName;
+      if (breadcrumbName) breadcrumbName.textContent = nextName;
+      if (nextName) document.title = nextName + " · Domésticas";
+    }
+    if (nextAge !== null && age) age.textContent = nextAge;
+    if (nextPhone !== null && phone) phone.textContent = nextPhone;
+    if (nextCode !== null) {
+      if (code) code.textContent = nextCode;
+      if (stickyCode) stickyCode.textContent = nextCode;
+    }
+    if (has("estado_label") || has("estado")) {
+      const nextState = header.estado_label || header.estado || "";
+      if (stickyState) stickyState.textContent = nextState;
+    }
   }
 
   function refreshFinance(detailRoot, payload) {
