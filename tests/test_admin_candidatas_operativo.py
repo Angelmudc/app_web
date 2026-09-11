@@ -1862,6 +1862,35 @@ def test_admin_candidata_informacion_personal_agrupa_label_y_valor_en_misma_tarj
     assert 'data-display="labor"' in html
 
 
+def test_admin_candidata_detalle_misma_informacion_para_admin_y_secretaria_en_full_y_pjax():
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+
+    with flask_app.app_context():
+        _ensure_tables()
+        _seed_center_candidate(fila=990595)
+
+    expected = [
+        "Ana Centro Operativo",
+        "402-9905950-5",
+        "CTR-990501",
+        "34",
+        "809-555-0101",
+        "Santiago",
+        "Con dormida",
+        "Sabe planchar",
+    ]
+    for username, password in (("Cruz", "8998"), ("Karla", "9989")):
+        client = flask_app.test_client()
+        assert _login(client, username, password).status_code in (302, 303)
+        for headers in ({}, {"X-Requested-With": "XMLHttpRequest"}):
+            response = client.get("/admin/candidatas/990595", headers=headers, follow_redirects=False)
+            assert response.status_code == 200
+            html = response.get_data(as_text=True)
+            for value in expected:
+                assert value in html
+
+
 def test_admin_candidatas_operativo_muestra_solo_entrevista_historica_util():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False

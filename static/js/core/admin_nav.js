@@ -15,6 +15,16 @@
   const SNAPSHOT_TTL_MS = 120000;
   const SNAPSHOT_LIMIT = 12;
   const SNAPSHOT_STORAGE_PREFIX = "__admin_pjax_snapshot__::";
+  const NAV_STORAGE_SCOPE = (() => {
+    try {
+      const body = document.body;
+      const role = String(body && body.getAttribute("data-staff-role") || "").trim().toLowerCase();
+      const username = String(body && body.getAttribute("data-staff-username") || "").trim().toLowerCase();
+      return `${role || "anonymous"}:${username || "anonymous"}`;
+    } catch (_) {
+      return "anonymous:anonymous";
+    }
+  })();
   const PREFETCH_DELAY_MS = 180;
   const PREFETCH_TTL_MS = 30000;
   const PREFETCH_LIMIT = 6;
@@ -106,7 +116,7 @@
   }
 
   function prefetchStorageKey(url) {
-    return `__admin_pjax_prefetch__::${String(url || "")}`;
+    return `__admin_pjax_prefetch__::${NAV_STORAGE_SCOPE}::${String(url || "")}`;
   }
 
   function storePrefetchEntry(url, payload) {
@@ -219,10 +229,11 @@
     });
     try {
       const removeKeys = [];
+      const scopedStoragePrefix = SNAPSHOT_STORAGE_PREFIX + NAV_STORAGE_SCOPE + "::";
       for (let index = 0; index < (sessionStorage.length || 0); index += 1) {
         const storageKey = sessionStorage.key(index);
-        if (!storageKey || !String(storageKey).startsWith(SNAPSHOT_STORAGE_PREFIX)) continue;
-        const rawUrl = String(storageKey).slice(SNAPSHOT_STORAGE_PREFIX.length);
+        if (!storageKey || !String(storageKey).startsWith(scopedStoragePrefix)) continue;
+        const rawUrl = String(storageKey).slice(scopedStoragePrefix.length);
         if (prefixes.some((prefix) => snapshotKeyMatchesPrefix(rawUrl, prefix))) {
           removeKeys.push(storageKey);
         }
@@ -425,7 +436,7 @@
   }
 
   function snapshotStorageKey(url) {
-    return SNAPSHOT_STORAGE_PREFIX + String(url || "");
+    return SNAPSHOT_STORAGE_PREFIX + NAV_STORAGE_SCOPE + "::" + String(url || "");
   }
 
   function snapshotKeyMatchesPrefix(key, prefix) {

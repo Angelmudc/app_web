@@ -151,6 +151,12 @@ class AdminPjaxPilotTest(unittest.TestCase):
         self.assertNotIn("setupStickyIdentityBar", detail_txt)
         self.assertNotIn("function clearGlobalLoaders()", detail_txt)
 
+        self.assertIn('data-staff-role="{{ _staff_role if _staff_authenticated else \'\' }}"', open(os.path.join(os.getcwd(), "templates", "base.html"), encoding="utf-8").read())
+        self.assertIn('data-staff-username="{{ _staff_username }}"', open(os.path.join(os.getcwd(), "templates", "base.html"), encoding="utf-8").read())
+        self.assertIn("NAV_STORAGE_SCOPE", nav_txt)
+        self.assertIn("data-staff-role", nav_txt)
+        self.assertIn("data-staff-username", nav_txt)
+
         js_path = os.path.join(os.getcwd(), "static", "js", "admin", "candidatas_operativo_detail_ui.js")
         with open(js_path, "r", encoding="utf-8") as f:
             js_txt = f.read()

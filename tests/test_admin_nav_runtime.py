@@ -597,7 +597,7 @@ async function runScenario(name) {
       },
     }, "", listUrl);
     env.win.sessionStorage.setItem(
-      "__admin_pjax_snapshot__::" + listUrl,
+      "__admin_pjax_snapshot__::anonymous:anonymous::" + listUrl,
       JSON.stringify({
         html: env.viewport.innerHTML,
         title: "Domesticas",
@@ -634,10 +634,10 @@ async function runScenario(name) {
 
   if (name === "invalidate_snapshot_prefix") {
     const env = bootstrap();
-    env.win.sessionStorage.setItem("__admin_pjax_snapshot__::https://example.test/admin/candidatas?q=Maria", JSON.stringify({ html: "list", ts: Date.now() }));
+    env.win.sessionStorage.setItem("__admin_pjax_snapshot__::anonymous:anonymous::https://example.test/admin/candidatas?q=Maria", JSON.stringify({ html: "list", ts: Date.now() }));
     env.win.AdminNav.invalidateSnapshots(["/admin/candidatas"]);
     return {
-      remaining: env.win.sessionStorage.getItem("__admin_pjax_snapshot__::https://example.test/admin/candidatas?q=Maria"),
+      remaining: env.win.sessionStorage.getItem("__admin_pjax_snapshot__::anonymous:anonymous::https://example.test/admin/candidatas?q=Maria"),
     };
   }
 
