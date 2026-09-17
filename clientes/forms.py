@@ -19,6 +19,13 @@ from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
 from utils.child_age_parser import parse_child_age_summary
+from utils.experiencia_solicitud import (
+    EXPERIENCIA_CHOICES,
+    LegacyExperienceSelectField,
+    experiencia_value_from_form,
+    load_experiencia_value,
+    normalize_experiencia_submission,
+)
 
 def _solo_texto(valor):
     """
@@ -185,11 +192,16 @@ class SolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. 30 a 40, 20-30, etc."}
     )
 
-    experiencia = TextAreaField(
+    experiencia = LegacyExperienceSelectField(
         "Tipo de experiencia requerida",
-        validators=[DataRequired("Describe la experiencia requerida."), Length(min=5, max=500)],
-        filters=STRIP,
-        render_kw={"placeholder": "Ej. Niñera, cocina, planchado… (máx. 500)", "maxlength": 500, "inputmode": "text"}
+        choices=EXPERIENCIA_CHOICES,
+        validators=[DataRequired("Selecciona una opción de experiencia.")],
+        coerce=str,
+    )
+    experiencia_otro = TextAreaField(
+        "Especifica la experiencia",
+        validators=[Optional()],
+        render_kw={"placeholder": "Describe la experiencia específica", "rows": 3}
     )
 
     horario = StringField(
@@ -527,8 +539,15 @@ class SolicitudForm(FlaskForm):
         _solo_texto(field.data)
 
     def validate_experiencia(self, field):
-        if field.data and len((field.data or '').strip()) < 5:
-            raise ValidationError("Describe un poco más la experiencia requerida.")
+        normalize_experiencia_submission(self, field)
+        if field.data == 'otro' and not (self.experiencia_otro.data or '').strip():
+            raise ValidationError("Especifica la experiencia cuando marcas 'Otro'.")
+
+    def experiencia_value_for_model(self):
+        return experiencia_value_from_form(self)
+
+    def load_experiencia_from_model(self, raw_value):
+        load_experiencia_value(self, raw_value)
 
     def validate_edad_requerida(self, field):
         data = field.data or []

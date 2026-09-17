@@ -41,6 +41,13 @@ from utils.modalidad import canonicalize_modalidad_trabajo
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
 from services.payment_rules import get_plan_choices, is_valid_plan, normalize_plan
+from utils.experiencia_solicitud import (
+    EXPERIENCIA_CHOICES,
+    LegacyExperienceSelectField,
+    experiencia_value_from_form,
+    load_experiencia_value,
+    normalize_experiencia_submission,
+)
 
 
 
@@ -371,11 +378,28 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. 30 a 40, 20-30, etc."}
     )
 
-    experiencia = TextAreaField(
+    experiencia = LegacyExperienceSelectField(
         'Experiencia',
-        validators=[DataRequired("Describe la experiencia requerida."), Length(min=5)],
-        render_kw={"placeholder": "Ej. Niñera, cocina, planchado…", "rows": 3}
+        choices=EXPERIENCIA_CHOICES,
+        validators=[DataRequired("Selecciona una opción de experiencia.")],
+        coerce=str,
     )
+    experiencia_otro = TextAreaField(
+        'Especifica la experiencia',
+        validators=[Optional()],
+        render_kw={"placeholder": "Describe la experiencia específica", "rows": 3}
+    )
+
+    def validate_experiencia(self, field):
+        normalize_experiencia_submission(self, field)
+        if field.data == 'otro' and not (self.experiencia_otro.data or '').strip():
+            raise ValidationError("Especifica la experiencia cuando marcas 'Otro'.")
+
+    def experiencia_value_for_model(self):
+        return experiencia_value_from_form(self)
+
+    def load_experiencia_from_model(self, raw_value):
+        load_experiencia_value(self, raw_value)
 
     horario = StringField(
         'Horario',

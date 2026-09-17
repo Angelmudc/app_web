@@ -115,9 +115,7 @@
       {% endif %}
 
       {% if hint %}<div class="public-field-hint">{{ hint }}</div>{% endif %}
-      {% if field.name == 'experiencia' %}
-        <div class="public-field-counter" data-char-counter-for="{{ field.id }}">0 caracteres</div>
-      {% elif field.name == 'nota_cliente' %}
+      {% if field.name == 'nota_cliente' %}
         <div class="public-field-counter" data-char-counter-for="{{ field.id }}">0 caracteres</div>
       {% endif %}
       {{ render_errors(field) }}
@@ -318,6 +316,63 @@
     background: #e7f2fb;
     color: #1f507b;
     box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
+  }
+
+  .public-experience-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .public-experience-card {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 42px;
+    margin: 0;
+    padding: 8px 10px;
+    border: 1px solid #d4e0ed;
+    border-radius: 11px;
+    background: #f8fbff;
+    color: #27405e;
+    cursor: pointer;
+    font-size: .84rem;
+    line-height: 1.25;
+    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+  }
+
+  .public-experience-card:hover {
+    border-color: #95b2cf;
+    background: #f2f8ff;
+  }
+
+  .public-experience-card:focus-within {
+    border-color: #58aee6;
+    box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+  }
+
+  .public-experience-card.is-selected {
+    border-color: #2a8fd4;
+    background: #e7f2fb;
+    color: #1f507b;
+    box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
+  }
+
+  .public-experience-card input[type="radio"] {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    margin: 0;
+    accent-color: #2a8fd4;
+  }
+
+  .public-experience-card-text {
+    font-weight: 650;
+  }
+
+  .public-experience-grid.is-invalid {
+    border-radius: 12px;
+    box-shadow: inset 0 0 0 1px rgba(180, 35, 24, 0.2);
   }
 
   .public-plan-selector {
@@ -797,6 +852,7 @@
       padding-bottom: 88px;
     }
     .public-fields-grid { grid-template-columns: 1fr; }
+    .public-experience-grid { grid-template-columns: 1fr; }
     .public-home-structure-grid {
       grid-template-columns: 1fr;
       gap: 16px;
@@ -1052,7 +1108,23 @@
     <div class="public-fields-grid">
       {{ render_field(form.edad_requerida, hint='Selecciona una sola opcion.', wrapper_class='public-full') }}
       {{ render_field(form.edad_otro, wrapper_id='wrap_edad_otro') }}
-      {{ render_field(form.experiencia, wrapper_id='wrap_experiencia', hint='Describe el tipo de experiencia que necesitas.', wrapper_class='public-full') }}
+      {% if form.experiencia is defined %}
+        <div class="public-field public-full" id="wrap_experiencia">
+          <label class="public-field-label" for="{{ form.experiencia.id }}">{{ form.experiencia.label.text }}</label>
+          {{ form.experiencia(class='form-select d-none' ~ (' is-invalid' if form.experiencia.errors else '')) }}
+          <div class="public-experience-grid{% if form.experiencia.errors %} is-invalid{% endif %}" role="radiogroup" aria-describedby="experiencia_hint" aria-label="{{ form.experiencia.label.text }}">
+            {% for value, label in form.experiencia.choices %}
+              <label class="public-experience-card">
+                <input type="radio" name="experiencia_visual" value="{{ value }}"{% if form.experiencia.data == value %} checked{% endif %}>
+                <span class="public-experience-card-text">{{ label }}</span>
+              </label>
+            {% endfor %}
+          </div>
+          <div class="public-field-hint" id="experiencia_hint">Selecciona una sola opción.</div>
+          {{ render_errors(form.experiencia) }}
+        </div>
+      {% endif %}
+      {{ render_field(form.experiencia_otro, wrapper_id='wrap_experiencia_otro', hint='Especifica el texto de la experiencia seleccionada como Otro.', wrapper_class='public-full d-none') }}
       {{ render_field(form.funciones, hint='Marca una o varias funciones principales.', wrapper_class='public-full') }}
       <div class="public-field public-full public-planchar-warning d-none" id="wrap_funciones_planchar_notice" aria-live="polite" aria-hidden="true">
         <p class="public-planchar-warning-title">Importante sobre la función de planchado</p>
@@ -3131,6 +3203,43 @@
       });
     }
 
+    function setupExperienciaSelector() {
+      var select = byId('{{ form.experiencia.id if form.experiencia is defined else "" }}');
+      var wrap = byId('wrap_experiencia_otro');
+      var input = byId('{{ form.experiencia_otro.id if form.experiencia_otro is defined else "" }}');
+      var visualRadios = hostForm.querySelectorAll('input[name="experiencia_visual"]');
+      if (!select || !wrap) return;
+
+      function syncVisual() {
+        for (var i = 0; i < visualRadios.length; i++) {
+          visualRadios[i].checked = visualRadios[i].value === select.value;
+          var card = visualRadios[i].closest('.public-experience-card');
+          if (card) card.classList.toggle('is-selected', visualRadios[i].checked);
+        }
+      }
+
+      function sync() {
+        var isOther = select.value === 'otro';
+        wrap.classList.toggle('d-none', !isOther);
+        wrap.setAttribute('aria-hidden', isOther ? 'false' : 'true');
+        syncVisual();
+        if (input) {
+          input.required = isOther;
+          if (!isOther) input.setCustomValidity('');
+        }
+      }
+
+      select.addEventListener('change', sync);
+      for (var i = 0; i < visualRadios.length; i++) {
+        visualRadios[i].addEventListener('change', function () {
+          if (!this.checked) return;
+          select.value = this.value;
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+      }
+      sync();
+    }
+
     var pasajeHiddenField = byId('pasaje_aporte_hidden');
     if (pasajeHiddenField) {
       pasajeHiddenField.dataset.fieldType = "{{ 'radio' if _pasaje_is_radio else 'boolean' }}";
@@ -3139,6 +3248,7 @@
     initModalidadMaps();
     initModalidadGuided();
     setupEdadSingleChoice();
+    setupExperienciaSelector();
     setupPlancharWarning();
     var ninosLimpiezaSmartAlertCtrl = setupNinosLimpiezaSmartAlert();
     var mascotaGuidanceCtrl = setupMascotaGuidance();

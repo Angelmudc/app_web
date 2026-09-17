@@ -106,6 +106,7 @@ from admin.forms import (
     AdminReemplazoFinForm,  # 🔹 NUEVO FORM PARA FINALIZAR REEMPLAZO
 )
 from utils.codigo_solicitud import compose_codigo_solicitud
+from utils.experiencia_solicitud import experiencia_value_from_form
 from utils.compat_engine import compute_match, format_compat_result
 from utils.guards import (
     assert_candidata_no_descalificada,
@@ -12072,6 +12073,7 @@ def nueva_solicitud_admin(cliente_id):
                     codigo_solicitud=nuevo_codigo,
                 )
                 form.populate_obj(s)
+                s.experiencia = experiencia_value_from_form(form)
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)
                 apply_horario_to_solicitud(
@@ -12291,6 +12293,7 @@ def editar_solicitud_admin(cliente_id, id):
     # GET: pre-cargar campos
     # ─────────────────────────────────────────
     if request.method == 'GET':
+        form.load_experiencia_from_model(getattr(s, 'experiencia', None))
         # Tipo de servicio
         if hasattr(form, 'tipo_servicio'):
             valid_ts = {code for code, _ in form.tipo_servicio.choices}
@@ -12468,6 +12471,7 @@ def editar_solicitud_admin(cliente_id, id):
             prev_tipo_plan = getattr(s, "tipo_plan", None)
             def _persist_solicitud_update(_attempt: int):
                 form.populate_obj(s)
+                s.experiencia = experiencia_value_from_form(form)
                 s.tipo_plan = prev_tipo_plan
                 _apply_banos_from_request(s, form)
                 _normalize_modalidad_on_solicitud(s)

@@ -107,6 +107,7 @@ from utils.modalidad import (
 from utils.sueldo_sugerido import analyze_salary_suggestion
 from utils.codigo_solicitud import compose_codigo_solicitud
 from utils.child_age_parser import parse_child_age_summary
+from utils.experiencia_solicitud import experiencia_value_from_form
 from utils.timezone import (
     iso_utc_z,
     rd_today,
@@ -3483,6 +3484,7 @@ def _apply_public_solicitud_fields(
 ) -> None:
     """Aplica de forma consistente los campos de solicitud pública en ambos flujos."""
     form.populate_obj(solicitud_obj)
+    solicitud_obj.experiencia = experiencia_value_from_form(form)
     if hasattr(solicitud_obj, "tipo_plan"):
         solicitud_obj.tipo_plan = None
     _apply_banos_from_request(solicitud_obj, form)
@@ -4214,6 +4216,7 @@ def nueva_solicitud():
             if hasattr(s, "lead_source"):
                 s.lead_source = _normalize_lead_source(request.form.get("lead_source"))
             form.populate_obj(s)
+            s.experiencia = experiencia_value_from_form(form)
             _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
             apply_horario_to_solicitud(
@@ -4415,6 +4418,7 @@ def editar_solicitud(id):
     public_modalidad_other = ""
 
     if request.method == 'GET':
+        form.load_experiencia_from_model(getattr(s, 'experiencia', None))
         form.funciones.data      = _clean_list(s.funciones)
         form.areas_comunes.data  = _normalize_areas_comunes_selected(
             _clean_list(s.areas_comunes),
@@ -4527,6 +4531,7 @@ def editar_solicitud(id):
             prev_modalidad = (getattr(s, "modalidad_trabajo", "") or "").strip()
             prev_tipo_plan = getattr(s, "tipo_plan", None)
             form.populate_obj(s)
+            s.experiencia = experiencia_value_from_form(form)
             s.tipo_plan = prev_tipo_plan
             _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
