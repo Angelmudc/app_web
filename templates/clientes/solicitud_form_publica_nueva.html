@@ -270,6 +270,214 @@
     .public-flow-title { font-size: 1.28rem; }
     .public-submit-btn { width: 100%; }
   }
+
+  .employment-conditions-modal .employment-conditions-dialog {
+    max-width: 760px;
+  }
+
+  .employment-conditions-modal .employment-conditions-content {
+    overflow: hidden;
+    border: 0;
+    border-radius: 20px;
+    background: #fff;
+    box-shadow: 0 28px 70px rgba(15, 32, 49, .24);
+  }
+
+  .employment-conditions-modal .employment-conditions-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 22px 24px;
+    color: #f8fbff;
+    background: linear-gradient(130deg, #112031 0%, #1f3650 58%, #14566a 100%);
+    border: 0;
+  }
+
+  .employment-conditions-modal .employment-conditions-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(255, 255, 255, .24);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .1);
+    font-size: 1.15rem;
+  }
+
+  .employment-conditions-modal .employment-conditions-heading {
+    min-width: 0;
+  }
+
+  .employment-conditions-modal .employment-conditions-title {
+    margin: 0;
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 700;
+  }
+
+  .employment-conditions-modal .employment-conditions-subtitle {
+    margin: 5px 0 0;
+    color: rgba(248, 251, 255, .82);
+    font-size: .9rem;
+  }
+
+  .employment-conditions-modal .employment-conditions-header .btn-close {
+    flex: 0 0 auto;
+    margin: 2px 0 0 auto;
+    filter: invert(1) grayscale(1) brightness(3);
+    opacity: .82;
+  }
+
+  .employment-conditions-modal .employment-conditions-body {
+    max-height: min(62vh, 590px);
+    overflow-y: auto;
+    padding: 24px;
+    color: #243447;
+  }
+
+  .employment-conditions-modal .employment-conditions-intro {
+    margin: 0 0 18px;
+    color: #43566b;
+    font-size: .96rem;
+    line-height: 1.65;
+  }
+
+  .employment-conditions-modal .employment-conditions-list {
+    display: grid;
+    gap: 12px;
+  }
+
+  .employment-conditions-modal .employment-conditions-card {
+    display: flex;
+    gap: 12px;
+    padding: 15px 16px;
+    border: 1px solid #d9e2ee;
+    border-radius: 14px;
+    background: #f8fbff;
+  }
+
+  .employment-conditions-modal .employment-conditions-card-icon {
+    flex: 0 0 auto;
+    color: #0f6a7f;
+    font-size: 1.05rem;
+  }
+
+  .employment-conditions-modal .employment-conditions-card-title {
+    margin: 0 0 4px;
+    color: #112031;
+    font-size: .93rem;
+    font-weight: 700;
+  }
+
+  .employment-conditions-modal .employment-conditions-card-text {
+    margin: 0;
+    color: #536579;
+    font-size: .9rem;
+    line-height: 1.55;
+  }
+
+  .employment-conditions-modal .employment-conditions-important {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+    padding: 16px;
+    border: 1px solid #eadfca;
+    border-radius: 14px;
+    background: #fffaf0;
+  }
+
+  .employment-conditions-modal .employment-conditions-important-icon {
+    flex: 0 0 auto;
+    color: #a66a16;
+    font-size: 1.1rem;
+  }
+
+  .employment-conditions-modal .employment-conditions-important-title {
+    margin: 0 0 4px;
+    color: #79521b;
+    font-size: .93rem;
+    font-weight: 700;
+  }
+
+  .employment-conditions-modal .employment-conditions-important-text {
+    margin: 0;
+    color: #6d5b3d;
+    font-size: .9rem;
+    line-height: 1.55;
+  }
+
+  .employment-conditions-modal .employment-conditions-summary {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-top: 18px;
+    padding: 13px 15px;
+    border-radius: 12px;
+    background: #e8f4f7;
+    color: #14566a;
+    font-size: .9rem;
+    line-height: 1.5;
+  }
+
+  .employment-conditions-modal .employment-conditions-summary p {
+    margin: 0;
+  }
+
+  .employment-conditions-modal .employment-conditions-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 24px 22px;
+    border-top: 1px solid #edf1f5;
+  }
+
+  .employment-conditions-modal .employment-conditions-footer .btn {
+    border-radius: 10px;
+    padding: 9px 15px;
+    font-weight: 600;
+  }
+
+  .employment-conditions-modal .employment-conditions-cancel {
+    border-color: #b8c6d5;
+    color: #36516d;
+  }
+
+  .employment-conditions-modal .employment-conditions-confirm {
+    background: #0f6a7f;
+    border-color: #0f6a7f;
+  }
+
+  .employment-conditions-modal .employment-conditions-confirm:hover,
+  .employment-conditions-modal .employment-conditions-confirm:focus {
+    background: #0b596a;
+    border-color: #0b596a;
+  }
+
+  @media (max-width: 575.98px) {
+    .employment-conditions-modal .employment-conditions-dialog {
+      margin: 10px;
+    }
+
+    .employment-conditions-modal .employment-conditions-header,
+    .employment-conditions-modal .employment-conditions-body {
+      padding: 18px;
+    }
+
+    .employment-conditions-modal .employment-conditions-title {
+      font-size: 1.05rem;
+    }
+
+    .employment-conditions-modal .employment-conditions-footer {
+      flex-direction: column-reverse;
+      padding: 14px 18px 18px;
+    }
+
+    .employment-conditions-modal .employment-conditions-footer .btn {
+      width: 100%;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -380,6 +588,64 @@
               <div class="public-submit-help">Tu código de cliente se genera automáticamente al confirmar el envío.</div>
             </div>
           </form>
+          <div class="modal fade employment-conditions-modal" id="publicEmploymentConditionsNuevaModal" tabindex="-1" aria-labelledby="publicEmploymentConditionsNuevaModalLabel" aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable employment-conditions-dialog">
+              <div class="modal-content employment-conditions-content">
+                <div class="modal-header employment-conditions-header">
+                  <span class="employment-conditions-icon" aria-hidden="true"><i class="bi bi-shield-check"></i></span>
+                  <div class="employment-conditions-heading">
+                    <h2 class="employment-conditions-title" id="publicEmploymentConditionsNuevaModalLabel">Confirmación de las condiciones del empleo</h2>
+                    <p class="employment-conditions-subtitle">Revisa estas condiciones antes de enviar tu solicitud.</p>
+                  </div>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body employment-conditions-body">
+                  <p class="employment-conditions-intro">Con el objetivo de garantizar una colocación clara y adecuada para ambas partes, las condiciones indicadas en esta solicitud serán utilizadas para presentar el empleo a las candidatas.</p>
+                  <div class="employment-conditions-list">
+                    <article class="employment-conditions-card">
+                      <i class="bi bi-check2-circle employment-conditions-card-icon" aria-hidden="true"></i>
+                      <div>
+                        <h3 class="employment-conditions-card-title">Condiciones acordadas</h3>
+                        <p class="employment-conditions-card-text">El cliente se compromete a respetar las funciones, horario, salario, días de descanso, cantidad de personas a atender, lugar de trabajo y demás condiciones establecidas en la solicitud inicial.</p>
+                      </div>
+                    </article>
+                    <article class="employment-conditions-card">
+                      <i class="bi bi-person-check employment-conditions-card-icon" aria-hidden="true"></i>
+                      <div>
+                        <h3 class="employment-conditions-card-title">Responsabilidades adicionales</h3>
+                        <p class="employment-conditions-card-text">La empleada doméstica no deberá ser asignada de manera habitual a funciones adicionales o responsabilidades que no hayan sido previamente informadas y acordadas.</p>
+                      </div>
+                    </article>
+                    <article class="employment-conditions-card">
+                      <i class="bi bi-arrow-repeat employment-conditions-card-icon" aria-hidden="true"></i>
+                      <div>
+                        <h3 class="employment-conditions-card-title">Cambios en las condiciones</h3>
+                        <p class="employment-conditions-card-text">Cualquier cambio significativo en las condiciones del empleo deberá ser comunicado y acordado previamente con la agencia y la candidata.</p>
+                      </div>
+                    </article>
+                  </div>
+                  <div class="employment-conditions-important">
+                    <i class="bi bi-info-circle employment-conditions-important-icon" aria-hidden="true"></i>
+                    <div>
+                      <h3 class="employment-conditions-important-title">Importante</h3>
+                      <p class="employment-conditions-important-text">Si luego de la contratación el cliente modifica de manera significativa las condiciones originalmente solicitadas sin previo acuerdo, la agencia podrá considerar esta situación como un incumplimiento de las condiciones del empleo, lo cual podría afectar la garantía o el derecho a reemplazo.</p>
+                    </div>
+                  </div>
+                  <div class="employment-conditions-summary">
+                    <i class="bi bi-shield-check" aria-hidden="true"></i>
+                    <div>
+                      <p>Antes del inicio de labores, la agencia enviará un resumen final de las condiciones acordadas.</p>
+                      <p>Al continuar confirmas que has leído y aceptas estas condiciones.</p>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer employment-conditions-footer">
+                  <button type="button" class="btn btn-outline-secondary employment-conditions-cancel" data-bs-dismiss="modal">Volver al formulario</button>
+                  <button type="button" class="btn btn-primary employment-conditions-confirm" id="publicEmploymentConditionsNuevaConfirmBtn"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Confirmo y acepto</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </main>
     </div>
@@ -390,20 +656,149 @@
 {% block scripts %}
 <script>
 (function () {
-  var form = document.getElementById('publicSolicitudNuevaForm');
-  var btn = document.getElementById('publicSubmitNuevaBtn');
-  var spinner = document.getElementById('publicSubmitNuevaSpinner');
-  var label = document.getElementById('publicSubmitNuevaLabel');
-  var politicaBox = document.getElementById('politicaBoxNueva');
-  var termsCheckbox = document.getElementById('acepta_politica_nueva');
-  var termsAcceptedInput = document.getElementById('termsAcceptedNuevaInput');
-  var termsDecisionInput = document.getElementById('termsDecisionNuevaInput');
-  var termsAcceptedAtInput = document.getElementById('termsAcceptedAtNuevaInput');
-  var termsInlineError = document.getElementById('termsInlineNuevaError');
-  var leadSourceInput = document.getElementById('lead_source');
-  var isSubmitting = false;
+  var initialized = false;
+  var fallbackLoadStarted = false;
+  var attachBootstrapModal = null;
 
-  if (!form || !btn) return;
+  function initPublicSolicitudForm() {
+    if (initialized) return;
+
+    var form = document.getElementById('publicSolicitudNuevaForm');
+    var btn = document.getElementById('publicSubmitNuevaBtn');
+    var spinner = document.getElementById('publicSubmitNuevaSpinner');
+    var label = document.getElementById('publicSubmitNuevaLabel');
+    var politicaBox = document.getElementById('politicaBoxNueva');
+    var termsCheckbox = document.getElementById('acepta_politica_nueva');
+    var termsAcceptedInput = document.getElementById('termsAcceptedNuevaInput');
+    var termsDecisionInput = document.getElementById('termsDecisionNuevaInput');
+    var termsAcceptedAtInput = document.getElementById('termsAcceptedAtNuevaInput');
+    var termsInlineError = document.getElementById('termsInlineNuevaError');
+    var conditionsModalElement = document.getElementById('publicEmploymentConditionsNuevaModal');
+    var conditionsConfirmBtn = document.getElementById('publicEmploymentConditionsNuevaConfirmBtn');
+    var leadSourceInput = document.getElementById('lead_source');
+    var isSubmitting = false;
+    var conditionsConfirmed = false;
+
+    if (!form || !btn) return;
+    initialized = true;
+
+    var ageCheckboxes = form.querySelectorAll('input[name="edad_requerida"]');
+
+    function validateAgeRequiredGroup() {
+      var selected = null;
+      for (var ai = 0; ai < ageCheckboxes.length; ai++) {
+        var checkbox = ageCheckboxes[ai];
+        checkbox.removeAttribute('required');
+        checkbox.required = false;
+        if (!selected && checkbox.checked) selected = checkbox;
+      }
+
+      var first = ageCheckboxes[0];
+      if (!first) {
+        return true;
+      }
+
+      first.setCustomValidity('');
+      if (!selected) {
+        first.setCustomValidity('Selecciona una opción de edad.');
+        return false;
+      }
+
+      return true;
+    }
+
+    for (var ageIndex = 0; ageIndex < ageCheckboxes.length; ageIndex++) {
+      ageCheckboxes[ageIndex].addEventListener('change', validateAgeRequiredGroup);
+    }
+    validateAgeRequiredGroup();
+
+    var functionCheckboxes = form.querySelectorAll('input[name="funciones"]');
+
+    function validateFunctionsRequiredGroup() {
+      var checkedValues = [];
+      for (var fi = 0; fi < functionCheckboxes.length; fi++) {
+        var checkbox = functionCheckboxes[fi];
+        checkbox.removeAttribute('required');
+        checkbox.required = false;
+        if (checkbox.checked) checkedValues.push(checkbox.value);
+      }
+
+      var first = functionCheckboxes[0];
+      if (!first) return true;
+
+      first.setCustomValidity('');
+      if (!checkedValues.length) {
+        first.setCustomValidity('Selecciona al menos una función.');
+        return false;
+      }
+
+      return true;
+    }
+
+    for (var functionIndex = 0; functionIndex < functionCheckboxes.length; functionIndex++) {
+      functionCheckboxes[functionIndex].addEventListener('change', validateFunctionsRequiredGroup);
+    }
+    validateFunctionsRequiredGroup();
+
+    var commonAreaCheckboxes = form.querySelectorAll('input[name="areas_comunes"]');
+
+    function validateCommonAreasRequiredGroup() {
+      var checkedValues = [];
+      for (var ci = 0; ci < commonAreaCheckboxes.length; ci++) {
+        var checkbox = commonAreaCheckboxes[ci];
+        checkbox.removeAttribute('required');
+        checkbox.required = false;
+        if (checkbox.checked) checkedValues.push(checkbox.value);
+      }
+
+      var first = commonAreaCheckboxes[0];
+      if (!first) return true;
+
+      first.setCustomValidity('');
+      if (!checkedValues.length) {
+        first.setCustomValidity('Selecciona al menos un área común.');
+        return false;
+      }
+
+      return true;
+    }
+
+    for (var commonAreaIndex = 0; commonAreaIndex < commonAreaCheckboxes.length; commonAreaIndex++) {
+      commonAreaCheckboxes[commonAreaIndex].addEventListener('change', validateCommonAreasRequiredGroup);
+    }
+    validateCommonAreasRequiredGroup();
+
+    var conditionsModal = null;
+    var nativeConditionsMessage = 'Confirmación de las condiciones del empleo\\n\\nLas condiciones indicadas en esta solicitud serán utilizadas para presentar el empleo a las candidatas. El cliente se compromete a respetar las funciones, horario, salario, días de descanso, cantidad de personas, lugar de trabajo y demás condiciones informadas.\\n\\nImportante: cualquier cambio significativo posterior sin acuerdo previo podría afectar la garantía o el derecho a reemplazo.\\n\\n¿Confirmas y aceptas estas condiciones?';
+
+    function resetConditionsConfirmButton() {
+      if (conditionsConfirmBtn) conditionsConfirmBtn.disabled = false;
+    }
+
+    function confirmConditionsAndSubmit() {
+      if (conditionsConfirmed || isSubmitting) return;
+      conditionsConfirmed = true;
+      if (conditionsConfirmBtn) conditionsConfirmBtn.disabled = true;
+      if (conditionsModal) conditionsModal.hide();
+      setTimeout(function () {
+        form.requestSubmit();
+      }, 0);
+    }
+
+    function showConditionsConfirmation() {
+      if (conditionsModal) {
+        conditionsModal.show();
+        return;
+      }
+      if (window.confirm(nativeConditionsMessage)) confirmConditionsAndSubmit();
+    }
+
+    attachBootstrapModal = function () {
+      if (conditionsModal || !conditionsModalElement || !(window.bootstrap && window.bootstrap.Modal)) return;
+      conditionsModal = bootstrap.Modal.getOrCreateInstance(conditionsModalElement);
+      conditionsModalElement.addEventListener('hidden.bs.modal', resetConditionsConfirmButton);
+      if (conditionsConfirmBtn) conditionsConfirmBtn.addEventListener('click', confirmConditionsAndSubmit);
+    };
 
   function detectLeadSource() {
     var urlParams = new URLSearchParams(window.location.search || '');
@@ -439,9 +834,24 @@
 
   form.addEventListener('submit', function (ev) {
     syncTermsState();
+    validateAgeRequiredGroup();
+    validateFunctionsRequiredGroup();
+    validateCommonAreasRequiredGroup();
+    var formIsValid = form.checkValidity();
+    if (!formIsValid) {
+      ev.preventDefault();
+      form.reportValidity();
+      return;
+    }
     if (!termsCheckbox || !termsCheckbox.checked || !termsAcceptedInput || termsAcceptedInput.value !== '1') {
       ev.preventDefault();
       if (termsInlineError) termsInlineError.classList.remove('d-none');
+      return;
+    }
+    if (!conditionsConfirmed) {
+      ev.preventDefault();
+      resetConditionsConfirmButton();
+      showConditionsConfirmation();
       return;
     }
     if (isSubmitting) {
@@ -453,7 +863,30 @@
     btn.setAttribute('aria-busy', 'true');
     if (spinner) spinner.classList.remove('d-none');
     if (label) label.textContent = 'Enviando...';
-  });
+    });
+
+    attachBootstrapModal();
+  }
+
+  function loadBootstrapForConditions() {
+    if (window.bootstrap && window.bootstrap.Modal) {
+      return;
+    }
+    if (fallbackLoadStarted) return;
+    fallbackLoadStarted = true;
+    var fallbackScript = document.createElement('script');
+    fallbackScript.src = "{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}";
+    fallbackScript.onload = function () {
+      if (attachBootstrapModal) attachBootstrapModal();
+    };
+    fallbackScript.onerror = function () {
+      console.error('No se pudo cargar Bootstrap desde CDN ni desde el fallback local. Se usará confirmación nativa.');
+    };
+    document.head.appendChild(fallbackScript);
+  }
+
+  initPublicSolicitudForm();
+  loadBootstrapForConditions();
 })();
 </script>
 {% endblock %}
