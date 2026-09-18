@@ -855,6 +855,20 @@ def invalidate_form(page: Page, catalog: FormCatalog, invalidation: str, client:
                 label.click(timeout=10000)
             else:
                 control.click(timeout=10000)
+    elif invalidation == "experiencia":
+        # The visible experience cards are the user-facing control; the
+        # hidden select remains the authoritative form field and is synced by
+        # setupExperienciaSelector(). Clear that field through the real DOM
+        # contract instead of targeting the retired textarea.
+        target = page.locator('select[name="experiencia"]').first
+        if not target.count() or not target.is_enabled():
+            raise RuntimeError("Invalidación experiencia no encontró el select autoritativo enabled")
+        target.evaluate(
+            """(el) => {
+                el.value = '';
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }"""
+        )
     else:
         loc = page.locator(selector)
         target = None

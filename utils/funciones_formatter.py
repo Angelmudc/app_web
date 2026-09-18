@@ -4,28 +4,30 @@ import re
 
 
 _FUNCTION_LABEL_MAP = {
-    "cuidar ninos": "Cuidar niños",
-    "ninos": "Cuidar niños",
-    "niños": "Cuidar niños",
+    "cuidar ninos": "Cuidar Niños",
+    "cuidar niños": "Cuidar Niños",
+    "ninos": "Cuidar Niños",
+    "niños": "Cuidar Niños",
     "cuidar envejecientes": "Cuidar envejecientes",
     "envejeciente": "Cuidar envejecientes",
     "envejecientes": "Cuidar envejecientes",
-    "limpiar": "Limpieza",
-    "limpieza": "Limpieza",
-    "cocinar": "Cocina",
-    "cocina": "Cocina",
-    "lavar": "Lavado",
-    "lavado": "Lavado",
+    "limpiar": "Limpieza General",
+    "limpieza": "Limpieza General",
+    "limpieza general": "Limpieza General",
+    "cocinar": "Cocinar",
+    "cocina": "Cocinar",
+    "lavar": "Lavar",
+    "lavado": "Lavar",
     "planchar": "Planchar",
     "plachar": "Planchar",
 }
 
 _ORDER_INDEX = {
-    "Limpieza": 1,
-    "Cocina": 2,
-    "Lavado": 3,
+    "Limpieza General": 1,
+    "Cocinar": 2,
+    "Lavar": 3,
     "Planchar": 4,
-    "Cuidar niños": 5,
+    "Cuidar Niños": 5,
     "Cuidar envejecientes": 6,
 }
 

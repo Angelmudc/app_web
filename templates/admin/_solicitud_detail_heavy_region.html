@@ -10,6 +10,10 @@
 
       {# Usa resumen_interno si el backend lo envía; si no, cae a resumen_cliente #}
       {% set _rutas = (solicitud.rutas_cercanas or '') %}
+      {% set _composition = composition_flags if composition_flags is defined else {
+        'show_house': true, 'show_adultos': true, 'show_ninos': true,
+        'show_child_help': true, 'show_envejeciente': true
+      } %}
       {% set _modalidad = (solicitud.modalidad_trabajo or '') %}
       {% set _modalidad_low = _modalidad|lower %}
       {% if 'viernes a lunes' in _modalidad_low %}
@@ -158,13 +162,19 @@
       {% set _ban_txt = ((_ban|string)|trim)|replace('.0', '') if (_ban is not none and (_ban|string)|trim != '') else '' %}
       {% set _niveles = '' %}
       {% if solicitud.dos_pisos is defined and solicitud.dos_pisos %}
-        {% set _niveles = 'dos niveles' %}
+        {% set _niveles = '2 niveles' %}
       {% endif %}
       {% if not _niveles and solicitud.nota_cliente %}
         {% set _nota_low = (solicitud.nota_cliente|string)|lower %}
         {% if 'pisos reportados: 3+' in _nota_low %}
           {% set _niveles = 'tres o más niveles' %}
         {% endif %}
+      {% endif %}
+      {% set _tipo_con_niveles = _tipo_natural %}
+      {% if _niveles and _tipo_natural %}
+        {% set _tipo_con_niveles = _tipo_natural ~ ' (' ~ _niveles ~ ')' %}
+      {% elif _niveles %}
+        {% set _tipo_con_niveles = _niveles %}
       {% endif %}
       {% set _det = [] %}
       {% if _hab_txt %}
@@ -173,19 +183,16 @@
       {% if _ban_txt %}
         {% set _ = _det.append(_ban_txt ~ ' baños') %}
       {% endif %}
-      {% if _niveles %}
-        {% set _ = _det.append(_niveles) %}
-      {% endif %}
       {% set _det_txt = _det | join(', ') %}
       {% set _casa_line = '' %}
-      {% if _tipo_natural and _det_txt %}
-        {% set _casa_line = _tipo_natural ~ ' - ' ~ _det_txt %}
-      {% elif _tipo_natural %}
-        {% set _casa_line = _tipo_natural %}
-      {% elif _det_txt %}
+      {% if _composition.show_house and _tipo_con_niveles and _det_txt %}
+        {% set _casa_line = _tipo_con_niveles ~ ' - ' ~ _det_txt %}
+      {% elif _composition.show_house and _tipo_con_niveles %}
+        {% set _casa_line = _tipo_con_niveles %}
+      {% elif _composition.show_house and _det_txt %}
         {% set _casa_line = _det_txt %}
       {% endif %}
-      {% if _areas %}
+      {% if _composition.show_house and _areas %}
         {% if _det_txt %}
           {% set _casa_line = _casa_line ~ ', ' ~ _areas %}
         {% else %}
@@ -201,12 +208,14 @@
       {% set _adultos = (solicitud.adultos if solicitud.adultos is defined else '') %}
       {% set _ninos = (solicitud.ninos if solicitud.ninos is defined else '') %}
       {% set _edades_ninos = (solicitud.edades_ninos if solicitud.edades_ninos is defined else '') %}
+      {% set _child_help_suffix = child_help_copy_suffix if child_help_copy_suffix is defined else '' %}
 
       {# Mascota (si existe el campo) #}
       {% set _mascota = (solicitud.mascota if solicitud.mascota is defined else '') %}
+      {% set _envejeciente_lines = envejeciente_copy_lines if envejeciente_copy_lines is defined else [] %}
 
       {# Sueldo + pasaje #}
-      {% set _sueldo = (solicitud.sueldo or '') %}
+      {% set _sueldo = sueldo_copy if sueldo_copy is defined else (solicitud.sueldo or '') %}
       {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
       {% set _pasaje_mode = (pasaje_copy_mode if pasaje_copy_mode is defined else ('aparte' if _pasaje else 'incluido')) %}
       {% set _pasaje_otro_txt = (pasaje_copy_other_text if pasaje_copy_other_text is defined else '')|trim %}
@@ -222,26 +231,57 @@
         {% set _nota = solicitud.notas %}
       {% endif %}
 
-      {# Texto final interno EXACTO en el formato que quieres copiar #}
-      {% set _interno = (
+      {# Texto final interno construido por bloques no vacíos. #}
+      {% set _copy_blocks = [] %}
+      {% set _ = _copy_blocks.append(
         'Disponible ( ' ~ (solicitud.codigo_solicitud or '—') ~ ' )\n'
         ~ '📍 ' ~ (solicitud.ciudad_sector or '—') ~ '\n'
-        ~ 'Ruta más cercana: ' ~ _rutas ~ '\n\n'
-        ~ _modalidad ~ '\n\n'
+        ~ 'Ruta más cercana: ' ~ _rutas
+      ) %}
+      {% set _ = _copy_blocks.append(
+        _modalidad ~ '\n'
         ~ 'Edad: ' ~ (_edad_txt or '') ~ '\n'
         ~ 'Dominicana\n'
         ~ 'Que sepa leer y escribir\n'
         ~ 'Experiencia en: ' ~ (_exp or '') ~ '\n'
-        ~ 'Horario: ' ~ _horario ~ '\n\n'
-        ~ 'Funciones: ' ~ _funcs ~ '\n\n'
-        ~ (_casa_line or '') ~ '\n\n'
-        ~ 'Adultos: ' ~ (_adultos|string if _adultos is not none else '') ~ '\n'
-        ~ ('Niños: ' ~ (_ninos|string if _ninos is not none else '') ~ '\n' if (_ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0) else '')
-        ~ ('Edades niños: ' ~ _edades_ninos ~ '\n' if (_edades_ninos|string)|trim != '' else '')
-        ~ ('Mascota: ' ~ _mascota ~ '\n\n' if _mascota else '\n')
-        ~ 'Sueldo: $' ~ (_sueldo|string) ~ ' mensual, ' ~ _pasaje_texto
-        ~ ('\n\nNotas: ' ~ _nota if (_nota|string)|trim != '' else '')
+        ~ 'Horario: ' ~ _horario
       ) %}
+      {% set _function_block = 'Funciones: ' ~ _funcs %}
+      {% if _composition.show_envejeciente and _envejeciente_lines %}
+        {% set _function_block = _function_block ~ '\n' ~ (_envejeciente_lines | join('\n')) %}
+      {% endif %}
+      {% if specific_service_copy_lines is defined and specific_service_copy_lines %}
+        {% set _function_block = _function_block ~ '\n' ~ (specific_service_copy_lines | join('\n')) %}
+      {% endif %}
+      {% set _ = _copy_blocks.append(_function_block) %}
+      {% if _casa_line %}
+        {% set _ = _copy_blocks.append(_casa_line) %}
+      {% endif %}
+      {% set _occupant_lines = [] %}
+      {% if _composition.show_adultos and _adultos is not none and (_adultos|string)|trim != '' %}
+        {% set _ = _occupant_lines.append('Adultos: ' ~ (_adultos|string)) %}
+      {% endif %}
+      {% if _composition.show_ninos and _ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0 %}
+        {% set _ = _occupant_lines.append('Niños: ' ~ (_ninos|string)) %}
+      {% endif %}
+      {% if _composition.show_ninos and (_edades_ninos|string)|trim != '' %}
+        {% set _age_line = 'Edades niños: ' ~ _edades_ninos %}
+        {% if _child_help_suffix %}
+          {% set _age_line = _age_line ~ ' ' ~ _child_help_suffix %}
+        {% endif %}
+        {% set _ = _occupant_lines.append(_age_line) %}
+      {% endif %}
+      {% if _mascota and (_composition.show_adultos or _composition.show_ninos) %}
+        {% set _ = _occupant_lines.append('Mascota: ' ~ _mascota) %}
+      {% endif %}
+      {% if _occupant_lines %}
+        {% set _ = _copy_blocks.append(_occupant_lines | join('\n')) %}
+      {% endif %}
+      {% set _ = _copy_blocks.append('Sueldo: ' ~ (_sueldo|string) ~ ' mensual, ' ~ _pasaje_texto) %}
+      {% if (_nota|string)|trim != '' %}
+        {% set _ = _copy_blocks.append('Notas: ' ~ _nota) %}
+      {% endif %}
+      {% set _interno = _copy_blocks | join('\n\n') %}
 
       {# Si el backend trae resumen_interno explícito, úsalo como prioridad (pero mantén el formato arriba como fallback) #}
       {% if resumen_interno is defined and resumen_interno %}

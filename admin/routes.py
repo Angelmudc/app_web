@@ -130,6 +130,7 @@ from utils.feature_flags import feature_enabled
 from utils.matching_service import rank_candidates
 from utils.funciones_formatter import format_funciones
 from utils.envejeciente import format_envejeciente_resumen
+from utils.solicitud_composition import solicitud_composition_flags, normalized_funciones
 from utils.audit_labels import (
     humanize_audit_field,
     humanize_audit_value,
@@ -3748,7 +3749,7 @@ def _reset_inicio_seguimiento_si_reactiva(s, now: datetime):
 
 
 def _pasaje_copy_phrase_from_solicitud(s: Solicitud) -> str:
-    """Frase de pasaje para textos de copiado: legado booleano + texto libre."""
+    """Frase de pasaje compartida por las tres variantes de copia."""
     mode, other_text = read_pasaje_mode_text(
         pasaje_aporte=getattr(s, "pasaje_aporte", False),
         detalles_servicio=getattr(s, "detalles_servicio", None),
@@ -3759,8 +3760,8 @@ def _pasaje_copy_phrase_from_solicitud(s: Solicitud) -> str:
     if mode == "otro" and custom:
         return custom
     if mode == "aparte":
-        return "incluye ayuda de pasaje"
-    return "no incluye ayuda de pasaje"
+        return "Más ayuda del pasaje"
+    return "Pasaje incluido"
 
 
 def _pasaje_operativo_phrase_from_solicitud(s: Solicitud) -> str:
@@ -3784,6 +3785,91 @@ def _pasaje_operativo_phrase_from_solicitud(s: Solicitud) -> str:
     return "Pasaje incluido"
 
 
+def _admin_child_help_copy_suffix(s: Solicitud) -> str:
+    """Texto válido de ayuda infantil para anexar a la línea de edades."""
+    flags = solicitud_composition_flags(getattr(s, "funciones", None))
+    if not flags["show_child_help"]:
+        return ""
+    ayuda = (getattr(s, "detalles_servicio", None) or {}).get("ayuda_cuidado_ninos")
+    return {
+        "sin_ayuda": "(No tendrá ayuda con los niños)",
+        "con_ayuda": "(Le darán ayuda con los niños)",
+    }.get(str(ayuda or "").strip(), "")
+
+
+def _admin_copy_house_type(tipo_lugar, *, dos_pisos: bool = False) -> str:
+    """Mantiene los niveles junto al tipo de vivienda cuando existen."""
+    tipo = _s(tipo_lugar)
+    if dos_pisos:
+        return f"{tipo} (2 niveles)" if tipo else "2 niveles"
+    return tipo
+
+
+def _admin_specific_service_copy_lines(s: Solicitud, label_maps: dict | None = None) -> list[str]:
+    """Devuelve solo los detalles específicos ya guardados en la solicitud."""
+    labels = label_maps or _admin_copiar_form_label_maps()
+    detalles = getattr(s, "detalles_servicio", None) or {}
+    tipo = detalles.get("tipo") or _s(getattr(s, "tipo_servicio", None))
+    ayuda_suffix = _admin_child_help_copy_suffix(s)
+    if tipo == "NINERA":
+        cantidad = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
+        edades = detalles.get("edades_ninos") or detalles.get("edades")
+        tareas = detalles.get("tareas") or []
+        condicion = detalles.get("condicion_especial") or detalles.get("condicion")
+        lines = []
+        if cantidad or edades:
+            base = "Niños a cuidar: "
+            if cantidad:
+                base += str(cantidad)
+            if edades:
+                base += f" ({edades})"
+            if ayuda_suffix:
+                base += f" {ayuda_suffix}"
+            lines.append(base)
+        if tareas:
+            tarea_labels = [dict(labels.get("ninera_tareas") or {}).get(code) or str(code) for code in _as_list(tareas)]
+            lines.append("Tareas con los niños: " + ", ".join(tarea_labels))
+        if condicion:
+            lines.append(f"Condición especial: {condicion}")
+        return lines
+    if tipo == "ENFERMERA":
+        a_quien = detalles.get("a_quien_cuida") or detalles.get("a_quien")
+        condicion = detalles.get("condicion_principal") or detalles.get("condicion")
+        movilidad = detalles.get("movilidad") or ""
+        tareas = detalles.get("tareas") or []
+        lines = []
+        if a_quien:
+            lines.append(f"A quién cuida: {a_quien}")
+        if movilidad:
+            lines.append(f"Movilidad: {dict(labels.get('enf_movilidad') or {}).get(movilidad, movilidad)}")
+        if condicion:
+            lines.append(f"Condición principal: {condicion}")
+        if tareas:
+            tarea_labels = [dict(labels.get("enf_tareas") or {}).get(code) or str(code) for code in _as_list(tareas)]
+            lines.append("Tareas de cuidado: " + ", ".join(tarea_labels))
+        return lines
+    if tipo == "CHOFER":
+        vehiculo = detalles.get("vehiculo")
+        tipo_vehiculo = detalles.get("tipo_vehiculo")
+        tipo_otro = detalles.get("tipo_vehiculo_otro")
+        rutas = detalles.get("rutas")
+        viajes_largos = detalles.get("viajes_largos")
+        licencia = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
+        lines = []
+        if vehiculo:
+            lines.append(f"Vehículo: {'del cliente' if vehiculo == 'cliente' else 'propio del chofer' if vehiculo == 'empleado' else vehiculo}")
+        if tipo_vehiculo or tipo_otro:
+            lines.append(f"Tipo de vehículo: {tipo_otro or tipo_vehiculo}")
+        if rutas:
+            lines.append(f"Rutas habituales: {rutas}")
+        if viajes_largos is not None:
+            lines.append("Viajes largos / fuera de la ciudad: Sí" if viajes_largos else "Viajes largos / fuera de la ciudad: No")
+        if licencia:
+            lines.append(f"Licencia / experiencia: {licencia}")
+        return lines
+    return []
+
+
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
     Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
@@ -3795,6 +3881,8 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         FUNCIONES_LABELS = {code: label for code, label in (getattr(form_tmp, "funciones", None).choices or [])}
     except Exception:
         FUNCIONES_LABELS = {}
+
+    composition = solicitud_composition_flags(getattr(s, "funciones", None))
 
     # Campos base
     codigo        = _s(getattr(s, 'codigo_solicitud', None))
@@ -3831,10 +3919,15 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
         solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
         nota=getattr(s, "envejeciente_nota", None),
-    )
+    ) if composition["show_envejeciente"] else []
+    specific_lines = _admin_specific_service_copy_lines(s)
 
     # Hogar
     tipo_lugar   = _s(getattr(s, 'tipo_lugar', None))
+    tipo_lugar_copy = _admin_copy_house_type(
+        tipo_lugar,
+        dos_pisos=bool(getattr(s, 'dos_pisos', False)),
+    )
     habitaciones = _s(getattr(s, 'habitaciones', None))
     banos_txt    = _fmt_banos(getattr(s, 'banos', None))
 
@@ -3856,93 +3949,90 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     sueldo_txt    = _format_money_usd(sueldo_raw)
     pasaje_texto = _pasaje_copy_phrase_from_solicitud(s)
 
-    lineas = []
+    blocks = []
 
     # Encabezado
     if codigo:
-        lineas.append(f"🧾 Resumen de su solicitud ({codigo})")
+        header_lines = [f"🧾 Resumen de su solicitud ({codigo})"]
     else:
-        lineas.append("🧾 Resumen de su solicitud")
-    lineas.append("")
+        header_lines = ["🧾 Resumen de su solicitud"]
+    blocks.append("\n".join(header_lines))
 
     # Ubicación / modalidad
+    location_lines = []
     if ciudad_sector:
-        lineas.append(f"📍 Ciudad / Sector: {ciudad_sector}")
+        location_lines.append(f"📍 Ciudad / Sector: {ciudad_sector}")
     if rutas:
-        lineas.append(f"🚌 Ruta más cercana: {rutas}")
+        location_lines.append(f"🚌 Ruta más cercana: {rutas}")
     if modalidad:
-        lineas.append(f"💼 Modalidad: {modalidad}")
+        location_lines.append(f"💼 Modalidad: {modalidad}")
     if edad_txt:
-        lineas.append(f"👤 Edad requerida: {edad_txt}")
+        location_lines.append(f"👤 Edad requerida: {edad_txt}")
     if horario:
-        lineas.append(f"⏰ Horario: {horario}")
+        location_lines.append(f"⏰ Horario: {horario}")
     if experiencia:
-        lineas.append(f"⭐ Experiencia solicitada: {experiencia}")
-    lineas.append("")
+        location_lines.append(f"⭐ Experiencia solicitada: {experiencia}")
+    if location_lines:
+        blocks.append("\n".join(location_lines))
 
     # Hogar
-    lineas.append("🏠 Detalles del hogar:")
     hogar_sub = []
-    if tipo_lugar:
-        hogar_sub.append(f"• Tipo de lugar: {tipo_lugar}")
-    if habitaciones:
+    if composition["show_house"] and tipo_lugar_copy:
+        hogar_sub.append(f"• Tipo de lugar: {tipo_lugar_copy}")
+    if composition["show_house"] and habitaciones:
         hogar_sub.append(f"• Habitaciones: {habitaciones}")
-    if banos_txt:
+    if composition["show_house"] and banos_txt:
         hogar_sub.append(f"• Baños: {banos_txt}")
-    if areas_txt:
+    if composition["show_house"] and areas_txt:
         hogar_sub.append(f"• Áreas comunes: {areas_txt}")
 
     if hogar_sub:
-        lineas.extend(hogar_sub)
-    else:
-        lineas.append("• (No se especificaron detalles del hogar)")
-    lineas.append("")
+        blocks.append("\n".join(["🏠 Detalles del hogar:"] + hogar_sub))
 
     # Familia
-    lineas.append("👨‍👩‍👧‍👦 Composición del hogar:")
     fam_sub = []
-    if adultos:
+    if composition["show_adultos"] and adultos:
         fam_sub.append(f"• Adultos en casa: {adultos}")
-    if ninos_val:
+    if composition["show_ninos"] and ninos_val:
         if edades_n:
-            fam_sub.append(f"• Niños: {ninos_val} (edades: {edades_n})")
+            age_line = f"• Niños: {ninos_val} (edades: {edades_n})"
+            ayuda_suffix = _admin_child_help_copy_suffix(s)
+            if ayuda_suffix:
+                age_line += f" {ayuda_suffix}"
+            fam_sub.append(age_line)
         else:
             fam_sub.append(f"• Niños: {ninos_val}")
-    if mascota:
+    if mascota and (composition["show_adultos"] or composition["show_ninos"]):
         fam_sub.append(f"• Mascotas: {mascota}")
 
     if fam_sub:
-        lineas.extend(fam_sub)
-    else:
-        lineas.append("• (No se especificó información de adultos/niños/mascotas)")
-    lineas.append("")
+        blocks.append("\n".join(["👨‍👩‍👧‍👦 Composición del hogar:"] + fam_sub))
 
     # Funciones
-    lineas.append("🧹 Funciones principales:")
+    function_lines = ["🧹 Funciones principales:"]
     if funciones_txt:
-        lineas.append(f"• {funciones_txt}")
+        function_lines.append(f"• {funciones_txt}")
     else:
-        lineas.append("• (No se especificaron funciones en detalle)")
+        function_lines.append("• (No se especificaron funciones en detalle)")
     if envejeciente_lines:
-        lineas.extend([f"• {ln}" for ln in envejeciente_lines])
-    lineas.append("")
+        function_lines.extend([f"• {ln}" for ln in envejeciente_lines])
+    if specific_lines:
+        function_lines.extend([f"• {ln}" for ln in specific_lines])
+    blocks.append("\n".join(function_lines))
 
     # Dinero
-    lineas.append("💰 Oferta económica:")
+    money_lines = ["💰 Oferta económica:"]
     if sueldo_txt:
-        lineas.append(f"• Sueldo: {sueldo_txt} mensual, {pasaje_texto}")
+        money_lines.append(f"• Sueldo: {sueldo_txt} mensual, {pasaje_texto}")
     else:
-        lineas.append("• (No se especificó sueldo)")
-
-    lineas.append("")
+        money_lines.append("• (No se especificó sueldo)")
+    blocks.append("\n".join(money_lines))
 
     # Nota del cliente
     if nota_cli:
-        lineas.append("📝 Nota adicional del cliente:")
-        lineas.append(f"{nota_cli}")
-        lineas.append("")
+        blocks.append("\n".join(["📝 Nota adicional del cliente:", nota_cli]))
 
-    return "\n".join(lineas).rstrip()
+    return "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
 
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
@@ -11861,6 +11951,12 @@ def _build_detalles_servicio_from_form(form) -> dict | None:
         # No metemos más cosas aquí porque ya usamos columnas normales (funciones, áreas, etc.)
         pass
 
+    if hasattr(form, "ayuda_cuidado_ninos"):
+        selected = normalized_funciones(getattr(getattr(form, "funciones", None), "data", None))
+        ayuda = str(getattr(form.ayuda_cuidado_ninos, "data", "") or "").strip()
+        if ayuda and "ninos" in selected:
+            detalles["ayuda_cuidado_ninos"] = ayuda
+
     # Limpiar claves vacías
     clean = {
         k: v for k, v in detalles.items()
@@ -11875,10 +11971,11 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
     y rellena los campos específicos correspondientes en el form.
     """
     try:
-        if not hasattr(solicitud, 'detalles_servicio') or not solicitud.detalles_servicio:
+        data = getattr(solicitud, 'detalles_servicio', None) or {}
+        if hasattr(form, "ayuda_cuidado_ninos"):
+            form.ayuda_cuidado_ninos.data = str(data.get("ayuda_cuidado_ninos") or "")
+        if not data:
             return
-
-        data = solicitud.detalles_servicio or {}
         ts = data.get("tipo") or getattr(solicitud, 'tipo_servicio', None)
 
         # Aseguramos que el select tenga el tipo
@@ -12149,7 +12246,11 @@ def nueva_solicitud_admin(cliente_id):
                 _clear_house_structure_if_not_limpieza(s, s.funciones)
                 _clear_adultos_if_not_household_funciones(s, s.funciones)
                 _sync_envejeciente_fields(s, s.funciones)
-                s.detalles_servicio = _build_detalles_servicio_from_form(form)
+                previous_detalles = dict(getattr(s, "detalles_servicio", None) or {})
+                next_detalles = _build_detalles_servicio_from_form(form) or {}
+                if previous_detalles.get("ayuda_cuidado_ninos") and not next_detalles.get("ayuda_cuidado_ninos"):
+                    next_detalles["ayuda_cuidado_ninos"] = previous_detalles["ayuda_cuidado_ninos"]
+                s.detalles_servicio = next_detalles or None
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
                 if _has_limpieza_funcion(s.funciones):
@@ -12559,7 +12660,11 @@ def editar_solicitud_admin(cliente_id, id):
                 _sync_envejeciente_fields(s, s.funciones)
 
                 s.fecha_ultima_modificacion = utc_now_naive()
-                s.detalles_servicio = _build_detalles_servicio_from_form(form)
+                previous_detalles = dict(getattr(s, "detalles_servicio", None) or {})
+                next_detalles = _build_detalles_servicio_from_form(form) or {}
+                if previous_detalles.get("ayuda_cuidado_ninos") and not next_detalles.get("ayuda_cuidado_ninos"):
+                    next_detalles["ayuda_cuidado_ninos"] = previous_detalles["ayuda_cuidado_ninos"]
+                s.detalles_servicio = next_detalles or None
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
                 if _has_limpieza_funcion(s.funciones):
@@ -16652,6 +16757,16 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
             reemplazo_cancelado_no_resuelta=_solicitud_reemplazo_cancelado_no_resuelta(solicitud, reemplazos=reemplazos),
             pasaje_copy_mode=pasaje_mode,
             pasaje_copy_other_text=pasaje_other_text,
+            envejeciente_copy_lines=format_envejeciente_resumen(
+                tipo_cuidado=getattr(solicitud, "envejeciente_tipo_cuidado", None),
+                responsabilidades=getattr(solicitud, "envejeciente_responsabilidades", None),
+                solo_acompanamiento=getattr(solicitud, "envejeciente_solo_acompanamiento", False),
+                nota=getattr(solicitud, "envejeciente_nota", None),
+            ),
+            specific_service_copy_lines=_admin_specific_service_copy_lines(solicitud),
+            composition_flags=solicitud_composition_flags(getattr(solicitud, "funciones", None)),
+            child_help_copy_suffix=_admin_child_help_copy_suffix(solicitud),
+            sueldo_copy=_format_money_usd(getattr(solicitud, "sueldo", None)),
         )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -26661,6 +26776,9 @@ def _admin_build_order_text_for_copiar(
         ed = _s(getattr(s, "edades_ninos", None))
         if ed:
             ninos_line += f" ({ed})"
+        ayuda_suffix = _admin_child_help_copy_suffix(s)
+        if ayuda_suffix:
+            ninos_line += f" {ayuda_suffix}"
 
     modalidad = _first_nonempty_attr(s, ["modalidad_trabajo", "modalidad", "tipo_modalidad"], "")
     modalidad_line = canonicalize_modalidad_trabajo(modalidad) if modalidad else ""
@@ -26672,9 +26790,6 @@ def _admin_build_order_text_for_copiar(
     banos_txt = _fmt_banos(getattr(s, "banos", None))
     if banos_txt:
         hogar_partes_detalle.append(f"{banos_txt} baños")
-    if bool(getattr(s, "dos_pisos", False)):
-        hogar_partes_detalle.append("2 pisos")
-
     areas = []
     for a in _as_list(getattr(s, "areas_comunes", None)):
         area_norm = _norm_area(a)
@@ -26689,8 +26804,14 @@ def _admin_build_order_text_for_copiar(
         hogar_partes_detalle.append(", ".join(areas))
 
     tipo_lugar = _s(getattr(s, "tipo_lugar", None))
+    tipo_lugar_copy = _admin_copy_house_type(
+        tipo_lugar,
+        dos_pisos=bool(getattr(s, "dos_pisos", False)),
+    )
     if hogar_partes_detalle:
-        hogar_descr = f"{tipo_lugar} - {', '.join(hogar_partes_detalle)}" if tipo_lugar else ", ".join(hogar_partes_detalle)
+        hogar_descr = f"{tipo_lugar_copy} - {', '.join(hogar_partes_detalle)}" if tipo_lugar_copy else ", ".join(hogar_partes_detalle)
+    elif tipo_lugar_copy:
+        hogar_descr = tipo_lugar_copy
     else:
         hogar_descr = ""
 
@@ -26738,6 +26859,9 @@ def _admin_build_order_text_for_copiar(
                 base += str(cant_ninos)
             if edades_n:
                 base += f" ({edades_n})"
+            ayuda_suffix = _admin_child_help_copy_suffix(s)
+            if ayuda_suffix:
+                base += f" {ayuda_suffix}"
             lineas_nin.append(base)
         if tareas_cd:
             etiquetas = []
@@ -26792,12 +26916,14 @@ def _admin_build_order_text_for_copiar(
             lineas_ch.append(f"Licencia / experiencia: {lic_det}")
         chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
 
+    composition = solicitud_composition_flags(getattr(s, "funciones", None))
+
     envejeciente_lines = format_envejeciente_resumen(
         tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
         responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
         solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
         nota=getattr(s, "envejeciente_nota", None),
-    )
+    ) if composition["show_envejeciente"] else []
     envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
     cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
     header_block = "\n".join([
@@ -26830,35 +26956,27 @@ def _admin_build_order_text_for_copiar(
     familia_block = "\n".join(familia_parts) if familia_parts else ""
     sueldo_block = f"Sueldo: {sueldo_final} mensual, {pasaje_texto}" if sueldo_final else ""
 
-    parts = [
-        header_block,
-        "",
-        info_block.strip() if info_block.strip() else None,
-        "",
-        funciones_block if funciones_block else None,
-        "",
-        hogar_descr if hogar_descr else None,
-        "",
-        envejeciente_block if envejeciente_block else None,
-        "" if envejeciente_block else None,
-        ninera_block if ninera_block else None,
-        enf_block if enf_block else None,
-        chofer_block if chofer_block else None,
-        "" if (ninera_block or enf_block or chofer_block) else None,
-        familia_block if familia_block else None,
-        "",
-        sueldo_block if sueldo_block else None,
-        "",
-        (nota_cli if include_nota_cliente and nota_cli else None),
-    ]
-    cleaned = []
-    for p in parts:
-        if p is None:
-            continue
-        if p == "" and (not cleaned or cleaned[-1] == ""):
-            continue
-        cleaned.append(p)
-    return "\n".join(cleaned).rstrip()
+    adults_line = f"Adultos: {adultos_val}" if composition["show_adultos"] and adultos_val else ""
+    child_family_line = ninos_line if composition["show_ninos"] else ""
+    mascota_copy_line = mascota_line if (composition["show_adultos"] or composition["show_ninos"]) else ""
+    blocks = [header_block]
+    if info_block.strip():
+        blocks.append(info_block.strip())
+    if funciones_block:
+        blocks.append(funciones_block)
+    if composition["show_house"] and hogar_descr:
+        blocks.append(hogar_descr)
+    for conditional_block in (envejeciente_block, ninera_block, enf_block, chofer_block):
+        if conditional_block:
+            blocks.append(conditional_block)
+    family_block = "\n".join([x for x in (adults_line, child_family_line, mascota_copy_line) if x])
+    if family_block:
+        blocks.append(family_block)
+    if sueldo_block:
+        blocks.append(sueldo_block)
+    if include_nota_cliente and nota_cli:
+        blocks.append(nota_cli)
+    return "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
 
 
 def _format_horario_block_for_copy(horario_raw: str) -> list[str]:

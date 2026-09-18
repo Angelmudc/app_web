@@ -2165,7 +2165,6 @@
         wrapAyuda.style.display = visible ? '' : 'none';
         wrapAyuda.classList.toggle('d-none', !visible);
       }
-      if (ayudaInput && !visible && fromUserEvent) ayudaInput.value = '';
     }
 
     function refreshChildCareHelpVisibility(ninosCnt, edadesText, fromUserEvent) {
@@ -2194,6 +2193,12 @@
       var ninosInput = byId('{{ form.ninos.id if form.ninos is defined else "" }}');
       var edadesInput = byId('{{ form.edades_ninos.id if form.edades_ninos is defined else "" }}');
       var requiereCuidado = hasSelectedValue('funciones', 'ninos');
+      var requiereAyuda = requiereCuidado && (
+        hasSelectedValue('funciones', 'limpieza') ||
+        hasSelectedValue('funciones', 'cocinar') ||
+        hasSelectedValue('funciones', 'lavar') ||
+        hasSelectedValue('funciones', 'planchar')
+      );
       var ninosCnt = 0;
 
       if (ninosInput) {
@@ -2215,7 +2220,7 @@
       }
 
       var edadesTxt = edadesInput ? norm(edadesInput.value) : '';
-      if (showEdades) {
+      if (showEdades && requiereAyuda) {
         refreshChildCareHelpVisibility(ninosCnt, edadesTxt, fromUserEvent);
       } else {
         childAgeSummarySeq++;
@@ -2483,7 +2488,7 @@
       }
       var needsAdultos = false;
       for (var p = 0; p < picked.length; p++) {
-        if (picked[p] === 'limpieza' || picked[p] === 'cocinar' || picked[p] === 'lavar' || picked[p] === 'planchar') {
+        if (picked[p] === 'limpieza' || picked[p] === 'cocinar' || picked[p] === 'lavar' || picked[p] === 'planchar' || picked[p] === 'envejeciente') {
           needsAdultos = true;
           break;
         }

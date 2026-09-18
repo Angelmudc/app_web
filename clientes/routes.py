@@ -108,6 +108,10 @@ from utils.sueldo_sugerido import analyze_salary_suggestion
 from utils.codigo_solicitud import compose_codigo_solicitud
 from utils.child_age_parser import parse_child_age_summary
 from utils.experiencia_solicitud import experiencia_value_from_form
+from utils.solicitud_composition import (
+    GENERAL_HOUSEHOLD_FUNCIONES,
+    normalized_funciones,
+)
 from utils.timezone import (
     iso_utc_z,
     rd_today,
@@ -3383,16 +3387,11 @@ def _map_tipo_lugar(value, extra):
 
 
 def _has_limpieza_funcion(funciones_selected):
-    vals = _clean_list(funciones_selected)
-    for raw in vals:
-        if str(raw or '').strip().lower() == 'limpieza':
-            return True
-    return False
+    return 'limpieza' in normalized_funciones(_clean_list(funciones_selected))
 
 
 def _has_household_funcion(funciones_selected):
-    vals = {str(raw or '').strip().lower() for raw in _clean_list(funciones_selected)}
-    return bool(vals.intersection({'limpieza', 'cocinar', 'lavar', 'planchar'}))
+    return bool(normalized_funciones(_clean_list(funciones_selected)) & GENERAL_HOUSEHOLD_FUNCIONES)
 
 
 def _strip_pisos_marker_from_note(note_text):
@@ -3427,7 +3426,8 @@ def _clear_house_structure_if_not_limpieza(solicitud_obj, funciones_selected):
 
 
 def _clear_adultos_if_not_household_funciones(solicitud_obj, funciones_selected):
-    if _has_household_funcion(funciones_selected):
+    vals = normalized_funciones(_clean_list(funciones_selected))
+    if _has_household_funcion(vals) or 'envejeciente' in vals:
         return
     if hasattr(solicitud_obj, 'adultos'):
         solicitud_obj.adultos = None
@@ -3466,9 +3466,8 @@ def _sync_child_care_help_details(solicitud_obj, form) -> None:
     if hasattr(form, "ayuda_cuidado_ninos"):
         ayuda = str(getattr(form.ayuda_cuidado_ninos, "data", "") or "").strip()
     base = dict(getattr(solicitud_obj, "detalles_servicio", None) or {})
-    for key in ("ayuda_cuidado_ninos", "detalle_ayuda_cuidado_ninos"):
-        base.pop(key, None)
     if ayuda:
+        base.pop("detalle_ayuda_cuidado_ninos", None)
         base["ayuda_cuidado_ninos"] = ayuda
     solicitud_obj.detalles_servicio = base or None
 

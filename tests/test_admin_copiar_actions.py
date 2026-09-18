@@ -346,8 +346,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 resumen_false = admin_routes.build_resumen_cliente_solicitud(solicitud_false)
                 resumen_true = admin_routes.build_resumen_cliente_solicitud(solicitud_true)
 
-        self.assertIn("no incluye ayuda de pasaje", resumen_false)
-        self.assertIn("incluye ayuda de pasaje", resumen_true)
+        self.assertIn("Pasaje incluido", resumen_false)
+        self.assertIn("Más ayuda del pasaje", resumen_true)
 
     def test_pasaje_operativo_phrase_unifica_formato_con_copiado_interno(self):
         solicitud_incluido = _SolicitudStub(estado="activa")
@@ -377,6 +377,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
     def test_build_resumen_cliente_solicitud_incluye_texto_exacto_envejeciente_independiente(self):
         s = _SolicitudStub(estado="activa")
+        s.funciones = ["limpieza", "envejeciente"]
         s.envejeciente_tipo_cuidado = "independiente"
         with flask_app.app_context():
             with patch("admin.routes.AdminSolicitudForm", _DummyForm):
@@ -386,9 +387,38 @@ class AdminCopiarActionsTest(unittest.TestCase):
             resumen,
         )
 
+    def test_tres_copias_reusan_etiquetas_oficiales_y_orden_del_formulario(self):
+        s = _SolicitudStub(estado="activa")
+        s.funciones = ["envejeciente", "limpieza", "lavar", "cocinar", "planchar", "ninos"]
+        s.detalles_servicio = {
+            "tipo": "NINERA",
+            "cantidad_ninos": 2,
+            "edades_ninos": "2 y 6 años",
+            "tareas": ["jugar"],
+            "ayuda_cuidado_ninos": "con_ayuda",
+        }
+        with flask_app.app_context():
+            cliente = admin_routes.build_resumen_cliente_solicitud(s)
+            publicar = admin_routes._admin_build_order_text_for_copiar(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+
+        expected = "Limpieza General, Cocinar, Lavar, Planchar, Cuidar Niños, Cuidar envejecientes"
+        self.assertIn(expected, publicar)
+        self.assertIn(expected, cliente)
+        for wrong in ("Lavado", "Cuidar niños"):
+            self.assertNotIn(wrong, cliente)
+            self.assertNotIn(wrong, publicar)
+        self.assertIn("Niños a cuidar: 2 (2 y 6 años)", cliente)
+        self.assertIn("Niños a cuidar: 2 (2 y 6 años) (Le darán ayuda con los niños)", cliente)
+        self.assertIn("2 y 6 años) (Le darán ayuda con los niños)", publicar)
+        self.assertNotIn("Ayuda con el cuidado de los niños:", cliente)
+        self.assertNotIn("Ayuda con el cuidado de los niños:", publicar)
+
     def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
         self._login("Owner", "admin123")
         s = _SolicitudStub(estado="activa")
+        s.funciones = ["limpieza", "envejeciente"]
         s.envejeciente_tipo_cuidado = "encamado"
         s.envejeciente_responsabilidades = ["pampers", "higiene", "medicamentos"]
         s.envejeciente_nota = "Usa cama clínica"
@@ -414,6 +444,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
     def test_copiar_solicitudes_incluye_envejeciente_solo_acompanamiento(self):
         self._login("Owner", "admin123")
         s = _SolicitudStub(estado="activa")
+        s.funciones = ["limpieza", "envejeciente"]
         s.envejeciente_tipo_cuidado = "encamado"
         s.envejeciente_solo_acompanamiento = True
         with flask_app.app_context():

@@ -31,6 +31,11 @@ from models import Cliente, Solicitud, StaffAuditLog, StaffPresenceState, StaffU
 from clientes.routes import generar_token_publico_cliente, generar_token_publico_cliente_nuevo
 from utils.experiencia_solicitud import EXPERIENCIA_CLOSED_VALUES
 
+# config_app imports dotenv before the local-only safety check.  Prevent a
+# DATABASE_URL loaded from .env from being mistaken for the effective local
+# database selected by APP_ENV=local.
+os.environ.pop("DATABASE_URL", None)
+
 RUN_ID = base.RUN_ID
 ARTIFACT_DIR = ROOT / "artifacts" / "e2e" / "experience_extreme" / RUN_ID
 ARTIFACT_DIR.mkdir(parents=True, exist_ok=True)
