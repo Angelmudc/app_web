@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import requests
-from playwright.sync_api import Browser, BrowserContext, Page, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError, sync_playwright
 from werkzeug.serving import make_server
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -44,6 +44,28 @@ CONFIRM_LABEL = "Confirmo y acepto"
 CASE_TIMEOUT_SECONDS = 60
 NEW_PHONE_PREFIX = "82920"
 EXISTING_PHONE_PREFIX = "82930"
+
+
+def confirm_conditions_modal(page: Page, *, double: bool = False) -> None:
+    """Read the current visual modal before clicking its gated confirmation."""
+    modal = page.locator(".employment-conditions-modal:visible").first
+    body = modal.locator(".employment-conditions-body")
+    confirm = modal.get_by_role("button", name=CONFIRM_LABEL, exact=True)
+    state = body.evaluate("el => ({height: el.scrollHeight, client: el.clientHeight})")
+    if state["height"] > state["client"] + 10 or confirm.is_disabled():
+        indicator = modal.locator(".employment-conditions-read-more")
+        if confirm.is_disabled():
+            try:
+                indicator.wait_for(state="visible", timeout=10000)
+            except PlaywrightTimeoutError:
+                pass
+        if indicator.is_visible():
+            indicator.click()
+        page.wait_for_function("el => !el.disabled", arg=confirm.element_handle(), timeout=10000)
+    if double:
+        confirm.dblclick(force=True)
+    else:
+        confirm.click(force=True)
 
 
 def utc_now() -> str:
@@ -1167,20 +1189,27 @@ def run_case(browser: Browser, flask_app: Any, base_url: str, catalog: FormCatal
             trace.step("espera reapertura modal", lambda: page.wait_for_timeout(250))
             if not page.get_by_text(MODAL_TITLE, exact=True).first.is_visible():
                 raise RuntimeError("El segundo intento no reabrió el modal")
-            trace.step("modal confirmar", lambda: page.get_by_role("button", name=CONFIRM_LABEL, exact=True).click())
+            trace.step("modal confirmar", lambda: confirm_conditions_modal(page))
         elif case.interaction == "reopen":
             trace.step("modal volver formulario", lambda: page.get_by_role("button", name="Volver al formulario", exact=True).click())
             trace.step("submit reapertura", submit.click)
-            trace.step("modal confirmar", lambda: page.get_by_role("button", name=CONFIRM_LABEL, exact=True).click())
+            trace.step("modal confirmar", lambda: confirm_conditions_modal(page))
         elif case.interaction in {"double_click", "rapid_click"}:
-            trace.step("modal doble confirmación", lambda: page.get_by_role("button", name=CONFIRM_LABEL, exact=True).dblclick())
+            trace.step("modal doble confirmación", lambda: confirm_conditions_modal(page, double=True))
         elif case.interaction == "native_cancel":
             if post_count != 0:
                 raise RuntimeError("Confirmación nativa cancelada pero hubo POST")
+            if modal_visible:
+                trace.step("fallback visual cancelar", lambda: page.get_by_role("button", name="Volver al formulario", exact=True).click())
+                trace.step("espera cierre fallback", lambda: page.wait_for_function("() => { const el = document.querySelector('.employment-conditions-modal'); return !el || getComputedStyle(el).display === 'none' || el.getAttribute('aria-hidden') === 'true'; }", timeout=5000))
+                if post_count != 0:
+                    raise RuntimeError("Fallback visual cancelado pero produjo POST")
+                trace.step("tracing stop", context.tracing.stop)
+                return {"ok": True, "result": "PASS", "started_at": started_at, "duration_ms": round((time.monotonic() - started) * 1000), **payload, "post_count": post_count, "final_url": page.url, "trace_events": trace.events, "console_errors": console_errors, "page_errors": page_errors, "http_errors": http_errors}
             dialog_accept_next["value"] = True
             trace.step("submit confirmación nativa", submit.click)
         elif modal_visible:
-            trace.step("modal confirmar", lambda: page.get_by_role("button", name=CONFIRM_LABEL, exact=True).click())
+            trace.step("modal confirmar", lambda: confirm_conditions_modal(page))
         trace.step("espera POST", lambda: page.wait_for_timeout(500))
         if post_count != 1:
             raise RuntimeError(f"Se esperaba exactamente 1 POST tras confirmar; observado={post_count}")

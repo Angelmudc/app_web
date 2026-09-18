@@ -481,16 +481,24 @@ def public_case(flask_app, base_url: str, *, case_id: str, client_type: str, exp
                     raise RuntimeError("No apareció el modal final de condiciones")
                 if cancel:
                     page.get_by_role("button", name="Volver al formulario", exact=True).click()
-                    page.wait_for_timeout(150)
+                    page.wait_for_function(
+                        "() => { const el = document.querySelector('.employment-conditions-modal'); "
+                        "return !el || getComputedStyle(el).display === 'none' || el.getAttribute('aria-hidden') === 'true'; }",
+                        timeout=5000,
+                    )
                     if posts:
                         raise RuntimeError("Cancelar produjo POST")
                     submit.click()
-                    page.wait_for_timeout(150)
-                confirm = page.get_by_role("button", name=base.CONFIRM_LABEL, exact=True)
+                    page.wait_for_function(
+                        "() => { const el = document.querySelector('.employment-conditions-modal'); "
+                        "return el && getComputedStyle(el).display !== 'none' && el.getAttribute('aria-hidden') !== 'true'; }",
+                        timeout=5000,
+                    )
+                    page.wait_for_timeout(300)
                 if double_submit:
-                    confirm.dblclick()
+                    base.confirm_conditions_modal(page, double=True)
                 else:
-                    confirm.click()
+                    base.confirm_conditions_modal(page)
                 page.wait_for_timeout(500)
                 if len([url for url in posts if "/plan" not in url]) != 1:
                     raise RuntimeError(f"POST esperado=1 observado={posts!r}")

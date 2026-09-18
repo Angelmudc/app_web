@@ -295,6 +295,23 @@
     flex: 0 0 auto; margin: 2px 0 0 auto; filter: invert(1) grayscale(1) brightness(3); opacity: .82;
   }
   .employment-conditions-modal .employment-conditions-body { max-height: min(62vh, 590px); overflow-y: auto; padding: 24px; color: #243447; }
+  .employment-conditions-modal .employment-conditions-read-more {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%;
+    padding: 10px 18px; border: 0; border-top: 1px solid #dce8f0; background: #f5fafc;
+    color: #14566a; font-size: .88rem; font-weight: 700; text-align: center;
+  }
+  .employment-conditions-modal .employment-conditions-read-more:hover,
+  .employment-conditions-modal .employment-conditions-read-more:focus-visible {
+    background: #e8f4f7; color: #0b596a; outline: 3px solid rgba(15, 106, 127, .24); outline-offset: -3px;
+  }
+  .public-conditions-fallback-backdrop {
+    position: fixed; z-index: 1050; inset: 0; background: rgba(15, 32, 49, .58);
+  }
+  .employment-conditions-modal.public-conditions-fallback-open {
+    position: fixed; z-index: 1055; inset: 0; overflow-x: hidden; overflow-y: auto;
+    background: transparent;
+  }
+  .employment-conditions-modal.public-conditions-fallback-open .employment-conditions-dialog { margin: 1.75rem auto; }
   .employment-conditions-modal .employment-conditions-intro { margin: 0 0 18px; color: #43566b; font-size: .96rem; line-height: 1.65; }
   .employment-conditions-modal .employment-conditions-list { display: grid; gap: 12px; }
   .employment-conditions-modal .employment-conditions-card {
@@ -373,7 +390,7 @@
             </div>
           {% endif %}
 
-          <form method="post" id="publicSolicitudForm" novalidate>
+          <form method="post" id="publicSolicitudForm" data-conditions-modal-id="publicEmploymentConditionsModal" novalidate>
             {{ form.hidden_tag() }}
             <input type="hidden" name="lead_source" id="lead_source" value="direct">
             {% if form.token is defined %}
@@ -440,7 +457,7 @@
                   </div>
                   <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
                 </div>
-                <div class="modal-body employment-conditions-body">
+                <div class="modal-body employment-conditions-body" tabindex="0" role="region" aria-label="Condiciones del empleo">
                   <p class="employment-conditions-intro">Con el objetivo de garantizar una colocación clara y adecuada para ambas partes, las condiciones indicadas en esta solicitud serán utilizadas para presentar el empleo a las candidatas.</p>
                   <div class="employment-conditions-list">
                     <article class="employment-conditions-card">
@@ -480,6 +497,9 @@
                     </div>
                   </div>
                 </div>
+                <button type="button" class="employment-conditions-read-more" aria-label="Ver más condiciones">
+                  <span>Desliza para leer todas las condiciones</span><span aria-hidden="true">↓</span>
+                </button>
                 <div class="modal-footer employment-conditions-footer">
                   <button type="button" class="btn btn-outline-secondary employment-conditions-cancel" data-bs-dismiss="modal">Volver al formulario</button>
                   <button type="button" class="btn btn-primary employment-conditions-confirm" id="publicEmploymentConditionsConfirmBtn"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Confirmo y acepto</button>
@@ -495,11 +515,11 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/clientes/public_conditions_modal.js') }}"></script>
 <script>
 (function () {
   var initialized = false;
   var fallbackLoadStarted = false;
-  var attachBootstrapModal = null;
 
   function initPublicSolicitudForm() {
     if (initialized) return;
@@ -514,8 +534,6 @@
     var termsDecisionInput = document.getElementById('termsDecisionInput');
     var termsAcceptedAtInput = document.getElementById('termsAcceptedAtInput');
     var termsInlineError = document.getElementById('termsInlineError');
-    var conditionsModalElement = document.getElementById('publicEmploymentConditionsModal');
-    var conditionsConfirmBtn = document.getElementById('publicEmploymentConditionsConfirmBtn');
     var leadSourceInput = document.getElementById('lead_source');
     var isSubmitting = false;
     var conditionsConfirmed = false;
@@ -601,37 +619,7 @@
     }
     validateCommonAreasRequiredGroup();
 
-    var conditionsModal = null;
-    var nativeConditionsMessage = 'Confirmación de las condiciones del empleo\\n\\nLas condiciones indicadas en esta solicitud serán utilizadas para presentar el empleo a las candidatas. El cliente se compromete a respetar las funciones, horario, salario, días de descanso, cantidad de personas, lugar de trabajo y demás condiciones informadas.\\n\\nImportante: cualquier cambio significativo posterior sin acuerdo previo podría afectar la garantía o el derecho a reemplazo.\\n\\n¿Confirmas y aceptas estas condiciones?';
-
-    function resetConditionsConfirmButton() {
-      if (conditionsConfirmBtn) conditionsConfirmBtn.disabled = false;
-    }
-
-    function confirmConditionsAndSubmit() {
-      if (conditionsConfirmed || isSubmitting) return;
-      conditionsConfirmed = true;
-      if (conditionsConfirmBtn) conditionsConfirmBtn.disabled = true;
-      if (conditionsModal) conditionsModal.hide();
-      setTimeout(function () {
-        form.requestSubmit();
-      }, 0);
-    }
-
-    function showConditionsConfirmation() {
-      if (conditionsModal) {
-        conditionsModal.show();
-        return;
-      }
-      if (window.confirm(nativeConditionsMessage)) confirmConditionsAndSubmit();
-    }
-
-    attachBootstrapModal = function () {
-      if (conditionsModal || !conditionsModalElement || !(window.bootstrap && window.bootstrap.Modal)) return;
-      conditionsModal = bootstrap.Modal.getOrCreateInstance(conditionsModalElement);
-      conditionsModalElement.addEventListener('hidden.bs.modal', resetConditionsConfirmButton);
-      if (conditionsConfirmBtn) conditionsConfirmBtn.addEventListener('click', confirmConditionsAndSubmit);
-    };
+    var conditionsController = window.PublicConditionsModal && window.PublicConditionsModal.setup(form);
 
   function detectLeadSource() {
     var urlParams = new URLSearchParams(window.location.search || '');
@@ -681,10 +669,10 @@
       if (termsInlineError) termsInlineError.classList.remove('d-none');
       return;
     }
+    conditionsConfirmed = !!form.__publicConditionsConfirmed;
     if (!conditionsConfirmed) {
       ev.preventDefault();
-      resetConditionsConfirmButton();
-      showConditionsConfirmation();
+      if (conditionsController) conditionsController.open();
       return;
     }
     if (isSubmitting) {
@@ -698,7 +686,6 @@
     if (label) label.textContent = 'Enviando...';
     });
 
-    attachBootstrapModal();
   }
 
   function loadBootstrapForConditions() {
@@ -710,10 +697,10 @@
     var fallbackScript = document.createElement('script');
     fallbackScript.src = "{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}";
     fallbackScript.onload = function () {
-      if (attachBootstrapModal) attachBootstrapModal();
+      if (window.PublicConditionsModal) window.PublicConditionsModal.attachBootstrapAll();
     };
     fallbackScript.onerror = function () {
-      console.error('No se pudo cargar Bootstrap desde CDN ni desde el fallback local. Se usará confirmación nativa.');
+      console.error('No se pudo cargar Bootstrap desde CDN ni desde el fallback local. Se usará el fallback visual del modal.');
     };
     document.head.appendChild(fallbackScript);
   }
