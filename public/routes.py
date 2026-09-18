@@ -1012,6 +1012,19 @@ def como_funciona():
     return render_template("public/como_funciona.html")
 
 
+@public_bp.route("/proceso-servicio")
+def proceso_servicio():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    whatsapp_number = str(current_app.config.get("SUPPORT_WHATSAPP_NUMBER") or "18094296892").strip()
+    whatsapp_url = f"https://wa.me/{whatsapp_number}"
+    return render_template(
+        "public/proceso_servicio.html",
+        page_url=_public_external_url("public.proceso_servicio"),
+        whatsapp_url=whatsapp_url,
+    )
+
+
 @public_bp.route("/beneficios")
 def beneficios():
     if not PUBLIC_SITE_ENABLED:

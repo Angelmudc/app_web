@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Proceso de servicio | Doméstica del Cibao</title>
+  <meta name="description" content="Conoce paso a paso cómo funciona nuestro proceso de búsqueda, entrevistas, selección y colocación de personal doméstico.">
+  <meta name="robots" content="index, follow">
+  <link rel="canonical" href="{{ page_url }}">
+  {% set process_og_image = page_url.rsplit('/', 1)[0] ~ '/static/public/img/proceso_servicio_preview.png' %}
+  <meta property="og:title" content="Cómo funciona nuestro proceso | Doméstica del Cibao">
+  <meta property="og:description" content="Conoce los 10 pasos de nuestro proceso para solicitar personal doméstico.">
+  <meta property="og:image" content="{{ process_og_image }}">
+  <meta property="og:image:url" content="{{ process_og_image }}">
+  <meta property="og:image:secure_url" content="{{ process_og_image }}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Cómo funciona el proceso de Doméstica del Cibao">
+  <meta property="og:url" content="{{ page_url }}">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Doméstica del Cibao">
+  <meta property="og:locale" content="es_DO">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Cómo funciona nuestro proceso | Doméstica del Cibao">
+  <meta name="twitter:description" content="Conoce los 10 pasos de nuestro proceso para solicitar personal doméstico.">
+  <meta name="twitter:image" content="{{ process_og_image }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo_nuevo.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='public/css/proceso_servicio.css') }}">
+</head>
+<body class="service-process-page">
+  <div class="service-process-progress" id="readingProgress" aria-hidden="true"></div>
+  <main id="serviceProcessMain" class="service-process-shell">
+    <header class="service-process-hero">
+      <img class="service-process-logo" src="{{ url_for('static', filename='public/img/logo_proceso_transparente.png') }}" alt="Doméstica del Cibao" onerror="this.onerror=null;this.src='{{ url_for('static', filename='logo_nuevo.png') }}';">
+      <p class="service-process-eyebrow">Guía oficial del servicio</p>
+      <h1>Cómo funciona nuestro proceso</h1>
+      <p class="service-process-lead">Conoce paso a paso cómo trabajamos para ayudarte a encontrar personal doméstico de acuerdo con las condiciones de tu solicitud.</p>
+      <p class="service-process-micro">10 pasos <span aria-hidden="true">·</span> De la solicitud al inicio de labores</p>
+    </header>
+
+    <section class="service-process-section" aria-labelledby="steps-title">
+      <div class="service-process-section-heading">
+        <p class="service-process-kicker">De la solicitud al inicio de labores</p>
+        <h2 id="steps-title">Un proceso claro, paso a paso</h2>
+      </div>
+      <ol class="service-process-timeline">
+        <li class="service-process-step">
+          <span class="service-process-number" aria-hidden="true">01</span>
+          <div><h3>Información inicial</h3><p>El cliente nos indica el perfil que necesita: funciones, horario, salario, ubicación, modalidad de trabajo y demás condiciones del empleo.</p></div>
+        </li>
+        <li class="service-process-step">
+          <span class="service-process-number" aria-hidden="true">02</span>
+          <div><h3>Formulario de solicitud</h3><p>Debe completar el formulario con todos los detalles necesarios para formalizar la solicitud e iniciar el proceso.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--highlight">
+          <span class="service-process-number" aria-hidden="true">03</span>
+          <div><h3>Pago de apertura de búsqueda</h3><p>Para comenzar la búsqueda se realiza un pago de gestión y apertura de solicitud. Este monto no es reembolsable porque cubre el tiempo de búsqueda, llamadas, entrevistas preliminares, preselección y contacto con candidatas.</p><p class="service-process-detail"><strong>RD$1,000</strong> · Se descuenta del valor total del plan elegido.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--notice">
+          <span class="service-process-number" aria-hidden="true">04</span>
+          <div><h3>Búsqueda y presentación de perfiles</h3><p>La agencia evalúa la solicitud, realiza la búsqueda y presenta las candidatas que se ajusten al perfil solicitado.</p><p class="service-process-notice"><strong>El tiempo de búsqueda puede variar.</strong> Cada candidata decide si acepta o no las condiciones del empleo; por eso la agencia no puede garantizar un tiempo exacto de colocación.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--highlight">
+          <span class="service-process-number" aria-hidden="true">05</span>
+          <div><h3>Completar el 50% del plan</h3><p>Cuando el cliente seleccione una o varias candidatas que desea entrevistar, deberá completar el 50% del valor del plan contratado, descontando el pago realizado por apertura. Las entrevistas se coordinan una vez completado dicho pago.</p><p class="service-process-detail"><strong>50%</strong> · Antes de coordinar las entrevistas.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--notice">
+          <span class="service-process-number" aria-hidden="true">06</span>
+          <div><h3>Entrevistas</h3><p>Las entrevistas pueden realizarse por llamada, videollamada o de manera presencial. Si la entrevista es presencial y el cliente se encuentra en otra ciudad, deberá cubrir el transporte correspondiente de la candidata.</p><p class="service-process-notice"><strong>Recomendación:</strong> no entregar dinero de pasaje por adelantado directamente a la candidata.</p></div>
+        </li>
+        <li class="service-process-step">
+          <span class="service-process-number" aria-hidden="true">07</span>
+          <div><h3>Selección de la candidata</h3><p>Una vez realizada la entrevista y elegida la candidata, se coordina la fecha acordada para iniciar las labores.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--highlight">
+          <span class="service-process-number" aria-hidden="true">08</span>
+          <div><h3>Pago final y entrega de documentos</h3><p>Antes de entregar al cliente la depuración, referencias y demás documentos disponibles de la candidata, deberá completar el 50% restante del plan contratado.</p><p class="service-process-detail"><strong>50% restante</strong> · Antes de entregar la documentación disponible.</p></div>
+        </li>
+        <li class="service-process-step">
+          <span class="service-process-number" aria-hidden="true">09</span>
+          <div><h3>Garantía del servicio</h3><p>La garantía del plan contratado se activa una vez completado el pago total del servicio y comienza a contar desde el día en que la empleada doméstica inicia sus labores.</p><p>Si una candidata decide no aceptar el empleo o no llega a iniciar sus labores, esto no se considera como un reemplazo utilizado.</p></div>
+        </li>
+        <li class="service-process-step service-process-step--highlight">
+          <span class="service-process-number" aria-hidden="true">10</span>
+          <div><h3>Pago por gestión y colocación de la doméstica</h3><p>En la primera quincena de trabajo se retiene a la empleada doméstica un monto equivalente al 25% de su salario mensual acordado, correspondiente al pago por gestión y colocación del empleo. Este monto se deposita directamente a la agencia.</p><p class="service-process-detail"><strong>25%</strong> · Retención única en la primera quincena.</p></div>
+        </li>
+      </ol>
+    </section>
+
+    <section class="service-process-section service-process-economics" aria-labelledby="payments-title">
+      <p class="service-process-kicker">Resumen económico</p>
+      <h2 id="payments-title">Pagos importantes del proceso</h2>
+      <div class="service-process-payment-list">
+        <p><strong>RD$1,000 de apertura:</strong> no reembolsable y descontado del valor del plan.</p>
+        <p><strong>50% del plan:</strong> antes de coordinar las entrevistas con las candidatas seleccionadas.</p>
+        <p><strong>50% restante:</strong> antes de entregar depuración, referencias y demás documentación disponible.</p>
+      </div>
+    </section>
+
+    <section class="service-process-section service-process-conditions" aria-labelledby="conditions-title">
+      <p class="service-process-kicker">Para evitar malentendidos</p>
+      <h2 id="conditions-title">Condiciones importantes</h2>
+      <div class="service-process-condition-grid">
+        <article><h3>Las condiciones informadas son las del empleo</h3><p>Las funciones, horario, salario, días de descanso, modalidad, cantidad de personas a atender y demás condiciones indicadas en la solicitud serán las utilizadas para presentar el empleo a las candidatas.</p></article>
+        <article><h3>Los cambios importantes deben informarse</h3><p>Si luego se desea modificar de manera significativa alguna condición del empleo, deberá comunicarse y acordarse previamente con la agencia y la candidata.</p></article>
+        <article><h3>Las funciones adicionales requieren acuerdo</h3><p>No deben agregarse habitualmente funciones adicionales sin acuerdo previo. Esto ayuda a mantener la colocación dentro de las condiciones originalmente ofrecidas.</p></article>
+        <article><h3>La garantía depende de las condiciones acordadas</h3><p>Cambios significativos realizados después de la contratación sin previo acuerdo pueden afectar la garantía o el derecho a reemplazo.</p></article>
+      </div>
+    </section>
+
+    <section class="service-process-closing" aria-labelledby="closing-title">
+      <p class="service-process-kicker">Siguiente paso</p>
+      <h2 id="closing-title">¿Ya revisaste todo el proceso?</h2>
+      <p>Si ya leíste cómo funciona nuestro servicio y deseas continuar, regresa a nuestra conversación por WhatsApp para seguir con tu solicitud.</p>
+      <a class="service-process-whatsapp" href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer">Continuar por WhatsApp <span aria-hidden="true">↗</span></a>
+    </section>
+  </main>
+
+  <button class="service-process-reading-hint" id="readingHint" type="button" aria-label="Desliza para continuar leyendo" hidden>
+    <span>Desliza para continuar leyendo</span><span class="service-process-chevron" aria-hidden="true">⌄</span>
+  </button>
+  <script src="{{ url_for('static', filename='public/js/proceso_servicio.js') }}" defer></script>
+</body>
+</html>
