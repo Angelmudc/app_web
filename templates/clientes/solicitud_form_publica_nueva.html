@@ -42,6 +42,15 @@
     padding: 24px;
   }
 
+  .public-flow-logo {
+    display: block;
+    width: clamp(160px, 24vw, 270px);
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 10px;
+    object-fit: contain;
+  }
+
   .public-flow-title {
     margin: 0;
     font-size: 1.52rem;
@@ -502,6 +511,7 @@
 <section class="public-flow-page">
   <div class="public-flow-shell">
     <header class="public-flow-hero">
+      <img class="public-flow-logo" src="{{ url_for('static', filename='public/img/logo_proceso_transparente.png') }}" alt="Doméstica del Cibao A&D">
       <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
           <h1 class="public-flow-title">Formulario oficial de solicitud</h1>
