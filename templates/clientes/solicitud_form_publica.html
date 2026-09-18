@@ -37,20 +37,20 @@
   }
 
   .public-flow-hero {
-    background: linear-gradient(130deg, #112031 0%, #1f3650 58%, #14566a 100%);
-    color: #f8fbff;
+    background: linear-gradient(135deg, #edf9fa 0%, #f8fcff 56%, #e7f4f4 100%);
+    color: var(--pf-ink);
     border-radius: 22px;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    box-shadow: 0 28px 44px rgba(15, 23, 42, 0.20);
+    border: 1px solid #cfe5e7;
+    box-shadow: 0 22px 44px rgba(14, 78, 88, 0.10);
     padding: 24px;
   }
 
   .public-flow-logo {
     display: block;
-    width: clamp(160px, 24vw, 270px);
+    width: clamp(220px, 60vw, 260px);
     max-width: 100%;
     height: auto;
-    margin: 0 auto 10px;
+    margin: 0 auto 4px;
     object-fit: contain;
   }
 
@@ -64,7 +64,7 @@
   .public-flow-subtitle {
     margin: 8px 0 0;
     font-size: .98rem;
-    color: rgba(248, 251, 255, 0.9);
+    color: var(--pf-muted);
     max-width: 66ch;
   }
 
@@ -74,8 +74,8 @@
     gap: 8px;
     border-radius: 999px;
     padding: 7px 13px;
-    border: 1px solid rgba(255, 255, 255, 0.24);
-    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid #b9dfe1;
+    background: rgba(255, 255, 255, 0.72);
     font-size: .82rem;
     font-weight: 700;
     white-space: nowrap;
@@ -281,6 +281,10 @@
     .public-flow-title { font-size: 1.28rem; }
     .public-identity-grid { grid-template-columns: 1fr; }
     .public-submit-btn { width: 100%; }
+  }
+
+  @media (min-width: 576px) {
+    .public-flow-logo { width: clamp(280px, 32vw, 460px); }
   }
 
   .employment-conditions-modal .employment-conditions-dialog { max-width: 760px; }

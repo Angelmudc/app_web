@@ -29,16 +29,28 @@
     overflow: hidden;
   }
   .share-top {
-    background: linear-gradient(128deg, #0f172a 0%, #1e3a8a 55%, #14566a 100%);
-    color: #f8fbff;
-    padding: 18px 20px;
+    background: linear-gradient(135deg, #edf9fa 0%, #f8fcff 56%, #e7f4f4 100%);
+    color: #112031;
+    padding: 20px 20px 18px;
+  }
+  .share-logo {
+    display: block;
+    width: clamp(200px, 58vw, 240px);
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 4px;
+    object-fit: contain;
+  }
+  .share-top .text-white-50 {
+    color: #526b75 !important;
   }
   .share-code {
     display: inline-flex;
     gap: 8px;
     border-radius: 999px;
-    border: 1px solid rgba(255,255,255,.28);
-    background: rgba(255,255,255,.08);
+    border: 1px solid #b9dfe1;
+    background: rgba(255,255,255,.72);
+    color: #0c6a78;
     padding: 6px 12px;
     font-size: .84rem;
     font-weight: 700;
@@ -85,6 +97,9 @@
       z-index: 2;
     }
   }
+  @media (min-width: 641px) {
+    .share-logo { width: clamp(260px, 30vw, 430px); }
+  }
 </style>
 {% endblock %}
 
@@ -93,6 +108,7 @@
   <div class="share-landing-shell">
     <article class="share-landing-card">
       <header class="share-top">
+        <img class="share-logo" src="{{ url_for('static', filename='public/img/logo_proceso_transparente.png') }}" alt="Doméstica del Cibao A&amp;D">
         <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
           <div>
             <h1 class="h4 fw-bold mb-2">
