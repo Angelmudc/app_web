@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block title %}Acceso rápido{% endblock %} · Doméstica del Cibao</title>
+  <script src="{{ url_for('static', filename='js/core/client_public_form_message.js') }}"></script>
   <style>
     :root { color-scheme: light; --ink:#16384f; --muted:#5c7180; --accent:#0f6a7f; --soft:#edf6fa; --border:#d7e5ef; }
     * { box-sizing: border-box; }
@@ -24,8 +25,10 @@
     .stack { display:grid; gap:12px; }
     .error { margin:14px 0 0; padding:11px 12px; border-radius:10px; background:#fff1f1; color:#8f2f2f; }
     .success { margin:14px 0; padding:12px; border-radius:10px; background:#edf9f2; color:#17633d; overflow-wrap:anywhere; }
+    .toast { position:fixed; left:50%; bottom:max(22px, env(safe-area-inset-bottom)); transform:translateX(-50%); z-index:10; width:min(calc(100% - 28px), 420px); padding:12px 16px; border-radius:12px; background:var(--ink); color:#fff; box-shadow:0 8px 24px rgba(22,56,79,.2); text-align:center; font-weight:800; }
     .client-row { display:grid; gap:8px; padding:14px 0; border-bottom:1px solid #e6eef2; }
     .client-row:last-child { border-bottom:0; }
+    .client-code { color:var(--accent); font-size:.9rem; font-weight:800; letter-spacing:.01em; }
     .client-name { font-weight:800; }
     .client-meta { color:var(--muted); font-size:.9rem; }
     .link-box { margin:18px 0; padding:12px; background:#f5f9fb; border:1px solid var(--border); border-radius:12px; overflow-wrap:anywhere; font-size:.88rem; }

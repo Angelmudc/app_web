@@ -8,33 +8,42 @@
   <div class="link-box" id="quickFormLink">{{ link }}</div>
   <div class="actions">
     <button type="button" id="shareButton">Compartir</button>
-    <button type="button" class="secondary" id="copyButton">Copiar enlace</button>
+    <button type="button" class="secondary" id="copyButton">Copiar mensaje</button>
+    {% if share_variant == 'existing' %}
+    <a class="button large secondary" href="{{ url_for('quick_form_sender.home', slug=slug) }}">Volver al inicio</a>
+    {% else %}
+    <a class="back" href="{{ url_for(back_endpoint, slug=slug) }}">Generar otro</a>
+    {% endif %}
   </div>
   <p id="copyStatus" role="status" aria-live="polite"></p>
-  <a class="back" href="{{ url_for(back_endpoint, slug=slug) }}">Generar otro</a>
 </section>
 {% endblock %}
 {% block scripts %}
 <script>
 (function () {
-  var link = document.getElementById('quickFormLink').textContent.trim();
+  var link = {{ link|tojson }};
+  var variant = {{ share_variant|tojson }};
   var status = document.getElementById('copyStatus');
-  function copied() { status.textContent = 'Enlace copiado.'; }
-  function copyLink() {
+  var messageBuilder = variant === 'existing'
+    ? window.buildClientPublicFormMessageExistente
+    : window.buildClientPublicFormMessageNuevo;
+  var message = messageBuilder(link);
+  function copied() { status.textContent = 'Mensaje copiado.'; }
+  function copyMessage() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(link).then(copied).catch(function () { status.textContent = 'No pudimos copiarlo. Mantén presionado el enlace para copiarlo.'; });
+      navigator.clipboard.writeText(message).then(copied).catch(function () { status.textContent = 'No pudimos copiarlo. Mantén presionado el mensaje para copiarlo.'; });
       return;
     }
     var area = document.createElement('textarea');
-    area.value = link; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0';
+    area.value = message; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0';
     document.body.appendChild(area); area.select();
-    try { document.execCommand('copy'); copied(); } catch (_) { status.textContent = 'No pudimos copiarlo. Mantén presionado el enlace para copiarlo.'; }
+    try { document.execCommand('copy'); copied(); } catch (_) { status.textContent = 'No pudimos copiarlo. Mantén presionado el mensaje para copiarlo.'; }
     area.remove();
   }
-  document.getElementById('copyButton').addEventListener('click', copyLink);
+  document.getElementById('copyButton').addEventListener('click', copyMessage);
   document.getElementById('shareButton').addEventListener('click', function () {
-    if (navigator.share) { navigator.share({ title: 'Formulario de Doméstica del Cibao', url: link }).catch(function () {}); }
-    else { copyLink(); }
+    if (navigator.share) { navigator.share({ title: 'Formulario de Doméstica del Cibao', text: message }).catch(function () {}); }
+    else { copyMessage(); }
   });
 })();
 </script>

@@ -11,6 +11,7 @@ from flask import (
     abort,
     current_app,
     g,
+    jsonify,
     make_response,
     redirect,
     render_template,
@@ -18,7 +19,7 @@ from flask import (
     url_for,
 )
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 from config_app import cache, csrf
 from clientes.routes import (
@@ -188,6 +189,21 @@ def home(slug: str):
     return render_template("quick_form_sender/home.html", slug=slug)
 
 
+@quick_form_sender_bp.post("/m/<slug>/new/generate")
+@quick_login_required
+def new_generate(slug: str):
+    if current_app.config.get("WTF_CSRF_ENABLED", True):
+        csrf.protect()
+    try:
+        link = generar_link_publico_compartible_cliente_nuevo(
+            created_by=f"quick_form_sender:{g.quick_form_sender_username}",
+        )
+    except Exception:
+        current_app.logger.exception("Quick form sender could not generate new public form")
+        return jsonify({"ok": False, "error": "No pudimos generar el formulario."}), 500
+    return jsonify({"ok": True, "link": link})
+
+
 @quick_form_sender_bp.route("/m/<slug>/login", methods=["GET", "POST"])
 def login(slug: str):
     if _authenticated_username():
@@ -227,10 +243,16 @@ def existing(slug: str):
     clients = []
     if query:
         pattern = f"%{query}%"
-        clients = (
+        exact_client = (
+            Cliente.query
+            .filter(func.lower(Cliente.codigo) == query.casefold())
+            .first()
+        )
+        matching_clients = (
             Cliente.query
             .filter(
                 or_(
+                    Cliente.codigo.ilike(pattern),
                     Cliente.nombre_completo.ilike(pattern),
                     Cliente.telefono.ilike(pattern),
                     Cliente.email.ilike(pattern),
@@ -240,6 +262,13 @@ def existing(slug: str):
             .limit(20)
             .all()
         )
+        if exact_client is not None:
+            clients = [exact_client] + [
+                client for client in matching_clients
+                if getattr(client, "id", None) != getattr(exact_client, "id", None)
+            ][:19]
+        else:
+            clients = matching_clients
     return render_template("quick_form_sender/existing.html", slug=slug, query=query, clients=clients)
 
 
@@ -266,6 +295,7 @@ def existing_generate(slug: str):
         title="Formulario listo",
         subtitle=f"Cliente existente: {client.nombre_completo}",
         link=link,
+        share_variant="existing",
         back_endpoint="quick_form_sender.existing",
     )
 
@@ -283,6 +313,7 @@ def new(slug: str):
             title="Formulario listo",
             subtitle="Cliente nuevo",
             link=link,
+            share_variant="new",
             back_endpoint="quick_form_sender.new",
         )
     return render_template("quick_form_sender/new.html", slug=slug)

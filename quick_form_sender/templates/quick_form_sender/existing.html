@@ -4,7 +4,7 @@
 <a class="back" href="{{ url_for('quick_form_sender.home', slug=slug) }}">← Volver</a>
 <section class="card">
   <h1>Cliente existente</h1>
-  <p>Busca solo por nombre, teléfono o correo.</p>
+  <p>Busca por código, nombre, teléfono o correo.</p>
   <form method="get" action="{{ url_for('quick_form_sender.existing', slug=slug) }}">
     <label for="q">Buscar cliente</label>
     <input id="q" name="q" type="search" value="{{ query }}" autocomplete="off" required>
@@ -16,6 +16,7 @@
     <div style="margin-top:18px">
     {% for client in clients %}
       <div class="client-row">
+        <div class="client-code">Código: {{ client.codigo }}</div>
         <div class="client-name">{{ client.nombre_completo }}</div>
         <div class="client-meta">{{ client.telefono }}{% if client.email %} · {{ client.email }}{% endif %}</div>
         <form method="post" action="{{ url_for('quick_form_sender.existing_generate', slug=slug) }}">
