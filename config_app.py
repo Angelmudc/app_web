@@ -1225,6 +1225,9 @@ def create_app():
     from bot import bot_bp
     app.register_blueprint(bot_bp)
 
+    from quick_form_sender import quick_form_sender_bp
+    app.register_blueprint(quick_form_sender_bp)
+
     # ─────────────────────────────────────────────────────────
     # Config de entrevistas (si existe)
     # ─────────────────────────────────────────────────────────

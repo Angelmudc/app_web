@@ -1,0 +1,41 @@
+{% extends 'quick_form_sender/_base.html' %}
+{% block title %}Formulario listo{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>{{ title }}</h1>
+  <p>{{ subtitle }}</p>
+  <div class="success" role="status">El enlace nuevo está listo para compartir.</div>
+  <div class="link-box" id="quickFormLink">{{ link }}</div>
+  <div class="actions">
+    <button type="button" id="shareButton">Compartir</button>
+    <button type="button" class="secondary" id="copyButton">Copiar enlace</button>
+  </div>
+  <p id="copyStatus" role="status" aria-live="polite"></p>
+  <a class="back" href="{{ url_for(back_endpoint, slug=slug) }}">Generar otro</a>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var link = document.getElementById('quickFormLink').textContent.trim();
+  var status = document.getElementById('copyStatus');
+  function copied() { status.textContent = 'Enlace copiado.'; }
+  function copyLink() {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(link).then(copied).catch(function () { status.textContent = 'No pudimos copiarlo. Mantén presionado el enlace para copiarlo.'; });
+      return;
+    }
+    var area = document.createElement('textarea');
+    area.value = link; area.setAttribute('readonly', ''); area.style.position = 'fixed'; area.style.opacity = '0';
+    document.body.appendChild(area); area.select();
+    try { document.execCommand('copy'); copied(); } catch (_) { status.textContent = 'No pudimos copiarlo. Mantén presionado el enlace para copiarlo.'; }
+    area.remove();
+  }
+  document.getElementById('copyButton').addEventListener('click', copyLink);
+  document.getElementById('shareButton').addEventListener('click', function () {
+    if (navigator.share) { navigator.share({ title: 'Formulario de Doméstica del Cibao', url: link }).catch(function () {}); }
+    else { copyLink(); }
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,31 @@
+{% extends 'quick_form_sender/_base.html' %}
+{% block title %}Cliente existente{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('quick_form_sender.home', slug=slug) }}">← Volver</a>
+<section class="card">
+  <h1>Cliente existente</h1>
+  <p>Busca solo por nombre, teléfono o correo.</p>
+  <form method="get" action="{{ url_for('quick_form_sender.existing', slug=slug) }}">
+    <label for="q">Buscar cliente</label>
+    <input id="q" name="q" type="search" value="{{ query }}" autocomplete="off" required>
+    <button type="submit" style="margin-top:14px">Buscar</button>
+  </form>
+  {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+  {% if query and not clients %}<p role="status">No encontramos coincidencias.</p>{% endif %}
+  {% if clients %}
+    <div style="margin-top:18px">
+    {% for client in clients %}
+      <div class="client-row">
+        <div class="client-name">{{ client.nombre_completo }}</div>
+        <div class="client-meta">{{ client.telefono }}{% if client.email %} · {{ client.email }}{% endif %}</div>
+        <form method="post" action="{{ url_for('quick_form_sender.existing_generate', slug=slug) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="client_id" value="{{ client.id }}">
+          <button type="submit">Generar formulario</button>
+        </form>
+      </div>
+    {% endfor %}
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

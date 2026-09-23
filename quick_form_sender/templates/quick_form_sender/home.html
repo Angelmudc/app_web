@@ -1,0 +1,16 @@
+{% extends 'quick_form_sender/_base.html' %}
+{% block title %}Envío rápido{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Envío rápido de formularios</h1>
+  <p>Elige qué tipo de cliente vas a enviar.</p>
+  <div class="stack" style="margin-top:22px">
+    <a class="button large" href="{{ url_for('quick_form_sender.existing', slug=slug) }}">Cliente existente<small>Buscar un cliente y generar su formulario.</small></a>
+    <a class="button large secondary" href="{{ url_for('quick_form_sender.new', slug=slug) }}">Cliente nuevo<small>Crear un formulario para un cliente nuevo.</small></a>
+  </div>
+  <form method="post" action="{{ url_for('quick_form_sender.logout', slug=slug) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="logout" type="submit">Cerrar sesión</button>
+  </form>
+</section>
+{% endblock %}

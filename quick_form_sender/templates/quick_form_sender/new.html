@@ -1,0 +1,13 @@
+{% extends 'quick_form_sender/_base.html' %}
+{% block title %}Cliente nuevo{% endblock %}
+{% block content %}
+<a class="back" href="{{ url_for('quick_form_sender.home', slug=slug) }}">← Volver</a>
+<section class="card">
+  <h1>Cliente nuevo</h1>
+  <p>Genera un formulario nuevo para compartir con el cliente.</p>
+  <form method="post" action="{{ url_for('quick_form_sender.new', slug=slug) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button class="large" type="submit">Generar formulario</button>
+  </form>
+</section>
+{% endblock %}

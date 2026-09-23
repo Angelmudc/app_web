@@ -1,0 +1,17 @@
+{% extends 'quick_form_sender/_base.html' %}
+{% block title %}Acceso rápido{% endblock %}
+{% block content %}
+<section class="card">
+  <h1>Acceso rápido</h1>
+  <p>Entra para enviar un formulario público desde tu teléfono.</p>
+  <form method="post" action="{{ url_for('quick_form_sender.login', slug=slug) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">Usuario</label>
+    <input id="username" name="username" type="text" autocomplete="username" required>
+    <label for="password">Contraseña</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+    <button type="submit" style="margin-top:20px">Entrar</button>
+  </form>
+</section>
+{% endblock %}
