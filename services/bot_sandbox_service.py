@@ -12,6 +12,7 @@ from config_app import db
 from models import BotConversation, BotMessage, BotSandboxOutbound, BotSetting
 from services.bot_constants import MESSAGE_STATUS_OUTBOUND_FAILED, MESSAGE_STATUS_OUTBOUND_SENT
 from services.bot_observability_service import log_bot_blocked, log_bot_event
+from services.environment_guard_service import is_legacy_automation_frozen
 from utils.timezone import utc_now_naive
 
 
@@ -603,6 +604,9 @@ def run_sandbox_worker_once(
     outbox_id: int | None = None,
 ) -> dict[str, int]:
     stats = {"picked": 0, "sent": 0, "failed": 0, "blocked": 0, "retried": 0, "recovered": 0, "skipped": 0}
+    if is_legacy_automation_frozen():
+        stats["blocked"] = 1
+        return stats
     log_bot_event("outbound_worker_started", metadata={"batch_size": int(batch_size)})
 
     active_real = is_real_whatsapp_sandbox_enabled() and not is_staging_offline_active()

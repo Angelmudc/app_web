@@ -40,6 +40,7 @@ from services.bot_sandbox_service import (
 from services.phone_identity_service import normalize_phone_to_e164
 from services.whatsapp_cloud_service import send_text_message
 from services.whatsapp_payload_parser import epoch_to_datetime_utc, parse_webhook_payload
+from services.environment_guard_service import is_legacy_automation_frozen
 from services.whatsapp_webhook_security import validate_whatsapp_signature, verify_webhook_token
 from . import bot_bp
 
@@ -86,6 +87,9 @@ def _sandbox_auto_reply_skip_reason(*, enabled: bool, paused: bool, owner_only: 
 
 @bot_bp.route("/whatsapp/webhook", methods=["GET"])
 def whatsapp_webhook_verify():
+    if is_legacy_automation_frozen():
+        log_bot_event("legacy_automation_frozen", level="warning", metadata={"route": request.path, "method": "GET"})
+        return Response("gone", status=410, mimetype="text/plain")
     ok, challenge = verify_webhook_token(
         mode=request.args.get("hub.mode"),
         token=request.args.get("hub.verify_token"),
@@ -100,6 +104,9 @@ def whatsapp_webhook_verify():
 @bot_bp.route("/whatsapp/webhook", methods=["POST"])
 @csrf.exempt
 def whatsapp_webhook_receive():
+    if is_legacy_automation_frozen():
+        log_bot_event("legacy_automation_frozen", level="warning", metadata={"route": request.path})
+        return jsonify({"ok": False, "error": "legacy_automation_frozen"}), 410
     raw_body = request.get_data(cache=True) or b""
     validate_signature = _is_true(os.getenv("WHATSAPP_VALIDATE_SIGNATURE"), default=_is_production_env())
     if not validate_signature and _is_production_env() and not current_app.testing:

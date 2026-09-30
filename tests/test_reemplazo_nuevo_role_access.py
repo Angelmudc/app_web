@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app import app as flask_app
+from models import Candidata, Solicitud, SolicitudCandidata
+from tests.t1_testkit import ensure_sqlite_compat_tables
 import admin.routes as admin_routes
 
 
@@ -55,6 +57,7 @@ def test_secretaria_can_open_reemplazo_nuevo_get_and_post():
 
     sol = _SolicitudStub()
     with flask_app.app_context():
+        ensure_sqlite_compat_tables([Solicitud, Candidata, SolicitudCandidata], reset=False)
         with patch.object(admin_routes.Solicitud, "query", _SolicitudQuery(sol)), \
              patch("admin.routes.AdminReemplazoForm", _FormStub), \
              patch("admin.routes.render_template", return_value="ok"):

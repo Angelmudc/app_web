@@ -3,7 +3,12 @@
 import re
 from unittest.mock import patch
 
+from werkzeug.security import generate_password_hash
+
 from app import app as flask_app
+from config_app import db
+from models import StaffUser
+from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
 _CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
@@ -27,22 +32,36 @@ def _login(client, usuario: str, clave: str, ip: str):
     )
 
 
-def test_admin_login_not_blocked_by_rate_limiting_under_normal_high_usage():
+def _ensure_operational_staff():
+    with flask_app.app_context():
+        ensure_sqlite_compat_tables([StaffUser], reset=False)
+        user = StaffUser.query.filter_by(username="round9-ops-owner").first()
+        if user is None:
+            user = StaffUser(username="round9-ops-owner", role="admin", is_active=True)
+            db.session.add(user)
+        user.password_hash = generate_password_hash("round9-ops-password", method="pbkdf2:sha256")
+        user.is_active = True
+        user.mfa_enabled = False
+        db.session.commit()
+
+
+def test_development_login_rate_limit_active_blocks_sixth_attempt():
+    """La política única: login rate limit activo también en development."""
     prev_testing = bool(flask_app.config.get("TESTING"))
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
     flask_app.config["WTF_CSRF_ENABLED"] = True
 
     try:
-        ip = "10.77.10.1"
+        ip = "10.77.10.101"
         client = flask_app.test_client()
-        seen_429 = False
-        for _ in range(25):
-            resp = _login(client, "Cruz", "clave-incorrecta", ip)
-            if resp.status_code == 429:
-                seen_429 = True
-                break
-        assert seen_429 is False
+        statuses = []
+        for _ in range(7):
+            resp = _login(client, "round8-explicit-rate-limit", "clave-incorrecta", ip)
+            statuses.append(resp.status_code)
+        assert all(status != 429 for status in statuses[:5])
+        assert statuses[5] == 429
+        assert statuses[6] == 429
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
@@ -53,13 +72,14 @@ def test_internal_routes_monitoring_and_forms_not_rate_blocked():
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
     flask_app.config["WTF_CSRF_ENABLED"] = True
+    _ensure_operational_staff()
 
     try:
         # Este test valida rate limiting operativo, no flujo MFA.
-        with patch.dict("os.environ", {"STAFF_MFA_REQUIRED": "0"}, clear=False):
+        with patch.dict("os.environ", {"STAFF_MFA_REQUIRED": "0", "ENABLE_LOGIN_RATE_LIMITS": "0"}, clear=False):
             ip = "10.77.10.2"
             client = flask_app.test_client()
-            login = _login(client, "Cruz", "8998", ip)
+            login = _login(client, "round9-ops-owner", "round9-ops-password", ip)
             assert login.status_code in (302, 303)
 
             # GET interno repetido (monitoreo)
@@ -90,12 +110,14 @@ def test_admin_form_posts_not_blocked_by_global_admin_action_guard_default_off()
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
     flask_app.config["WTF_CSRF_ENABLED"] = True
+    _ensure_operational_staff()
 
     try:
         with patch.dict(
             "os.environ",
             {
                 "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+                "ENABLE_LOGIN_RATE_LIMITS": "0",
                 "STAFF_MFA_REQUIRED": "0",
                 "ADMIN_ACTION_MAX": "1",
                 "ADMIN_ACTION_WINDOW": "60",
@@ -106,7 +128,7 @@ def test_admin_form_posts_not_blocked_by_global_admin_action_guard_default_off()
         ):
             ip = "10.77.10.3"
             client = flask_app.test_client()
-            login = _login(client, "Cruz", "8998", ip)
+            login = _login(client, "round9-ops-owner", "round9-ops-password", ip)
             assert login.status_code in (302, 303)
 
             for _ in range(3):
@@ -131,12 +153,14 @@ def test_authenticated_requests_not_throttled_by_scrape_guard_default_off():
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
     flask_app.config["WTF_CSRF_ENABLED"] = True
+    _ensure_operational_staff()
 
     try:
         with patch.dict(
             "os.environ",
             {
                 "ENABLE_OPERATIONAL_RATE_LIMITS": "1",
+                "ENABLE_LOGIN_RATE_LIMITS": "0",
                 "STAFF_MFA_REQUIRED": "0",
                 "STAFF_WORK_MAX_REQ": "1",
                 "AUTH_WORK_MAX_REQ": "1",
@@ -147,7 +171,7 @@ def test_authenticated_requests_not_throttled_by_scrape_guard_default_off():
         ):
             ip = "10.77.10.4"
             client = flask_app.test_client()
-            login = _login(client, "Cruz", "8998", ip)
+            login = _login(client, "round9-ops-owner", "round9-ops-password", ip)
             assert login.status_code in (302, 303)
 
             for _ in range(6):

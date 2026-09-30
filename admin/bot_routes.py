@@ -144,6 +144,8 @@ _DRAFT_ROUTE_RE = re.compile(r"^bot_draft:(\d+)$")
 _BOT_REVIEW_STATUSES = {"bot_pending_review", "bot_reviewing", "bot_approved", "bot_rejected"}
 _LOCAL_PRACTICE_TYPE = "local_practice"
 _BOT_CANDIDATE_LEGACY_ALLOWED_ENDPOINTS = {
+    # Read-only observability remains available while candidate automation is frozen.
+    "admin.bot_health_view",
     "admin.bot_sandbox_assistant",
     "admin.bot_sandbox_assistant_pending_json",
     "admin.bot_sandbox_assistant_review_json",

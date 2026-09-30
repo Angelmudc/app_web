@@ -28,6 +28,13 @@ def _should_trust_xff() -> bool:
     Habilitar:
       TRUST_XFF=1
     """
+    try:
+        from flask import current_app
+
+        if current_app.config.get("TRUSTED_PROXY_FOR_IP") is False:
+            return False
+    except Exception:
+        pass
     return _is_true(os.getenv("TRUST_XFF", ""))
 
 
@@ -103,6 +110,14 @@ def _cache_delete(cache, key):
     with _LOCAL_FALLBACK_LOCK:
         _LOCAL_FALLBACK_KV.pop(key, None)
     return True
+
+
+def reset_login_rate_limit_state() -> None:
+    """Clear only the in-process login limiter state for isolated local tests."""
+    with _LOCAL_FALLBACK_LOCK:
+        for key in tuple(_LOCAL_FALLBACK_KV):
+            if str(key).startswith("login:"):
+                _LOCAL_FALLBACK_KV.pop(key, None)
 
 
 def init_security(app, cache):
@@ -440,7 +455,7 @@ def init_security(app, cache):
         #   - production: enforce
         # ─────────────────────────────────────────────────────
 
-        csp_mode = (os.getenv("CSP_MODE") or ("enforce" if prod else "off")).strip().lower()
+        csp_mode = (os.getenv("CSP_MODE") or ("enforce" if prod else "report")).strip().lower()
 
         if csp_mode in ("report", "enforce"):
             # Si en tu HTML usas CDNs (Bootstrap, FontAwesome, Select2, DataTables, etc.)
@@ -720,7 +735,14 @@ def init_security(app, cache):
 
     @app.before_request
     def _anti_bruteforce_login():
-        if not _operational_rate_limits_enabled():
+        login_limits_raw = os.getenv("ENABLE_LOGIN_RATE_LIMITS")
+        if login_limits_raw is not None and str(login_limits_raw).strip() != "":
+            login_limits_enabled = _is_true(login_limits_raw)
+        else:
+            # Login protection must also be active in development: local servers
+            # can be reachable from a LAN and the limiter already has a local fallback.
+            login_limits_enabled = True
+        if not login_limits_enabled:
             return
         if bool(app.config.get("TESTING")):
             return
@@ -931,3 +953,4 @@ def init_security(app, cache):
             _cache_delete(cache, f"login:block:ip_user:{path}:{ip}:{username}")
 
     app.extensions["clear_login_attempts"] = clear_login_attempts
+    app.extensions["reset_login_rate_limit_state"] = reset_login_rate_limit_state

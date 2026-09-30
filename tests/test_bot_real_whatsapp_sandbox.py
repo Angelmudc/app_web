@@ -52,6 +52,8 @@ def _ensure_tables() -> None:
 
 def _base_env(monkeypatch):
     monkeypatch.setenv("APP_ENV", "test")
+    # Sandbox local explícito; los guards de producción siguen frozen.
+    monkeypatch.setenv("LEGACY_AUTOMATION_FROZEN", "false")
     monkeypatch.setenv("BOT_STAGING_MODE", "false")
     monkeypatch.setenv("BOT_SANDBOX_MODE", "false")
     monkeypatch.setenv("WHATSAPP_ENABLED", "false")

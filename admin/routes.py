@@ -352,6 +352,7 @@ from utils.staff_mfa import (
     staff_role_requires_mfa,
     verify_totp_code,
 )
+from services.security_test_profile import security_test_profile_enabled
 from core.services.search import apply_search_to_candidata_query, search_candidatas_limited
 from core.services.candidata_quick_edit import (
     register_candidate_call,
@@ -2558,6 +2559,11 @@ _TRUSTED_DEVICE_SESSION_REASON = "_trusted_device_reason"
 
 
 def _staff_mfa_is_enforced() -> bool:
+    # Round 8 local profile only removes the trusted-device/MFA obstacle. The
+    # password, Flask-Login session, CSRF, role checks, logout and revocation
+    # paths remain unchanged. Startup rejects this flag outside local-ish envs.
+    if security_test_profile_enabled():
+        return False
     return mfa_enforced_for_staff(testing=bool(current_app.config.get("TESTING")))
 
 
@@ -28817,6 +28823,49 @@ def activar_solicitud_directa(id):
             )
         return blocked_resp
 
+    expected_version = _expected_row_version()
+    if _critical_concurrency_guards_enabled() and expected_version is not None:
+        current_version = int(getattr(s, "row_version", 0) or 0)
+        if int(expected_version) != current_version:
+            return _action_response(
+                ok=False,
+                message='La solicitud cambió mientras trabajabas. Recarga y vuelve a intentar.',
+                category='warning',
+                http_status=409,
+                error_code='conflict',
+            )
+
+    idem_row, duplicate = _claim_idempotency(
+        scope="solicitud_estado_activar",
+        entity_type="Solicitud",
+        entity_id=s.id,
+        action="activar_solicitud_directa",
+    )
+    if duplicate:
+        if _idempotency_request_conflict(idem_row):
+            return _action_response(
+                ok=False,
+                message=_idempotency_conflict_message(),
+                category='warning',
+                http_status=409,
+                error_code='idempotency_conflict',
+            )
+        prev_status = int(getattr(idem_row, "response_status", 0) or 0)
+        if 200 <= prev_status < 300:
+            return _action_response(
+                ok=True,
+                message='La activación ya había sido aplicada.',
+                category='info',
+                http_status=200,
+            )
+        return _action_response(
+            ok=False,
+            message='Solicitud duplicada detectada. Recarga y vuelve a intentar.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+
     try:
         if s.estado != 'proceso':
             if _admin_noop_repeat_blocked(
@@ -28843,6 +28892,7 @@ def activar_solicitud_directa(id):
 
         ensure_reactivation_cycle(s, motivo="activar_desde_proceso")
         _set_solicitud_estado_with_outbox(s, 'activa')
+        _set_idempotency_response(idem_row, status=200, code="ok")
         db.session.commit()
         _audit_log(
             action_type="SOLICITUD_ACTIVAR",
@@ -28855,6 +28905,24 @@ def activar_solicitud_directa(id):
             ok=True,
             message=f'Solicitud {s.codigo_solicitud} marcada como activa.',
             category='success',
+        )
+    except StaleDataError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
+        )
+    except IntegrityError:
+        db.session.rollback()
+        return _action_response(
+            ok=False,
+            message='La solicitud cambió por otra sesión. Recarga e intenta nuevamente.',
+            category='warning',
+            http_status=409,
+            error_code='conflict',
         )
     except SQLAlchemyError:
         db.session.rollback()

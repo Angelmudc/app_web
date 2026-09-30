@@ -34,6 +34,7 @@ from utils.timezone import (
 )
 from utils.secrets_manager import get_secret
 from services.environment_guard_service import enforce_production_safety_startup
+from services.security_test_profile import enforce_security_test_profile_safety
 try:
     from dotenv import load_dotenv
 except Exception:  # pragma: no cover
@@ -153,8 +154,9 @@ def create_app():
     app = Flask(__name__, instance_relative_config=False)
     try:
         enforce_production_safety_startup()
+        enforce_security_test_profile_safety()
     except Exception as exc:
-        app.logger.critical("BLOQUEO STARTUP SEGURIDAD BOT: %s", str(exc))
+        app.logger.critical("BLOQUEO STARTUP SEGURIDAD: %s", str(exc))
         raise
 
     # ✅ Permite que las rutas funcionen con y sin slash final.
@@ -389,8 +391,18 @@ def create_app():
     # ─────────────────────────────────────────────────────────
     # ProxyFix (Render / reverse proxy)
     # ─────────────────────────────────────────────────────────
-    # Esto es clave para request.is_secure, host, ip, etc.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+    # Solo el proxy explícitamente confiable puede reescribir la IP efectiva.
+    # En local/dev/test x_for=0 evita que el cliente controle remote_addr con XFF.
+    trust_proxy_for_ip = bool(prod and _is_true(os.getenv("TRUST_XFF", "")))
+    app.config["TRUSTED_PROXY_FOR_IP"] = trust_proxy_for_ip
+    app.config["TRUSTED_PROXY_HOPS"] = 1 if trust_proxy_for_ip else 0
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1 if trust_proxy_for_ip else 0,
+        x_proto=1,
+        x_host=1,
+        x_port=1,
+    )
 
     # ─────────────────────────────────────────────────────────
     # Override LOCAL (evita loops de login cuando en tu .env hay vars de Render)
@@ -612,6 +624,7 @@ def create_app():
     app.config["FEATURE_FLAGS"] = feature_flags
     for feature_name, is_enabled in feature_flags.items():
         app.config[f"FEATURE_{feature_name.upper()}"] = bool(is_enabled)
+    app.config.setdefault("CHAT_E2E_ENABLED", False)
 
     # ─────────────────────────────────────────────────────────
     # Inicializar extensiones

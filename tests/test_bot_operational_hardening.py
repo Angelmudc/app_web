@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from app import app as flask_app
 from config_app import db
-from models import BotContactIdentity, BotConversation, BotDecisionLog, BotEscalation, BotMessage, BotSetting
+from models import BotCandidateDraft, BotContactIdentity, BotConversation, BotDecisionLog, BotEscalation, BotMessage, BotSetting
 from services.bot_rate_limit_service import reset_rate_limits
 from services.environment_guard_service import (
     assert_local_safe_environment,
@@ -16,6 +16,7 @@ from services.environment_guard_service import (
 
 
 def _ensure_bot_tables() -> None:
+    BotCandidateDraft.__table__.drop(bind=db.engine, checkfirst=True)
     BotEscalation.__table__.drop(bind=db.engine, checkfirst=True)
     BotDecisionLog.__table__.drop(bind=db.engine, checkfirst=True)
     BotMessage.__table__.drop(bind=db.engine, checkfirst=True)
@@ -28,6 +29,7 @@ def _ensure_bot_tables() -> None:
     BotDecisionLog.__table__.create(bind=db.engine, checkfirst=True)
     BotSetting.__table__.create(bind=db.engine, checkfirst=True)
     BotEscalation.__table__.create(bind=db.engine, checkfirst=True)
+    BotCandidateDraft.__table__.create(bind=db.engine, checkfirst=True)
 
 
 def _login_staff(client) -> None:

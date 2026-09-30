@@ -11,6 +11,7 @@ SCRIPT = ROOT / "scripts" / "local" / "staging_dry_run_startup.py"
 
 SAFE_ENV_LINES = [
     "APP_ENV=staging",
+    "LEGACY_AUTOMATION_FROZEN=true",
     "WHATSAPP_ENABLED=false",
     "BOT_DRY_RUN=true",
     "BOT_AUTOREPLY_ENABLED=false",

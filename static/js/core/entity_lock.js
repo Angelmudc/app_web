@@ -88,11 +88,19 @@
         main.insertBefore(banner, main.firstChild);
       }
 
-      const takeoverBtn = (canTakeover && takeoverUrl)
-        ? '<button type="button" class="btn btn-sm btn-dark ms-2" id="lockTakeoverBtn">Tomar control</button>'
-        : '';
-
-      banner.innerHTML = '<strong>Solo lectura.</strong> ' + message + takeoverBtn;
+      banner.textContent = '';
+      const strong = document.createElement('strong');
+      strong.textContent = 'Solo lectura.';
+      banner.appendChild(strong);
+      banner.appendChild(document.createTextNode(' ' + String(message || '')));
+      if (canTakeover && takeoverUrl) {
+        const takeoverBtn = document.createElement('button');
+        takeoverBtn.type = 'button';
+        takeoverBtn.className = 'btn btn-sm btn-dark ms-2';
+        takeoverBtn.id = 'lockTakeoverBtn';
+        takeoverBtn.textContent = 'Tomar control';
+        banner.appendChild(takeoverBtn);
+      }
 
       const btn = document.getElementById('lockTakeoverBtn');
       if (btn) {

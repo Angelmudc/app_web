@@ -10,6 +10,12 @@ from urllib.parse import urlsplit
 import requests
 from services.bot_sandbox_service import SandboxSafetyError, assert_no_real_outbound_allowed, is_staging_offline_active
 from services.bot_observability_service import log_bot_event
+from services.environment_guard_service import (
+    is_legacy_automation_frozen,
+    is_known_runtime_environment,
+    is_production_runtime_environment,
+    normalize_runtime_environment,
+)
 
 
 def _is_true(value: str | None, *, default: bool = False) -> bool:
@@ -27,6 +33,22 @@ def is_bot_dry_run() -> bool:
     return _is_true(os.getenv("BOT_DRY_RUN"), default=True)
 
 
+def _development_whatsapp_send_allowed() -> bool:
+    """Allow only production or an explicitly configured supported sandbox."""
+    # Para permitir salida real, APP_ENV debe estar declarado explícitamente;
+    # FLASK_ENV no puede convertir un entorno ausente en producción.
+    env = normalize_runtime_environment(os.getenv("APP_ENV"))
+    if not is_known_runtime_environment(env):
+        return False
+    if is_production_runtime_environment(env):
+        return True
+    if env not in {"development", "local", "test", "testing", "staging"}:
+        return False
+    sandbox_enabled = _is_true(os.getenv("BOT_REAL_WHATSAPP_SANDBOX_ENABLED"), default=False)
+    provider = str(os.getenv("BOT_REAL_WHATSAPP_PROVIDER") or "").strip().lower().replace("-", "_")
+    return sandbox_enabled and provider == "meta_sandbox"
+
+
 def build_graph_url() -> str:
     base = (os.getenv("WHATSAPP_GRAPH_BASE_URL") or "https://graph.facebook.com").strip().rstrip("/")
     version = (os.getenv("WHATSAPP_API_VERSION") or "v23.0").strip()
@@ -39,6 +61,10 @@ def build_public_asset_url(asset_path: str) -> str:
     path = str(asset_path or "").strip().lstrip("/")
     if path == "static/media/client_ai/planes_domestica.jpg":
         path = "public-assets/client-ai/planes-domestica"
+    elif path == "static/media/client_ai/limpieza_express.png":
+        path = "public-assets/client-ai/limpieza-express"
+    elif path == "static/media/client_ai/limpieza_express.png":
+        path = "public-assets/client-ai/limpieza-express"
     return f"{base}/{path}"
 
 
@@ -59,7 +85,7 @@ def _contains_official_form_link(text: str) -> bool:
             if parts.scheme not in {"http", "https"} or parts.netloc.lower() != base_netloc:
                 continue
             path = parts.path
-        if path.startswith(("/clientes/f/", "/clientes/n/")) and len(path.rsplit("/", 1)[-1]) > 0:
+        if path.startswith(("/clientes/f/", "/clientes/n/", "/solicitud/")) and len(path.rsplit("/", 1)[-1]) > 0:
             return True
     return False
 
@@ -114,6 +140,9 @@ def send_text_message(
     if not to_phone or not text_body:
         return {"ok": False, "status": "failed", "error_code": "invalid_input", "error_message": "to_phone/text requeridos"}
 
+    if is_legacy_automation_frozen():
+        return {"ok": False, "status": "blocked", "error_code": "legacy_automation_frozen", "error_message": "Automatización legacy congelada"}
+
     if is_staging_offline_active():
         try:
             assert_no_real_outbound_allowed()
@@ -124,6 +153,19 @@ def send_text_message(
         return {"ok": False, "skipped": True, "status": "queued", "reason": "whatsapp_disabled", "http_status": None}
     if is_bot_dry_run():
         return {"ok": False, "skipped": True, "status": "queued", "reason": "dry_run", "http_status": None}
+    if not _development_whatsapp_send_allowed():
+        log_bot_event(
+            "whatsapp_real_blocked_development",
+            level="warning",
+            metadata={"reason": "development_requires_explicit_meta_sandbox"},
+        )
+        return {
+            "ok": False,
+            "status": "blocked",
+            "error_code": "development_whatsapp_blocked",
+            "error_message": "WhatsApp real bloqueado en development",
+            "http_status": None,
+        }
 
     access_token = (os.getenv("WHATSAPP_ACCESS_TOKEN") or "").strip()
     phone_number_id = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
@@ -242,11 +284,19 @@ def send_text_message(
     }
 
 
-def send_image_message(to_phone_e164: str, image_url: str, *, timeout_seconds: int = 8) -> dict[str, Any]:
+def send_image_message(
+    to_phone_e164: str,
+    image_url: str,
+    *,
+    caption: str = "",
+    timeout_seconds: int = 8,
+) -> dict[str, Any]:
     to_phone = (to_phone_e164 or "").strip()
     link = (image_url or "").strip()
     if not to_phone or not link:
         return {"ok": False, "status": "failed", "error_code": "invalid_input", "error_message": "to_phone/image_url requeridos"}
+    if is_legacy_automation_frozen():
+        return {"ok": False, "status": "blocked", "error_code": "legacy_automation_frozen", "error_message": "Automatización legacy congelada"}
     if is_staging_offline_active():
         try:
             assert_no_real_outbound_allowed()
@@ -256,13 +306,30 @@ def send_image_message(to_phone_e164: str, image_url: str, *, timeout_seconds: i
         return {"ok": False, "skipped": True, "status": "queued", "reason": "whatsapp_disabled", "http_status": None}
     if is_bot_dry_run():
         return {"ok": False, "skipped": True, "status": "queued", "reason": "dry_run", "http_status": None}
+    if not _development_whatsapp_send_allowed():
+        log_bot_event(
+            "whatsapp_real_blocked_development",
+            level="warning",
+            metadata={"reason": "development_requires_explicit_meta_sandbox", "media": "image"},
+        )
+        return {
+            "ok": False,
+            "status": "blocked",
+            "error_code": "development_whatsapp_blocked",
+            "error_message": "WhatsApp real bloqueado en development",
+            "http_status": None,
+        }
     access_token = (os.getenv("WHATSAPP_ACCESS_TOKEN") or "").strip()
     phone_number_id = (os.getenv("WHATSAPP_PHONE_NUMBER_ID") or "").strip()
     if not access_token or not phone_number_id:
         return {"ok": False, "status": "failed", "error_code": "misconfigured", "error_message": "Faltan credenciales WhatsApp", "http_status": None}
     url = build_graph_url()
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
-    payload = {"messaging_product": "whatsapp", "to": to_phone.lstrip("+"), "type": "image", "image": {"link": link}}
+    image_payload = {"link": link}
+    clean_caption = (caption or "").strip()
+    if clean_caption:
+        image_payload["caption"] = clean_caption
+    payload = {"messaging_product": "whatsapp", "to": to_phone.lstrip("+"), "type": "image", "image": image_payload}
     log_bot_event("meta_send_image_request_started", metadata={"endpoint": url, "phone_number_id": phone_number_id, "payload": payload, "timeout": int(timeout_seconds), "headers_masked": _masked_headers(access_token)})
     try:
         resp = requests.post(url, headers=headers, json=payload, timeout=timeout_seconds)

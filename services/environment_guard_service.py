@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import ipaddress
 from typing import Any
 from urllib.parse import urlparse
 
@@ -8,6 +9,7 @@ from flask import current_app
 
 
 _LOCAL_ENVS = {"local", "development", "test", "testing"}
+_KNOWN_ENVS = {"production", "prod", "staging", "local", "development", "test", "testing"}
 _TRUE_SET = {"1", "true", "yes", "on"}
 
 
@@ -21,6 +23,31 @@ def _is_true(value: Any) -> bool:
 
 def _current_env() -> str:
     return (os.getenv("APP_ENV") or os.getenv("FLASK_ENV") or "development").strip().lower()
+
+
+def normalize_runtime_environment(value: Any) -> str:
+    """Normalize an explicitly supplied runtime environment; empty stays unknown."""
+    return str(value or "").strip().lower()
+
+
+def is_known_runtime_environment(value: Any) -> bool:
+    return normalize_runtime_environment(value) in _KNOWN_ENVS
+
+
+def is_production_runtime_environment(value: Any) -> bool:
+    return normalize_runtime_environment(value) in {"production", "prod"}
+
+
+def is_localish_runtime_environment(value: Any) -> bool:
+    return normalize_runtime_environment(value) in _LOCAL_ENVS
+
+
+def is_legacy_automation_frozen() -> bool:
+    """Fail closed for retired Luna/bot/WhatsApp automation."""
+    raw = os.getenv("LEGACY_AUTOMATION_FROZEN")
+    if raw is None or str(raw).strip() == "":
+        return _current_env() in {"production", "prod"}
+    return _is_true(raw)
 
 
 def _current_db_url() -> str:
@@ -38,7 +65,12 @@ def _is_local_db_url(db_url: str | None) -> bool:
         return True
     parsed = urlparse(raw)
     host = str(parsed.hostname or "").strip().lower()
-    return host in {"localhost", "127.0.0.1"}
+    if host == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def mask_database_url(db_url: str | None) -> dict[str, str]:
@@ -69,7 +101,7 @@ def mask_database_url(db_url: str | None) -> dict[str, str]:
     if not db_name_masked:
         db_name_masked = "***"
 
-    if host in {"localhost", "127.0.0.1"}:
+    if host == "localhost" or _is_local_db_url(raw):
         host_type = "local"
         host_label = host
         if port:
@@ -150,6 +182,7 @@ def get_sensitive_flags_snapshot() -> dict[str, Any]:
         "bot_dry_run": bot_dry_run,
         "bot_ai_enabled": bot_ai_enabled,
         "bot_autoreply_enabled": bot_autoreply_enabled,
+        "legacy_automation_frozen": is_legacy_automation_frozen(),
         "real_creation_allowed": real_creation_allowed,
         "warnings": warnings,
     }
@@ -157,6 +190,8 @@ def get_sensitive_flags_snapshot() -> dict[str, Any]:
 
 def get_dangerous_flags_for_production() -> list[str]:
     dangerous: list[str] = []
+    if not is_legacy_automation_frozen():
+        dangerous.append("LEGACY_AUTOMATION_FROZEN=false")
     if _is_true(os.getenv("BOT_ALLOW_REAL_CANDIDATE_CREATION_LOCAL", "false")):
         dangerous.append("BOT_ALLOW_REAL_CANDIDATE_CREATION_LOCAL=true")
     if _is_true(os.getenv("WHATSAPP_ENABLED", "false")) and not _is_true(os.getenv("BOT_DRY_RUN", "true")):

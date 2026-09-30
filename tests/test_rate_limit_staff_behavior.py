@@ -5,7 +5,10 @@ import re
 import uuid
 from unittest.mock import patch
 
+import pytest
+
 from app import app as flask_app
+from config_app import cache
 from config_app import db
 from models import StaffUser
 
@@ -25,6 +28,27 @@ def _login(client, usuario, clave, ip, csrf_token):
         follow_redirects=False,
         environ_overrides={"REMOTE_ADDR": ip},
     )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_login_rate_limit_state():
+    reset_state = flask_app.extensions.get("reset_login_rate_limit_state")
+    if reset_state is not None:
+        reset_state()
+    cache.clear()
+    clear_login_attempts = flask_app.extensions.get("clear_login_attempts")
+    if clear_login_attempts is not None:
+        for ip in ("10.31.44.10", "10.31.44.11", "10.31.44.12", "10.31.44.13", "10.31.44.14"):
+            for username in ("cruz", "owner", "round9-ops-owner", ""):
+                clear_login_attempts(ip, username=username)
+    yield
+    if reset_state is not None:
+        reset_state()
+    cache.clear()
+    if clear_login_attempts is not None:
+        for ip in ("10.31.44.10", "10.31.44.11", "10.31.44.12", "10.31.44.13", "10.31.44.14"):
+            for username in ("cruz", "owner", "round9-ops-owner", ""):
+                clear_login_attempts(ip, username=username)
 
 
 def test_staff_admin_summary_high_volume_no_false_429():
@@ -90,7 +114,7 @@ def test_staff_multi_tab_polling_no_false_429():
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf
 
 
-def test_login_does_not_trigger_operational_rate_blocking():
+def test_login_rate_limit_remains_active_independently_of_operational_limits():
     prev_testing = bool(flask_app.config.get("TESTING"))
     prev_csrf = bool(flask_app.config.get("WTF_CSRF_ENABLED", True))
     flask_app.config["TESTING"] = False
@@ -108,7 +132,7 @@ def test_login_does_not_trigger_operational_rate_blocking():
             if resp.status_code == 429:
                 blocked = True
                 break
-        assert blocked is False
+        assert blocked is True
     finally:
         flask_app.config["TESTING"] = prev_testing
         flask_app.config["WTF_CSRF_ENABLED"] = prev_csrf

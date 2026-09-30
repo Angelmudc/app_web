@@ -10,14 +10,18 @@ import pytest
 
 from app import app as flask_app
 from config_app import db
-from models import BotContactIdentity, BotConversation, BotDecisionLog, BotEscalation, BotMessage, BotSandboxOutbound, BotSandboxReviewQueue, BotSetting
-from services.whatsapp_cloud_service import send_text_message
+from models import BotCandidateDraft, BotContactIdentity, BotConversation, BotDecisionLog, BotEscalation, BotMessage, BotSandboxOutbound, BotSandboxReviewQueue, BotSetting
+from services.whatsapp_cloud_service import send_image_message, send_text_message
 from services.whatsapp_webhook_security import validate_whatsapp_signature, verify_webhook_token
 
 
 @pytest.fixture(autouse=True)
 def _force_safe_bot_flags(monkeypatch):
     # Aisla tests legacy de Fase 2 ante estado/env residual de Fase 4.
+    # Estas pruebas ejercitan explícitamente el sandbox mock local; producción
+    # permanece cubierta por las regresiones de freeze.
+    monkeypatch.setenv("LEGACY_AUTOMATION_FROZEN", "false")
+    monkeypatch.setenv("CLIENT_AI_WHATSAPP_ENABLED", "false")
     monkeypatch.setenv("BOT_AI_ENABLED", "false")
     monkeypatch.setenv("BOT_AUTOREPLY_ENABLED", "false")
     monkeypatch.setenv("BOT_DRY_RUN", "true")
@@ -25,6 +29,7 @@ def _force_safe_bot_flags(monkeypatch):
 
 
 def _ensure_bot_tables() -> None:
+    BotCandidateDraft.__table__.drop(bind=db.engine, checkfirst=True)
     BotEscalation.__table__.drop(bind=db.engine, checkfirst=True)
     BotDecisionLog.__table__.drop(bind=db.engine, checkfirst=True)
     BotMessage.__table__.drop(bind=db.engine, checkfirst=True)
@@ -36,6 +41,7 @@ def _ensure_bot_tables() -> None:
     BotMessage.__table__.create(bind=db.engine, checkfirst=True)
     BotSandboxReviewQueue.__table__.create(bind=db.engine, checkfirst=True)
     BotSandboxOutbound.__table__.create(bind=db.engine, checkfirst=True)
+    BotCandidateDraft.__table__.create(bind=db.engine, checkfirst=True)
     BotDecisionLog.__table__.create(bind=db.engine, checkfirst=True)
     BotSetting.__table__.create(bind=db.engine, checkfirst=True)
     BotEscalation.__table__.create(bind=db.engine, checkfirst=True)
@@ -436,6 +442,7 @@ def test_cloud_service_success_and_error_with_mocks(monkeypatch):
     class _RespOk:
         status_code = 200
         content = b"1"
+        text = "1"
 
         @staticmethod
         def json():
@@ -444,6 +451,7 @@ def test_cloud_service_success_and_error_with_mocks(monkeypatch):
     class _RespFail:
         status_code = 400
         content = b"1"
+        text = "1"
 
         @staticmethod
         def json():
@@ -458,6 +466,125 @@ def test_cloud_service_success_and_error_with_mocks(monkeypatch):
         bad = send_text_message("+18095550004", "hola")
     assert bad.get("ok") is False
     assert bad.get("status") == "failed"
+
+
+def test_cloud_service_enables_preview_only_when_requested(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ENABLED", "true")
+    monkeypatch.setenv("BOT_DRY_RUN", "false")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "12345")
+
+    class _Resp:
+        status_code = 200
+        content = b"1"
+        text = "1"
+
+        @staticmethod
+        def json():
+            return {"messages": [{"id": "wamid-preview-1"}]}
+
+    with patch("services.whatsapp_cloud_service.requests.post", return_value=_Resp()) as post_mock:
+        normal = send_text_message("+18095550004", "hola")
+        preview = send_text_message("+18095550004", "Formulario https://example.test/clientes/f/token", preview_url=True)
+
+    assert normal["ok"] is True
+    assert preview["ok"] is True
+    assert "preview_url" not in post_mock.call_args_list[0].kwargs["json"]["text"]
+    assert post_mock.call_args_list[1].kwargs["json"]["text"]["preview_url"] is True
+
+
+def test_cloud_service_auto_detects_only_official_form_links(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ENABLED", "true")
+    monkeypatch.setenv("BOT_DRY_RUN", "false")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "12345")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com")
+
+    class _Resp:
+        status_code = 200
+        content = b"1"
+        text = "1"
+
+        @staticmethod
+        def json():
+            return {"messages": [{"id": "wamid-preview-auto"}]}
+
+    bodies = [
+        "https://www.domesticadelcibao.com/clientes/f/ABC",
+        "/clientes/n/XYZ",
+        "Otro enlace https://example.com/clientes/f/ABC",
+    ]
+    with patch("services.whatsapp_cloud_service.requests.post", return_value=_Resp()) as post_mock:
+        for body in bodies:
+            assert send_text_message("+18095550004", body)["ok"] is True
+        assert send_text_message(
+            "+18095550004",
+            "https://www.domesticadelcibao.com/clientes/f/ABC",
+            preview_url=False,
+        )["ok"] is True
+
+    payloads = [call.kwargs["json"]["text"] for call in post_mock.call_args_list]
+    assert payloads[0]["preview_url"] is True
+    assert payloads[1]["preview_url"] is True
+    assert "preview_url" not in payloads[2]
+    assert "preview_url" not in payloads[3]
+
+
+def test_cloud_service_auto_detects_short_official_form_link(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ENABLED", "true")
+    monkeypatch.setenv("BOT_DRY_RUN", "false")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "12345")
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://www.domesticadelcibao.com")
+
+    response = type(
+        "Response",
+        (),
+        {
+            "status_code": 200,
+            "content": b"1",
+            "text": "1",
+            "json": lambda self: {"messages": [{"id": "wamid-preview-short"}]},
+        },
+    )()
+    with patch("services.whatsapp_cloud_service.requests.post", return_value=response) as post_mock:
+        result = send_text_message("+18095550004", "Formulario https://www.domesticadelcibao.com/solicitud/ABC12345")
+
+    assert result["ok"] is True
+    assert post_mock.call_args.kwargs["json"]["text"]["preview_url"] is True
+
+
+def test_cloud_service_image_payload_supports_caption(monkeypatch):
+    monkeypatch.setenv("WHATSAPP_ENABLED", "true")
+    monkeypatch.setenv("BOT_DRY_RUN", "false")
+    monkeypatch.setenv("WHATSAPP_ACCESS_TOKEN", "token")
+    monkeypatch.setenv("WHATSAPP_PHONE_NUMBER_ID", "12345")
+    response = type(
+        "Response",
+        (),
+        {
+            "status_code": 200,
+            "content": b"1",
+            "json": lambda self: {"messages": [{"id": "wamid-image-caption"}]},
+        },
+    )()
+    with patch("services.whatsapp_cloud_service.requests.post", return_value=response) as post_mock:
+        result = send_image_message(
+            "+18095550004",
+            "https://www.domesticadelcibao.com/static/img/domestica-preview.png",
+            caption="Formulario oficial\nhttps://www.domesticadelcibao.com/solicitud/ABC12345",
+        )
+
+    assert result["ok"] is True
+    assert post_mock.call_args.kwargs["json"] == {
+        "messaging_product": "whatsapp",
+        "to": "18095550004",
+        "type": "image",
+        "image": {
+            "link": "https://www.domesticadelcibao.com/static/img/domestica-preview.png",
+            "caption": "Formulario oficial\nhttps://www.domesticadelcibao.com/solicitud/ABC12345",
+        },
+    }
 
 
 def test_admin_manual_message_dry_run_and_enabled_send(monkeypatch):

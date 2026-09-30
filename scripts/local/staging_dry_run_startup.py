@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 
 REQUIRED_SAFE_FLAGS = {
+    "LEGACY_AUTOMATION_FROZEN": "true",
     "WHATSAPP_ENABLED": "false",
     "BOT_DRY_RUN": "true",
     "BOT_AUTOREPLY_ENABLED": "false",
@@ -45,8 +46,6 @@ REQUIRED_IMPORTS = [
 
 REQUIRED_ROUTES = [
     "/admin/bot/health",
-    "/admin/bot/conversaciones",
-    "/admin/bot/configuracion",
 ]
 
 

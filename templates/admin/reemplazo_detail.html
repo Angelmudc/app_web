@@ -419,6 +419,18 @@
         alertBox.classList.add('d-none');
         alertBox.textContent = '';
       }
+
+      function clearNode(node) {
+        while (node && node.firstChild) node.removeChild(node.firstChild);
+      }
+
+      function textNode(tag, value, className) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        node.textContent = value === null || value === undefined || value === '' ? '—' : String(value);
+        return node;
+      }
+
       function openPanelAndFocus() {
         panel.classList.remove('d-none');
         panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -426,7 +438,7 @@
       }
 
       function renderRows(items) {
-        results.innerHTML = '';
+        clearNode(results);
         if (!items || !items.length) {
           state.textContent = 'No encontramos candidatas con esa búsqueda.';
           return;
@@ -435,15 +447,23 @@
         items.forEach(function (item) {
           var box = document.createElement('div');
           box.className = 'op-result-item';
-          box.innerHTML = '' +
-            '<div class="op-result-head">' +
-              '<div>' +
-                '<div class="op-value fw-semibold">' + (item.nombre || ('ID ' + item.id)) + '</div>' +
-                '<div class="op-result-meta">Código: ' + (item.codigo || '—') + ' · Ciudad: ' + (item.ciudad || '—') + '</div>' +
-                '<div class="op-result-meta">Modalidad: ' + (item.modalidad || '—') + ' · Tel: ' + (item.telefono_masked || '—') + ' · Estado: ' + (item.estado || '—') + '</div>' +
-              '</div>' +
-              '<button class="btn btn-success btn-sm" type="button" data-candidata-id="' + item.id + '">Seleccionar candidata</button>' +
-            '</div>';
+          var head = document.createElement('div');
+          head.className = 'op-result-head';
+          var info = document.createElement('div');
+          var name = textNode('div', item.nombre || ('ID ' + item.id), 'op-value fw-semibold');
+          var codeCity = textNode('div', 'Código: ' + (item.codigo || '—') + ' · Ciudad: ' + (item.ciudad || '—'), 'op-result-meta');
+          var details = textNode('div', 'Modalidad: ' + (item.modalidad || '—') + ' · Tel: ' + (item.telefono_masked || '—') + ' · Estado: ' + (item.estado || '—'), 'op-result-meta');
+          info.appendChild(name);
+          info.appendChild(codeCity);
+          info.appendChild(details);
+          var selectButton = document.createElement('button');
+          selectButton.className = 'btn btn-success btn-sm';
+          selectButton.type = 'button';
+          selectButton.setAttribute('data-candidata-id', String(item.id || ''));
+          selectButton.textContent = 'Seleccionar candidata';
+          head.appendChild(info);
+          head.appendChild(selectButton);
+          box.appendChild(head);
           results.appendChild(box);
         });
       }
@@ -453,11 +473,11 @@
         var q = (input.value || '').trim();
         if (q.length < 2) {
           state.textContent = 'Debes escribir al menos 2 caracteres.';
-          results.innerHTML = '';
+          clearNode(results);
           return;
         }
         state.textContent = 'Buscando candidatas...';
-        results.innerHTML = '';
+        clearNode(results);
         var url = '/admin/reemplazos/candidatas-search?reemplazo_id=' + encodeURIComponent(reemplazoId) + '&q=' + encodeURIComponent(q);
         fetch(url, { credentials: 'same-origin' })
           .then(function (resp) { return resp.json().then(function (data) { return { status: resp.status, data: data || {} }; }); })
@@ -514,7 +534,7 @@
         panel.classList.add('d-none');
         hideAlert();
         state.textContent = 'Busca por nombre, código, ciudad o teléfono.';
-        results.innerHTML = '';
+        clearNode(results);
       });
       if (window.location.hash === '#nuevaCandidataPanel') {
         openPanelAndFocus();
