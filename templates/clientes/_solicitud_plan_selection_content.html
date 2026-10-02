@@ -94,3 +94,13 @@
     </div>
   </div>
 </section>
+<script>
+(function () {
+  try {
+    var params = new URLSearchParams(window.location.search || '');
+    var ref = document.referrer ? new URL(document.referrer, window.location.href) : null;
+    if (params.get('public_saved') !== '1' || !ref || ref.origin !== window.location.origin) return;
+    window.sessionStorage.removeItem('public-solicitud-draft:v2:' + ref.pathname);
+  } catch (_err) {}
+})();
+</script>

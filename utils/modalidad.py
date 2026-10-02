@@ -18,48 +18,59 @@ _OTHER_LABEL_BY_GROUP = {
 _MODALIDAD_SPECS = {
     "con_salida_diaria": [
         {
+            "key": "sd_1_dia",
             "label": "Salida diaria - 1 día a la semana",
             "aliases": ["1 día a la semana", "Un día a la semana"],
         },
         {
+            "key": "sd_2_dias",
             "label": "Salida diaria - 2 días a la semana",
             "aliases": ["2 días a la semana", "Dos días a la semana"],
         },
         {
+            "key": "sd_3_dias",
             "label": "Salida diaria - 3 días a la semana",
             "aliases": ["3 días a la semana", "Tres días a la semana"],
         },
         {
+            "key": "sd_4_dias",
             "label": "Salida diaria - 4 días a la semana",
             "aliases": ["4 días a la semana", "Cuatro días a la semana"],
         },
         {
+            "key": "sd_l_v",
             "label": "Salida diaria - lunes a viernes",
             "aliases": ["Lunes a Viernes", "Salida diaria lunes a viernes"],
         },
         {
+            "key": "sd_l_s",
             "label": "Salida diaria - lunes a sábado",
             "aliases": ["Lunes a Sábado"],
         },
         {
+            "key": "sd_fin_semana",
             "label": "Salida diaria - fin de semana",
             "aliases": ["Sábado y Domingo", "Viernes a Lunes", "Fin de semana"],
         },
         {
+            "key": "otro",
             "label": "Salida diaria otro",
             "aliases": ["Otro", "Salida diaria - Otro"],
         },
     ],
     "con_dormida": [
         {
+            "key": "cd_l_v",
             "label": "Con dormida 💤 lunes a viernes",
             "aliases": ["Lunes a Viernes", "Con dormida - Lunes a Viernes"],
         },
         {
+            "key": "cd_l_s",
             "label": "Con dormida 💤 lunes a sábado",
             "aliases": ["Lunes a sábado", "Lunes a sábado, sale sábado después del medio día"],
         },
         {
+            "key": "cd_quincenal",
             "label": "Con dormida 💤 quincenal",
             "aliases": [
                 "Quincenal",
@@ -69,15 +80,83 @@ _MODALIDAD_SPECS = {
             ],
         },
         {
+            "key": "cd_fin_semana",
             "label": "Con dormida 💤 fin de semana",
             "aliases": ["Sábado y Domingo", "Viernes a Lunes"],
         },
         {
+            "key": "otro",
             "label": "Con dormida 💤 otro",
             "aliases": ["Otro", "Con dormida - Otro"],
         },
     ],
 }
+
+
+def resolve_modalidad_specific(raw_value: str | None, *, preferred_group: str | None = None) -> dict[str, str] | None:
+    """Resolve a submitted modality option to one catalog entry.
+
+    Public forms historically submitted both labels and option codes, so both
+    remain accepted when they map unambiguously to the selected group.
+    """
+    raw = _clean_spaces(raw_value or "")
+    key = _norm(raw)
+    if not key:
+        return None
+    group_filter = _clean_spaces(preferred_group or "")
+    matches: list[dict[str, str]] = []
+    for group, specs in _MODALIDAD_SPECS.items():
+        if group_filter and group != group_filter:
+            continue
+        for spec in specs:
+            label = _clean_spaces(spec.get("label") or "")
+            code = _clean_spaces(spec.get("key") or "")
+            values = {label, code, *(spec.get("aliases") or [])}
+            if any(_norm(value) == key for value in values if value):
+                matches.append({"group": group, "label": label, "key": code})
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def validate_modalidad_context(
+    group_value: str | None,
+    specific_value: str | None,
+    canonical_value: str | None,
+    *,
+    other_value: str | None = None,
+) -> tuple[bool, str, str]:
+    """Authoritatively validate the guided modality tuple.
+
+    The group, selected specific option, and hidden canonical value must all
+    describe the same catalog group. No value is silently corrected.
+    Returns ``(valid, canonical_specific_label, reason)``.
+    """
+    group = _clean_spaces(group_value or "")
+    specific = _clean_spaces(specific_value or "")
+    canonical = _clean_spaces(canonical_value or "")
+    if group not in _MODALIDAD_SPECS:
+        return False, "", "grupo_invalido"
+    resolved_specific = resolve_modalidad_specific(specific, preferred_group=group)
+    if not resolved_specific:
+        return False, "", "especifica_invalida"
+
+    resolved_canonical = split_modalidad_for_ui(canonical)
+    canonical_group = _clean_spaces((resolved_canonical or {}).get("group") or "")
+    if canonical_group != group:
+        return False, resolved_specific["label"], "canonica_fuera_del_grupo"
+
+    canonical_specific = _clean_spaces((resolved_canonical or {}).get("specific") or "")
+    if canonical_specific:
+        resolved_from_canonical = resolve_modalidad_specific(canonical_specific, preferred_group=group)
+        if not resolved_from_canonical:
+            return False, resolved_specific["label"], "canonica_invalida"
+        if resolved_from_canonical["label"] != resolved_specific["label"]:
+            return False, resolved_specific["label"], "canonica_no_coincide"
+    elif not _clean_spaces(other_value or ""):
+        return False, resolved_specific["label"], "canonica_sin_especifica"
+
+    return True, resolved_specific["label"], ""
 
 
 def _clean_spaces(text: str) -> str:

@@ -3,27 +3,23 @@
 
   var TOLERANCE = 10;
   var controllers = [];
-  var fallbackBackdrop = null;
-
-  function nextFrame(callback) {
-    window.requestAnimationFrame(function () {
-      window.requestAnimationFrame(callback);
-    });
-  }
 
   function createController(form, modal) {
+    var dialog = modal.querySelector('.employment-conditions-dialog');
     var body = modal.querySelector('.employment-conditions-body');
     var confirmButton = modal.querySelector('.employment-conditions-confirm');
     var indicator = modal.querySelector('.employment-conditions-read-more');
-    var bootstrapModal = null;
-    var fallbackOpen = false;
+    var dismissButtons = modal.querySelectorAll('[data-public-conditions-dismiss]');
     var active = false;
     var readCompleted = false;
     var hasOverflow = false;
     var measuredOverflow = false;
     var resizeQueued = false;
+    var trigger = null;
+    var previousFocus = null;
+    var focusableSelector = 'a[href], area[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-    if (!form || !modal || !body || !confirmButton) return null;
+    if (!form || !modal || !dialog || !body || !confirmButton) return null;
 
     function setConfirmEnabled(enabled) {
       confirmButton.disabled = !enabled;
@@ -38,7 +34,7 @@
     }
 
     function measure() {
-      if (!body || !active) return;
+      if (!active) return;
       var nextOverflow = body.scrollHeight > body.clientHeight + TOLERANCE;
       if (nextOverflow && !measuredOverflow) readCompleted = false;
       hasOverflow = nextOverflow;
@@ -53,7 +49,7 @@
     }
 
     function handleScroll() {
-      if (!active || !body || readCompleted) return;
+      if (!active || readCompleted) return;
       if (body.scrollTop + body.clientHeight >= body.scrollHeight - TOLERANCE) {
         readCompleted = true;
         setConfirmEnabled(true);
@@ -70,78 +66,22 @@
       });
     }
 
-    function focusInitialControl() {
-      if (!active) return;
-      if (hasOverflow && !readCompleted && indicator) indicator.focus();
-      else confirmButton.focus();
+    function focusWithoutDocumentScroll(element) {
+      if (element && typeof element.focus === 'function') element.focus({ preventScroll: true });
     }
 
-    function resetForOpen() {
-      active = true;
-      readCompleted = false;
-      hasOverflow = false;
-      measuredOverflow = false;
-      body.scrollTop = 0;
-      setConfirmEnabled(false);
-      renderIndicator();
-      nextFrame(function () {
-        measure();
-        focusInitialControl();
+    function focusInitialControl() {
+      focusWithoutDocumentScroll(hasOverflow && !readCompleted && indicator ? indicator : confirmButton);
+    }
+
+    function focusables() {
+      return Array.prototype.filter.call(modal.querySelectorAll(focusableSelector), function (element) {
+        return !element.hidden && element.offsetParent !== null;
       });
     }
 
-    function removeFallbackBackdrop() {
-      if (fallbackBackdrop && fallbackBackdrop.parentNode) fallbackBackdrop.parentNode.removeChild(fallbackBackdrop);
-      fallbackBackdrop = null;
-    }
-
-    function closeFallback() {
-      fallbackOpen = false;
-      active = false;
-      modal.classList.remove('public-conditions-fallback-open', 'show');
-      modal.style.display = 'none';
-      modal.setAttribute('aria-hidden', 'true');
-      removeFallbackBackdrop();
-    }
-
-    function close() {
-      if (bootstrapModal) bootstrapModal.hide();
-      else if (fallbackOpen) closeFallback();
-    }
-
-    function openFallback() {
-      fallbackOpen = true;
-      modal.classList.add('public-conditions-fallback-open', 'show');
-      modal.style.display = 'block';
-      modal.setAttribute('aria-hidden', 'false');
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-modal', 'true');
-      if (!fallbackBackdrop) {
-        fallbackBackdrop = document.createElement('div');
-        fallbackBackdrop.className = 'public-conditions-fallback-backdrop';
-        fallbackBackdrop.addEventListener('click', close);
-        document.body.appendChild(fallbackBackdrop);
-      }
-      resetForOpen();
-    }
-
-    function open() {
-      if (bootstrapModal) {
-        resetForOpen();
-        bootstrapModal.show();
-      } else {
-        openFallback();
-      }
-    }
-
-    function confirm() {
-      if (confirmButton.disabled || form.__publicConditionsConfirmed) return;
-      form.__publicConditionsConfirmed = true;
-      if (bootstrapModal) bootstrapModal.hide();
-      else closeFallback();
-      window.setTimeout(function () {
-        form.requestSubmit();
-      }, 0);
+    function isScrollKey(event) {
+      return ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '].indexOf(event.key) !== -1;
     }
 
     function onKeydown(event) {
@@ -151,49 +91,112 @@
         close();
         return;
       }
+      if (event.key === 'Tab') {
+        var elements = focusables();
+        if (!elements.length) return;
+        var first = elements[0];
+        var last = elements[elements.length - 1];
+        if (event.shiftKey && event.target === first) {
+          event.preventDefault();
+          focusWithoutDocumentScroll(last);
+        } else if (!event.shiftKey && event.target === last) {
+          event.preventDefault();
+          focusWithoutDocumentScroll(first);
+        }
+        return;
+      }
       if (event.key === 'Enter' && confirmButton.disabled && event.target !== indicator) {
         event.preventDefault();
+        return;
       }
+      if (isScrollKey(event) && !body.contains(event.target)) event.preventDefault();
     }
 
-    function attachBootstrap() {
-      if (bootstrapModal || !(window.bootstrap && window.bootstrap.Modal)) return;
-      bootstrapModal = window.bootstrap.Modal.getOrCreateInstance(modal);
-      modal.addEventListener('shown.bs.modal', function () {
-        resetForOpen();
-      });
-      modal.addEventListener('hidden.bs.modal', function () {
-        active = false;
-        renderIndicator();
-      });
+    function onWheelOrTouchMove(event) {
+      if (active && !body.contains(event.target)) event.preventDefault();
+    }
+
+    function onBackdropClick(event) {
+      if (event.target === modal) close();
+    }
+
+    function addActiveListeners() {
+      modal.addEventListener('keydown', onKeydown, true);
+      modal.addEventListener('wheel', onWheelOrTouchMove, { passive: false });
+      modal.addEventListener('touchmove', onWheelOrTouchMove, { passive: false });
+      modal.addEventListener('click', onBackdropClick);
+    }
+
+    function removeActiveListeners() {
+      modal.removeEventListener('keydown', onKeydown, true);
+      modal.removeEventListener('wheel', onWheelOrTouchMove, { passive: false });
+      modal.removeEventListener('touchmove', onWheelOrTouchMove, { passive: false });
+      modal.removeEventListener('click', onBackdropClick);
+    }
+
+    function resetForOpen() {
+      active = true;
+      readCompleted = false;
+      hasOverflow = false;
+      measuredOverflow = false;
+      body.scrollTop = 0;
+      setConfirmEnabled(false);
+      modal.classList.add('public-conditions-open');
+      modal.style.display = 'grid';
+      modal.setAttribute('aria-hidden', 'false');
+      addActiveListeners();
+      measure();
+      renderIndicator();
+      focusInitialControl();
+      queueMeasure();
+    }
+
+    function close() {
+      if (!active) return;
+      active = false;
+      removeActiveListeners();
+      modal.classList.remove('public-conditions-open');
+      modal.style.display = 'none';
+      modal.setAttribute('aria-hidden', 'true');
+      renderIndicator();
+      focusWithoutDocumentScroll(trigger || previousFocus);
+      trigger = null;
+      previousFocus = null;
+    }
+
+    function open() {
+      if (active) return;
+      trigger = form.querySelector('button[type="submit"]');
+      previousFocus = document.activeElement;
+      resetForOpen();
+    }
+
+    function confirm() {
+      if (confirmButton.disabled || form.__publicConditionsConfirmed) return;
+      form.__publicConditionsConfirmed = true;
+      close();
+      window.setTimeout(function () { form.requestSubmit(); }, 0);
     }
 
     body.addEventListener('scroll', handleScroll, { passive: true });
     confirmButton.addEventListener('click', confirm);
-    modal.addEventListener('keydown', onKeydown);
-    if (indicator) {
-      indicator.addEventListener('click', function () {
-        body.scrollTo({ top: body.scrollHeight, behavior: 'smooth' });
-      });
-    }
-    modal.querySelectorAll('[data-bs-dismiss="modal"]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        if (!bootstrapModal) closeFallback();
-      });
+    if (indicator) indicator.addEventListener('click', function () { body.scrollTop = body.scrollHeight; });
+    Array.prototype.forEach.call(dismissButtons, function (button) { button.addEventListener('click', close); });
+    form.addEventListener('submit', function (event) {
+      if (form.__publicConditionsConfirmed && event.defaultPrevented) form.__publicConditionsConfirmed = false;
     });
     window.addEventListener('resize', queueMeasure, { passive: true });
     window.addEventListener('orientationchange', queueMeasure, { passive: true });
-    if (window.ResizeObserver) {
-      new window.ResizeObserver(queueMeasure).observe(body);
-    }
+    if (window.ResizeObserver) new window.ResizeObserver(queueMeasure).observe(body);
 
     return {
       open: open,
       close: close,
       confirm: confirm,
-      attachBootstrap: attachBootstrap,
+      attachBootstrap: function () {},
       isReadCompleted: function () { return readCompleted; },
       hasOverflow: function () { return hasOverflow; },
+      isActive: function () { return active; },
     };
   }
 
@@ -206,17 +209,10 @@
     if (controller) {
       form.__publicConditionsController = controller;
       controllers.push(controller);
-      controller.attachBootstrap();
     }
     return controller;
   }
 
-  window.PublicConditionsModal = {
-    setup: setup,
-    attachBootstrapAll: function () {
-      controllers.forEach(function (controller) { controller.attachBootstrap(); });
-    },
-  };
-
+  window.PublicConditionsModal = { setup: setup, attachBootstrapAll: function () {} };
   document.querySelectorAll('form[data-conditions-modal-id]').forEach(setup);
 })(window, document);

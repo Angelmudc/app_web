@@ -15,7 +15,7 @@ from services.payment_rules import get_plan_choices, is_valid_plan, normalize_pl
 # Validaciones estrictas de seguridad (anti símbolos raros)
 # ─────────────────────────────────────────────────────────────
 import re
-from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.modalidad import canonicalize_modalidad_trabajo, split_modalidad_for_ui
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
 from utils.child_age_parser import parse_child_age_summary
@@ -26,6 +26,7 @@ from utils.experiencia_solicitud import (
     load_experiencia_value,
     normalize_experiencia_submission,
 )
+from utils.person_name import normalize_person_name, validate_person_name
 
 def _solo_texto(valor):
     """
@@ -491,7 +492,15 @@ class SolicitudForm(FlaskForm):
                 ok = False
             if tipo_cuidado == "encamado" and (not solo_acomp) and not responsabilidades:
                 self.envejeciente_responsabilidades.errors.append(
-                    "Para encamado debes marcar responsabilidades o seleccionar solo acompanamiento/supervision."
+                    "Indica al menos una responsabilidad de cuidado o selecciona que sera solo acompanamiento/supervision."
+                )
+                ok = False
+            if tipo_cuidado == "encamado" and solo_acomp and responsabilidades:
+                self.envejeciente_responsabilidades.errors.append(
+                    "No combines responsabilidades de cuidado directo con solo acompanamiento/supervision."
+                )
+                self.envejeciente_solo_acompanamiento.errors.append(
+                    "Selecciona solo responsabilidades directas o solo acompanamiento/supervision."
                 )
                 ok = False
 
@@ -502,6 +511,14 @@ class SolicitudForm(FlaskForm):
         if not modalidad_specific:
             _append_modalidad_error("Selecciona la modalidad específica.")
             ok = False
+        elif modalidad_group and self.__class__.__name__ in {
+            "SolicitudPublicaForm",
+            "SolicitudClienteNuevoPublicaForm",
+        }:
+            resolved_specific_group = (split_modalidad_for_ui(modalidad_specific) or {}).get("group") or ""
+            if resolved_specific_group != modalidad_group:
+                _append_modalidad_error("La modalidad específica no corresponde a la modalidad seleccionada.")
+                ok = False
 
         horario_txt, _payload, horario_errors = build_horario_from_form(
             modalidad_group=modalidad_group,
@@ -512,6 +529,12 @@ class SolicitudForm(FlaskForm):
             dormida_entrada=(request.form or {}).get("horario_dormida_entrada"),
             dormida_salida=(request.form or {}).get("horario_dormida_salida"),
             horario_legacy=self.horario.data,
+            # The two public forms expose the structured schedule controls.
+            # Keep the legacy free-text compatibility for internal/admin forms.
+            require_structured=self.__class__.__name__ in {
+                "SolicitudPublicaForm",
+                "SolicitudClienteNuevoPublicaForm",
+            },
         )
         self.horario.data = horario_txt
         if horario_errors:
@@ -629,7 +652,8 @@ class SolicitudPublicaForm(SolicitudForm):
     )
     nombre_cliente = StringField(
         "Nombre completo",
-        validators=[DataRequired(), Length(min=2, max=200)]
+        validators=[DataRequired(), Length(min=2, max=200), validate_person_name],
+        filters=[normalize_person_name],
     )
     email_cliente = StringField(
         "Gmail / Email",
@@ -643,8 +667,8 @@ class SolicitudPublicaForm(SolicitudForm):
 class SolicitudClienteNuevoPublicaForm(SolicitudForm):
     nombre_completo = StringField(
         "Nombre completo",
-        validators=[DataRequired("Ingresa tu nombre completo."), Length(min=3, max=200)],
-        filters=STRIP,
+        validators=[DataRequired("Ingresa tu nombre completo."), Length(min=3, max=200), validate_person_name],
+        filters=[normalize_person_name],
         render_kw={"placeholder": "Ej. Maria Perez"}
     )
     email_contacto = StringField(
@@ -674,9 +698,6 @@ class SolicitudClienteNuevoPublicaForm(SolicitudForm):
 
     # Anti-bot: debe venir vacío
     hp = StringField("No llenar", validators=[Optional(), Length(max=10)])
-
-    def validate_nombre_completo(self, field):
-        _solo_texto(field.data)
 
     def validate_ciudad_cliente(self, field):
         _solo_texto(field.data)

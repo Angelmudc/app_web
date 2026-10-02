@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "module": "none",
+    "lib": ["ES2017", "DOM"],
+    "strict": true,
+    "noEmitOnError": true,
+    "outFile": "static/js/clientes/public_form_vue.js",
+    "skipLibCheck": true
+  },
+  "files": ["static/ts/clientes/public_form_vue.ts"]
+}

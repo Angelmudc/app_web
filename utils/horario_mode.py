@@ -52,6 +52,7 @@ def build_horario_from_form(
     dormida_entrada: Any,
     dormida_salida: Any,
     horario_legacy: Any,
+    require_structured: bool = False,
 ) -> tuple[str, dict, list[str]]:
     horario_tipo = infer_horario_tipo(
         modalidad_group=modalidad_group,
@@ -66,7 +67,7 @@ def build_horario_from_form(
     errors: list[str] = []
     has_structured = any([dias, h_in, h_out, d_in, d_out])
 
-    if not has_structured and legacy:
+    if not has_structured and legacy and not require_structured:
         payload = {
             "horario_tipo": horario_tipo,
             "dias_trabajo": None,
@@ -123,6 +124,7 @@ def apply_horario_to_solicitud(
     dormida_entrada: Any,
     dormida_salida: Any,
     horario_legacy: Any,
+    require_structured: bool = False,
 ) -> tuple[str, dict, list[str]]:
     horario, payload, errors = build_horario_from_form(
         modalidad_group=modalidad_group,
@@ -133,6 +135,7 @@ def apply_horario_to_solicitud(
         dormida_entrada=dormida_entrada,
         dormida_salida=dormida_salida,
         horario_legacy=horario_legacy,
+        require_structured=require_structured,
     )
     if hasattr(solicitud, "horario"):
         solicitud.horario = horario

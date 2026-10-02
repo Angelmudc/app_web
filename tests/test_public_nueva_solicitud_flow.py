@@ -170,7 +170,7 @@ def test_new_public_form_hides_attractiveness_when_feature_flag_off():
     assert "/clientes/api/solicitud-atractivo-preview?" not in html
 
 
-def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
+def test_new_public_terms_ui_keeps_submit_available_and_has_accepted_visual_state_hooks():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -182,7 +182,7 @@ def test_new_public_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks(
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert 'id="publicSubmitNuevaBtn" disabled aria-disabled="true"' in html
+    assert 'id="publicSubmitNuevaBtn" aria-disabled="false"' in html
     assert 'id="acepta_politica_nueva"' in html
     assert 'id="termsAcceptedNuevaInput" value="0"' in html
     assert "Debes aceptar los términos para continuar" in html

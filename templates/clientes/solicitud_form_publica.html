@@ -36,6 +36,13 @@
     padding: 28px 14px 46px;
   }
 
+  .public-flow-page input,
+  .public-flow-page select,
+  .public-flow-page textarea,
+  .public-flow-page button {
+    font: inherit;
+  }
+
   .public-flow-hero {
     background: linear-gradient(135deg, #edf9fa 0%, #f8fcff 56%, #e7f4f4 100%);
     color: var(--pf-ink);
@@ -185,6 +192,7 @@
     padding-inline: 18px;
     font-weight: 700;
     letter-spacing: .01em;
+    box-shadow: 0 8px 16px rgba(15, 106, 127, .16);
   }
 
   .public-submit-help {
@@ -209,6 +217,24 @@
     border-radius: 14px;
     background: #f8fafc;
     padding: 14px;
+  }
+
+  @media (max-width: 767px) {
+    .public-flow-shell { padding: 14px 10px 32px; }
+    .public-flow-hero { border-radius: 18px; padding: 18px 16px; }
+    .public-flow-title { font-size: 1.32rem; }
+    .public-flow-subtitle { font-size: .92rem; line-height: 1.55; }
+    .public-panel { border-radius: 18px; }
+    .public-panel-body { padding: 14px; }
+    .public-form-main-header { margin-bottom: 14px; }
+    .public-submit-btn { width: 100%; }
+    .public-submit-help { line-height: 1.45; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .public-flow-page *,
+    .public-flow-page *::before,
+    .public-flow-page *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
   }
 
   .public-terms-title {
@@ -317,14 +343,23 @@
   .employment-conditions-modal .employment-conditions-read-more:focus-visible {
     background: #e8f4f7; color: #0b596a; outline: 3px solid rgba(15, 106, 127, .24); outline-offset: -3px;
   }
-  .public-conditions-fallback-backdrop {
-    position: fixed; z-index: 1050; inset: 0; background: rgba(15, 32, 49, .58);
+  .employment-conditions-modal {
+    display: none !important; position: fixed !important; z-index: 1055; inset: 0;
+    grid-template-rows: minmax(0, 1fr); place-items: center; overflow: hidden;
+    padding: 1.75rem; background: rgba(15, 32, 49, .58);
+    opacity: 1 !important; transform: none !important; overscroll-behavior: contain; touch-action: none;
   }
-  .employment-conditions-modal.public-conditions-fallback-open {
-    position: fixed; z-index: 1055; inset: 0; overflow-x: hidden; overflow-y: auto;
-    background: transparent;
+  .employment-conditions-modal.public-conditions-open { display: grid !important; }
+  .employment-conditions-modal .employment-conditions-dialog {
+    display: flex; width: min(100%, 760px); max-width: 760px; max-height: 100%; margin: 0;
+    pointer-events: auto; transform: none !important;
   }
-  .employment-conditions-modal.public-conditions-fallback-open .employment-conditions-dialog { margin: 1.75rem auto; }
+  .employment-conditions-modal .employment-conditions-content {
+    display: flex; min-height: 0; width: 100%; flex-direction: column;
+  }
+  .employment-conditions-modal .employment-conditions-body {
+    min-height: 0; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch;
+  }
   .employment-conditions-modal .employment-conditions-intro { margin: 0 0 18px; color: #43566b; font-size: .96rem; line-height: 1.65; }
   .employment-conditions-modal .employment-conditions-list { display: grid; gap: 12px; }
   .employment-conditions-modal .employment-conditions-card {
@@ -353,6 +388,7 @@
   .employment-conditions-modal .employment-conditions-confirm:hover,
   .employment-conditions-modal .employment-conditions-confirm:focus { background: #0b596a; border-color: #0b596a; }
   @media (max-width: 575.98px) {
+    .employment-conditions-modal { padding: 10px; }
     .employment-conditions-modal .employment-conditions-dialog { margin: 10px; }
     .employment-conditions-modal .employment-conditions-header,
     .employment-conditions-modal .employment-conditions-body { padding: 18px; }
@@ -387,24 +423,9 @@
             <p>Completa los campos por secciones. Si hay errores, se mostrarán debajo de cada campo.</p>
           </div>
 
-          {% if form.errors %}
-            {% set error_summary = namespace(items=[]) %}
-            {% for field_name, errors in form.errors.items() %}
-              {% if errors and field_name != 'csrf_token' %}
-                {% set field = form[field_name] if form[field_name] is defined else none %}
-                {% set field_label = (field.label.text if field and field.label is defined and field.label.text else field_name|replace('_', ' ')|title) %}
-                {% set error_summary.items = error_summary.items + [field_label ~ ': ' ~ errors[0]] %}
-              {% endif %}
-            {% endfor %}
-            <div class="public-validation-banner" role="alert" aria-live="assertive">
-              <strong>Revisa los campos marcados para continuar con el envío.</strong>
-              {% if error_summary.items %}
-                <div class="mt-1">Primer error: {{ error_summary.items[0] }}</div>
-              {% endif %}
-            </div>
-          {% endif %}
+          <div id="publicSolicitudFormVueRoot" class="public-form-vue-root" aria-label="Estado de la solicitud"></div>
 
-          <form method="post" id="publicSolicitudForm" data-conditions-modal-id="publicEmploymentConditionsModal" novalidate>
+          <form method="post" id="publicSolicitudForm" data-form-ux="vue" data-conditions-modal-id="publicEmploymentConditionsModal" novalidate>
             {{ form.hidden_tag() }}
             <input type="hidden" name="lead_source" id="lead_source" value="direct">
             {% if form.token is defined %}
@@ -419,7 +440,7 @@
               <div class="public-identity-grid">
                 <div class="public-input-block">
                   <label>Cliente</label>
-                  <input class="form-control" value="{{ cliente.nombre_completo or '' }}" readonly>
+                  <input id="nombre_cliente" class="form-control" value="{{ cliente.nombre_completo or '' }}" readonly>
                 </div>
                 <div class="public-input-block">
                   <label>Código</label>
@@ -453,14 +474,14 @@
             </section>
 
             <div class="public-submit-wrap">
-              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn" disabled aria-disabled="true">
+              <button class="btn btn-primary public-submit-btn" type="submit" id="publicSubmitBtn" aria-disabled="false">
                 <span class="spinner-border spinner-border-sm d-none me-2" id="publicSubmitSpinner" aria-hidden="true"></span>
                 <span id="publicSubmitLabel">Enviar solicitud</span>
               </button>
-              <div class="public-submit-help">Completa la solicitud y revisa los campos marcados antes de enviar.</div>
+              <div class="public-submit-help">Cuando todo esté listo, pulsa aquí para enviar. Si falta algo, te indicaremos exactamente qué completar.</div>
             </div>
           </form>
-          <div class="modal fade employment-conditions-modal" id="publicEmploymentConditionsModal" tabindex="-1" aria-labelledby="publicEmploymentConditionsModalLabel" aria-hidden="true">
+          <div class="employment-conditions-modal" id="publicEmploymentConditionsModal" role="dialog" aria-modal="true" tabindex="-1" aria-labelledby="publicEmploymentConditionsModalLabel" aria-hidden="true">
             <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable employment-conditions-dialog">
               <div class="modal-content employment-conditions-content">
                 <div class="modal-header employment-conditions-header">
@@ -469,7 +490,7 @@
                     <h2 class="employment-conditions-title" id="publicEmploymentConditionsModalLabel">Confirmación de las condiciones del empleo</h2>
                     <p class="employment-conditions-subtitle">Revisa estas condiciones antes de enviar tu solicitud.</p>
                   </div>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                  <button type="button" class="btn-close" data-public-conditions-dismiss aria-label="Cerrar"></button>
                 </div>
                 <div class="modal-body employment-conditions-body" tabindex="0" role="region" aria-label="Condiciones del empleo">
                   <p class="employment-conditions-intro">Con el objetivo de garantizar una colocación clara y adecuada para ambas partes, las condiciones indicadas en esta solicitud serán utilizadas para presentar el empleo a las candidatas.</p>
@@ -515,7 +536,7 @@
                   <span>Desliza para leer todas las condiciones</span><span aria-hidden="true">↓</span>
                 </button>
                 <div class="modal-footer employment-conditions-footer">
-                  <button type="button" class="btn btn-outline-secondary employment-conditions-cancel" data-bs-dismiss="modal">Volver al formulario</button>
+                  <button type="button" class="btn btn-outline-secondary employment-conditions-cancel" data-public-conditions-dismiss>Volver al formulario</button>
                   <button type="button" class="btn btn-primary employment-conditions-confirm" id="publicEmploymentConditionsConfirmBtn"><i class="bi bi-check2 me-1" aria-hidden="true"></i>Confirmo y acepto</button>
                 </div>
               </div>
@@ -530,10 +551,10 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/clientes/public_conditions_modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/clientes/public_form_ux.js', v='20261002-audit1') }}"></script>
 <script>
 (function () {
   var initialized = false;
-  var fallbackLoadStarted = false;
 
   function initPublicSolicitudForm() {
     if (initialized) return;
@@ -554,84 +575,6 @@
 
     if (!form || !btn) return;
     initialized = true;
-
-    var ageCheckboxes = form.querySelectorAll('input[name="edad_requerida"]');
-
-    function validateAgeRequiredGroup() {
-      var selected = null;
-      for (var ai = 0; ai < ageCheckboxes.length; ai++) {
-        var checkbox = ageCheckboxes[ai];
-        checkbox.removeAttribute('required');
-        checkbox.required = false;
-        if (!selected && checkbox.checked) selected = checkbox;
-      }
-
-      var first = ageCheckboxes[0];
-      if (!first) return true;
-      first.setCustomValidity('');
-      if (!selected) {
-        first.setCustomValidity('Selecciona una opción de edad.');
-        return false;
-      }
-      return true;
-    }
-
-    for (var ageIndex = 0; ageIndex < ageCheckboxes.length; ageIndex++) {
-      ageCheckboxes[ageIndex].addEventListener('change', validateAgeRequiredGroup);
-    }
-    validateAgeRequiredGroup();
-
-    var functionCheckboxes = form.querySelectorAll('input[name="funciones"]');
-
-    function validateFunctionsRequiredGroup() {
-      var selected = null;
-      for (var fi = 0; fi < functionCheckboxes.length; fi++) {
-        var checkbox = functionCheckboxes[fi];
-        checkbox.removeAttribute('required');
-        checkbox.required = false;
-        if (checkbox.checked) selected = checkbox;
-      }
-
-      var first = functionCheckboxes[0];
-      if (!first) return true;
-      first.setCustomValidity('');
-      if (!selected) {
-        first.setCustomValidity('Selecciona al menos una función.');
-        return false;
-      }
-      return true;
-    }
-
-    for (var functionIndex = 0; functionIndex < functionCheckboxes.length; functionIndex++) {
-      functionCheckboxes[functionIndex].addEventListener('change', validateFunctionsRequiredGroup);
-    }
-    validateFunctionsRequiredGroup();
-
-    var commonAreaCheckboxes = form.querySelectorAll('input[name="areas_comunes"]');
-
-    function validateCommonAreasRequiredGroup() {
-      var selected = null;
-      for (var ci = 0; ci < commonAreaCheckboxes.length; ci++) {
-        var checkbox = commonAreaCheckboxes[ci];
-        checkbox.removeAttribute('required');
-        checkbox.required = false;
-        if (!selected && checkbox.checked) selected = checkbox;
-      }
-
-      var first = commonAreaCheckboxes[0];
-      if (!first) return true;
-      first.setCustomValidity('');
-      if (!selected) {
-        first.setCustomValidity('Selecciona al menos un área común.');
-        return false;
-      }
-      return true;
-    }
-
-    for (var commonAreaIndex = 0; commonAreaIndex < commonAreaCheckboxes.length; commonAreaIndex++) {
-      commonAreaCheckboxes[commonAreaIndex].addEventListener('change', validateCommonAreasRequiredGroup);
-    }
-    validateCommonAreasRequiredGroup();
 
     var conditionsController = window.PublicConditionsModal && window.PublicConditionsModal.setup(form);
 
@@ -660,8 +603,7 @@
     if (termsAcceptedAtInput) termsAcceptedAtInput.value = accepted ? new Date().toISOString() : '';
     if (politicaBox) politicaBox.classList.toggle('checked', accepted);
     if (termsInlineError) termsInlineError.classList.toggle('d-none', accepted);
-    btn.disabled = !accepted;
-    btn.setAttribute('aria-disabled', accepted ? 'false' : 'true');
+    btn.setAttribute('aria-disabled', 'false');
   }
 
   if (termsCheckbox) termsCheckbox.addEventListener('change', syncTermsState);
@@ -669,9 +611,6 @@
 
   form.addEventListener('submit', function (ev) {
     syncTermsState();
-    validateAgeRequiredGroup();
-    validateFunctionsRequiredGroup();
-    validateCommonAreasRequiredGroup();
     var formIsValid = form.checkValidity();
     if (!formIsValid) {
       ev.preventDefault();
@@ -702,25 +641,7 @@
 
   }
 
-  function loadBootstrapForConditions() {
-    if (window.bootstrap && window.bootstrap.Modal) {
-      return;
-    }
-    if (fallbackLoadStarted) return;
-    fallbackLoadStarted = true;
-    var fallbackScript = document.createElement('script');
-    fallbackScript.src = "{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}";
-    fallbackScript.onload = function () {
-      if (window.PublicConditionsModal) window.PublicConditionsModal.attachBootstrapAll();
-    };
-    fallbackScript.onerror = function () {
-      console.error('No se pudo cargar Bootstrap desde CDN ni desde el fallback local. Se usará el fallback visual del modal.');
-    };
-    document.head.appendChild(fallbackScript);
-  }
-
   initPublicSolicitudForm();
-  loadBootstrapForConditions();
 })();
 </script>
 {% endblock %}

@@ -81,3 +81,21 @@ def test_horario_lunes_a_sabado_sin_sabado_especial_mantiene_formato_simple():
     )
     assert not errors
     assert horario == "Lunes a sábado de 8:00 AM a 5:00 PM"
+
+
+def test_public_schedule_cannot_use_legacy_text_without_structured_values():
+    horario, payload, errors = build_horario_from_form(
+        modalidad_group="con_dormida",
+        modalidad_trabajo="Con dormida 💤 lunes a viernes",
+        dias_trabajo="",
+        hora_entrada="",
+        hora_salida="",
+        dormida_entrada="",
+        dormida_salida="",
+        horario_legacy="Entrada: lunes 7:30 AM / Salida: viernes 5:00 PM",
+        require_structured=True,
+    )
+    assert horario == "Entrada: lunes 7:30 AM / Salida: viernes 5:00 PM"
+    assert payload["dormida_entrada"] is None
+    assert payload["dormida_salida"] is None
+    assert errors == ["Indica el día y hora de entrada.", "Indica el día y hora de salida."]

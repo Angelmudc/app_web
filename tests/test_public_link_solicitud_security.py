@@ -16,6 +16,21 @@ from utils.robust_save import RobustSaveResult
 from utils.timezone import utc_now_naive
 
 
+def test_public_share_url_builds_without_request_context_and_keeps_public_origin():
+    previous = flask_app.config.get("PUBLIC_BASE_URL")
+    flask_app.config["PUBLIC_BASE_URL"] = "https://www.domesticadelcibao.com"
+    try:
+        with flask_app.app_context():
+            link = clientes_routes._public_external_url(
+                "public.solicitud_share_landing",
+                code="WORKER-CODE",
+            )
+        assert link == "https://www.domesticadelcibao.com/solicitud/WORKER-CODE"
+        assert "127.0.0.1" not in link
+    finally:
+        flask_app.config["PUBLIC_BASE_URL"] = previous
+
+
 class _FakeField:
     def __init__(self, data=None):
         self.data = data
@@ -248,7 +263,7 @@ def test_public_link_form_renders_pasaje_three_options_and_otro_input():
     assert 'name="pasaje_otro_text"' in html
 
 
-def test_public_link_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks():
+def test_public_link_terms_ui_keeps_submit_available_and_has_accepted_visual_state_hooks():
     flask_app.config["TESTING"] = True
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
@@ -260,14 +275,14 @@ def test_public_link_terms_ui_starts_blocked_and_has_accepted_visual_state_hooks
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert 'id="publicSubmitBtn" disabled aria-disabled="true"' in html
+    assert 'id="publicSubmitBtn" aria-disabled="false"' in html
     assert 'id="termsAcceptedInput" value="0"' in html
     assert 'id="termsDecisionInput" value=""' in html
     assert 'id="termsAcceptedAtInput" value=""' in html
     assert 'id="termsInlineError"' in html
     assert "syncTermsState" in html
     assert "termsInlineError.classList.toggle('d-none', accepted)" in html
-    assert "btn.setAttribute('aria-disabled', accepted ? 'false' : 'true')" in html
+    assert "btn.setAttribute('aria-disabled', 'false')" in html
 
 
 def test_public_link_form_renders_guided_modalidad_with_two_main_groups():
@@ -935,7 +950,9 @@ def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_requ
     assert csrf_token
     assert post_resp.status_code == 200
     html = post_resp.get_data(as_text=True)
-    assert "Revisa los campos marcados para continuar con el envío." in html
+    assert "Revisa los campos marcados para continuar con el envío." not in html
+    assert 'id="publicSolicitudFormVueRoot"' in html
+    assert 'data-form-ux="vue"' in html
     assert "The CSRF tokens do not match." not in html
     assert "Bad Request" not in html
 
@@ -974,8 +991,9 @@ def test_public_link_post_with_cocinar_only_and_missing_adultos_shows_specific_v
 
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
-    assert "Revisa los campos marcados para continuar con el envío." in html
-    assert "Primer error: Cantidad de adultos: Indica cuántos adultos." in html
+    assert "Revisa los campos marcados para continuar con el envío." not in html
+    assert "Primer error: Cantidad de adultos: Indica cuántos adultos." not in html
+    assert 'id="publicSolicitudFormVueRoot"' in html
     assert 'id="adultos"' in html
     assert 'class="form-control is-invalid"' in html
     assert "Indica cuántos adultos." in html

@@ -194,10 +194,10 @@ def test_horario_suggestion_with_explicit_days_populates_visible_days_field():
     assert '{ key: "sd_ls_8_4_s1", label: "Lunes a viernes, 8:00 AM - 4:00 PM / sábado hasta 1:00 PM", dias: "Lunes a viernes / sábado hasta 1:00 PM", hIn: "8:00 AM", hOut: "4:00 PM"' in partial
 
 
-def test_horario_suggestion_only_time_does_not_invent_days():
+def test_horario_suggestion_frequency_also_populates_required_days():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
-    assert '{ key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" }' in partial
-    assert '{ key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", dias:' not in partial
+    assert '{ key: "sd_1_8_5", label: "1 día a la semana, 8:00 AM - 5:00 PM", dias: "1 día a la semana", hIn: "8:00 AM", hOut: "5:00 PM" }' in partial
+    assert '{ key: "sd_1_8_5", label: "1 día a la semana, 8:00 AM - 5:00 PM", hIn:' not in partial
 
 
 def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optional_copy():
@@ -209,7 +209,7 @@ def test_shared_partial_hides_edades_ninos_until_rules_apply_and_removes_optiona
     assert "name=\"horario_hora_salida\"" in partial
     assert "name=\"horario_dormida_entrada\"" in partial
     assert "name=\"horario_dormida_salida\"" in partial
-    assert "id=\"wrap_horario_inteligente\" style=\"{{ '' if _modalidad_group_value else 'display:none;' }}\"" in partial
+    assert "id=\"wrap_horario_inteligente\" style=\"{{ '' if (_modalidad_group_value and _modalidad_specific_value) else 'display:none;' }}\"" in partial
     assert "id=\"horario_salida_diaria_wrap\" style=\"display:none;\"" in partial
 
 
@@ -227,8 +227,8 @@ def test_shared_partial_horario_depends_on_modalidad_and_clears_cross_fields():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "function syncHorarioInteligente(fromUserEvent)" in partial
     assert "var horarioWrap = byId('wrap_horario_inteligente');" in partial
-    assert "if (horarioWrap) horarioWrap.style.display = hasGroup ? '' : 'none';" in partial
-    assert "if (!hasGroup) {" in partial
+    assert "if (horarioWrap) horarioWrap.style.display = (hasGroup && hasSpecific) ? '' : 'none';" in partial
+    assert "if (!hasGroup || !hasSpecific) {" in partial
     assert "if (horarioHidden) horarioHidden.value = '';" in partial
     assert "if (preview) preview.textContent = '';" in partial
     assert "if (isDormida) {" in partial
@@ -324,27 +324,30 @@ def test_shared_partial_mascota_secondary_note_is_conditional_and_does_not_edit_
     assert "name === '{{ form.mascota.name if form.mascota is defined else \"\" }}'" in partial
 
 
-def test_shared_partial_contains_salary_suggestion_box_and_actions():
+def test_shared_partial_contains_manual_salary_recommendation_modal():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert '{% if config.get("SALARY_SUGGESTION_ENABLED", False) %}' in partial
-    assert "<p class=\"public-smart-warning-title\">Sueldo sugerido</p>" in partial
-    assert "id=\"salarySuggestionBox\"" in partial
-    assert "id=\"salarySuggestionUseBtn\">Usar sueldo sugerido</button>" in partial
-    assert "id=\"salarySuggestionManualBtn\">Escribir otro monto</button>" in partial
+    assert 'id="salaryRecommendationBtn"' in partial
+    assert "Ver recomendación de sueldo" in partial
+    assert "id=\"salaryRecommendationModal\"" in partial
+    assert "id=\"salaryRecommendationUseBtn\">Usar sueldo recomendado</button>" in partial
+    assert "Mantener mi sueldo" in partial
+    assert "id=\"salaryRecommendationFactors\"" in partial
     assert "function setupSalarySuggestion()" in partial
-    assert "if (!salarySuggestionEnabled) return { sync: function () {} };" in partial
+    assert "if (!salarySuggestionEnabled) return { sync: function () {}, buildPayload: null };" in partial
     assert "fetch('/clientes/api/sueldo-sugerido?'" in partial
-    assert "parseInt(result.suggested_min || 0, 10) === parseInt(result.suggested_max || 0, 10)" in partial
-    assert "includeValue.textContent = 'Se recomienda ofrecer ayuda con el pasaje aparte.';" in partial
-    assert "factorsLabel.textContent = 'Factores considerados:';" in partial
+    assert "recommendationBtn.addEventListener('click'" in partial
+    assert "setButtonState();" in partial
+    assert "No pudimos generar una recomendación con estas condiciones." in partial
     assert "Motivos:\\n" not in partial
 
 
 def test_shared_partial_salary_suggestion_is_non_blocking():
     partial = _read("templates/clientes/_solicitud_form_fields.html")
     assert "hostForm.addEventListener('submit'" in partial
-    assert "No se pudo calcular la sugerencia en este momento." in partial
-    assert "renderNoSuggest(result.reason_no_suggestion" in partial
+    assert "disabled = !ready" in partial
+    assert "salaryRecommendationBtn" in partial
+    assert "Mantener mi sueldo" in partial
 
 
 def test_shared_partial_char_counter_uses_scoped_data_binding_and_initial_zero():

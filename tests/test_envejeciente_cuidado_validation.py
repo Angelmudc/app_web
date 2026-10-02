@@ -1,7 +1,9 @@
 from werkzeug.datastructures import MultiDict
 from flask import Flask
 
-from clientes.forms import SolicitudForm
+import pytest
+
+from clientes.forms import SolicitudClienteNuevoPublicaForm, SolicitudForm, SolicitudPublicaForm
 from admin.forms import AdminSolicitudForm
 
 
@@ -58,6 +60,29 @@ def test_cliente_form_encamado_requiere_responsabilidad_o_solo():
         assert form.envejeciente_responsabilidades.errors
 
 
+def test_cliente_form_encamado_con_una_responsabilidad_valido():
+    app = _mk_app()
+    data = _base_payload()
+    data.add("envejeciente_tipo_cuidado", "encamado")
+    data.add("envejeciente_responsabilidades", "higiene")
+    with app.test_request_context(method="POST", data=data):
+        form = SolicitudForm(meta={"csrf": False})
+        assert form.validate(), form.errors
+
+
+def test_cliente_form_encamado_rechaza_responsabilidad_y_solo_acompanamiento():
+    app = _mk_app()
+    data = _base_payload()
+    data.add("envejeciente_tipo_cuidado", "encamado")
+    data.add("envejeciente_responsabilidades", "medicamentos")
+    data.add("envejeciente_solo_acompanamiento", "y")
+    with app.test_request_context(method="POST", data=data):
+        form = SolicitudForm(meta={"csrf": False})
+        assert not form.validate()
+        assert form.envejeciente_responsabilidades.errors
+        assert form.envejeciente_solo_acompanamiento.errors
+
+
 def test_cliente_form_independiente_valido():
     app = _mk_app()
     data = _base_payload()
@@ -85,3 +110,60 @@ def test_cliente_form_no_exige_envejeciente_si_funcion_no_marcada():
     with app.test_request_context(method="POST", data=data):
         form = SolicitudForm(meta={"csrf": False})
         assert form.validate(), form.errors
+
+
+@pytest.mark.parametrize(
+    ("form_class", "extra"),
+    [
+        (SolicitudPublicaForm, {"token": "tok123", "codigo_cliente": "CLI-001", "nombre_cliente": "Cliente Prueba", "email_cliente": "cliente@example.com"}),
+        (SolicitudClienteNuevoPublicaForm, {"nombre_completo": "Cliente Nuevo", "email_contacto": "nuevo@example.com", "telefono_contacto": "809-123-4567", "ciudad_cliente": "Santiago", "sector_cliente": "Centro"}),
+    ],
+)
+def test_public_form_rejects_envejeciente_without_type(form_class, extra):
+    data = _base_payload()
+    data.update(extra)
+    with _mk_app().test_request_context(method="POST", data=data):
+        form = form_class(meta={"csrf": False})
+        assert not form.validate()
+        assert form.envejeciente_tipo_cuidado.errors
+
+
+@pytest.mark.parametrize(
+    ("form_class", "extra"),
+    [
+        (SolicitudPublicaForm, {"token": "tok123", "codigo_cliente": "CLI-001", "nombre_cliente": "Cliente Prueba", "email_cliente": "cliente@example.com"}),
+        (SolicitudClienteNuevoPublicaForm, {"nombre_completo": "Cliente Nuevo", "email_contacto": "nuevo@example.com", "telefono_contacto": "809-123-4567", "ciudad_cliente": "Santiago", "sector_cliente": "Centro"}),
+    ],
+)
+def test_both_public_forms_accept_direct_responsibility_or_solo_acompanamiento(form_class, extra):
+    for selected in ({"envejeciente_responsabilidades": "higiene"}, {"envejeciente_solo_acompanamiento": "y"}):
+        data = _base_payload()
+        data.update(extra)
+        data.update({"envejeciente_tipo_cuidado": "encamado", **selected})
+        with _mk_app().test_request_context(method="POST", data=data):
+            form = form_class(meta={"csrf": False})
+            form.validate()
+            assert form.envejeciente_responsabilidades.errors == []
+            assert form.envejeciente_solo_acompanamiento.errors == []
+
+
+@pytest.mark.parametrize(
+    ("form_class", "extra"),
+    [
+        (SolicitudPublicaForm, {"token": "tok123", "codigo_cliente": "CLI-001", "nombre_cliente": "Cliente Prueba", "email_cliente": "cliente@example.com"}),
+        (SolicitudClienteNuevoPublicaForm, {"nombre_completo": "Cliente Nuevo", "email_contacto": "nuevo@example.com", "telefono_contacto": "809-123-4567", "ciudad_cliente": "Santiago", "sector_cliente": "Centro"}),
+    ],
+)
+def test_both_public_forms_reject_contradictory_elder_care_payload(form_class, extra):
+    data = _base_payload()
+    data.update(extra)
+    data.update({
+        "envejeciente_tipo_cuidado": "encamado",
+        "envejeciente_responsabilidades": "medicamentos",
+        "envejeciente_solo_acompanamiento": "y",
+    })
+    with _mk_app().test_request_context(method="POST", data=data):
+        form = form_class(meta={"csrf": False})
+        assert not form.validate()
+        assert form.envejeciente_responsabilidades.errors
+        assert form.envejeciente_solo_acompanamiento.errors

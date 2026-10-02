@@ -89,19 +89,19 @@
         {{ field(class='form-select' + css_invalid) }}
 
       {% elif field.type == 'SelectMultipleField' %}
-        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
+        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}" role="group" aria-required="true">
           {% for sub in field %}
             <label class="public-choice-item">
-              {{ sub(class='form-check-input') }}
+              {{ sub(class='form-check-input', required=False, aria_required='false') }}
               <span>{{ sub.label.text }}</span>
             </label>
           {% endfor %}
         </div>
       {% elif field.type == 'RadioField' %}
-        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}">
+        <div class="public-choice-grid public-choice-grid--{{ field.name }}{% if field.errors %} is-invalid{% endif %}" id="wrap_{{ field.name }}" role="radiogroup" aria-required="true">
           {% for sub in field %}
             <label class="public-choice-item">
-              {{ sub(class='form-check-input') }}
+              {{ sub(class='form-check-input', required=False, aria_required='false') }}
               <span>{{ sub.label.text }}</span>
             </label>
           {% endfor %}
@@ -127,91 +127,162 @@
   .public-form-sections {
     display: grid;
     gap: 12px;
+    container-type: inline-size;
   }
 
-  .atractivo-preview-sticky {
-    position: sticky;
-    top: 14px;
-    z-index: 20;
-    border: 1px solid #d7e5ef;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.92);
-    backdrop-filter: blur(14px);
-    box-shadow: 0 18px 38px rgba(30, 58, 90, 0.08);
-    padding: 12px 14px;
-    transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
-  }
-
-  .atractivo-preview-sticky.is-hidden {
-    opacity: 0;
-    pointer-events: none;
-  }
-
-  .atractivo-preview-sticky-head {
+  .atractivo-preview-compact {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 8px;
+    gap: 12px;
+    border: 1px solid #d7e5ef;
+    border-radius: 12px;
+    background: #f8fbfe;
+    padding: 9px 11px;
+    margin-bottom: 12px;
   }
 
-  .atractivo-preview-sticky-kicker {
+  @media (min-width: 1200px) {
+    .atractivo-preview-compact {
+      position: fixed;
+      top: 118px;
+      right: 24px;
+      z-index: 1020;
+      width: min(270px, calc(100vw - 48px));
+      margin-bottom: 0;
+      box-shadow: 0 12px 28px rgba(30, 58, 90, .12);
+    }
+  }
+
+  @media (min-width: 768px) and (max-width: 1199px) {
+    .atractivo-preview-compact {
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+      max-width: 420px;
+      margin-left: auto;
+      box-shadow: 0 8px 20px rgba(30, 58, 90, .08);
+    }
+  }
+
+  .atractivo-preview-compact-copy { min-width: 0; }
+  .atractivo-preview-compact-kicker {
     margin: 0;
+    color: #5d7187;
     font-size: .76rem;
     font-weight: 700;
-    letter-spacing: .06em;
     text-transform: uppercase;
-    color: #6b8198;
+    letter-spacing: .04em;
   }
-
-  .atractivo-preview-sticky-score {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  .atractivo-preview-sticky-percent {
-    font-size: 1.15rem;
-    font-weight: 800;
+  .atractivo-preview-compact-value {
+    margin: 2px 0 0;
     color: #183b5b;
-    line-height: 1;
+    font-size: 1rem;
+    font-weight: 800;
   }
-
-  .atractivo-preview-sticky-label {
+  .atractivo-preview-compact-label {
+    color: #52718f;
     font-size: .82rem;
     font-weight: 700;
-    color: #52718f;
   }
-
-  .atractivo-preview-sticky-bar {
-    height: 10px;
+  .atractivo-preview-compact-details {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #0f6a7f;
+    font-size: .78rem;
+    font-weight: 700;
+    padding: 4px 0;
+  }
+  .atractivo-preview-compact-details:hover,
+  .atractivo-preview-compact-details:focus { text-decoration: underline; }
+  .atractivo-preview-compact-delta {
+    display: inline-block;
+    margin-left: 7px;
+    color: #237a62;
+    font-size: .75rem;
+    font-weight: 700;
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  .atractivo-preview-compact-delta.is-visible { opacity: 1; }
+  .atractivo-preview-compact[data-attractiveness-state="malo"] {
+    border-color: var(--bs-danger-border-subtle);
+    background: var(--bs-danger-bg-subtle);
+  }
+  .atractivo-preview-compact[data-attractiveness-state="regular"] {
+    border-color: var(--bs-orange, #fd7e14);
+    background: color-mix(in srgb, var(--bs-orange, #fd7e14) 9%, white);
+  }
+  .atractivo-preview-compact[data-attractiveness-state="normal"] {
+    border-color: var(--bs-warning-border-subtle);
+    background: var(--bs-warning-bg-subtle);
+  }
+  .atractivo-preview-compact[data-attractiveness-state="bueno"] {
+    border-color: var(--bs-success-border-subtle);
+    background: var(--bs-success-bg-subtle);
+  }
+  .atractivo-preview-compact-level,
+  .atractivo-details-level {
+    display: inline-block;
+    margin-left: 6px;
     border-radius: 999px;
-    overflow: hidden;
-    background: #e7eef5;
-    margin-bottom: 8px;
+    padding: 2px 7px;
+    font-size: .7rem;
+    font-weight: 800;
   }
+  .atractivo-preview-compact[data-attractiveness-state="malo"] .atractivo-preview-compact-level,
+  .atractivo-details-panel[data-attractiveness-state="malo"] .atractivo-details-level { color: var(--bs-danger-text-emphasis); background: var(--bs-danger-bg-subtle); }
+  .atractivo-preview-compact[data-attractiveness-state="regular"] .atractivo-preview-compact-level,
+  .atractivo-details-panel[data-attractiveness-state="regular"] .atractivo-details-level { color: var(--bs-orange, #fd7e14); background: color-mix(in srgb, var(--bs-orange, #fd7e14) 12%, white); }
+  .atractivo-preview-compact[data-attractiveness-state="normal"] .atractivo-preview-compact-level,
+  .atractivo-details-panel[data-attractiveness-state="normal"] .atractivo-details-level { color: var(--bs-warning-text-emphasis); background: var(--bs-warning-bg-subtle); }
+  .atractivo-preview-compact[data-attractiveness-state="bueno"] .atractivo-preview-compact-level,
+  .atractivo-details-panel[data-attractiveness-state="bueno"] .atractivo-details-level { color: var(--bs-success-text-emphasis); background: var(--bs-success-bg-subtle); }
+  .atractivo-preview-details-list { margin: 10px 0 0; padding-left: 19px; }
+  .atractivo-preview-details-list li { margin-bottom: 4px; color: #536579; font-size: .86rem; }
 
-  .atractivo-preview-sticky-fill {
-    height: 100%;
-    width: 0%;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #58c5a2 0%, #7fd8bc 100%);
-    transition: width .28s ease, background .28s ease;
+  .salary-recommendation-trigger-wrap { margin-top: 4px; }
+  .salary-recommendation-trigger { border-radius: 10px; font-weight: 700; }
+  .salary-recommendation-help { margin: 6px 0 0; color: #6b7b8c; font-size: .8rem; }
+  .salary-recommendation-modal .modal-content { border: 0; border-radius: 16px; overflow: hidden; }
+  .salary-recommendation-modal .modal-header { background: #0f6a7f; color: #fff; }
+  .salary-recommendation-modal .modal-title { font-size: 1.1rem; font-weight: 800; }
+  .salary-recommendation-range {
+    margin: 4px 0 4px;
+    color: #145b74;
+    font-size: 1.55rem;
+    font-weight: 800;
   }
-
-  .atractivo-preview-sticky-reason {
-    margin: 0;
-    font-size: .82rem;
-    color: #496581;
-    line-height: 1.35;
+  .salary-recommendation-period { margin: 0; color: #607286; font-size: .9rem; }
+  .salary-recommendation-intro { color: #43566b; line-height: 1.55; }
+  .salary-recommendation-factors { margin: 7px 0 0; padding-left: 20px; }
+  .salary-recommendation-factors li { margin-bottom: 4px; color: #536579; }
+  .salary-recommendation-note {
+    margin-top: 14px;
+    border-radius: 10px;
+    background: #fff7e8;
+    color: #6d5532;
+    font-size: .88rem;
+    line-height: 1.45;
+    padding: 10px 11px;
+  }
+  .salary-recommendation-passaje {
+    margin-top: 14px;
+    border-top: 1px solid #e4ebf2;
+    padding-top: 12px;
+    color: #536579;
+    font-size: .86rem;
+    line-height: 1.45;
   }
 
   .public-form-card {
     border: 1px solid #d6e3f0;
-    border-radius: 16px;
+    border-radius: 18px;
     background: linear-gradient(180deg, #fdfefe 0%, #fbfdff 100%);
-    padding: 12px;
+    padding: clamp(14px, 2vw, 20px);
+    box-shadow: 0 8px 20px rgba(28, 67, 103, .045);
+    scroll-margin-top: 18px;
   }
 
   .public-form-card-header {
@@ -234,7 +305,7 @@
 
   .public-form-card-title {
     margin: 0;
-    font-size: .99rem;
+    font-size: clamp(1rem, 1.6vw, 1.08rem);
     font-weight: 700;
     color: var(--cl-text-primary);
     letter-spacing: .01em;
@@ -260,6 +331,7 @@
     font-size: .84rem;
     font-weight: 700;
     color: #3f587b;
+    line-height: 1.3;
   }
 
   .public-field-hint {
@@ -285,7 +357,7 @@
 
   .public-choice-item {
     margin: 0;
-    min-height: 32px;
+    min-height: 42px;
     border: 1px solid #d4e0ed;
     border-radius: 10px;
     background: #f8fbff;
@@ -296,6 +368,7 @@
     font-size: .83rem;
     color: #27405e;
     cursor: pointer;
+    touch-action: manipulation;
     transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
   }
 
@@ -316,6 +389,15 @@
     background: #e7f2fb;
     color: #1f507b;
     box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
+  }
+
+  .public-choice-item input[type="checkbox"],
+  .public-choice-item input[type="radio"] {
+    width: 1.12rem;
+    height: 1.12rem;
+    flex: 0 0 auto;
+    margin: 0;
+    accent-color: #167b91;
   }
 
   .public-experience-grid {
@@ -683,7 +765,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 34px;
+    width: 100%;
+    min-height: 42px;
     border: 1px solid #dbe4ef;
     border-radius: 10px;
     background: #f8fbff;
@@ -692,6 +775,8 @@
     font-size: .87rem;
     font-weight: 600;
     cursor: pointer;
+    text-align: center;
+    touch-action: manipulation;
     transition: all 0.15s ease;
   }
 
@@ -712,6 +797,13 @@
 
   .public-segmented-item input[type="radio"]:focus + span {
     box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
+  }
+
+  .public-segmented-item input[type="radio"]:focus-visible + span,
+  .public-choice-item:has(input:focus-visible),
+  .public-experience-card:has(input:focus-visible) {
+    outline: 3px solid rgba(42, 143, 156, .28);
+    outline-offset: 2px;
   }
 
   .public-segmented-item span:active {
@@ -821,6 +913,21 @@
     cursor: pointer;
   }
 
+  .public-envejeciente-alternative {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid #d8e3ee;
+  }
+
+  .public-envejeciente-alternative-label {
+    margin: 0 0 7px;
+    color: #60758a;
+    font-size: .72rem;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+
   .public-envejeciente-acomp-card .form-check-input {
     margin-top: 2px;
     flex: 0 0 auto;
@@ -879,8 +986,8 @@
       padding: 9px;
     }
     .public-segmented-item span {
-      min-height: 32px;
-      padding: 4px 8px;
+      min-height: 44px;
+      padding: 7px 8px;
       font-size: .84rem;
       line-height: 1.1;
     }
@@ -900,33 +1007,8 @@
       text-align: center;
     }
 
-    .atractivo-preview-sticky {
-      position: fixed;
-      left: 10px;
-      right: 10px;
-      bottom: max(10px, env(safe-area-inset-bottom));
-      top: auto;
-      z-index: 1040;
-      border-radius: 16px;
-      padding: 10px 12px;
-      box-shadow: 0 16px 34px rgba(15, 23, 42, 0.16);
-    }
-
-    .atractivo-preview-sticky-head {
-      margin-bottom: 6px;
-    }
-
-    .atractivo-preview-sticky-kicker {
-      font-size: .7rem;
-    }
-
-    .atractivo-preview-sticky-percent {
-      font-size: 1.02rem;
-    }
-
-    .atractivo-preview-sticky-reason {
-      font-size: .76rem;
-    }
+    .atractivo-preview-compact { align-items: flex-start; }
+    .atractivo-preview-compact-details { padding-top: 1px; }
   }
 
   @media (max-width: 460px) {
@@ -935,24 +1017,69 @@
     .public-choice-grid--funciones,
     .public-choice-grid--areas_comunes { grid-template-columns: 1fr; }
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .public-choice-item,
+    .public-experience-card,
+    .public-plan-card-body,
+    .public-segmented-item span,
+    .public-home-structure-wrap,
+    .atractivo-preview-compact-delta {
+      transition: none;
+    }
+  }
+
+  @media (max-width: 767px) {
+    .atractivo-preview-compact {
+      position: fixed;
+      left: 10px;
+      right: 10px;
+      bottom: max(10px, env(safe-area-inset-bottom));
+      z-index: 1040;
+      margin: 0;
+      border-radius: 14px;
+      box-shadow: 0 14px 30px rgba(15, 23, 42, .16);
+    }
+  }
 </style>
 
 <div class="public-form-sections">
   {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
-  <div id="atractivoPreviewSticky" class="atractivo-preview-sticky is-hidden" aria-live="polite" aria-hidden="true">
-    <div class="atractivo-preview-sticky-head">
+  <div id="atractivoPreviewBox" class="atractivo-preview-compact d-none" aria-live="polite" aria-hidden="true">
+    <div class="atractivo-preview-compact-copy">
+      <p class="atractivo-preview-compact-kicker">Atractivo estimado</p>
       <div>
-        <p class="atractivo-preview-sticky-kicker">Atractivo estimado</p>
-        <div class="atractivo-preview-sticky-score">
-          <span id="atractivoPreviewStickyPercent" class="atractivo-preview-sticky-percent">0%</span>
-          <span id="atractivoPreviewStickyLabel" class="atractivo-preview-sticky-label">Completa el formulario</span>
+        <span id="atractivoPreviewPercent" class="atractivo-preview-compact-value">0/100</span>
+        <span id="atractivoPreviewLabel" class="atractivo-preview-compact-label">—</span>
+        <span id="atractivoPreviewLevel" class="atractivo-preview-compact-level">—</span>
+        <span id="atractivoPreviewDelta" class="atractivo-preview-compact-delta" aria-live="polite"></span>
+      </div>
+      <span id="atractivoPreviewStatus" class="visually-hidden">Calculando...</span>
+    </div>
+    <button type="button" class="atractivo-preview-compact-details" id="atractivoPreviewDetailsBtn" hidden>Ver detalles</button>
+  </div>
+  <div class="modal fade" id="atractivoPreviewDetailsModal" tabindex="-1" aria-labelledby="atractivoPreviewDetailsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 class="modal-title fs-5" id="atractivoPreviewDetailsModalLabel">Detalles del atractivo</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+        </div>
+        <div class="modal-body">
+          <div id="atractivoDetailsPanel" class="atractivo-details-panel">
+            <p class="mb-1"><strong id="atractivoDetailsScore">—</strong> <span id="atractivoDetailsLabel"></span><span id="atractivoDetailsLevel" class="atractivo-details-level">—</span></p>
+          </div>
+          <div id="atractivoPositiveWrap" class="d-none mt-3">
+            <div class="fw-semibold">Favorece</div>
+            <ul class="atractivo-preview-details-list" id="atractivoPositiveReasons"></ul>
+          </div>
+          <div id="atractivoNegativeWrap" class="d-none mt-3">
+            <div class="fw-semibold">Reduce atractivo</div>
+            <ul class="atractivo-preview-details-list" id="atractivoNegativeReasons"></ul>
+          </div>
         </div>
       </div>
     </div>
-    <div class="atractivo-preview-sticky-bar" aria-hidden="true">
-      <div id="atractivoPreviewStickyBar" class="atractivo-preview-sticky-fill"></div>
-    </div>
-    <p id="atractivoPreviewStickyReason" class="atractivo-preview-sticky-reason">El preview se calcula con los datos actuales del backend.</p>
   </div>
   {% endif %}
 
@@ -1011,10 +1138,10 @@
 
         <div class="public-field-hint mb-2">Primero selecciona el tipo principal y luego la modalidad específica.</div>
 
-        <div class="public-segmented" id="modalidad_grupo_wrap">
+        <div class="public-segmented" id="modalidad_grupo_wrap" role="radiogroup" aria-required="true">
           {% for group_value, group_label in _modalidad_grupos %}
             <label class="public-segmented-item">
-              <input type="radio" name="modalidad_grupo" value="{{ group_value }}" required aria-required="true" {% if _modalidad_group_value == group_value %}checked{% endif %}>
+              <input type="radio" name="modalidad_grupo" value="{{ group_value }}" aria-required="false" {% if _modalidad_group_value == group_value %}checked{% endif %}>
               <span>{{ group_label }}</span>
             </label>
           {% endfor %}
@@ -1047,7 +1174,7 @@
           <div class="invalid-feedback d-block">{{ form.modalidad_trabajo.errors[0] }}</div>
         {% endif %}
       </div>
-      <div class="public-field public-full" id="wrap_horario_inteligente" style="{{ '' if _modalidad_group_value else 'display:none;' }}">
+      <div class="public-field public-full" id="wrap_horario_inteligente" style="{{ '' if (_modalidad_group_value and _modalidad_specific_value) else 'display:none;' }}">
         {% if form.horario is defined %}
           {{ form.horario(class='form-control d-none' ~ (' is-invalid' if form.horario.errors else ''), id='horario_hidden') }}
         {% else %}
@@ -1111,8 +1238,8 @@
       {% if form.experiencia is defined %}
         <div class="public-field public-full" id="wrap_experiencia">
           <label class="public-field-label" for="{{ form.experiencia.id }}">{{ form.experiencia.label.text }}</label>
-          {{ form.experiencia(class='form-select d-none' ~ (' is-invalid' if form.experiencia.errors else '')) }}
-          <div class="public-experience-grid{% if form.experiencia.errors %} is-invalid{% endif %}" role="radiogroup" aria-describedby="experiencia_hint" aria-label="{{ form.experiencia.label.text }}">
+          {{ form.experiencia(class='form-select d-none' ~ (' is-invalid' if form.experiencia.errors else ''), required=False, aria_required='false') }}
+          <div class="public-experience-grid{% if form.experiencia.errors %} is-invalid{% endif %}" role="radiogroup" aria-required="true" aria-describedby="experiencia_hint" aria-label="{{ form.experiencia.label.text }}">
             {% for value, label in form.experiencia.choices %}
               <label class="public-experience-card">
                 <input type="radio" name="experiencia_visual" value="{{ value }}"{% if form.experiencia.data == value %} checked{% endif %}>
@@ -1161,7 +1288,8 @@
             </div>
           </div>
           {{ render_field(form.envejeciente_responsabilidades, wrapper_class='public-full', wrapper_id='wrap_envejeciente_responsabilidades') }}
-          <div class="public-field public-full" id="wrap_envejeciente_solo_acompanamiento" style="display:none;">
+          <div class="public-field public-full public-envejeciente-alternative" id="wrap_envejeciente_solo_acompanamiento" style="display:none;">
+            <p class="public-envejeciente-alternative-label">Alternativa</p>
             <label class="public-envejeciente-acomp-card">
               {{ form.envejeciente_solo_acompanamiento(class='form-check-input') }}
               <span>La domestica no realizara higiene, panales, alimentacion ni medicamentos; solo acompanamiento o supervision.</span>
@@ -1319,37 +1447,14 @@
     </header>
     <div class="public-fields-grid public-comp-grid">
       {{ render_field(form.sueldo, hint='Monto estimado en pesos dominicanos.') }}
-      {% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
       <div class="public-field public-full">
-        <div id="salarySuggestionBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
-          <p class="public-smart-warning-title">Sueldo sugerido</p>
-          <p class="public-smart-warning-text mb-1" id="salarySuggestionRange"></p>
-          <p class="public-smart-warning-text mb-1" id="salarySuggestionStatus"></p>
-          <div class="public-smart-warning-text mb-1" id="salarySuggestionReasons"></div>
-          <div class="public-smart-warning-text d-none" id="salarySuggestionWarning"></div>
-          <div class="public-smart-warning-actions mt-2">
-            <button type="button" class="btn btn-sm btn-outline-primary" id="salarySuggestionUseBtn">Usar sueldo sugerido</button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="salarySuggestionManualBtn">Escribir otro monto</button>
-          </div>
+        {% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
+        <div class="salary-recommendation-trigger-wrap">
+          <button type="button" class="btn btn-outline-primary salary-recommendation-trigger" id="salaryRecommendationBtn" disabled aria-disabled="true">Ver recomendación de sueldo</button>
+          <p class="salary-recommendation-help" id="salaryRecommendationHelp">Completa las condiciones principales del empleo para ver una recomendación.</p>
         </div>
+        {% endif %}
       </div>
-      {% endif %}
-      {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
-      <div class="public-field public-full">
-        <div id="atractivoPreviewBox" class="public-smart-warning d-none" aria-live="polite" aria-hidden="true">
-          <p class="public-smart-warning-title">Atractivo de la solicitud</p>
-          <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-            <div class="fw-semibold" id="atractivoPreviewPercent">0%</div>
-            <div class="small text-muted" id="atractivoPreviewLabel">—</div>
-          </div>
-          <div class="progress mb-2" role="progressbar" aria-label="Score de atractivo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-            <div id="atractivoPreviewBar" class="progress-bar bg-info" style="width: 0%;"></div>
-          </div>
-          <div class="small text-muted mb-2" id="atractivoPreviewStatus">Completa el formulario para ver el score.</div>
-          <ul class="salary-suggest-list mb-0" id="atractivoPreviewReasons"></ul>
-        </div>
-      </div>
-      {% endif %}
 
       <div class="public-field" id="wrap_pasaje_mode">
         <label class="public-field-label">Pasaje</label>
@@ -1391,6 +1496,45 @@
   </section>
 
 </div>
+
+{% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
+<div class="modal fade salary-recommendation-modal" id="salaryRecommendationModal" tabindex="-1" aria-labelledby="salaryRecommendationModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title" id="salaryRecommendationModalLabel">Orientación de sueldo</h2>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <p class="salary-recommendation-intro">Tomando en cuenta las condiciones indicadas en tu solicitud, este rango resulta más adecuado para la carga del empleo.</p>
+        <div id="salaryRecommendationCurrentWrap" class="d-none mb-3">
+          <strong>Tu sueldo actual:</strong> <span id="salaryRecommendationCurrent"></span>
+        </div>
+        <div>
+          <div class="small text-uppercase text-muted fw-semibold">Rango orientativo recomendado</div>
+          <p class="salary-recommendation-range" id="salaryRecommendationRange"></p>
+          <p class="salary-recommendation-period">mensuales</p>
+        </div>
+        <div class="mt-3">
+          <div class="fw-semibold">Factores considerados</div>
+          <ul class="salary-recommendation-factors" id="salaryRecommendationFactors"></ul>
+        </div>
+        <div class="salary-recommendation-note d-none" id="salaryRecommendationWarning"></div>
+        <div class="salary-recommendation-passaje">
+          <strong>Recomendamos incluir ayuda de pasaje.</strong>
+          <div>Siempre que sea posible, recomendamos ofrecer una ayuda de transporte adicional al sueldo.</div>
+          <div>La ayuda de pasaje no sustituye el sueldo recomendado. Se considera un beneficio adicional.</div>
+        </div>
+        <div class="alert alert-info d-none mt-3 mb-0" id="salaryRecommendationUnavailable" role="status"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Mantener mi sueldo</button>
+        <button type="button" class="btn btn-primary d-none" id="salaryRecommendationUseBtn">Usar sueldo recomendado</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 
 <script data-admin-pjax-replay="1">
 (function () {
@@ -1443,6 +1587,14 @@
     function byId(id) {
       if (!id) return null;
       return hostForm.querySelector('#' + id) || (root && root.querySelector && root.querySelector('#' + id)) || document.getElementById(id);
+    }
+
+    function getModalInstance(node) {
+      if (!node || !window.bootstrap || !window.bootstrap.Modal) return null;
+      if (typeof window.bootstrap.Modal.getOrCreateInstance === 'function') {
+        return window.bootstrap.Modal.getOrCreateInstance(node);
+      }
+      return new window.bootstrap.Modal(node);
     }
 
     function stripAccents(v) {
@@ -1616,6 +1768,16 @@
       if (tipoChecked) tipo = norm(tipoChecked.value);
       var solo = hostForm.querySelector('input[name="envejeciente_solo_acompanamiento"]');
       var isEncamado = selected && tipo === 'encamado';
+      var resp = hostForm.querySelectorAll('input[name="envejeciente_responsabilidades"]');
+      var hasResponsibility = false;
+      for (var r = 0; r < resp.length; r++) {
+        if (resp[r].checked) { hasResponsibility = true; break; }
+      }
+      if (solo && solo.checked) {
+        for (var s = 0; s < resp.length; s++) resp[s].checked = false;
+      } else if (hasResponsibility && solo) {
+        solo.checked = false;
+      }
       var showResp = isEncamado && !(solo && solo.checked);
       if (infoIndWrap) infoIndWrap.style.display = (selected && tipo === 'independiente') ? '' : 'none';
       if (infoEncWrap) infoEncWrap.style.display = isEncamado ? '' : 'none';
@@ -1625,7 +1787,6 @@
         solo.checked = false;
       }
       if ((!selected || tipo !== 'encamado') && fromUserEvent) {
-        var resp = hostForm.querySelectorAll('input[name="envejeciente_responsabilidades"]');
         for (var j = 0; j < resp.length; j++) resp[j].checked = false;
       }
       if (!selected && fromUserEvent) {
@@ -1723,6 +1884,12 @@
       if (dOut && Object.prototype.hasOwnProperty.call(item, 'dOut')) dOut.value = item.dOut || '';
       if (key) key.value = item.key || '';
       if (txt) txt.value = item.overrideText || '';
+      // Programmatic value assignment does not emit browser events. Notify
+      // the shared Vue controller after the suggestion becomes canonical so
+      // its progress/errors and the real FormData payload are recalculated.
+      [dias, hIn, hOut, dIn, dOut].forEach(function (node) {
+        if (node) node.dispatchEvent(new Event('change', { bubbles: true }));
+      });
     }
 
     function syncHorarioSuggestions(fromUserEvent) {
@@ -1783,6 +1950,8 @@
     function syncHorarioInteligente(fromUserEvent) {
       var groupNode = hostForm.querySelector('input[name="modalidad_grupo"]:checked');
       var group = groupNode ? norm(groupNode.value) : '';
+      var specificNode = byId('modalidad_especifica_select');
+      var specific = specificNode ? norm(specificNode.value) : '';
       var horarioWrap = byId('wrap_horario_inteligente');
       var salidaWrap = byId('horario_salida_diaria_wrap');
       var dormidaWrap = byId('horario_con_dormida_wrap');
@@ -1795,11 +1964,12 @@
       var dOut = byId('horario_dormida_salida');
       var suggestionText = byId('horario_sugerencia_text');
       var hasGroup = !!group;
+      var hasSpecific = !!specific;
       var isDormida = (group === 'con_dormida');
       var isSalida = (group === 'con_salida_diaria');
 
-      if (horarioWrap) horarioWrap.style.display = hasGroup ? '' : 'none';
-      if (!hasGroup) {
+      if (horarioWrap) horarioWrap.style.display = (hasGroup && hasSpecific) ? '' : 'none';
+      if (!hasGroup || !hasSpecific) {
         if (salidaWrap) salidaWrap.style.display = 'none';
         if (dormidaWrap) dormidaWrap.style.display = 'none';
         if (horarioHidden) horarioHidden.value = '';
@@ -1869,24 +2039,24 @@
           { key: "sd_ls_8_5_s1", label: "Lunes a viernes, 8:00 AM - 5:00 PM / sábado hasta 1:00 PM", dias: "Lunes a viernes / sábado hasta 1:00 PM", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Lunes a viernes 8:00 AM - 5:00 PM / sábado hasta 1:00 PM" }
         ],
         "Salida diaria - 1 día a la semana": [
-          { key: "sd_1_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
-          { key: "sd_1_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_1_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" }
+          { key: "sd_1_8_5", label: "1 día a la semana, 8:00 AM - 5:00 PM", dias: "1 día a la semana", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_1_8_4", label: "1 día a la semana, 8:00 AM - 4:00 PM", dias: "1 día a la semana", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_1_8_2", label: "1 día a la semana, 8:00 AM - 2:00 PM", dias: "1 día a la semana", hIn: "8:00 AM", hOut: "2:00 PM" }
         ],
         "Salida diaria - 2 días a la semana": [
-          { key: "sd_2_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
-          { key: "sd_2_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_2_8_2", label: "8:00 AM - 2:00 PM", hIn: "8:00 AM", hOut: "2:00 PM" }
+          { key: "sd_2_8_5", label: "2 días a la semana, 8:00 AM - 5:00 PM", dias: "2 días a la semana", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_2_8_4", label: "2 días a la semana, 8:00 AM - 4:00 PM", dias: "2 días a la semana", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_2_8_2", label: "2 días a la semana, 8:00 AM - 2:00 PM", dias: "2 días a la semana", hIn: "8:00 AM", hOut: "2:00 PM" }
         ],
         "Salida diaria - 3 días a la semana": [
-          { key: "sd_3_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
-          { key: "sd_3_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_3_7_3", label: "7:30 AM - 3:00 PM", hIn: "7:30 AM", hOut: "3:00 PM" }
+          { key: "sd_3_8_5", label: "3 días a la semana, 8:00 AM - 5:00 PM", dias: "3 días a la semana", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_3_8_4", label: "3 días a la semana, 8:00 AM - 4:00 PM", dias: "3 días a la semana", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_3_7_3", label: "3 días a la semana, 7:30 AM - 3:00 PM", dias: "3 días a la semana", hIn: "7:30 AM", hOut: "3:00 PM" }
         ],
         "Salida diaria - 4 días a la semana": [
-          { key: "sd_4_8_5", label: "8:00 AM - 5:00 PM", hIn: "8:00 AM", hOut: "5:00 PM" },
-          { key: "sd_4_8_4", label: "8:00 AM - 4:00 PM", hIn: "8:00 AM", hOut: "4:00 PM" },
-          { key: "sd_4_7_3", label: "7:30 AM - 3:00 PM", hIn: "7:30 AM", hOut: "3:00 PM" }
+          { key: "sd_4_8_5", label: "4 días a la semana, 8:00 AM - 5:00 PM", dias: "4 días a la semana", hIn: "8:00 AM", hOut: "5:00 PM" },
+          { key: "sd_4_8_4", label: "4 días a la semana, 8:00 AM - 4:00 PM", dias: "4 días a la semana", hIn: "8:00 AM", hOut: "4:00 PM" },
+          { key: "sd_4_7_3", label: "4 días a la semana, 7:30 AM - 3:00 PM", dias: "4 días a la semana", hIn: "7:30 AM", hOut: "3:00 PM" }
         ],
         "Salida diaria - fin de semana": [
           { key: "sd_fs_8_5", label: "Sábado y domingo, 8:00 AM - 5:00 PM", dias: "Sábado y domingo", hIn: "8:00 AM", hOut: "5:00 PM", overrideText: "Sábado y domingo, 8:00 AM - 5:00 PM" },
@@ -2791,6 +2961,7 @@
         if (show) {
           setRequiredActive(true);
           wrap.classList.remove('d-none');
+          wrap.setAttribute('aria-hidden', 'false');
           if (!animate) {
             wrap.classList.remove('is-hidden');
             return;
@@ -2802,9 +2973,10 @@
         }
 
         setRequiredActive(false);
-        clearHomeStructureValues();
-        syncOtherFields(false);
-        syncChoiceSelectedState();
+        // Keep the user's household details when they temporarily change
+        // functions. Disabled controls are excluded from POST validation,
+        // and restoring them prevents accidental data loss on mobile taps.
+        wrap.setAttribute('aria-hidden', 'true');
         if (!animate) {
           wrap.classList.add('is-hidden');
           wrap.classList.add('d-none');
@@ -2821,47 +2993,30 @@
         setVisible(!!needsHouseStructure, !!fromUserEvent);
       }
 
+      // The delegated form change handler below is the single event path for
+      // conditional blocks. A second listener here could schedule competing
+      // reveal animations on fast mobile taps and BFCache restores.
       sync(false);
       return { sync: sync };
     }
 
     function setupSalarySuggestion() {
       var salarySuggestionEnabled = {{ 'true' if config.get("SALARY_SUGGESTION_ENABLED", False) else 'false' }};
-      if (!salarySuggestionEnabled) return { sync: function () {} };
+      if (!salarySuggestionEnabled) return { sync: function () {}, buildPayload: null };
       {% if config.get("SALARY_SUGGESTION_ENABLED", False) %}
-      var box = byId('salarySuggestionBox');
-      var rangeNode = byId('salarySuggestionRange');
-      var statusNode = byId('salarySuggestionStatus');
-      var reasonsNode = byId('salarySuggestionReasons');
-      var warningNode = byId('salarySuggestionWarning');
-      var useBtn = byId('salarySuggestionUseBtn');
-      var manualBtn = byId('salarySuggestionManualBtn');
+      var recommendationBtn = byId('salaryRecommendationBtn');
+      var recommendationHelp = byId('salaryRecommendationHelp');
+      var modalNode = byId('salaryRecommendationModal');
+      var currentWrap = byId('salaryRecommendationCurrentWrap');
+      var currentNode = byId('salaryRecommendationCurrent');
+      var rangeNode = byId('salaryRecommendationRange');
+      var factorsNode = byId('salaryRecommendationFactors');
+      var warningNode = byId('salaryRecommendationWarning');
+      var unavailableNode = byId('salaryRecommendationUnavailable');
+      var useBtn = byId('salaryRecommendationUseBtn');
       var sueldoInput = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
-      if (!box || !rangeNode || !statusNode || !reasonsNode || !warningNode || !sueldoInput) return { sync: function () {} };
+      if (!recommendationBtn || !recommendationHelp || !modalNode || !currentWrap || !currentNode || !rangeNode || !factorsNode || !warningNode || !unavailableNode || !useBtn || !sueldoInput) return { sync: function () {}, buildPayload: null };
 
-      var timer = null;
-      function showBox() {
-        box.classList.remove('d-none');
-        box.setAttribute('aria-hidden', 'false');
-      }
-      function hideBox() {
-        box.classList.add('d-none');
-        box.setAttribute('aria-hidden', 'true');
-      }
-      function renderNoSuggest(msg) {
-        hideBox();
-        rangeNode.textContent = '';
-        statusNode.textContent = msg || '';
-        reasonsNode.textContent = '';
-        warningNode.textContent = '';
-        warningNode.classList.add('d-none');
-        if (useBtn) useBtn.classList.add('d-none');
-      }
-      function formatMoney(v) {
-        var n = parseInt(v || 0, 10);
-        if (!n) return "0";
-        return n.toLocaleString('en-US');
-      }
       function buildSolicitudSmartPayload() {
         var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
         var getVal = function (name) {
@@ -2905,100 +3060,93 @@
           areas_comunes: getAll('areas_comunes')
         };
       }
+      function hasRecommendationData() {
+        var payload = buildSolicitudSmartPayload();
+        var hasMainFunction = (payload.funciones || []).some(function (value) {
+          return ['limpieza', 'cocinar', 'lavar', 'planchar', 'ninos', 'envejeciente'].indexOf(value) !== -1;
+        });
+        if (!payload.modalidad_trabajo || !payload.horario || !hasMainFunction) return false;
+        if ((payload.funciones || []).indexOf('limpieza') !== -1 && (!payload.tipo_lugar || payload.adultos === '')) return false;
+        if ((payload.funciones || []).indexOf('ninos') !== -1 && payload.ninos === '' && !payload.edades_ninos) return false;
+        return true;
+      }
+      function formatMoney(value) {
+        var amount = parseInt(String(value || '').replace(/\D+/g, ''), 10);
+        return amount ? 'RD$' + amount.toLocaleString('en-US') : '';
+      }
+      function setButtonState() {
+        var ready = hasRecommendationData();
+        recommendationBtn.disabled = !ready;
+        recommendationBtn.setAttribute('aria-disabled', ready ? 'false' : 'true');
+        recommendationHelp.classList.toggle('d-none', ready);
+      }
       function fillWithSuggested(result) {
         if (!result || !result.suggested_min || !result.suggested_max) return;
         var useValue = Math.round((parseInt(result.suggested_min, 10) + parseInt(result.suggested_max, 10)) / 2);
-        if (!useValue || useValue <= 0) useValue = parseInt(result.suggested_min, 10);
+        if (!useValue || useValue <= 0) return;
         sueldoInput.value = String(useValue);
         sueldoInput.dispatchEvent(new Event('input', { bubbles: true }));
       }
-      function render(result) {
-        if (!result) return;
-        if (!result.can_suggest) {
-          renderNoSuggest(result.reason_no_suggestion || result.message || 'No disponible');
-          return;
-        }
-        showBox();
-        if (useBtn) useBtn.classList.remove('d-none');
-        var minText = 'RD$' + formatMoney(result.suggested_min || 0);
-        var maxText = 'RD$' + formatMoney(result.suggested_max || 0);
-        var factors = (result.public_reasons || []).slice(0, 3);
-        if (!factors.length) factors = ['Modalidad seleccionada'];
-
-        rangeNode.textContent = (
-          parseInt(result.suggested_min || 0, 10) === parseInt(result.suggested_max || 0, 10)
-            ? (minText + ' mensual')
-            : (minText + ' - ' + maxText + ' mensual')
-        );
-        rangeNode.className = 'salary-suggest-amount';
-
-        statusNode.innerHTML = '';
-        var includeValue = document.createElement('p');
-        includeValue.className = 'salary-suggest-value';
-        includeValue.textContent = 'Se recomienda ofrecer ayuda con el pasaje aparte.';
-        statusNode.appendChild(includeValue);
-
-        reasonsNode.innerHTML = '';
-        var factorsLabel = document.createElement('p');
-        factorsLabel.className = 'salary-suggest-label';
-        factorsLabel.textContent = 'Factores considerados:';
-        var list = document.createElement('ul');
-        list.className = 'salary-suggest-list';
-        for (var i = 0; i < factors.length; i++) {
-          var li = document.createElement('li');
-          li.textContent = factors[i];
-          list.appendChild(li);
-        }
-        var note = document.createElement('p');
-        note.className = 'salary-suggest-value';
-        note.style.marginTop = '8px';
-        note.textContent = 'Este rango puede facilitar encontrar personal disponible más rápido.';
-        reasonsNode.appendChild(factorsLabel);
-        reasonsNode.appendChild(list);
-        reasonsNode.appendChild(note);
-
-        var warnings = result.warnings || [];
-        warningNode.textContent = warnings.length ? warnings[0] : '';
-        warningNode.classList.toggle('d-none', !warnings.length);
-      }
-      function sync() {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(function () {
-          var d = buildSolicitudSmartPayload();
-          var q = new URLSearchParams();
-          Object.keys(d).forEach(function (k) {
-            var val = d[k];
-            if (Array.isArray(val)) {
-              for (var i = 0; i < val.length; i++) q.append(k, val[i]);
-            } else {
-              q.append(k, val || '');
-            }
-          });
-          fetch('/clientes/api/sueldo-sugerido?' + q.toString(), { method: 'GET', credentials: 'same-origin' })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (json) { render(json); })
-            .catch(function () { renderNoSuggest('No se pudo calcular la sugerencia en este momento.'); });
-        }, 260);
-      }
-      if (useBtn) useBtn.addEventListener('click', function () { sync(); });
-      if (manualBtn) manualBtn.addEventListener('click', function () { sueldoInput.focus(); });
-      if (useBtn) useBtn.addEventListener('click', function () {
-        var d = buildSolicitudSmartPayload();
-        var q = new URLSearchParams();
-        Object.keys(d).forEach(function (k) {
-          var val = d[k];
-          if (Array.isArray(val)) for (var i = 0; i < val.length; i++) q.append(k, val[i]);
-          else q.append(k, val || '');
+      recommendationBtn.addEventListener('click', function () {
+        if (recommendationBtn.disabled) return;
+        var data = buildSolicitudSmartPayload();
+        var query = new URLSearchParams();
+        Object.keys(data).forEach(function (key) {
+          var value = data[key];
+          if (Array.isArray(value)) value.forEach(function (item) { query.append(key, item); });
+          else query.append(key, value || '');
         });
-        fetch('/clientes/api/sueldo-sugerido?' + q.toString(), { method: 'GET', credentials: 'same-origin' })
-          .then(function (r) { return r.ok ? r.json() : null; })
-          .then(function (json) { if (json && json.can_suggest) fillWithSuggested(json); render(json); })
-          .catch(function () {});
+        recommendationBtn.disabled = true;
+        recommendationBtn.setAttribute('aria-disabled', 'true');
+        fetch('/clientes/api/sueldo-sugerido?' + query.toString(), { method: 'GET', credentials: 'same-origin' })
+          .then(function (response) { return response.ok ? response.json() : null; })
+          .then(function (result) {
+            setButtonState();
+            currentWrap.classList.toggle('d-none', !sueldoInput.value);
+            currentNode.textContent = formatMoney(sueldoInput.value);
+            rangeNode.textContent = '';
+            factorsNode.innerHTML = '';
+            warningNode.classList.add('d-none');
+            unavailableNode.classList.add('d-none');
+            useBtn.classList.add('d-none');
+            if (!result || !result.can_suggest) {
+              unavailableNode.textContent = (result && (result.reason_no_suggestion || result.message)) || 'No pudimos generar una recomendación con estas condiciones.';
+              unavailableNode.classList.remove('d-none');
+            } else {
+              var minimum = parseInt(result.suggested_min || 0, 10);
+              var maximum = parseInt(result.suggested_max || minimum, 10);
+              rangeNode.textContent = minimum === maximum ? formatMoney(minimum) : formatMoney(minimum) + ' – ' + formatMoney(maximum);
+              (result.public_reasons || []).slice(0, 5).forEach(function (factor) {
+                var item = document.createElement('li');
+                item.textContent = factor;
+                factorsNode.appendChild(item);
+              });
+              (result.warnings || []).slice(0, 1).forEach(function (warning) {
+                warningNode.textContent = warning;
+                warningNode.classList.remove('d-none');
+              });
+              useBtn.classList.remove('d-none');
+              useBtn.onclick = function () {
+                fillWithSuggested(result);
+                var modal = getModalInstance(modalNode);
+                if (modal) modal.hide();
+              };
+            }
+            var modal = getModalInstance(modalNode);
+            if (modal) modal.show();
+          })
+          .catch(function () {
+            setButtonState();
+            unavailableNode.textContent = 'No pudimos calcular la recomendación en este momento.';
+            unavailableNode.classList.remove('d-none');
+            var modal = getModalInstance(modalNode);
+            if (modal) modal.show();
+          });
       });
-      sync();
-      return { sync: sync, buildPayload: buildSolicitudSmartPayload };
+      setButtonState();
+      return { sync: setButtonState, buildPayload: buildSolicitudSmartPayload };
       {% endif %}
-      return { sync: function () {} };
+      return { sync: function () {}, buildPayload: null };
     }
 
     {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
@@ -3006,14 +3154,19 @@
       var box = byId('atractivoPreviewBox');
       var percentNode = byId('atractivoPreviewPercent');
       var labelNode = byId('atractivoPreviewLabel');
-      var barNode = byId('atractivoPreviewBar');
+      var levelNode = byId('atractivoPreviewLevel');
       var statusNode = byId('atractivoPreviewStatus');
-      var reasonsNode = byId('atractivoPreviewReasons');
-      var stickyBox = byId('atractivoPreviewSticky');
-      var stickyPercentNode = byId('atractivoPreviewStickyPercent');
-      var stickyLabelNode = byId('atractivoPreviewStickyLabel');
-      var stickyBarNode = byId('atractivoPreviewStickyBar');
-      var stickyReasonNode = byId('atractivoPreviewStickyReason');
+      var deltaNode = byId('atractivoPreviewDelta');
+      var detailsScoreNode = byId('atractivoDetailsScore');
+      var detailsLabelNode = byId('atractivoDetailsLabel');
+      var detailsLevelNode = byId('atractivoDetailsLevel');
+      var detailsPanel = byId('atractivoDetailsPanel');
+      var positiveWrap = byId('atractivoPositiveWrap');
+      var positiveNode = byId('atractivoPositiveReasons');
+      var negativeWrap = byId('atractivoNegativeWrap');
+      var negativeNode = byId('atractivoNegativeReasons');
+      var detailsBtn = byId('atractivoPreviewDetailsBtn');
+      var detailsModalNode = byId('atractivoPreviewDetailsModal');
       var payloadBuilder = sharedPayloadBuilder || function () {
         var selectedModalidad = hostForm.querySelector('#modalidad_trabajo_hidden');
         var sueldoNode = byId('{{ form.sueldo.id if form.sueldo is defined else "" }}');
@@ -3058,52 +3211,93 @@
           areas_comunes: getAll('areas_comunes')
         };
       };
-      if (!box || !percentNode || !labelNode || !barNode || !statusNode || !reasonsNode || !stickyBox || !stickyPercentNode || !stickyLabelNode || !stickyBarNode || !stickyReasonNode) {
+      if (!box || !percentNode || !labelNode || !levelNode || !statusNode || !deltaNode || !detailsScoreNode || !detailsLabelNode || !detailsLevelNode || !detailsPanel || !positiveWrap || !positiveNode || !negativeWrap || !negativeNode || !detailsBtn) {
         return { sync: function () {} };
       }
+      detailsBtn.addEventListener('click', function () {
+        var modal = getModalInstance(detailsModalNode);
+        if (modal) modal.show();
+      });
 
       var timer = null;
       var activeRequestSeq = 0;
       var currentController = null;
-      function scoreTone(score) {
-        if (score >= 90) return { barClass: 'bg-success', fill: 'linear-gradient(90deg, #2db784 0%, #7ad7b1 100%)' };
-        if (score >= 70) return { barClass: 'bg-info', fill: 'linear-gradient(90deg, #28a9cf 0%, #7ad5ef 100%)' };
-        if (score >= 60) return { barClass: 'bg-warning text-dark', fill: 'linear-gradient(90deg, #e6b44c 0%, #f5d78f 100%)' };
-        return { barClass: 'bg-danger', fill: 'linear-gradient(90deg, #d95a5a 0%, #f39b9b 100%)' };
+      var previousScore = null;
+      var deltaTimer = null;
+      function hasAttractivenessData(payload) {
+        return !!(payload && payload.modalidad_trabajo && payload.horario && Array.isArray(payload.funciones) && payload.funciones.length);
+      }
+      function visualState(score) {
+        if (score < 60) return { key: 'malo', label: 'Malo' };
+        if (score < 70) return { key: 'regular', label: 'Regular' };
+        if (score < 85) return { key: 'normal', label: 'Normal' };
+        return { key: 'bueno', label: 'Bueno' };
       }
       function showBox() {
         box.classList.remove('d-none');
         box.setAttribute('aria-hidden', 'false');
-        stickyBox.classList.remove('is-hidden');
-        stickyBox.setAttribute('aria-hidden', 'false');
+      }
+      function renderNeutral() {
+        showBox();
+        percentNode.textContent = '';
+        labelNode.textContent = 'Completa las condiciones para obtener una evaluación';
+        levelNode.textContent = 'Calculándose';
+        statusNode.textContent = 'Atractivo calculándose.';
+        box.removeAttribute('data-attractiveness-state');
+        detailsPanel.removeAttribute('data-attractiveness-state');
+        deltaNode.textContent = '';
+        deltaNode.classList.remove('is-visible');
+        detailsBtn.hidden = true;
+        detailsScoreNode.textContent = '—';
+        detailsLabelNode.textContent = '';
+        detailsLevelNode.textContent = 'Calculándose';
+        positiveWrap.classList.add('d-none');
+        negativeWrap.classList.add('d-none');
       }
       function render(result) {
         if (!result) return;
         var score = parseFloat(result.score || 0);
-        var scoreText = score.toFixed(1);
+        var scoreText = score.toFixed(0);
+        var state = visualState(score);
         var motivos = Array.isArray(result.motivos) ? result.motivos.slice(0, 4) : [];
-        var tone = scoreTone(score);
-        var mainReason = motivos.length && motivos[0] && motivos[0].label ? motivos[0].label : 'El preview se calcula con los datos actuales del backend.';
+        var previous = previousScore;
+        previousScore = score;
         showBox();
-        percentNode.textContent = scoreText + '%';
+        percentNode.textContent = scoreText + '/100';
         labelNode.textContent = result.label || '—';
-        barNode.style.width = scoreText + '%';
-        barNode.setAttribute('aria-valuenow', scoreText);
-        barNode.className = 'progress-bar ' + tone.barClass;
-        statusNode.textContent = 'Score calculado por backend.';
-        reasonsNode.innerHTML = '';
+        levelNode.textContent = state.label;
+        box.setAttribute('data-attractiveness-state', state.key);
+        statusNode.textContent = 'Score actualizado por backend.';
+        detailsScoreNode.textContent = scoreText + '/100';
+        detailsLabelNode.textContent = result.label || '';
+        detailsLevelNode.textContent = state.label;
+        detailsPanel.setAttribute('data-attractiveness-state', state.key);
+        positiveNode.innerHTML = '';
+        negativeNode.innerHTML = '';
+        var positiveCount = 0;
+        var negativeCount = 0;
         for (var i = 0; i < motivos.length; i++) {
           var txt = motivos[i] && motivos[i].label ? motivos[i].label : '';
           if (!txt) continue;
           var li = document.createElement('li');
           li.textContent = txt;
-          reasonsNode.appendChild(li);
+          if (motivos[i].kind === 'penalty') {
+            negativeNode.appendChild(li);
+            negativeCount += 1;
+          } else {
+            positiveNode.appendChild(li);
+            positiveCount += 1;
+          }
         }
-        stickyPercentNode.textContent = scoreText + '%';
-        stickyLabelNode.textContent = result.label || '—';
-        stickyBarNode.style.width = scoreText + '%';
-        stickyBarNode.style.background = tone.fill;
-        stickyReasonNode.textContent = mainReason;
+        detailsBtn.hidden = !motivos.length;
+        positiveWrap.classList.toggle('d-none', !positiveCount);
+        negativeWrap.classList.toggle('d-none', !negativeCount);
+        if (previous !== null && previous !== score) {
+          deltaNode.textContent = score > previous ? 'Mejoró' : 'Disminuyó';
+          deltaNode.classList.add('is-visible');
+          if (deltaTimer) clearTimeout(deltaTimer);
+          deltaTimer = setTimeout(function () { deltaNode.classList.remove('is-visible'); }, 1800);
+        }
       }
       function sync() {
         if (timer) clearTimeout(timer);
@@ -3113,6 +3307,10 @@
           if (currentController && currentController.abort) currentController.abort();
           currentController = (typeof AbortController !== 'undefined') ? new AbortController() : null;
           var d = payloadBuilder();
+          if (!hasAttractivenessData(d)) {
+            renderNeutral();
+            return;
+          }
           var q = new URLSearchParams();
           Object.keys(d).forEach(function (k) {
             var val = d[k];
@@ -3298,7 +3496,7 @@
           syncTipoLugarVisualState();
         }
       }
-      if (name === 'envejeciente_tipo_cuidado' || name === 'envejeciente_solo_acompanamiento') {
+      if (name === 'envejeciente_tipo_cuidado' || name === 'envejeciente_solo_acompanamiento' || name === 'envejeciente_responsabilidades') {
         syncEnvejecienteSection(true);
       }
       if (name === 'pisos_selector' || name === 'pasaje_mode') {
@@ -3421,6 +3619,30 @@
       for (var mi = 0; mi < allMasterControls.length; mi++) {
         allMasterControls[mi].checked = false;
       }
+    });
+
+    function reconcileConditionalState() {
+      if (homeStructureCtrl && homeStructureCtrl.sync) homeStructureCtrl.sync(false);
+      syncOtherFields(false);
+      syncChoiceSelectedState();
+      syncNinosRules(false);
+      syncAdultosRules(false);
+      syncEnvejecienteSection(false);
+      syncPisosAndPasaje();
+      syncModalidadGuided(false);
+      syncHorarioSuggestions(false);
+      syncHorarioInteligente(false);
+      syncTipoLugarVisualState();
+      if (ninosLimpiezaSmartAlertCtrl && ninosLimpiezaSmartAlertCtrl.sync) ninosLimpiezaSmartAlertCtrl.sync();
+      if (mascotaGuidanceCtrl && mascotaGuidanceCtrl.sync) mascotaGuidanceCtrl.sync();
+    }
+
+    // iOS Safari can restore a page from BFCache without rerunning the
+    // initialization script. Re-read the actual controls so visual state,
+    // disabled/required state, and validation dependencies cannot drift.
+    window.addEventListener('pageshow', reconcileConditionalState);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') reconcileConditionalState();
     });
 
     cleanBanosDisplayValue();

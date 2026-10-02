@@ -4,3 +4,17 @@
 {% include 'clientes/_solicitud_plan_styles.html' %}
 {% include 'clientes/_solicitud_plan_selection_content.html' %}
 {% endblock %}
+{% block scripts %}
+{% if request.args.get('public_saved') == '1' %}
+<script>
+(function () {
+  try {
+    ['v2', 'v3'].forEach(function (version) {
+      sessionStorage.removeItem('domestica.public-form.publicSolicitudForm.draft.' + version);
+      sessionStorage.removeItem('domestica.public-form.publicSolicitudNuevaForm.draft.' + version);
+    });
+  } catch (_) {}
+})();
+</script>
+{% endif %}
+{% endblock %}

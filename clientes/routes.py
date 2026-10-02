@@ -103,6 +103,7 @@ from utils.modalidad import (
     canonicalize_modalidad_trabajo,
     split_modalidad_for_ui,
     should_preserve_existing_modalidad_on_edit,
+    validate_modalidad_context,
 )
 from utils.sueldo_sugerido import analyze_salary_suggestion
 from utils.codigo_solicitud import compose_codigo_solicitud
@@ -1499,6 +1500,30 @@ def _public_new_link_serializer() -> URLSafeTimedSerializer:
 def _public_new_link_max_age_seconds() -> int:
     days = _public_solicitud_token_max_age_days(link_type="nuevo")
     return int(timedelta(days=days).total_seconds())
+
+
+def _public_modalidad_context_is_consistent(form_obj=None) -> bool:
+    """Reject any mismatch among group, specific option, and hidden value."""
+    if request.method != "POST":
+        return True
+    # A duplicate parameter is ambiguous and must never be resolved by taking
+    # the first value. This covers both visible controls and hidden fields.
+    for name in ("modalidad_grupo", "modalidad_especifica", "modalidad_trabajo"):
+        if len(request.form.getlist(name)) > 1:
+            return False
+    group = str(request.form.get("modalidad_grupo") or "").strip()
+    specific = str(request.form.get("modalidad_especifica") or "").strip()
+    canonical = str(request.form.get("modalidad_trabajo") or "").strip()
+    other = str(request.form.get("modalidad_otro_text") or "").strip()
+    # Preserve the form's own required-field validation (and lightweight test
+    # doubles that do not model the guided controls). Once any guided value is
+    # submitted, the complete tuple is authoritative and must validate here.
+    if not group and not specific and not canonical and not other:
+        return True
+    valid, _label, _reason = validate_modalidad_context(
+        group, specific, canonical, other_value=other
+    )
+    return valid
 
 
 _PUBLIC_NEW_TOKEN_USAGE_TABLE_READY = False
@@ -3498,6 +3523,7 @@ def _apply_public_solicitud_fields(
         dormida_entrada=request.form.get("horario_dormida_entrada"),
         dormida_salida=request.form.get("horario_dormida_salida"),
         horario_legacy=getattr(getattr(form, "horario", None), "data", ""),
+        require_structured=True,
     )
 
     selected_funciones = _clean_list(getattr(form, 'funciones', type('x', (object,), {'data': []})).data)
@@ -4228,6 +4254,7 @@ def nueva_solicitud():
                 dormida_entrada=request.form.get("horario_dormida_entrada"),
                 dormida_salida=request.form.get("horario_dormida_salida"),
                 horario_legacy=getattr(form, "horario", type("x", (object,), {"data": ""})).data,
+                require_structured=True,
             )
 
             ciudad = _first_form_data(form, 'ciudad', 'ciudad_oferta', 'ciudad_cliente', default='')
@@ -8048,6 +8075,9 @@ def solicitud_publica_nueva_token(token):
     terms_evidence_version = "v1"
 
     is_valid_submit = form.validate_on_submit()
+    if request.method == "POST" and not _public_modalidad_context_is_consistent():
+        form.modalidad_trabajo.errors.append("La modalidad específica no corresponde a la modalidad seleccionada.")
+        is_valid_submit = False
     if is_valid_submit:
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
         blocked_ip_day, _ = enforce_business_limit(
@@ -8296,10 +8326,10 @@ def solicitud_publica_nueva_token(token):
                     requested_by=f"public_new_cliente:{int(state.get('cliente_id') or 0)}",
                 )
                 if share_code:
-                    return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token))
+                    return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token, public_saved='1'))
                 if request.endpoint == "clientes.solicitud_publica_nueva_short":
-                    return redirect(url_for('clientes.solicitud_publica_nueva_short_plan', token=token))
-                return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token))
+                    return redirect(url_for('clientes.solicitud_publica_nueva_short_plan', token=token, public_saved='1'))
+                return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token, public_saved='1'))
 
             usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
             if usage_after_fail is not None:
@@ -8605,7 +8635,11 @@ def solicitud_publica(token):
     if hasattr(form, "token"):
         form.token.data = token
 
-    if form.validate_on_submit():
+    is_valid_submit = form.validate_on_submit()
+    if request.method == "POST" and not _public_modalidad_context_is_consistent():
+        form.modalidad_trabajo.errors.append("La modalidad específica no corresponde a la modalidad seleccionada.")
+        is_valid_submit = False
+    if is_valid_submit:
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
         blocked_ip_day, _ = enforce_business_limit(
             cache_obj=cache,
@@ -8897,10 +8931,10 @@ def solicitud_publica(token):
             )
             flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente. Falta elegir el plan.", "success")
             if share_code:
-                return redirect(url_for('clientes.solicitud_publica_plan', token=token))
+                return redirect(url_for('clientes.solicitud_publica_plan', token=token, public_saved='1'))
             if request.endpoint == "clientes.solicitud_publica_short":
-                return redirect(url_for('clientes.solicitud_publica_short_plan', token=token))
-            return redirect(url_for('clientes.solicitud_publica_plan', token=token))
+                return redirect(url_for('clientes.solicitud_publica_short_plan', token=token, public_saved='1'))
+            return redirect(url_for('clientes.solicitud_publica_plan', token=token, public_saved='1'))
         usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
         if usage_after_fail is not None:
             return render_template(
