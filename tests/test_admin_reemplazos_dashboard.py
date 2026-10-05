@@ -330,6 +330,12 @@ def test_reemplazos_dashboard_accion_gestionar_apunta_a_detalle_y_publicar_reusa
     with flask_app.app_context():
         _ensure_tables()
         repl_id, solicitud_id = _seed_case(closed=False, motivo="Cliente pidió reemplazo urgente")
+        repl = Reemplazo.query.get(repl_id)
+        sol = Solicitud.query.get(solicitud_id)
+        assert repl is not None
+        assert sol is not None
+        repl.nota_adicional = "SECRETO ADMIN: no publicar"
+        db.session.commit()
 
     _login_staff(client)
 
@@ -349,17 +355,17 @@ def test_reemplazos_dashboard_accion_gestionar_apunta_a_detalle_y_publicar_reusa
     assert texto_repl
     assert "Motivo del reemplazo:" not in texto_repl
     assert "Nota importante:" not in texto_repl
+    assert "Cliente pidió reemplazo urgente" not in texto_repl
+    assert "SECRETO ADMIN: no publicar" not in texto_repl
 
     with flask_app.app_context():
         sol = Solicitud.query.get(solicitud_id)
         assert sol is not None
-        texto_sol = admin_routes._admin_build_order_text_for_copiar(
-            sol,
-            label_maps=admin_routes._admin_copiar_form_label_maps(),
-            include_nota_cliente=False,
+        texto_sol = admin_routes._admin_build_public_copy_text(
+            sol, label_maps=admin_routes._admin_copiar_form_label_maps()
         ).strip()
     assert texto_sol
-    assert texto_sol in texto_repl
+    assert texto_repl == texto_sol
 
 
 def test_reemplazo_publicacion_texto_no_inventa_y_dashboard_marca_incompleta():

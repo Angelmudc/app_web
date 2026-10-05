@@ -20052,11 +20052,7 @@ def _reemplazo_publicacion_texto(*, reemplazo: Reemplazo, solicitud: Solicitud |
     else:
         # Reutiliza estructura operativa de copiar/publicar solicitudes sin anexar metadata interna.
         label_maps = _admin_copiar_form_label_maps()
-        base = _admin_build_order_text_for_copiar(
-            solicitud,
-            label_maps=label_maps,
-            include_nota_cliente=False,
-        ).strip()
+        base = _admin_build_public_copy_text(solicitud, label_maps=label_maps).strip()
     return base
 
 
@@ -26985,6 +26981,21 @@ def _admin_build_order_text_for_copiar(
     return "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
 
 
+def _admin_build_public_copy_text(solicitud: Solicitud, *, label_maps: dict | None = None) -> str:
+    """Build publication text from request fields, never replacement internals.
+
+    A replacement is an Admin workflow attached to a ``Solicitud``. Its
+    ``motivo_fallo``, ``nota_adicional`` and other replacement fields are
+    intentionally not inputs to this shared public-copy builder. This keeps
+    regular requests and replacements on the same publication format.
+    """
+    return _admin_build_order_text_for_copiar(
+        solicitud,
+        label_maps=label_maps,
+        include_nota_cliente=True,
+    )
+
+
 def _format_horario_block_for_copy(horario_raw: str) -> list[str]:
     horario = _s(horario_raw)
     if not horario:
@@ -27261,7 +27272,7 @@ def solicitud_copiar_texto(id):
     return jsonify({
         "ok": True,
         "id": int(getattr(s, "id", 0) or 0),
-        "order_text": _admin_build_order_text_for_copiar(s, label_maps=label_maps),
+        "order_text": _admin_build_public_copy_text(s, label_maps=label_maps),
     }), 200
 
 
