@@ -12,6 +12,14 @@
               <a href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=item.id) }}">Descargar PDF</a>
             </span>
           </div>
+          {% set created_by_name = (item.created_by_staff_user.username if item.created_by_staff_user else '')|trim %}
+          {% set updated_by_name = (item.updated_by_staff_user.username if item.updated_by_staff_user else '')|trim %}
+          {% if created_by_name or updated_by_name %}
+            <div class="cand-muted small mt-1" aria-label="Auditoría de entrevista">
+              {% if created_by_name %}Creada por {{ created_by_name }}{% endif %}
+              {% if updated_by_name and updated_by_name != created_by_name %}{% if created_by_name %} · {% endif %}Editada por {{ updated_by_name }}{% endif %}
+            </div>
+          {% endif %}
           {% if interview_refs %}
             <div class="mt-2">
               <strong>Referencias registradas durante entrevista</strong>

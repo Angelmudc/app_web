@@ -23249,7 +23249,17 @@ def _candidata_center_interview_reference_map(entrevista_ids: list[int]) -> dict
 def _candidata_center_recent_interviews(fila: int) -> list:
     return (
         Entrevista.query.options(
-            load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+            load_only(
+                Entrevista.id,
+                Entrevista.tipo,
+                Entrevista.estado,
+                Entrevista.creada_en,
+                Entrevista.actualizada_en,
+                Entrevista.created_by_staff_user_id,
+                Entrevista.updated_by_staff_user_id,
+            ),
+            joinedload(Entrevista.created_by_staff_user).load_only(StaffUser.id, StaffUser.username),
+            joinedload(Entrevista.updated_by_staff_user).load_only(StaffUser.id, StaffUser.username),
         )
         .filter(Entrevista.candidata_id == int(fila))
         .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())
@@ -24555,7 +24565,17 @@ def candidatas_operativo_entrevistas_fragment(fila: int):
         )
         ultima_entrevista = recent_interviews[0] if recent_interviews else (
             Entrevista.query.options(
-                load_only(Entrevista.id, Entrevista.tipo, Entrevista.estado, Entrevista.creada_en, Entrevista.actualizada_en)
+                load_only(
+                    Entrevista.id,
+                    Entrevista.tipo,
+                    Entrevista.estado,
+                    Entrevista.creada_en,
+                    Entrevista.actualizada_en,
+                    Entrevista.created_by_staff_user_id,
+                    Entrevista.updated_by_staff_user_id,
+                ),
+                joinedload(Entrevista.created_by_staff_user).load_only(StaffUser.id, StaffUser.username),
+                joinedload(Entrevista.updated_by_staff_user).load_only(StaffUser.id, StaffUser.username),
             )
             .filter(Entrevista.candidata_id == int(fila))
             .order_by(Entrevista.creada_en.desc(), Entrevista.id.desc())

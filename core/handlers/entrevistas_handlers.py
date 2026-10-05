@@ -103,6 +103,34 @@ def _current_staff_actor() -> str:
     )
 
 
+def _current_staff_user_id() -> Optional[int]:
+    """Devuelve el ID del staff autenticado, sin inferir autores históricos."""
+    try:
+        if not getattr(current_user, "is_authenticated", False):
+            return None
+        raw_id = getattr(current_user, "id", None)
+        if raw_id is not None and int(raw_id) > 0:
+            return int(raw_id)
+        raw_get_id = str(current_user.get_id() or "").strip()
+        if raw_get_id.startswith("staff:"):
+            raw_id = raw_get_id.split(":", 1)[1].strip()
+            if raw_id.isdigit() and int(raw_id) > 0:
+                return int(raw_id)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    return None
+
+
+def _set_interview_audit_actor(entrevista: Entrevista, *, creating: bool = False) -> None:
+    """Asigna autoría persistente; nunca rellena creador al editar un histórico."""
+    actor_id = _current_staff_user_id()
+    if actor_id is None:
+        return
+    if creating:
+        _safe_setattr(entrevista, "created_by_staff_user_id", actor_id)
+    _safe_setattr(entrevista, "updated_by_staff_user_id", actor_id)
+
+
 def _verify_interview_new_saved(entrevista_id: int, candidata_id: Optional[int] = None) -> bool:
     if not int(entrevista_id or 0):
         return False
@@ -315,6 +343,7 @@ def entrevista_nueva_db(fila, tipo):
             _safe_setattr(entrevista, 'creada_en', utc_now_naive())
             _safe_setattr(entrevista, 'actualizada_en', None)
             _safe_setattr(entrevista, 'tipo', (tipo or '').strip().lower())
+            _set_interview_audit_actor(entrevista, creating=True)
             db.session.add(entrevista)
             db.session.flush()
             state["entrevista_id"] = int(getattr(entrevista, "id", 0) or 0)
@@ -510,6 +539,7 @@ def entrevista_editar_db(entrevista_id):
             _safe_setattr(entrevista, 'actualizada_en', utc_now_naive())
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
+            _set_interview_audit_actor(entrevista)
 
             try:
                 maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())

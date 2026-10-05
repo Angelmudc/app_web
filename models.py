@@ -335,6 +335,34 @@ class Entrevista(db.Model):
         onupdate=utc_now_naive
     )
 
+    # Auditoría de autoría por entrevista. Son nullable para conservar
+    # entrevistas históricas cuyo creador/editor no puede determinarse.
+    created_by_staff_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('staff_users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+
+    updated_by_staff_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('staff_users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+
+    created_by_staff_user = db.relationship(
+        'StaffUser',
+        foreign_keys=[created_by_staff_user_id],
+        lazy='select',
+    )
+
+    updated_by_staff_user = db.relationship(
+        'StaffUser',
+        foreign_keys=[updated_by_staff_user_id],
+        lazy='select',
+    )
+
     candidata = db.relationship(
         'Candidata',
         back_populates='entrevistas_nuevas'
