@@ -7,6 +7,7 @@ from flask import render_template
 from app import app as flask_app
 from core.handlers.entrevistas_handlers import (
     _current_staff_user_id,
+    _interview_change_items,
     _set_interview_audit_actor,
 )
 from models import Entrevista
@@ -24,7 +25,7 @@ def test_interview_authorship_preserves_creator_and_rotates_last_editor():
         _set_interview_audit_actor(entrevista, creating=True)
 
     assert entrevista.created_by_staff_user_id == 101
-    assert entrevista.updated_by_staff_user_id == 101
+    assert entrevista.updated_by_staff_user_id is None
 
     with patch("core.handlers.entrevistas_handlers.current_user", _staff(202)):
         _set_interview_audit_actor(entrevista)
@@ -87,6 +88,29 @@ def test_interview_authorship_is_compact_and_handles_unknown_history():
 
     compact_html = re.sub(r"\s+", " ", html)
     assert "Creada por Maria · Editada por Juan" in compact_html
-    assert "Creada por Maria · Editada por Maria" not in compact_html
+    assert "Creada por Maria · Editada por Maria" in compact_html
     assert "Creada por Maria" in compact_html
     assert "Editada por Pedro" in compact_html
+
+
+def test_interview_history_diff_contains_only_real_answer_changes_and_supports_noop():
+    preguntas = [
+        SimpleNamespace(id=1, clave="domestica.nombre", texto="Nombre"),
+        SimpleNamespace(id=2, clave="domestica.edad", texto="Edad"),
+    ]
+
+    cambios = _interview_change_items(
+        preguntas,
+        {1: "Ana", 2: "30"},
+        {1: " Ana ", 2: "31"},
+    )
+
+    assert cambios == [
+        {
+            "field": "respuesta:domestica.edad",
+            "label": "Edad",
+            "old": "30",
+            "new": "31",
+        }
+    ]
+    assert _interview_change_items(preguntas, {1: "Ana", 2: "30"}, {1: "Ana", 2: "30"}) == []

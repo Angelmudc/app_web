@@ -73,12 +73,21 @@
                   <span>· {{ e.creada_en|rd_datetime('%Y-%m-%d %H:%M') }}</span>
                 {% endif %}
               </div>
+              <div class="list-meta">
+                {% if e.created_by_staff_user %}<span>Creada por {{ e.created_by_staff_user.username }}</span>{% endif %}
+                {% if e.updated_by_staff_user %}<span>{% if e.created_by_staff_user %}· {% endif %}Editada por {{ e.updated_by_staff_user.username }}</span>{% endif %}
+              </div>
             </div>
 
             <div class="list-actions">
               <a class="btn btn-outline btn-sm"
                  href="{{ url_for('entrevista_editar_db', entrevista_id=e.id, next=next_url or None) }}">
                 Editar
+              </a>
+
+              <a class="btn btn-outline btn-sm"
+                 href="{{ url_for('entrevista_historial', entrevista_id=e.id, next=next_url or None) }}">
+                Historial
               </a>
 
               <a class="btn btn-primary btn-sm"

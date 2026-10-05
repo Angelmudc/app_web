@@ -9,6 +9,7 @@
             <span class="d-flex gap-2">
               <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Leer respuestas</a>
               <a href="{{ url_for('entrevista_editar_db', entrevista_id=item.id, next=center_next_url) }}">Editar</a>
+              <a href="{{ url_for('entrevista_historial', entrevista_id=item.id, next=center_next_url) }}">Historial</a>
               <a href="{{ url_for('generar_pdf_entrevista_db', entrevista_id=item.id) }}">Descargar PDF</a>
             </span>
           </div>
@@ -17,7 +18,7 @@
           {% if created_by_name or updated_by_name %}
             <div class="cand-muted small mt-1" aria-label="Auditoría de entrevista">
               {% if created_by_name %}Creada por {{ created_by_name }}{% endif %}
-              {% if updated_by_name and updated_by_name != created_by_name %}{% if created_by_name %} · {% endif %}Editada por {{ updated_by_name }}{% endif %}
+              {% if updated_by_name %}{% if created_by_name %} · {% endif %}Editada por {{ updated_by_name }}{% endif %}
             </div>
           {% endif %}
           {% if interview_refs %}

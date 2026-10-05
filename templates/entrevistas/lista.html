@@ -71,6 +71,7 @@
                     {% endif %}
 
                     <a class="btn btn-primary btn-sm" href="{{ url_for('entrevista_editar_db', entrevista_id=e.id, next=next_url or None) }}">Editar</a>
+                    <a class="btn btn-outline btn-sm" href="{{ url_for('entrevista_historial', entrevista_id=e.id, next=next_url or None) }}">Historial</a>
 
                     {# PDF opcional: solo muestra el botón si la ruta existe #}
                     {% if current_app and 'generar_pdf_entrevista_db' in current_app.view_functions %}

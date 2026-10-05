@@ -16,6 +16,7 @@ def test_entrevistas_crud_routes_apuntan_a_handlers_nuevos_incluyendo_pdf():
         'entrevistas_buscar',
         'entrevistas_lista',
         'entrevistas_de_candidata',
+        'entrevista_historial',
         'entrevista_nueva_db',
         'entrevista_editar_redirect',
         'entrevista_editar_db',

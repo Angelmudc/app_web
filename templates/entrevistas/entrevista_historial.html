@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Historial de entrevista{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="card">
+    <div class="card-header card-header--split">
+      <div>
+        <h1 class="card-title">Historial de entrevista #{{ entrevista.id }}</h1>
+        <p class="card-meta">
+          <strong>Candidata:</strong> {{ candidata.nombre_completo or '—' }}
+          · <strong>Tipo:</strong> {{ (entrevista.tipo or 'sin tipo')|replace('_', ' ')|title }}
+        </p>
+      </div>
+      <div class="card-actions">
+        <a class="btn btn-outline" href="{{ url_for('entrevista_editar_db', entrevista_id=entrevista.id, next=next_url or None) }}">Volver a entrevista</a>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    {% if historial %}
+      <div class="list">
+        {% for evento in historial %}
+          <article class="list-item card-subtle">
+            <div class="list-main">
+              <div class="list-title">
+                {% if evento.event_type == 'created' %}Creación{% elif evento.event_type == 'updated' %}Edición{% else %}{{ evento.event_type }}{% endif %}
+              </div>
+              <div class="list-meta">
+                {{ evento.occurred_at|rd_datetime('%d/%m/%Y %H:%M') if evento.occurred_at else 'sin fecha' }}
+                · {{ evento.staff_display_name or (evento.staff_user.username if evento.staff_user else 'Usuario no identificado') }}
+              </div>
+              {% set items = (evento.changes_json or {}).get('items', []) %}
+              {% if items %}
+                <div class="mt-2">
+                  {% for cambio in items %}
+                    <div class="mb-2">
+                      <strong>{{ cambio.label }}</strong>
+                      <div class="small text-muted">Antes: <span class="white-space-pre-line">{{ cambio.old if cambio.old is not none and cambio.old != '' else '—' }}</span></div>
+                      <div class="small">Después: <span class="white-space-pre-line">{{ cambio.new if cambio.new is not none and cambio.new != '' else '—' }}</span></div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% else %}
+                <div class="small text-muted mt-2">Sin detalle de campos.</div>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="alert alert-muted">No hay cambios registrados. Puede ser una entrevista histórica anterior a esta funcionalidad.</div>
+    {% endif %}
+
+    <div class="card-footer">
+      {% if next_url %}
+        <a class="btn btn-outline" href="{{ next_url }}">← Volver</a>
+      {% else %}
+        <a class="btn btn-outline" href="{{ url_for('entrevistas_de_candidata', fila=candidata.fila) }}">← Ver entrevistas</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

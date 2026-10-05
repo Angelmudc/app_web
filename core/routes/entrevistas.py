@@ -9,6 +9,7 @@ RULES = [
     ('/entrevistas/buscar', 'entrevistas_buscar', h.entrevistas_buscar, ['GET', 'POST']),
     ('/entrevistas/lista', 'entrevistas_lista', h.entrevistas_lista, ['GET']),
     ('/entrevistas/candidata/<int:fila>', 'entrevistas_de_candidata', h.entrevistas_de_candidata, ['GET']),
+    ('/entrevistas/<int:entrevista_id>/historial', 'entrevista_historial', h.entrevista_historial, ['GET']),
     ('/entrevistas/nueva/<int:fila>/<string:tipo>', 'entrevista_nueva_db', h.entrevista_nueva_db, ['GET', 'POST']),
     ('/entrevistas/editar', 'entrevista_editar_redirect', h.entrevista_editar_redirect, ['GET']),
     ('/entrevistas/editar/<int:entrevista_id>', 'entrevista_editar_db', h.entrevista_editar_db, ['GET', 'POST']),

@@ -11,7 +11,13 @@ from jinja2 import TemplateNotFound
 
 from config_app import cache, db
 from decorators import roles_required
-from models import Candidata, Entrevista, EntrevistaPregunta, EntrevistaRespuesta
+from models import (
+    Candidata,
+    Entrevista,
+    EntrevistaChangeHistory,
+    EntrevistaPregunta,
+    EntrevistaRespuesta,
+)
 from utils.audit_entity import log_candidata_action
 from utils.candidata_readiness import maybe_update_estado_por_completitud
 from core.services.interview_references import sync_entrevista_referencias_from_answers
@@ -122,13 +128,80 @@ def _current_staff_user_id() -> Optional[int]:
 
 
 def _set_interview_audit_actor(entrevista: Entrevista, *, creating: bool = False) -> None:
-    """Asigna autoría persistente; nunca rellena creador al editar un histórico."""
+    """Asigna autoría persistente sin marcar como editada una creación."""
     actor_id = _current_staff_user_id()
     if actor_id is None:
         return
     if creating:
         _safe_setattr(entrevista, "created_by_staff_user_id", actor_id)
-    _safe_setattr(entrevista, "updated_by_staff_user_id", actor_id)
+    else:
+        _safe_setattr(entrevista, "updated_by_staff_user_id", actor_id)
+
+
+def _current_staff_audit_identity() -> tuple[Optional[int], Optional[str]]:
+    actor_id = _current_staff_user_id()
+    actor_name = str(
+        getattr(current_user, "username", None)
+        or getattr(current_user, "name", None)
+        or getattr(current_user, "email", None)
+        or ""
+    ).strip()
+    return actor_id, (actor_name[:160] if actor_name else None)
+
+
+def _history_value(value, *, limit: int = 4000):
+    if value is None:
+        return None
+    text_value = str(value)
+    if len(text_value) <= limit:
+        return text_value
+    return f"{text_value[:limit]}…"
+
+
+def _interview_answer_map(respuestas) -> dict[int, str]:
+    return {
+        int(r.pregunta_id): (r.respuesta or "")
+        for r in (respuestas or [])
+        if getattr(r, "pregunta_id", None) is not None
+    }
+
+
+def _interview_change_items(preguntas, old_answers: dict[int, str], new_answers: dict[int, str]) -> list[dict]:
+    items = []
+    for pregunta in (preguntas or []):
+        pregunta_id = int(getattr(pregunta, "id", 0) or 0)
+        old_value = (old_answers.get(pregunta_id) or "").strip()
+        new_value = (new_answers.get(pregunta_id) or "").strip()
+        if old_value == new_value:
+            continue
+        items.append(
+            {
+                "field": f"respuesta:{getattr(pregunta, 'clave', None) or pregunta_id}",
+                "label": getattr(pregunta, "texto", None) or getattr(pregunta, "clave", None) or f"Pregunta {pregunta_id}",
+                "old": _history_value(old_value),
+                "new": _history_value(new_value),
+            }
+        )
+    return items
+
+
+def _add_interview_history_event(
+    entrevista: Entrevista,
+    *,
+    event_type: str,
+    changes: list[dict] | None = None,
+) -> None:
+    actor_id, actor_name = _current_staff_audit_identity()
+    db.session.add(
+        EntrevistaChangeHistory(
+            entrevista_id=getattr(entrevista, "id", None),
+            event_type=event_type,
+            occurred_at=utc_now_naive(),
+            staff_user_id=actor_id,
+            staff_display_name=actor_name,
+            changes_json={"items": changes or []},
+        )
+    )
 
 
 def _verify_interview_new_saved(entrevista_id: int, candidata_id: Optional[int] = None) -> bool:
@@ -306,6 +379,33 @@ def entrevistas_de_candidata(fila):
 
 
 @roles_required('admin', 'secretaria')
+def entrevista_historial(entrevista_id):
+    """Muestra el historial de una entrevista sin exponerlo a usuarios públicos."""
+    next_url = _safe_next_url()
+    entrevista = Entrevista.query.get_or_404(entrevista_id)
+    candidata = legacy_h._get_candidata_safe_by_pk(getattr(entrevista, "candidata_id", None))
+    if not candidata:
+        abort(404)
+
+    historial = (
+        EntrevistaChangeHistory.query
+        .filter_by(entrevista_id=entrevista.id)
+        .order_by(
+            EntrevistaChangeHistory.occurred_at.desc(),
+            EntrevistaChangeHistory.id.desc(),
+        )
+        .all()
+    )
+    return render_template(
+        "entrevistas/entrevista_historial.html",
+        candidata=candidata,
+        entrevista=entrevista,
+        historial=historial,
+        next_url=next_url,
+    )
+
+
+@roles_required('admin', 'secretaria')
 def entrevista_nueva_db(fila, tipo):
     next_url = _safe_next_url()
     candidata = legacy_h._get_candidata_safe_by_pk(fila)
@@ -363,6 +463,20 @@ def entrevista_nueva_db(fila, tipo):
                 entrevista=entrevista,
                 preguntas=preguntas,
                 respuestas_payload=respuestas_payload,
+            )
+            _add_interview_history_event(
+                entrevista,
+                event_type="created",
+                changes=[
+                    {
+                        "field": f"respuesta:{getattr(p, 'clave', None) or p.id}",
+                        "label": getattr(p, "texto", None) or getattr(p, "clave", None) or f"Pregunta {p.id}",
+                        "old": None,
+                        "new": _history_value(respuestas_payload.get(int(p.id), "").strip()),
+                    }
+                    for p in preguntas
+                    if legacy_text_is_useful(respuestas_payload.get(int(p.id), ""))
+                ],
             )
 
             try:
@@ -509,7 +623,20 @@ def entrevista_editar_db(entrevista_id):
             flash("❌ La entrevista está vacía o no es válida. Completa al menos una respuesta útil.", "danger")
             return redirect(url_for('entrevista_editar_db', entrevista_id=entrevista.id, next=next_url or None))
 
+        respuestas_antes = (
+            EntrevistaRespuesta.query
+            .filter_by(entrevista_id=entrevista.id)
+            .all()
+        )
+        cambios = _interview_change_items(
+            preguntas,
+            _interview_answer_map(respuestas_antes),
+            respuestas_payload,
+        )
+
         def _persist_interview_update(_attempt: int):
+            if not cambios:
+                return
             for p in preguntas:
                 valor = respuestas_payload.get(int(p.id), "")
                 r = (
@@ -540,6 +667,11 @@ def entrevista_editar_db(entrevista_id):
             _safe_setattr(entrevista, 'estado', 'completa')
             _safe_setattr(entrevista, 'tipo', tipo)
             _set_interview_audit_actor(entrevista)
+            _add_interview_history_event(
+                entrevista,
+                event_type="updated",
+                changes=cambios,
+            )
 
             try:
                 maybe_update_estado_por_completitud(candidata, actor=_current_staff_actor())

@@ -374,6 +374,14 @@ class Entrevista(db.Model):
         cascade='all, delete-orphan'
     )
 
+    change_history = db.relationship(
+        'EntrevistaChangeHistory',
+        foreign_keys='EntrevistaChangeHistory.entrevista_id',
+        primaryjoin='Entrevista.id == EntrevistaChangeHistory.entrevista_id',
+        order_by='(desc(EntrevistaChangeHistory.occurred_at), desc(EntrevistaChangeHistory.id))',
+        lazy='select',
+    )
+
     referencias = db.relationship(
         'EntrevistaReferencia',
         back_populates='entrevista',
@@ -382,6 +390,36 @@ class Entrevista(db.Model):
 
     def __repr__(self):
         return f"<Entrevista {self.id} candidata_id={self.candidata_id} tipo={getattr(self, 'tipo', None)}>"
+
+
+class EntrevistaChangeHistory(db.Model):
+    __tablename__ = 'entrevista_change_history'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    entrevista_id = db.Column(
+        db.Integer,
+        db.ForeignKey('entrevistas.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    event_type = db.Column(db.String(20), nullable=False)
+    occurred_at = db.Column(db.DateTime, nullable=False, default=utc_now_naive, index=True)
+    staff_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('staff_users.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True,
+    )
+    staff_display_name = db.Column(db.String(160), nullable=True)
+    changes_json = db.Column(db.JSON, nullable=False, default=dict, server_default=text("'{}'"))
+
+    entrevista = db.relationship(
+        'Entrevista',
+        foreign_keys=[entrevista_id],
+        primaryjoin='EntrevistaChangeHistory.entrevista_id == Entrevista.id',
+        viewonly=True,
+    )
+    staff_user = db.relationship('StaffUser', foreign_keys=[staff_user_id], lazy='select')
 
 
 class EntrevistaPregunta(db.Model):
