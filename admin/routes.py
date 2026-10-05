@@ -3876,6 +3876,20 @@ def _admin_specific_service_copy_lines(s: Solicitud, label_maps: dict | None = N
     return []
 
 
+_PUBLIC_OPERATIONAL_NOTE_LINE_RE = re.compile(r"^\s*\[operativo\](?:\s|$)", re.IGNORECASE)
+
+
+def _admin_sanitize_public_note_text(value) -> str:
+    """Keep client-facing note lines while removing the internal marker convention."""
+    raw = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
+    kept_lines = [
+        line.rstrip()
+        for line in raw.split("\n")
+        if not _PUBLIC_OPERATIONAL_NOTE_LINE_RE.match(line)
+    ]
+    return "\n".join(kept_lines).strip()
+
+
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
     Arma un resumen limpio y entendible de la solicitud para compartir con el cliente.
@@ -3899,7 +3913,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     edad_req_raw  = getattr(s, 'edad_requerida', None)
     experiencia   = _s(getattr(s, 'experiencia', None))
     horario       = _s(getattr(s, 'horario', None))
-    nota_cli      = _s(getattr(s, 'nota_cliente', None))
+    nota_cli      = _admin_sanitize_public_note_text(getattr(s, 'nota_cliente', None))
 
     # Edad requerida (suele estar como lista de labels)
     edad_list = _as_list(edad_req_raw)
@@ -26861,7 +26875,7 @@ def _admin_build_order_text_for_copiar(
     horario = _s(getattr(s, "horario", None))
     sueldo_final = _format_money_usd(getattr(s, "sueldo", None))
     pasaje_texto = _pasaje_operativo_phrase_from_solicitud(s)
-    nota_cli = _s(getattr(s, "nota_cliente", None))
+    nota_cli = _admin_sanitize_public_note_text(getattr(s, "nota_cliente", None))
 
     detalles = getattr(s, "detalles_servicio", None) or {}
     ts_det = detalles.get("tipo") or _s(getattr(s, "tipo_servicio", None))

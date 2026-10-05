@@ -375,6 +375,70 @@ class AdminCopiarActionsTest(unittest.TestCase):
             "Cliente cubre taxi nocturno",
         )
 
+    def test_public_copy_removes_duplicated_operational_markers_preserving_client_note(self):
+        s = _SolicitudStub(estado="activa")
+        marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
+        s.nota_cliente = "El envejeciente es independiente, solo es acompañarlo\n" + marker + "\n" + marker
+
+        with flask_app.app_context():
+            texto = admin_routes._admin_build_public_copy_text(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+
+        self.assertIn("El envejeciente es independiente, solo es acompañarlo", texto)
+        self.assertNotIn("[Operativo]", texto)
+        self.assertNotIn("no cobrar nuevamente", texto.lower())
+        self.assertEqual(texto.count("El envejeciente es independiente, solo es acompañarlo"), 1)
+
+    def test_public_copy_removes_interleaved_operational_lines_without_destroying_note_breaks(self):
+        s = _SolicitudStub(estado="activa")
+        marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
+        s.nota_cliente = f"Primera indicación\n{marker}\nSegunda indicación\n\n{marker}\nTercera indicación"
+
+        with flask_app.app_context():
+            texto = admin_routes._admin_build_public_copy_text(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+
+        self.assertIn("Primera indicación\nSegunda indicación\n\nTercera indicación", texto)
+        self.assertNotIn(marker, texto)
+
+    def test_public_copy_filters_operativo_marker_with_leading_whitespace_only(self):
+        s = _SolicitudStub(estado="activa")
+        s.nota_cliente = (
+            "Nota pública\n"
+            "[Operativo] interno\n"
+            "   [Operativo] interno con espacios\n"
+            "El cliente indicó que el proceso operativo continúa normalmente."
+        )
+
+        with flask_app.app_context():
+            texto = admin_routes._admin_build_public_copy_text(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+
+        self.assertIn(
+            "Nota pública\nEl cliente indicó que el proceso operativo continúa normalmente.",
+            texto,
+        )
+        self.assertNotIn("[Operativo]", texto)
+        self.assertNotIn("\n\n\n", texto)
+
+    def test_public_summary_and_internal_copy_share_operational_note_filter(self):
+        s = _SolicitudStub(estado="activa")
+        s.nota_cliente = "Nota pública\n[Operativo] dato interno"
+
+        with flask_app.app_context():
+            with patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resumen = admin_routes.build_resumen_cliente_solicitud(s)
+            copiar = admin_routes._admin_build_order_text_for_copiar(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+
+        for texto in (resumen, copiar):
+            self.assertIn("Nota pública", texto)
+            self.assertNotIn("[Operativo] dato interno", texto)
+
     def test_build_resumen_cliente_solicitud_incluye_texto_exacto_envejeciente_independiente(self):
         s = _SolicitudStub(estado="activa")
         s.funciones = ["limpieza", "envejeciente"]
