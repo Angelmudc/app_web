@@ -1,76 +1,83 @@
 {% extends "public/base_public.html" %}
 
 {% block title %}Política de Privacidad | Doméstica del Cibao A&D{% endblock %}
+{% block extra_head %}
+<meta name="description" content="Conoce cómo Doméstica del Cibao A&D trata los datos recibidos por Sophia, WhatsApp y sus canales públicos, y cómo solicitar su eliminación.">
+<style>
+  .privacy-page { max-width: 900px; margin-inline: auto; }
+  .privacy-page__intro, .privacy-page__section { margin-block: 1rem; padding: clamp(1rem, 3vw, 1.5rem); }
+  .privacy-page h2 { margin: 0 0 .75rem; color: #19324d; font-size: clamp(1.15rem, 2vw, 1.4rem); }
+  .privacy-page p, .privacy-page li { line-height: 1.7; }
+  .privacy-page li + li { margin-top: .35rem; }
+  .privacy-page a { text-underline-offset: .18em; }
+  .privacy-page__updated { color: #52677b; font-size: .95rem; }
+</style>
+{% endblock %}
 
 {% block content %}
-<style>
-  .legal-wrap {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    line-height: 1.6;
-  }
-  .legal-wrap h1,
-  .legal-wrap h3 {
-    color: #19324d;
-  }
-  .legal-wrap p,
-  .legal-wrap li {
-    margin-bottom: 10px;
-  }
-  .btn-back {
-    display: inline-block;
-    margin-bottom: 14px;
-    padding: 8px 12px;
-    border: 1px solid #cfe0f4;
-    border-radius: 10px;
-    background: #f7fbff;
-    color: #174774;
-    text-decoration: none;
-    font-weight: 600;
-  }
-</style>
-<section class="section">
-  <div class="container legal-wrap">
-    <a href="/" class="btn-back" onclick="if (history.length > 1) { history.back(); return false; }">← Volver</a>
-    <h1 class="section-title">Política de privacidad</h1>
-    <p class="section-subtitle">Compromiso con la protección de datos personales.</p>
+<main class="section privacy-page" id="contenido-principal">
+  <div class="container">
+    <header class="card privacy-page__intro">
+      <h1 class="section-title">Política de Privacidad</h1>
+      <p class="section-subtitle">Doméstica del Cibao A&amp;D · Sophia y atención por WhatsApp</p>
+      <p class="privacy-page__updated">Vigente desde el 8 de octubre de 2026.</p>
+      <p>Esta política explica el tratamiento de datos cuando una persona conversa con Sophia o con nuestro equipo por WhatsApp, usa los canales públicos de Doméstica del Cibao A&amp;D o solicita información sobre nuestros servicios. Sophia es el asistente de atención de la agencia.</p>
+    </header>
 
-    <div class="card" style="margin-bottom: 14px;">
-      <h3>1. Datos que recopilamos</h3>
-      <p>Podemos recopilar datos de contacto y de solicitud, incluyendo:</p>
-      <ul class="card-list">
-        <li>Nombre, teléfono y correo electrónico.</li>
-        <li>Ubicación general del servicio (ciudad/sector).</li>
-        <li>Información operativa necesaria para el reclutamiento.</li>
+    <section class="card privacy-page__section" aria-labelledby="datos-recopilados">
+      <h2 id="datos-recopilados">1. Datos que recibimos</h2>
+      <p>Según el canal y lo que decidas compartir, podemos tratar:</p>
+      <ul>
+        <li>Tu número de teléfono de WhatsApp y el nombre de perfil que WhatsApp incluya en el mensaje.</li>
+        <li>El contenido de tus mensajes, respuestas, fecha y estado de la conversación; si envías fotos, audio, documentos u otro contenido, los datos del mensaje y los identificadores o metadatos que WhatsApp transmite.</li>
+        <li>Los datos que escribas en una consulta o solicitud de servicio, como nombre, teléfono, zona, modalidad y detalles necesarios para entender lo que necesitas.</li>
+        <li>Cuando la conversación se vincula a una solicitud o expediente existente, el contexto pertinente de ese expediente que el equipo necesita para responder.</li>
       </ul>
-    </div>
+      <p>No envíes por este canal contraseñas, datos de tarjetas ni información que no sea necesaria para tu consulta.</p>
+    </section>
 
-    <div class="card" style="margin-bottom: 14px;">
-      <h3>2. Uso de la información</h3>
-      <p>Utilizamos los datos para:</p>
-      <ul class="card-list">
-        <li>Gestionar solicitudes y procesos de reclutamiento.</li>
-        <li>Contactar al cliente sobre el estado de su servicio.</li>
-        <li>Mejorar la calidad operativa y de atención.</li>
+    <section class="card privacy-page__section" aria-labelledby="finalidades">
+      <h2 id="finalidades">2. Para qué usamos los datos</h2>
+      <ul>
+        <li>Responder consultas y orientar sobre los servicios de la agencia.</li>
+        <li>Recibir y dar seguimiento a solicitudes de clientes y prestar la atención solicitada.</li>
+        <li>Permitir que el personal autorizado revise conversaciones y continúe la atención cuando Sophia no resuelve una consulta.</li>
+        <li>Operar Sophia: el sistema puede usar el mensaje y el contexto pertinente de la conversación o de una solicitud vinculada para generar una respuesta y proponer pasos de atención.</li>
+        <li>Atender solicitudes de acceso, corrección o eliminación y cumplir obligaciones legales aplicables.</li>
       </ul>
-    </div>
+    </section>
 
-    <div class="card" style="margin-bottom: 14px;">
-      <h3>3. Compartición con terceros</h3>
-      <p>
-        No compartimos datos personales con terceros sin consentimiento del titular, salvo cuando sea estrictamente necesario para
-        ejecutar el servicio solicitado o por requerimiento legal aplicable.
-      </p>
-    </div>
+    <section class="card privacy-page__section" aria-labelledby="whatsapp-meta">
+      <h2 id="whatsapp-meta">3. WhatsApp, Meta y Sophia</h2>
+      <p>Los mensajes enviados por WhatsApp llegan a Doméstica del Cibao A&amp;D mediante WhatsApp Business Platform / Cloud API, un servicio de Meta. Meta procesa los datos conforme a sus propios términos y políticas. La integración recibe webhooks de mensajes y estados de WhatsApp; no usamos esta aplicación para iniciar sesión en la cuenta personal de Facebook de quien escribe.</p>
+      <p>Para generar respuestas de Sophia, el sistema utiliza la API de OpenAI. Se envían el mensaje y el contexto que el flujo de atención considera necesario para esa respuesta. OpenAI procesa esos datos como proveedor del servicio de IA sujeto a sus términos aplicables. El equipo de Doméstica del Cibao A&amp;D puede revisar la conversación para atender al cliente.</p>
+    </section>
 
-    <div class="card">
-      <h3>4. Seguridad de la información</h3>
-      <p>
-        Aplicamos medidas técnicas y administrativas razonables para proteger la información contra acceso no autorizado, alteración,
-        pérdida o uso indebido.
-      </p>
-    </div>
+    <section class="card privacy-page__section" aria-labelledby="destinatarios">
+      <h2 id="destinatarios">4. Destinatarios y proveedores</h2>
+      <p>El acceso se limita a las personas del equipo que atienden la solicitud y a los proveedores técnicos que permiten operar la aplicación, alojar sus datos, entregar mensajes o generar respuestas de IA. En el uso de Sophia, estos proveedores incluyen Meta (WhatsApp Business Platform) y OpenAI. No vendemos los datos de las conversaciones. También podemos comunicarlos cuando sea necesario para cumplir una obligación legal.</p>
+    </section>
+
+    <section class="card privacy-page__section" aria-labelledby="proteccion">
+      <h2 id="proteccion">5. Protección de la información</h2>
+      <p>La integración valida la firma de los webhooks entrantes de WhatsApp y las conversaciones internas se consultan desde las funciones administrativas autenticadas de la aplicación. El acceso de los proveedores externos está sujeto a sus propios controles y condiciones. Ningún medio de transmisión o almacenamiento puede describirse como libre de riesgos.</p>
+    </section>
+
+    <section class="card privacy-page__section" aria-labelledby="retencion">
+      <h2 id="retencion">6. Conservación</h2>
+      <p>La aplicación conserva registros de conversaciones y mensajes para que el equipo pueda dar seguimiento y operar Sophia. El repositorio no establece un plazo automático general para eliminarlos. Se conservan mientras sean necesarios para esos fines y se revisan ante una solicitud de eliminación; pueden mantenerse los datos que deban conservarse por una obligación legal o para resolver una gestión pendiente.</p>
+    </section>
+
+    <section class="card privacy-page__section" aria-labelledby="derechos">
+      <h2 id="derechos">7. Solicitudes sobre tus datos</h2>
+      <p>Puedes escribirnos para consultar qué datos tuyos usamos, pedir una corrección o solicitar su eliminación. Para explicar qué conversación buscas, indica el número de WhatsApp desde el que escribiste y, si lo recuerdas, una fecha aproximada. Comparte solo lo necesario para localizarla. El equipo revisará la solicitud y puede pedir información adicional para identificar los registros; esta página no ofrece una eliminación automática ni fija un plazo de respuesta.</p>
+      <p>Para iniciar una solicitud, usa cualquiera de los canales de contacto indicados en la <a href="{{ url_for('public.eliminacion_datos') }}">página de eliminación de datos</a>.</p>
+    </section>
+
+    <section class="card privacy-page__section" aria-labelledby="contacto-privacidad">
+      <h2 id="contacto-privacidad">8. Contacto</h2>
+      <p>Doméstica del Cibao A&amp;D atiende consultas de privacidad en <a href="mailto:info@domesticadelcibao.com">info@domesticadelcibao.com</a>.</p>
+    </section>
   </div>
-</section>
+</main>
 {% endblock %}

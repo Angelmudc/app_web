@@ -1070,6 +1070,13 @@ def privacidad_publica():
     return render_template("privacidad.html")
 
 
+@public_bp.route("/eliminacion-de-datos")
+def eliminacion_datos():
+    if not PUBLIC_SITE_ENABLED:
+        abort(404)
+    return render_template("public/eliminacion_datos.html")
+
+
 @public_bp.route("/gracias")
 def gracias():
     if not PUBLIC_SITE_ENABLED:

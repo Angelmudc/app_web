@@ -1,0 +1,43 @@
+{% extends "public/base_public.html" %}
+
+{% block title %}Eliminación de datos | Doméstica del Cibao A&D{% endblock %}
+{% block extra_head %}
+<meta name="description" content="Instrucciones para solicitar a Doméstica del Cibao A&D acceso, corrección o eliminación de datos relacionados con Sophia y WhatsApp.">
+<style>
+  .deletion-page { max-width: 820px; margin-inline: auto; }
+  .deletion-page__card { margin-block: 1rem; padding: clamp(1.1rem, 3vw, 1.75rem); }
+  .deletion-page h2 { color: #19324d; font-size: clamp(1.15rem, 2vw, 1.4rem); }
+  .deletion-page p, .deletion-page li { line-height: 1.7; }
+  .deletion-page a { text-underline-offset: .18em; }
+</style>
+{% endblock %}
+
+{% block content %}
+<main class="section deletion-page" id="contenido-principal">
+  <div class="container">
+    <header class="card deletion-page__card">
+      <h1 class="section-title">Solicitar eliminación de datos</h1>
+      <p class="section-subtitle">Instrucciones para conversaciones con Sophia y atención por WhatsApp</p>
+      <p>Esta página es pública y no requiere iniciar sesión. Puedes solicitar a Doméstica del Cibao A&amp;D que localice y revise los datos asociados con una conversación o solicitud.</p>
+    </header>
+
+    <section class="card deletion-page__card" aria-labelledby="como-solicitar">
+      <h2 id="como-solicitar">Cómo enviar la solicitud</h2>
+      <ol>
+        <li>Escríbenos por <a href="mailto:info@domesticadelcibao.com?subject=Solicitud%20de%20eliminaci%C3%B3n%20de%20datos">correo electrónico</a>.</li>
+        <li>Indica que solicitas la eliminación de tus datos y el número de WhatsApp con el que conversaste. Una fecha aproximada o el tema de la consulta puede ayudar a localizar la conversación.</li>
+        <li>El equipo revisará la solicitud y podrá pedir información adicional para identificar los datos. No envíes contraseñas, documentos de identidad ni datos financieros salvo que el equipo explique por qué son necesarios.</li>
+      </ol>
+      <p>También puedes usar estos canales para pedir acceso o corrección de tus datos o hacer una pregunta sobre privacidad.</p>
+    </section>
+
+    <section class="card deletion-page__card" aria-labelledby="alcance-eliminacion">
+      <h2 id="alcance-eliminacion">Qué ocurre después</h2>
+      <p>La aplicación no ofrece un botón de autoeliminación ni un formulario que borre registros automáticamente. El equipo debe localizar y revisar la información antes de tramitar la solicitud. La política de privacidad no establece un plazo fijo de respuesta o de borrado.</p>
+      <p>Los datos que deban conservarse por una obligación legal o para resolver una gestión pendiente podrían no eliminarse de inmediato. La solicitud se refiere a los datos que Doméstica del Cibao A&amp;D controla; para datos conservados por WhatsApp/Meta, usa también los controles y canales de privacidad de WhatsApp.</p>
+    </section>
+
+    <p><a href="{{ url_for('public.privacidad_publica') }}">Leer la Política de Privacidad</a></p>
+  </div>
+</main>
+{% endblock %}
