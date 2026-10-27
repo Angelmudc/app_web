@@ -1,6 +1,6 @@
 # clientes/forms.py
 
-from flask import request
+from flask import request, session
 from flask_wtf import FlaskForm
 from wtforms import (
     StringField, PasswordField, SelectField, SelectMultipleField,
@@ -11,11 +11,12 @@ from wtforms.validators import (
 )
 from wtforms.widgets import ListWidget, CheckboxInput
 from services.payment_rules import get_plan_choices, is_valid_plan, normalize_plan
+from services.service_catalog import (CONSERJE_INSTALLATION_CHOICES, CONSERJE_RESIDENTIAL_TYPES, CONSERJE_RESPONSIBILITY_CHOICES, ENFERMERA_EXPERIENCE_CHOICES, NINERA_EXPERIENCE_CHOICES, SERVICE_BY_CODE, public_details_from_form, validate_service_details)
 # ─────────────────────────────────────────────────────────────
 # Validaciones estrictas de seguridad (anti símbolos raros)
 # ─────────────────────────────────────────────────────────────
 import re
-from utils.modalidad import canonicalize_modalidad_trabajo, split_modalidad_for_ui
+from utils.modalidad import canonicalize_modalidad_trabajo, split_modalidad_for_ui, validate_modalidad_context
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
 from utils.child_age_parser import parse_child_age_summary
@@ -149,12 +150,19 @@ class ClienteSolicitudForm(FlaskForm):
 class SolicitudForm(FlaskForm):
     HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
     PLAN_CHOICES = get_plan_choices()
+    tipo_servicio = HiddenField("Tipo de servicio", validators=[Optional()])
     # Ubicación
     ciudad_sector = StringField(
         "Ciudad / Sector",
         validators=[DataRequired("Indica ciudad y sector.")],
         filters=STRIP,
         render_kw={"placeholder": "Ej. Santiago / Los Jardines", "inputmode": "text", "autocomplete": "address-level2"}
+    )
+    direccion_precisa = StringField(
+        "Dirección precisa del servicio",
+        validators=[Optional(), Length(max=300)],
+        filters=STRIP,
+        render_kw={"placeholder": "Calle, número, residencial o referencia exacta", "autocomplete": "street-address"},
     )
     rutas_cercanas = StringField(
         "Rutas de transporte cercanas",
@@ -192,7 +200,6 @@ class SolicitudForm(FlaskForm):
         filters=STRIP,
         render_kw={"placeholder": "Ej. 30 a 40, 20-30, etc."}
     )
-
     experiencia = LegacyExperienceSelectField(
         "Tipo de experiencia requerida",
         choices=EXPERIENCIA_CHOICES,
@@ -406,6 +413,24 @@ class SolicitudForm(FlaskForm):
         return bool(vals.intersection(cls.HOUSEHOLD_FUNCIONES))
 
     def validate(self, extra_validators=None):
+        service_code = str(self.tipo_servicio.data or "").strip()
+        if service_code == "LIMPIEZA_ESTABLECIMIENTOS":
+            self.experiencia.data = "Limpieza"
+        public_creation_form = self.__class__.__name__ in {"SolicitudPublicaForm", "SolicitudClienteNuevoPublicaForm"} or getattr(request, "endpoint", "") in {
+            "clientes.nueva_solicitud", "clientes.solicitud_publica_nueva_token", "clientes.solicitud_publica_nueva_short", "clientes.solicitud_publica", "clientes.solicitud_publica_short"
+        }
+        if service_code == "CONSERJERIA_RESIDENCIAL" and public_creation_form:
+            self.experiencia.data = "Conserjería"
+        if service_code == "NINERA":
+            self.experiencia.choices = NINERA_EXPERIENCE_CHOICES
+        elif service_code == "ENFERMERA":
+            self.experiencia.choices = ENFERMERA_EXPERIENCE_CHOICES
+        elif service_code == "CHOFER":
+            self.experiencia.choices = [("Chofer", "Chofer")]
+            self.experiencia.data = "Chofer"
+        elif service_code == "LIMPIEZA_ESTABLECIMIENTOS":
+            self.experiencia.choices = [("Limpieza", "Limpieza")]
+            self.experiencia.data = "Limpieza"
         funciones_selected = self._selected_funciones_values()
         requiere_limpieza = 'limpieza' in funciones_selected
         requiere_adultos = self._requires_adultos_for_funciones(funciones_selected)
@@ -423,8 +448,80 @@ class SolicitudForm(FlaskForm):
                 self.banos.validators = _strip_required(self.banos.validators)
             if hasattr(self, 'areas_comunes'):
                 self.areas_comunes.validators = _strip_required(self.areas_comunes.validators)
+        if service_code and service_code != "DOMESTICA_LIMPIEZA" and hasattr(self, 'funciones'):
+            self.funciones.validators = [v for v in (self.funciones.validators or []) if not isinstance(v, DataRequired)]
 
         ok = super().validate(extra_validators=extra_validators)
+        # Public creation flows accept one age range. Keep edit flows permissive
+        # so existing requests (and legacy drafts restored by the public form)
+        # remain readable and can be saved without data loss.
+        age_creation_endpoints = {
+            "clientes.nueva_solicitud",
+            "clientes.solicitud_publica_nueva_token",
+            "clientes.solicitud_publica_nueva_short",
+            "clientes.solicitud_publica",
+            "clientes.solicitud_publica_short",
+        }
+        if request.method == "POST" and getattr(request, "endpoint", "") in age_creation_endpoints:
+            submitted_ages = request.form.getlist("edad_requerida")
+            legacy_draft_ages = session.get("cliente_solicitud_legacy_edad")
+            is_restored_legacy_draft = (
+                getattr(request, "endpoint", "") == "clientes.nueva_solicitud"
+                and isinstance(legacy_draft_ages, list)
+                and submitted_ages == legacy_draft_ages
+            )
+            if len(submitted_ages) > 1 and not is_restored_legacy_draft:
+                self.edad_requerida.errors.append("Selecciona una sola franja de edad.")
+                ok = False
+        requires_service_choice = self.__class__.__name__ in {"SolicitudPublicaForm", "SolicitudClienteNuevoPublicaForm"} or getattr(request, "endpoint", "") == "clientes.nueva_solicitud"
+        public_creation_form = self.__class__.__name__ in {"SolicitudPublicaForm", "SolicitudClienteNuevoPublicaForm"} or getattr(request, "endpoint", "") in {
+            "clientes.nueva_solicitud", "clientes.solicitud_publica_nueva_token", "clientes.solicitud_publica_nueva_short", "clientes.solicitud_publica", "clientes.solicitud_publica_short"
+        }
+        if request.method == "POST" and public_creation_form and not (self.direccion_precisa.data or "").strip():
+            self.direccion_precisa.errors.append("Indica la dirección precisa donde se realizará el servicio.")
+            ok = False
+        if service_code == "LIMPIEZA_ESTABLECIMIENTOS" and request.method == "POST" and public_creation_form:
+            if request.form.get("modalidad_grupo") != "con_salida_diaria":
+                self.modalidad_trabajo.errors.append("Este servicio requiere modalidad con salida diaria.")
+                ok = False
+        if service_code == "CONSERJERIA_RESIDENCIAL" and request.method == "POST" and public_creation_form:
+            modality_group = str(request.form.get("modalidad_grupo") or "").strip()
+            valid_modality, _label, _reason = validate_modalidad_context(
+                modality_group, request.form.get("modalidad_especifica"), request.form.get("modalidad_trabajo"),
+                other_value=request.form.get("modalidad_otro_text"),
+            )
+            duplicate_modality = any(len(request.form.getlist(name)) > 1 for name in ("modalidad_grupo", "modalidad_especifica", "modalidad_trabajo"))
+            if modality_group != "con_salida_diaria" or not valid_modality or duplicate_modality:
+                self.modalidad_trabajo.errors.append("Conserjería residencial requiere salida diaria.")
+                ok = False
+        if requires_service_choice and not service_code:
+            self.tipo_servicio.errors.append("Selecciona el servicio que necesitas.")
+            ok = False
+        elif service_code and service_code not in SERVICE_BY_CODE:
+            self.tipo_servicio.errors.append("Selecciona un tipo de servicio válido.")
+            ok = False
+        elif service_code and service_code != "DOMESTICA_LIMPIEZA":
+            detail_errors = validate_service_details(
+                service_code,
+                public_details_from_form(service_code, request.form),
+                strict_public=service_code in {"ENFERMERA", "CHOFER", "LIMPIEZA_ESTABLECIMIENTOS", "CONSERJERIA_RESIDENCIAL"},
+            )
+            if detail_errors:
+                if service_code == "ENFERMERA":
+                    # Keep the catalog's concrete nursing errors attached to
+                    # the active service panel. The service picker is hidden
+                    # after selection and was an unhelpful place to report a
+                    # missing clinical answer.
+                    self.service_detail_errors = dict(detail_errors)
+                else:
+                    message = "Completa los datos obligatorios de este servicio."
+                    if message not in self.tipo_servicio.errors:
+                        self.tipo_servicio.errors.append(message)
+                if service_code == "CHOFER":
+                    for detail_message in detail_errors.values():
+                        if detail_message not in self.tipo_servicio.errors:
+                            self.tipo_servicio.errors.append(detail_message)
+                ok = False
         if not requiere_limpieza:
             for fname in ('tipo_lugar', 'habitaciones', 'banos', 'areas_comunes'):
                 field = getattr(self, fname, None)
@@ -438,7 +535,9 @@ class SolicitudForm(FlaskForm):
                     field.process_errors = []
                 except Exception:
                     pass
-            ok = all(not f.errors for f in self._fields.values())
+            ok = all(not f.errors for f in self._fields.values()) and not bool(
+                getattr(self, "service_detail_errors", {})
+            )
 
         if not requiere_adultos:
             try:
@@ -591,6 +690,10 @@ class SolicitudForm(FlaskForm):
     def validate_modalidad_trabajo(self, field):
         field.data = canonicalize_modalidad_trabajo(field.data)
         _solo_texto((field.data or '').replace('💤', ''))
+
+    def validate_conserje_tipo_residencial_otro(self, field):
+        if field.data:
+            _solo_texto(field.data)
 
     def validate_horario(self, field):
         # Permite letras, números y espacios (horario necesita números)

@@ -4,7 +4,7 @@
  * described in tsconfig.public-form.json.
  */
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const DRAFT_SCHEMA_VERSION = 3;
+const DRAFT_SCHEMA_VERSION = 4;
 const LEGACY_DRAFT_SCHEMA_VERSION = 2;
 const DRAFT_EXCLUDED_FIELDS = new Set([
     'csrf_token', 'token', 'codigo_solicitud', 'id', 'created_at', 'updated_at',
@@ -72,6 +72,7 @@ const SELECTION_GROUPS = [
     { name: 'areas_comunes', message: 'Selecciona las áreas comunes que deben atenderse.' },
     { name: 'modalidad_grupo', message: 'Selecciona la modalidad de trabajo para continuar.' },
     { name: 'pasaje_mode', message: 'Indica cómo se manejará el pasaje.' },
+    { name: 'svc_care_assistance', message: 'Selecciona el tipo de asistencia requerida.' },
 ];
 const SELECTION_GROUP_NAMES = new Set(SELECTION_GROUPS.map((group) => group.name));
 const ELDER_RESPONSIBILITIES_MESSAGE = 'Indica al menos una responsabilidad de cuidado o selecciona que será solo acompañamiento/supervisión.';
@@ -177,10 +178,18 @@ function isHouseStructureControl(element) {
     return HOUSE_STRUCTURE_FIELD_NAMES.has(element.name);
 }
 function draftKey(form) {
-    return `domestica.public-form.${form.id}.draft.v3`;
+    const scope = String(form.dataset.draftScope || '').trim();
+    return scope
+        ? `domestica.public-form.${form.id}.${scope}.draft.v4`
+        : `domestica.public-form.${form.id}.draft.v4`;
 }
 function legacyDraftKey(form) {
-    return `domestica.public-form.${form.id}.draft.v2`;
+    const scope = String(form.dataset.draftScope || '').trim();
+    // Old public drafts were keyed only by form id and could belong to a different
+    // client. Never restore those unscoped values on a token-based public form.
+    return scope
+        ? `domestica.public-form.${form.id}.${scope}.draft.v3`
+        : `domestica.public-form.${form.id}.draft.v3`;
 }
 function draftControls(form) {
     return Array.from(form.elements).filter((element) => element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement);
@@ -209,7 +218,12 @@ function serializeDraft(form) {
             values[name] = first.value;
         }
     }
-    return { schemaVersion: DRAFT_SCHEMA_VERSION, savedAt: Date.now(), values };
+    return {
+        schemaVersion: DRAFT_SCHEMA_VERSION,
+        savedAt: Date.now(),
+        values,
+        serviceValues: form.__serviceDraftState || {},
+    };
 }
 function saveDraft(form) {
     try {
@@ -218,6 +232,14 @@ function saveDraft(form) {
     catch (_) { /* storage can be unavailable in private mode */ }
 }
 function setDraftValues(form, values) {
+    if (values.svc_driver_service && !values.svc_driver_purpose) {
+        const legacyValue = Array.isArray(values.svc_driver_service) ? values.svc_driver_service[0] : values.svc_driver_service;
+        const legacyPurpose = String(legacyValue || '').toLowerCase();
+        values.svc_driver_purpose = /otro/.test(legacyPurpose) ? 'otro'
+            : /personal/.test(legacyPurpose) ? 'personal_familiar'
+                : /diligencia/.test(legacyPurpose) ? 'transporte_diligencias' : 'traslado_empleados';
+        delete values.svc_driver_service;
+    }
     for (const [name, rawValue] of Object.entries(values || {})) {
         const expected = Array.isArray(rawValue) ? rawValue : [rawValue];
         const controls = draftControls(form).filter((element) => element.name === name && !isDraftExcluded(element));
@@ -257,18 +279,20 @@ function restoreDraft(form) {
             return { restored: false };
         const envelope = JSON.parse(raw);
         const version = Number(envelope && envelope.schemaVersion) || LEGACY_DRAFT_SCHEMA_VERSION;
-        if (!envelope || ![LEGACY_DRAFT_SCHEMA_VERSION, DRAFT_SCHEMA_VERSION].includes(version) ||
+        if (!envelope || ![LEGACY_DRAFT_SCHEMA_VERSION, 3, DRAFT_SCHEMA_VERSION].includes(version) ||
             !Number.isFinite(envelope.savedAt) || envelope.savedAt > Date.now() || Date.now() - envelope.savedAt > DRAFT_MAX_AGE_MS ||
             !envelope.values || typeof envelope.values !== 'object' || Array.isArray(envelope.values)) {
             window.sessionStorage.removeItem(currentKey);
             window.sessionStorage.removeItem(legacyDraftKey(form));
             return { restored: false };
         }
+        form.__serviceDraftState = envelope.serviceValues && typeof envelope.serviceValues === 'object' && !Array.isArray(envelope.serviceValues)
+            ? envelope.serviceValues : {};
         setDraftValues(form, envelope.values);
         dispatchDraftDependencies(form);
         setDraftValues(form, envelope.values);
         dispatchDraftEvents(form);
-        if (version === LEGACY_DRAFT_SCHEMA_VERSION) {
+        if (version !== DRAFT_SCHEMA_VERSION) {
             window.sessionStorage.setItem(currentKey, JSON.stringify(Object.assign(Object.assign({}, envelope), { schemaVersion: DRAFT_SCHEMA_VERSION })));
             window.sessionStorage.removeItem(legacyDraftKey(form));
         }
@@ -390,6 +414,153 @@ function removeMessages(form) {
         node.classList.remove('public-vue-error-target', 'public-vue-error-block');
     });
 }
+const NURSE_PROFESSIONAL_TASKS = new Set([
+    'administrar_medicamentos', 'administrar_inyecciones', 'tomar_presion', 'signos_vitales', 'curaciones',
+]);
+function nurseCrossErrors(form) {
+    const service = form.querySelector('[name="tipo_servicio"]');
+    if (!(service instanceof HTMLInputElement) || service.value !== 'ENFERMERA')
+        return [];
+    const assistance = form.querySelector('input[name="svc_care_assistance"]:checked');
+    const assistanceValue = assistance instanceof HTMLInputElement ? assistance.value : '';
+    const tasks = Array.from(form.querySelectorAll('input[name^="profile-responsibility-"]:checked'))
+        .filter((node) => node instanceof HTMLInputElement)
+        .map((node) => node.value);
+    const hasProfessionalTasks = tasks.some((task) => NURSE_PROFESSIONAL_TASKS.has(task));
+    const errors = [];
+    if (hasProfessionalTasks && assistanceValue !== 'enfermeria') {
+        const target = form.querySelector('.enfermera-assistance-group') || form.querySelector('input[name="svc_care_assistance"]');
+        const personCard = Array.from(form.querySelectorAll('.enfermera-person-card')).find((card) => Array.from(card.querySelectorAll('input[name^="profile-responsibility-"]:checked'))
+            .some((input) => input instanceof HTMLInputElement && NURSE_PROFESSIONAL_TASKS.has(input.value)));
+        const personNumber = personCard ? Array.from(form.querySelectorAll('.enfermera-person-card')).indexOf(personCard) + 1 : 0;
+        if (target instanceof HTMLElement)
+            errors.push({
+                element: target, validationKey: 'tipo_asistencia',
+                message: personNumber ? `Las responsabilidades clínicas de la persona ${personNumber} requieren seleccionar cuidados de enfermería.` : 'Las tareas clínicas requieren seleccionar cuidados de enfermería.',
+            });
+    }
+    const experience = form.querySelector('input[name="experiencia_visual"]:checked');
+    const experienceValue = experience instanceof HTMLInputElement ? experience.value : '';
+    if ((hasProfessionalTasks || assistanceValue === 'enfermeria') && experienceValue !== 'Enfermera') {
+        const target = form.querySelector('.public-experience-grid') || form.querySelector('input[name="experiencia_visual"]');
+        if (target instanceof HTMLElement)
+            errors.push({
+                element: target, validationKey: 'experiencia_requerida',
+                message: 'Selecciona Enfermera para funciones que requieren formación profesional.',
+            });
+    }
+    return errors;
+}
+function nurseServerErrorStillApplies(form, key, crossErrors) {
+    var _a, _b;
+    const service = form.querySelector('[name="tipo_servicio"]');
+    if (!(service instanceof HTMLInputElement) || service.value !== 'ENFERMERA')
+        return false;
+    if (crossErrors.some((error) => error.validationKey === key))
+        return true;
+    const countField = form.querySelector('#svc_care_count');
+    const profileRoot = form.querySelector('#enfermera-person-profiles');
+    const profiles = profileRoot ? Array.from(profileRoot.querySelectorAll('.enfermera-person-card')) : [];
+    const count = countField instanceof HTMLInputElement && /^\d+$/.test(countField.value) ? Number(countField.value) : 0;
+    const profilesComplete = count >= 1 && profiles.length === count && profiles.every((card) => {
+        const age = card.querySelector('input[type="number"]');
+        const mobility = card.querySelector('select');
+        const selectedConditions = Array.from(card.querySelectorAll('input[name^="profile-condition-"]:checked'));
+        const otherResponsibility = card.querySelector('input[name^="profile-responsibility-"][value="otro"]');
+        const otherDescription = card.querySelector('textarea[name^="profile-responsibilities-other-"]');
+        return age instanceof HTMLInputElement && /^\d+$/.test(age.value) && Number(age.value) >= 0 && Number(age.value) <= 120 &&
+            mobility instanceof HTMLSelectElement && !!mobility.value && selectedConditions.length > 0 &&
+            (!(otherResponsibility instanceof HTMLInputElement && otherResponsibility.checked) || !!(otherDescription === null || otherDescription === void 0 ? void 0 : otherDescription.value.trim())) &&
+            (!selectedConditions.some((item) => item instanceof HTMLInputElement && item.value === 'ninguna') || selectedConditions.length === 1);
+    });
+    const assistance = form.querySelector('input[name="svc_care_assistance"]:checked');
+    const assistanceValue = assistance instanceof HTMLInputElement ? assistance.value : '';
+    const experience = form.querySelector('input[name="experiencia_visual"]:checked');
+    const experienceValue = experience instanceof HTMLInputElement ? experience.value : '';
+    const tasks = Array.from(form.querySelectorAll('input[name^="profile-responsibility-"]:checked'))
+        .filter((node) => node instanceof HTMLInputElement).map((node) => node.value);
+    const hasProfessionalTasks = tasks.some((task) => NURSE_PROFESSIONAL_TASKS.has(task));
+    switch (key) {
+        case 'cantidad_personas': return !countField || count < 1 || count > 20;
+        case 'personas_cuidado': return !profilesComplete;
+        case 'tipo_asistencia': return !assistanceValue || (hasProfessionalTasks && assistanceValue !== 'enfermeria');
+        case 'experiencia_requerida': return !experienceValue ||
+            ((hasProfessionalTasks || assistanceValue === 'enfermeria') && experienceValue !== 'Enfermera');
+        case 'condiciones': {
+            if (profiles.length)
+                return profiles.some((card) => !card.querySelector('input[name^="profile-condition-"]:checked'));
+            const selected = Array.from(form.querySelectorAll('input[name="svc_care_condition"]:checked'))
+                .filter((node) => node instanceof HTMLInputElement);
+            return !selected.length || (selected.some((item) => item.value === 'ninguna') && selected.length > 1);
+        }
+        case 'condicion_otro': return !profiles.length &&
+            !!form.querySelector('input[name="svc_care_condition"][value="otra"]:checked') &&
+            !String(((_a = form.querySelector('#svc_care_condition_other')) === null || _a === void 0 ? void 0 : _a.value) || '').trim();
+        case 'movilidad': return profiles.length
+            ? profiles.some((card) => { var _a; return !((_a = card.querySelector('select')) === null || _a === void 0 ? void 0 : _a.value); })
+            : !String(((_b = form.querySelector('#svc_care_mobility')) === null || _b === void 0 ? void 0 : _b.value) || '');
+        case 'ayuda_higiene': return !profiles.length && !form.querySelector('input[name="svc_care_hygiene"]:checked');
+        case 'ayuda_alimentacion': return !profiles.length && !form.querySelector('input[name="svc_care_feeding"]:checked');
+        case 'tareas': return false;
+        default: return true;
+    }
+}
+function serverValidationErrors(form, errors) {
+    const crossErrors = nurseCrossErrors(form);
+    const result = [...crossErrors];
+    form.querySelectorAll('#enfermeraServerValidationErrors [data-public-server-error-key]').forEach((item) => {
+        var _a;
+        const key = item.dataset.publicServerErrorKey || '';
+        if (!nurseServerErrorStillApplies(form, key, crossErrors)) {
+            item.remove();
+            return;
+        }
+        const targetByKey = {
+            cantidad_personas: '#svc_care_count', personas_cuidado: '#enfermera-person-profiles',
+            tipo_asistencia: '.enfermera-assistance-group', tareas: '#enfermera-person-profiles',
+            condiciones: '#enfermera-person-profiles', condicion_otro: '#wrap-svc-care-condition-other',
+            ayuda_higiene: '[name="svc_care_hygiene"]', ayuda_alimentacion: '[name="svc_care_feeding"]',
+            movilidad: '#enfermera-person-profiles', experiencia_requerida: '.public-experience-grid',
+            enf_tareas_otro: '#enfermera-person-profiles', responsabilidad_por_persona: '#enfermera-person-profiles',
+        };
+        const target = form.querySelector(targetByKey[key] || '#enfermeraServerValidationErrors');
+        if (!(target instanceof HTMLElement))
+            return;
+        const message = ((_a = item.textContent) === null || _a === void 0 ? void 0 : _a.trim()) || 'Revisa este dato de Enfermería.';
+        const alreadyTracked = errors.some((error) => error.element === target ||
+            (isFieldElement(error.element) && error.element.closest('.public-field') === target.closest('.public-field')));
+        if (!alreadyTracked && !result.some((error) => error.validationKey === key)) {
+            result.push({ element: target, message, validationKey: key });
+        }
+    });
+    const serverBox = form.querySelector('#enfermeraServerValidationErrors');
+    if (serverBox instanceof HTMLElement && !serverBox.querySelector('[data-public-server-error-key]'))
+        serverBox.remove();
+    return result;
+}
+function reconcileServerNotices(form, errors) {
+    form.querySelectorAll('[data-public-wtforms-error]').forEach((notice) => {
+        const field = notice.closest('.public-field, .public-input-block, .public-terms-wrap');
+        if (!field)
+            return;
+        const hasCurrentError = errors.some((error) => error.element === field ||
+            (isFieldElement(error.element) && (field.contains(error.element) || error.element.closest('.public-field, .public-input-block, .public-terms-wrap') === field)));
+        if (!hasCurrentError) {
+            notice.remove();
+            field.querySelectorAll('.is-invalid').forEach((node) => node.classList.remove('is-invalid'));
+        }
+    });
+    const formComplete = errors.length === 0;
+    document.querySelectorAll('.public-flash.danger, .public-flash.error').forEach((notice) => {
+        const text = (notice.textContent || '').trim();
+        const genericValidation = text === 'Revisa los campos marcados en rojo.';
+        const termsValidation = /aceptar los términos y condiciones/i.test(text);
+        const termsCheckbox = form.querySelector('#acepta_politica, #acepta_politica_nueva');
+        const termsAccepted = termsCheckbox instanceof HTMLInputElement && termsCheckbox.checked;
+        if ((genericValidation && formComplete) || (termsValidation && termsAccepted))
+            notice.remove();
+    });
+}
 function showError(error) {
     const target = isFieldElement(error.element)
         ? error.element.closest('.public-field, .public-input-block, .public-terms-wrap') || error.element.parentElement
@@ -440,7 +611,9 @@ function scrollToNavigableTarget(target, statusRoot) {
     const viewportTop = viewport ? viewport.offsetTop : 0;
     const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
     const status = statusRoot.querySelector('.public-form-vue-status');
-    const bottomInset = (status instanceof HTMLElement ? status.getBoundingClientRect().height : 0) + 24;
+    const bottomInset = status instanceof HTMLElement && getComputedStyle(status).position === 'fixed'
+        ? status.getBoundingClientRect().height + 24
+        : 24;
     const topInset = 24;
     const rect = target.getBoundingClientRect();
     let delta = 0;
@@ -464,7 +637,6 @@ function topLevelCards(form) {
     return cards;
 }
 function bootForm(form, root) {
-    var _a, _b;
     const vue = window.Vue;
     if (!vue)
         return;
@@ -472,11 +644,37 @@ function bootForm(form, root) {
     if (!cards.length)
         return;
     normalizeSelectionGroupNativeValidity(form);
-    const restoredDraft = restoreDraft(form);
-    const state = vue.reactive({ errors: [], restored: restoredDraft.restored, submitting: false, dirty: false });
+    const serverPostback = form.dataset.serverPostback === 'true';
+    form._restoringDraft = true;
+    // On a rejected POST, WTForms and the server-rendered form contain the
+    // newest submitted state. A session draft may lag behind the last input
+    // event and must never overwrite those values during error recovery.
+    const restoredDraft = serverPostback ? { restored: false } : restoreDraft(form);
+    form._restoringDraft = false;
+    document.dispatchEvent(new CustomEvent('public-form-draft-ready', {
+        detail: { formId: form.id, restored: restoredDraft.restored },
+    }));
+    if (serverPostback)
+        saveDraft(form);
+    const state = vue.reactive({
+        errors: [], restored: restoredDraft.restored, submitting: false, dirty: false,
+        serverFailure: Array.from(document.querySelectorAll('.public-flash.danger, .public-flash.error')).some((notice) => {
+            const text = (notice.textContent || '').trim();
+            return text !== 'Revisa los campos marcados en rojo.' && !/aceptar los términos y condiciones/i.test(text);
+        }),
+    });
     const sync = () => {
-        state.errors = collectErrors(form, cards);
+        const currentErrors = collectErrors(form, cards);
+        const reconciledServerErrors = serverValidationErrors(form, currentErrors);
+        state.errors = currentErrors.concat(reconciledServerErrors.filter((serverError) => !currentErrors.some((error) => {
+            if (error.element === serverError.element)
+                return true;
+            const currentField = error.element.closest('.public-field');
+            const serverField = serverError.element.closest('.public-field');
+            return !!currentField && currentField === serverField;
+        })));
         state.dirty = true;
+        reconcileServerNotices(form, state.errors);
     };
     const focusFirst = (preferred) => {
         const error = preferred && 'element' in preferred ? preferred : state.errors[0];
@@ -515,17 +713,9 @@ function bootForm(form, root) {
     };
     const complete = vue.computed(() => state.errors.length === 0);
     vue.createApp({
-        setup: () => ({ state, complete, focusFirst: () => focusFirst() }),
-        template: '<div class="public-form-vue-ui"><p v-if="state.restored" class="public-field-hint mt-2 mb-0" role="status">Recuperamos los datos no sensibles de tu borrador en este teléfono. Revísalos antes de enviar.</p><div class="public-form-vue-status" :class="{\'is-complete\': complete}" role="status" aria-live="polite"><span class="public-form-vue-status__message"><span class="public-form-vue-status__icon" aria-hidden="true">{{ complete ? \'✓\' : \'!\' }}</span>{{ complete ? \'Solicitud completa. Ya puedes enviarla.\' : \'Faltan \' + state.errors.length + \' datos pendientes o inválidos\' }}</span><button v-if="!complete" type="button" class="public-form-vue-status__action" @click="focusFirst()">Ir al pendiente</button></div></div>',
+        setup: () => ({ state, complete, focusFirst: () => focusFirst(), focusPending: (error) => focusFirst(error) }),
+        template: '<div class="public-form-vue-ui"><p v-if="state.restored" class="public-field-hint mt-2 mb-0" role="status">Recuperamos los datos no sensibles de tu borrador en este teléfono. Revísalos antes de enviar.</p><div class="public-form-vue-status" :class="{\'is-complete\': complete && !state.serverFailure}"><span class="public-form-vue-status__message" role="status" aria-live="polite"><span class="public-form-vue-status__icon" aria-hidden="true">{{ complete && !state.serverFailure ? \'✓\' : \'!\' }}</span>{{ !complete ? \'Faltan \' + state.errors.length + \' datos pendientes o inválidos\' : state.serverFailure ? \'Los datos están completos. El último envío no se completó; revisa el aviso antes de reenviar.\' : \'Solicitud completa. Ya puedes enviarla.\' }}</span><div v-if="!complete" class="public-form-vue-status__actions"><details class="public-form-vue-status__details"><summary>Ver pendientes</summary><ul><li v-for="(error, index) in state.errors" :key="index"><button type="button" @click="focusPending(error)">{{ error.message }}</button></li></ul></details><button type="button" class="public-form-vue-status__action" @click="focusFirst()">Ir al pendiente</button></div></div></div>',
     }).mount(root);
-    const syncViewport = () => {
-        const viewport = window.visualViewport;
-        const offset = viewport ? Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) : 0;
-        root.style.setProperty('--public-vue-keyboard-offset', `${Math.round(offset)}px`);
-    };
-    syncViewport();
-    (_a = window.visualViewport) === null || _a === void 0 ? void 0 : _a.addEventListener('resize', syncViewport);
-    (_b = window.visualViewport) === null || _b === void 0 ? void 0 : _b.addEventListener('scroll', syncViewport);
     let saveTimer = 0;
     const onChange = () => {
         sync();
@@ -555,6 +745,12 @@ function bootForm(form, root) {
             focusFirst();
             return;
         }
+        state.serverFailure = false;
+        document.querySelectorAll('.public-flash.danger, .public-flash.error').forEach((notice) => {
+            const text = (notice.textContent || '').trim();
+            if (text !== 'Revisa los campos marcados en rojo.' && !/aceptar los términos y condiciones/i.test(text))
+                notice.remove();
+        });
         state.submitting = true;
         saveDraft(form);
     }, true);

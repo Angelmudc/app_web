@@ -2,37 +2,41 @@
   margin: 0 0 18px;
 }
 
-form[data-form-ux="vue"] {
-  padding-bottom: calc(88px + env(safe-area-inset-bottom));
-}
+form[data-form-ux="vue"] { padding-bottom: 18px; }
 
 .public-form-vue-root [v-cloak] { display: none !important; }
 
 .public-form-vue-status {
-  position: fixed;
-  z-index: 1030;
-  right: 12px;
-  bottom: calc(max(12px, env(safe-area-inset-bottom)) + var(--public-vue-keyboard-offset, 0px));
-  left: 12px;
+  position: static;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 54px;
+  min-height: 0;
+  margin: 0 0 12px;
   border: 1px solid #cfdde8;
   border-radius: 14px;
   background: rgba(255, 255, 255, .97);
-  box-shadow: 0 12px 30px rgba(17, 32, 49, .16);
+  box-shadow: none;
   padding: 10px 13px;
   color: #29445c;
   font-size: .86rem;
+  pointer-events: auto;
 }
 
 .public-form-vue-status.is-complete { border-color: #a9d9c1; background: rgba(244, 252, 247, .98); color: #146c43; }
 .public-form-vue-status__message { display: flex; align-items: center; gap: 8px; font-weight: 700; }
+.public-form-vue-status__actions { display: flex; flex: 0 0 auto; align-items: center; gap: 10px; }
+.public-form-vue-status__details { position: relative; }
+.public-form-vue-status__details summary { color: #0f6a7f; cursor: pointer; font-size: .82rem; font-weight: 700; }
+.public-form-vue-status__details ul { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 2; width: min(340px, calc(100vw - 32px)); max-height: min(45vh, 320px); overflow: auto; margin: 0; padding: 8px; list-style: none; border: 1px solid #cfdde8; border-radius: 10px; background: #fff; box-shadow: 0 8px 24px rgba(17, 32, 49, .16); }
+.public-form-vue-status__details li + li { border-top: 1px solid #edf1f5; }
+.public-form-vue-status__details li button { width: 100%; border: 0; border-radius: 6px; background: transparent; padding: 8px; color: #29445c; text-align: left; font-size: .8rem; }
+.public-form-vue-status__details li button:hover,
+.public-form-vue-status__details li button:focus-visible { background: #f2f8fa; }
 .public-form-vue-status__icon { display: inline-grid; width: 25px; height: 25px; place-items: center; border-radius: 50%; background: #e8f4f7; color: #0f6a7f; }
 .public-form-vue-status.is-complete .public-form-vue-status__icon { background: #d9f2e3; color: #146c43; }
-.public-form-vue-status__action { flex: 0 0 auto; border: 0; border-radius: 9px; background: transparent; color: #0f6a7f; font-weight: 800; padding: 6px 4px; }
+.public-form-vue-status__action { flex: 0 0 auto; border: 0; border-radius: 9px; background: transparent; color: #0f6a7f; font-weight: 800; padding: 6px 4px; pointer-events: auto; }
 .public-form-vue-status__action:focus-visible { outline: 3px solid rgba(42, 143, 156, .25); outline-offset: 2px; }
 .public-vue-field-error {
   margin-top: 6px;
@@ -53,11 +57,16 @@ form[data-form-ux="vue"] {
     transition: none !important;
   }
 }
-@media (min-width: 768px) {
-  .public-form-vue-status { right: 24px; bottom: calc(20px + var(--public-vue-keyboard-offset, 0px)); left: auto; width: min(360px, calc(100vw - 48px)); }
-}
-
 @media (max-width: 460px) {
-  .public-form-vue-status { font-size: .82rem; }
+  form[data-form-ux="vue"] { padding-bottom: 12px; }
+  .public-form-vue-root { margin: 0 0 12px; }
+  .public-form-vue-status { position: static; width: auto; min-height: 0; margin: 0; gap: 8px; flex-wrap: wrap; border-radius: 10px; box-shadow: none; padding: 8px 10px; font-size: .78rem; }
+  .public-form-vue-status__icon { width: 22px; height: 22px; flex: 0 0 22px; }
+  .public-form-vue-status__message { flex: 1 1 100%; gap: 6px; }
+  .public-form-vue-status__actions { flex: 1 1 100%; justify-content: space-between; min-width: 0; gap: 7px; }
+  .public-form-vue-status__details { flex: 1 1 auto; min-width: 0; }
+  .public-form-vue-status__details summary { font-size: .75rem; }
+  .public-form-vue-status__details ul { position: static; box-sizing: border-box; width: 100%; max-width: calc(100vw - 48px); max-height: 35vh; margin-top: 6px; }
+  .public-form-vue-status__action { white-space: nowrap; }
   .public-form-vue-status__action { font-size: .78rem; }
 }

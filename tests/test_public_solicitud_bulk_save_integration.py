@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import os
+import re
 import uuid
 from copy import deepcopy
 from unittest.mock import patch
@@ -14,7 +16,8 @@ from sqlalchemy import delete
 from app import app as flask_app
 from config_app import db
 from clientes.routes import _public_link_token_hash_storage
-from models import Cliente, DomainOutbox, PublicSolicitudClienteNuevoTokenUso, Solicitud
+from models import Cliente, DomainOutbox, PagoSolicitud, PublicSolicitudClienteNuevoTokenUso, PublicSolicitudTokenUso, Solicitud
+import admin.routes as admin_routes
 from tests.t1_testkit import ensure_sqlite_compat_tables
 
 
@@ -125,15 +128,17 @@ def _case_payload(i: int, *, run_id: str = "bulk") -> dict:
     )
 
     return {
+        "tipo_servicio": "DOMESTICA_LIMPIEZA",
         "terms_decision": "accept",
         "terms_accepted": "1",
         "terms_accepted_at": f"2026-08-18T12:{i % 60:02d}:00Z",
-        "nombre_completo": f"Cliente Bulk {run_id} {i:03d}",
+        "nombre_completo": "Cliente Bulk Prueba Caso",
         "email_contacto": f"bulk-{run_id}-{i:03d}@example.com",
         "telefono_contacto": f"809-55{i % 10}-{i:04d}",
         "ciudad_cliente": ciudades[i % len(ciudades)],
         "sector_cliente": sectores[(i * 2) % len(sectores)],
         "ciudad_sector": f"{ciudades[(i + 2) % len(ciudades)]} / {sectores[(i + 3) % len(sectores)]}",
+        "direccion_precisa": f"Calle Ficticia {100 + i}, Residencial Prueba, casa {i + 1}",
         "rutas_cercanas": rutas[(i * 3) % len(rutas)],
         "modalidad_grupo": modalidad[0],
         "modalidad_especifica": modalidad[1],
@@ -199,6 +204,28 @@ def _expected_edad(payload: dict) -> list[str]:
 
 
 def _assert_postgresql_local_test_database() -> dict:
+    if os.environ.get("APP_WEB_AURA_TEMP_DATABASE_URL"):
+        from scripts.local.alembic_clean_bootstrap import validate_target_url, verify_live_target
+        from scripts.local.aura_temp_database_guard import install_connection_guard
+
+        raw_url = os.environ["APP_WEB_AURA_TEMP_DATABASE_URL"]
+        expected_db = os.environ["APP_WEB_AURA_TEMP_DATABASE"]
+        expected_data = os.environ["APP_WEB_AURA_TEMP_PGDATA"]
+        url, data_dir = validate_target_url(raw_url, expected_data, expected_db)
+        install_connection_guard(
+            target_url=raw_url,
+            expected_data_directory=str(data_dir),
+            expected_database=expected_db,
+        )
+        with flask_app.app_context():
+            assert db.engine.url.database == expected_db
+            assert db.engine.url.host == "127.0.0.1"
+            assert db.engine.url.port == url.port
+            identity = verify_live_target(
+                db.engine, url=url, expected_data_directory=data_dir,
+                require_empty=False,
+            )
+        return identity
     assert os.environ.get("APP_ENV") == "test"
     assert os.environ.get("APP_WEB_ALLOW_LOCAL_POSTGRESQL_TESTS") == "1"
     with flask_app.app_context():
@@ -209,10 +236,17 @@ def _assert_postgresql_local_test_database() -> dict:
         username = engine_url.username or ""
         port = engine_url.port or 5432
         rendered_url = engine_url.render_as_string(hide_password=True)
+        server_database, server_address, server_port = db.session.execute(
+            db.text("SELECT current_database(), inet_server_addr()::text, inet_server_port()")
+        ).one()
     assert dialect == "postgresql"
     assert host in {"localhost", "127.0.0.1", "::1"}
     assert int(port) == 5432
-    assert any(marker in database.lower() for marker in ("test", "pytest", "pgtest"))
+    server_ip = ipaddress.ip_address(str(server_address).split("/")[0]) if server_address else None
+    local_database_is_explicit = database == "domestica_cibao_local"
+    assert any(marker in database.lower() for marker in ("test", "pytest", "pgtest")) or local_database_is_explicit
+    assert server_database == database and server_ip is not None and server_ip.is_loopback
+    assert int(server_port or 5432) == int(port)
     assert "render.com" not in rendered_url.lower()
     assert "supabase" not in rendered_url.lower()
     assert "railway" not in rendered_url.lower()
@@ -225,6 +259,7 @@ def _assert_postgresql_local_test_database() -> dict:
         "port": port,
         "database": database,
         "username": username,
+        "server_address": server_address,
         "url": rendered_url,
     }
 
@@ -242,11 +277,11 @@ def _database_report() -> dict:
         }
 
 
-def _cleanup_created_rows(created_ids: list[int], run_id: str) -> None:
-    emails = [f"bulk-{run_id}-{i:03d}@example.com" for i in range(COUNT)]
+def _cleanup_created_rows(created_ids: list[int], run_id: str, *, count: int = COUNT) -> None:
+    emails = [f"bulk-{run_id}-{i:03d}@example.com" for i in range(count)]
     token_hashes = [
         _public_link_token_hash_storage(f"bulk-token-{run_id}-{i:03d}")
-        for i in range(COUNT)
+        for i in range(count)
     ]
     with flask_app.app_context():
         client_ids = [
@@ -393,8 +428,13 @@ def _run_bulk_roundtrip(*, run_id: str, expect_count_delta: bool = True) -> dict
                     follow_redirects=False,
                 )
                 if resp.status_code not in (302, 303):
-                    failures.append((i, resp.status_code, resp.get_data(as_text=True)[:500]))
-                    continue
+                    body = resp.get_data(as_text=True)
+                    messages = re.findall(r'<div class="invalid-feedback[^>]*>(.*?)</div>', body, flags=re.DOTALL)
+                    detail = [re.sub(r"<[^>]+>", "", msg).strip() for msg in messages]
+                    if not detail:
+                        detail = [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip()[:240]]
+                    failures.append((i, resp.status_code, detail))
+                    break
                 token_hash = _public_link_token_hash_storage(token)
                 with flask_app.app_context():
                     db.session.remove()
@@ -419,14 +459,409 @@ def _run_bulk_roundtrip(*, run_id: str, expect_count_delta: bool = True) -> dict
         with flask_app.app_context():
             is_postgresql = db.engine.dialect.name == "postgresql"
         if is_postgresql:
+            print(f"PG_CREATED_SOLICITUD_IDS[{run_id}]=" + ",".join(str(row_id) for row_id in created_ids))
             _cleanup_created_rows(created_ids, run_id)
+            with flask_app.app_context():
+                remaining_requests = Solicitud.query.filter(Solicitud.id.in_(created_ids)).count() if created_ids else 0
+                remaining_clients = Cliente.query.filter(Cliente.email_norm.like(f"bulk-{run_id}-%")).count()
+                token_hashes = [_public_link_token_hash_storage(f"bulk-token-{run_id}-{i:03d}") for i in range(COUNT)]
+                remaining_tokens = PublicSolicitudClienteNuevoTokenUso.query.filter(PublicSolicitudClienteNuevoTokenUso.token_hash.in_(token_hashes)).count()
+                print(f"PG_CLEANUP_REMAINDERS[{run_id}]: solicitudes={remaining_requests}, clientes={remaining_clients}, tokens={remaining_tokens}")
+                assert (remaining_requests, remaining_clients, remaining_tokens) == (0, 0, 0)
 
 
 def test_public_new_request_bulk_100_unique_payloads_persist_and_roundtrip():
     assert os.environ.get("APP_ENV") == "test"
-    assert flask_app.config["SQLALCHEMY_DATABASE_URI"].startswith("sqlite:////")
-    assert "app_web_pytest_" in flask_app.config["SQLALCHEMY_DATABASE_URI"]
-    _run_bulk_roundtrip(run_id="sqlite")
+    assert os.environ.get("APP_WEB_PYTEST_POSTGRESQL_DATABASE_URL")
+    _assert_postgresql_local_test_database()
+    _run_bulk_roundtrip(run_id=f"pgbulk{uuid.uuid4().hex[:8]}")
+
+
+def test_public_new_client_persists_all_six_service_types():
+    """Public new-client form validates, saves and reads back each catalog type."""
+    assert os.environ.get("APP_ENV") == "test"
+    flask_app.config["TESTING"] = True
+    flask_app.config["WTF_CSRF_ENABLED"] = False
+    flask_app.config["ENABLE_ATTRACTIVENESS_SCORE"] = False
+    run_id = f"regcat{uuid.uuid4().hex[:6]}"
+    service_data = {
+        "DOMESTICA_LIMPIEZA": {},
+        "NINERA": {"svc_ninera_count": "2", "svc_ninera_ages": "2 y 6 años", "svc_ninera_responsibility": ["supervision"], "experiencia": "Niñera"},
+        "ENFERMERA": {"svc_care_count": "1", "svc_care_profiles": json.dumps([{"edad": 78, "movilidad": "autonomo", "condiciones": ["ninguna"], "responsabilidades": ["acompanamiento"]}]), "svc_care_assistance": "acompanamiento", "experiencia": "Cuidadora de envejecientes"},
+        "CHOFER": {"svc_driver_purpose": "traslado_empleados", "svc_driver_vehicle": "carro", "svc_driver_license_category": "categoria_02", "experiencia": "Chofer"},
+        "LIMPIEZA_ESTABLECIMIENTOS": {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - lunes a viernes", "modalidad_trabajo": "Salida diaria - lunes a viernes", "horario_dias_trabajo": "Lunes a viernes", "horario_hora_entrada": "8:00 AM", "horario_hora_salida": "5:00 PM", "svc_office_type": "oficina", "svc_office_size": "Mediano", "svc_office_despachos": "2", "svc_office_banos": "1", "svc_office_area": ["recepcion"], "svc_office_task": ["pisos"], "svc_office_support": "no", "experiencia": "Limpieza"},
+        "CONSERJERIA_RESIDENCIAL": {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - lunes a viernes", "modalidad_trabajo": "Salida diaria - lunes a viernes", "horario_dias_trabajo": "Lunes a viernes", "horario_hora_entrada": "8:00 AM", "horario_hora_salida": "5:00 PM", "svc_conserje_type": "torre_apartamentos", "svc_conserje_levels": "3", "svc_conserje_units": "12", "svc_conserje_elevators": "1", "svc_conserje_parking": "si", "svc_conserje_recreation": "no", "svc_conserje_installation": ["lobby_recepcion"], "svc_conserje_responsibility": ["limpieza_areas_comunes"], "svc_conserje_support": "no"},
+    }
+    with flask_app.app_context():
+        if db.engine.dialect.name == "sqlite":
+            ensure_sqlite_compat_tables([Cliente, Solicitud, PublicSolicitudClienteNuevoTokenUso, DomainOutbox], reset=True)
+        token_hashes = [_public_link_token_hash_storage(f"bulk-token-{run_id}-{i:03d}") for i in range(6)]
+        assert Cliente.query.filter(Cliente.email_norm.like(f"bulk-{run_id}-%")).count() == 0
+        assert PublicSolicitudClienteNuevoTokenUso.query.filter(PublicSolicitudClienteNuevoTokenUso.token_hash.in_(token_hashes)).count() == 0
+
+    client = flask_app.test_client()
+    created_ids: list[int] = []
+    with flask_app.app_context():
+        is_postgresql = db.engine.dialect.name == "postgresql"
+    try:
+        with patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+             patch("clientes.routes.enforce_business_limit", return_value=(False, None)), \
+             patch("clientes.routes.enforce_min_human_interval", return_value=(False, None)), \
+             patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None):
+            for index, (service, extras) in enumerate(service_data.items()):
+                payload = _case_payload(index, run_id=run_id)
+                payload["telefono_contacto"] = f"809{int(uuid.uuid4().hex[:7], 16) % 10_000_000:07d}"
+                payload["tipo_servicio"] = service
+                if service == "DOMESTICA_LIMPIEZA":
+                    # Household composition is independent of childcare duties.
+                    payload.update({"ninos": "2", "edades_ninos": "4 y 8", "ayuda_cuidado_ninos": ""})
+                if service != "DOMESTICA_LIMPIEZA":
+                    payload.update({"funciones": [], "funciones_otro": "", "tipo_lugar": "", "habitaciones": "",
+                                    "banos": "", "areas_comunes": [], "area_otro": "", "adultos": "",
+                                    "ninos": "0", "edades_ninos": "", "mascota": ""})
+                payload.update(extras)
+                token = f"bulk-token-{run_id}-{index:03d}"
+                response = client.post(f"/clientes/solicitudes/nueva-publica/{token}", data=payload, follow_redirects=False)
+                body = response.get_data(as_text=True)
+                errors = [re.sub(r"<[^>]+>", "", item).strip() for item in re.findall(r'<div class="invalid-feedback[^>]*>(.*?)</div>', body, re.S)]
+                assert response.status_code in (302, 303), (service, response.status_code, errors[:20])
+                assert f"/clientes/solicitudes/publica/confirmacion/{token}" in (response.headers.get("Location") or "")
+                with flask_app.app_context():
+                    db.session.remove()
+                    usage = PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=token_hashes[index]).first()
+                    assert usage is not None and usage.solicitud_id
+                    assert usage.consumption_reason == "request_created"
+                    row = Solicitud.query.get(int(usage.solicitud_id))
+                    receipt = client.get(response.headers["Location"])
+                    assert receipt.status_code == 200
+                    assert row.codigo_solicitud in receipt.get_data(as_text=True)
+                    with patch("clientes.routes._resolve_public_new_link_token", return_value=(False, "already_used", {})):
+                        plan_response = client.get(f"/clientes/solicitudes/nueva-publica/{token}/plan")
+                    assert plan_response.status_code == 404
+                    assert row.tipo_plan is None
+                    assert PagoSolicitud.query.filter_by(solicitud_id=row.id).count() == 0
+                    solicitud_count = Solicitud.query.filter_by(cliente_id=row.cliente_id).count()
+                    repeated = client.post(f"/clientes/solicitudes/nueva-publica/{token}", data=payload, follow_redirects=False)
+                    assert repeated.status_code == 410
+                    reopened = client.get(f"/clientes/solicitudes/nueva-publica/{token}", follow_redirects=False)
+                    assert reopened.status_code in (302, 303)
+                    assert f"/clientes/solicitudes/publica/confirmacion/{token}" in (reopened.headers.get("Location") or "")
+                    assert client.get(f"/clientes/solicitudes/publica/confirmacion/forged-{token}").status_code == 404
+                    assert Solicitud.query.filter_by(cliente_id=row.cliente_id).count() == solicitud_count
+                    assert row.tipo_servicio == service
+                    assert row.detalles_servicio["tipo"] == service
+                    owner = Cliente.query.get(row.cliente_id)
+                    assert owner is not None and owner.email_norm == payload["email_contacto"]
+                    assert row.horario == _expected_horario(payload)
+                    details = row.detalles_servicio or {}
+                    assert details.get("direccion_precisa") == payload["direccion_precisa"], sorted(details)
+                    if service == "DOMESTICA_LIMPIEZA":
+                        assert row.ninos == 2 and row.edades_ninos == "4 y 8"
+                        with flask_app.test_request_context("/"):
+                            internal_copy = admin_routes._admin_build_public_copy_text(row)
+                            publication_copy = admin_routes._admin_build_order_text_for_copiar(row)
+                        assert internal_copy == publication_copy
+                        assert "Niños: 2 (4 y 8)" in publication_copy
+                        assert publication_copy.count("Niños:") == 1
+                        assert "Cuidar Niños" not in publication_copy
+                        assert payload["direccion_precisa"] not in publication_copy
+                    elif service == "NINERA":
+                        assert (details["cantidad_ninos"], details["edades_ninos"], details["tareas"]) == ("2", "2 y 6 años", ["supervision"])
+                    elif service == "ENFERMERA":
+                        person = details["personas_cuidado"][0]
+                        assert details["cantidad_personas"] == "1"
+                        assert (person["edad"], person["movilidad"], person["condiciones"], person["responsabilidades"]) == (78, "autonomo", ["ninguna"], ["acompanamiento"])
+                        assert "tareas" not in details
+                    elif service == "CHOFER":
+                        assert (details["finalidad"], details["tipo_vehiculo"]) == ("traslado_empleados", "carro")
+                    elif service == "LIMPIEZA_ESTABLECIMIENTOS":
+                        assert (details["tipo_establecimiento"], details["tamano"], details["areas"], details["funciones"]) == ("oficina", "Mediano", ["recepcion"], ["pisos"])
+                        assert details["caracteristicas"] == {"despachos": 2, "banos": 1}
+                        assert Solicitud.query.get(int(row.id)).experiencia == "Limpieza"
+                        assert "nombre_establecimiento" not in details and "cantidad_empleados" not in details
+                    elif service == "CONSERJERIA_RESIDENCIAL":
+                        assert details["tipo_residencial"] == "torre_apartamentos"
+                    created_ids.append(int(row.id))
+    finally:
+        if is_postgresql:
+            print(f"PG_CREATED_SOLICITUD_IDS[{run_id}]=" + ",".join(str(row_id) for row_id in created_ids))
+        # Recover every row from its token even when an assertion fails before
+        # appending the current request ID. This keeps failed PG runs contained.
+        with flask_app.app_context():
+            discovered_ids = [
+                int(row[0]) for row in db.session.query(PublicSolicitudClienteNuevoTokenUso.solicitud_id)
+                .filter(PublicSolicitudClienteNuevoTokenUso.token_hash.in_(token_hashes))
+                .filter(PublicSolicitudClienteNuevoTokenUso.solicitud_id.isnot(None)).all()
+            ]
+        _cleanup_created_rows(sorted(set(created_ids + discovered_ids)), run_id, count=6)
+        with flask_app.app_context():
+            assert Solicitud.query.filter(Solicitud.id.in_(created_ids)).count() == 0 if created_ids else True
+            assert Cliente.query.filter(Cliente.email_norm.like(f"bulk-{run_id}-%")).count() == 0
+            assert PublicSolicitudClienteNuevoTokenUso.query.filter(PublicSolicitudClienteNuevoTokenUso.token_hash.in_(token_hashes)).count() == 0
+            if is_postgresql:
+                print(f"PG_CLEANUP_REMAINDERS[{run_id}]: solicitudes=0, clientes=0, tokens=0")
+
+
+def test_public_existing_client_persists_all_six_service_types_for_the_resolved_client():
+    """Public existing-client link saves each service to the token's client."""
+    assert os.environ.get("APP_ENV") == "test"
+    flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, ENABLE_ATTRACTIVENESS_SCORE=False)
+    run_id = f"regcat{uuid.uuid4().hex[:6]}"
+    service_data = {
+        "DOMESTICA_LIMPIEZA": {},
+        "NINERA": {"svc_ninera_count": "2", "svc_ninera_ages": "2 y 6 años", "svc_ninera_responsibility": ["supervision"], "experiencia": "Niñera"},
+        "ENFERMERA": {"svc_care_count": "1", "svc_care_profiles": json.dumps([{"edad": 78, "movilidad": "autonomo", "condiciones": ["ninguna"], "responsabilidades": ["acompanamiento"]}]), "svc_care_assistance": "acompanamiento", "experiencia": "Cuidadora de envejecientes"},
+        "CHOFER": {"svc_driver_purpose": "traslado_empleados", "svc_driver_vehicle": "carro", "svc_driver_license_category": "categoria_02", "experiencia": "Chofer"},
+        "LIMPIEZA_ESTABLECIMIENTOS": {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - lunes a viernes", "modalidad_trabajo": "Salida diaria - lunes a viernes", "horario_dias_trabajo": "Lunes a viernes", "horario_hora_entrada": "8:00 AM", "horario_hora_salida": "5:00 PM", "svc_office_type": "oficina", "svc_office_size": "Mediano", "svc_office_despachos": "2", "svc_office_banos": "1", "svc_office_area": ["recepcion"], "svc_office_task": ["pisos"], "svc_office_support": "no", "experiencia": "Limpieza"},
+        "CONSERJERIA_RESIDENCIAL": {"modalidad_grupo": "con_salida_diaria", "modalidad_especifica": "Salida diaria - lunes a viernes", "modalidad_trabajo": "Salida diaria - lunes a viernes", "horario_dias_trabajo": "Lunes a viernes", "horario_hora_entrada": "8:00 AM", "horario_hora_salida": "5:00 PM", "svc_conserje_type": "torre_apartamentos", "svc_conserje_levels": "3", "svc_conserje_units": "12", "svc_conserje_elevators": "1", "svc_conserje_parking": "si", "svc_conserje_recreation": "no", "svc_conserje_installation": ["lobby_recepcion"], "svc_conserje_responsibility": ["limpieza_areas_comunes"], "svc_conserje_support": "no"},
+    }
+    with flask_app.app_context():
+        if db.engine.dialect.name == "sqlite":
+            ensure_sqlite_compat_tables([Cliente, Solicitud, PublicSolicitudTokenUso, DomainOutbox], reset=True)
+        cliente_email = f"bulk-{run_id}@example.com"
+        assert Cliente.query.filter_by(email=cliente_email).count() == 0
+        cliente = Cliente(codigo=f"RC{uuid.uuid4().hex[:8]}", nombre_completo="Cliente Regcat Prueba",
+                          email=cliente_email, telefono="8095550101", ciudad="Santiago", sector="Centro")
+        db.session.add(cliente)
+        db.session.commit()
+        cliente_id = int(cliente.id)
+
+    client = flask_app.test_client()
+    created_ids: list[int] = []
+    hashes: list[str] = []
+    with flask_app.app_context():
+        is_postgresql = db.engine.dialect.name == "postgresql"
+    try:
+        with patch("clientes.routes._resolve_public_link_token", return_value=(None, "", {})) as resolver, \
+             patch("clientes.routes._cliente_active_solicitudes_count", return_value=0), \
+             patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None):
+            for index, (service, extras) in enumerate(service_data.items()):
+                with flask_app.app_context():
+                    resolved_cliente = Cliente.query.get(cliente_id)
+                resolver.return_value = (resolved_cliente, "", {})
+                token = f"bulk-token-{run_id}-{index:03d}"
+                token_hash = _public_link_token_hash_storage(token)
+                hashes.append(token_hash)
+                payload = _case_payload(index, run_id=run_id)
+                payload.update({"token": token, "tipo_servicio": service})
+                if service == "DOMESTICA_LIMPIEZA":
+                    # The public flow must persist household children even
+                    # when the client did not request childcare duties.
+                    payload.update({"ninos": "2", "edades_ninos": "4 y 8", "ayuda_cuidado_ninos": ""})
+                if service != "DOMESTICA_LIMPIEZA":
+                    payload.update({"funciones": [], "funciones_otro": "", "tipo_lugar": "", "habitaciones": "",
+                                    "banos": "", "areas_comunes": [], "area_otro": "", "adultos": "",
+                                    "ninos": "0", "edades_ninos": "", "mascota": ""})
+                payload.update(extras)
+                response = client.post(f"/clientes/solicitudes/publica/{token}", data=payload, follow_redirects=False)
+                body = response.get_data(as_text=True)
+                errors = [re.sub(r"<[^>]+>", "", item).strip() for item in re.findall(r'<div class="invalid-feedback[^>]*>(.*?)</div>', body, re.S)]
+                assert response.status_code in (302, 303), (service, response.status_code, errors[:20])
+                assert f"/clientes/solicitudes/publica/confirmacion/{token}" in (response.headers.get("Location") or "")
+                with flask_app.app_context():
+                    db.session.remove()
+                    usage = PublicSolicitudTokenUso.query.filter_by(token_hash=token_hash).first()
+                    assert usage is not None and int(usage.cliente_id) == cliente_id and usage.solicitud_id
+                    assert usage.consumption_reason == "request_created"
+                    row = Solicitud.query.get(int(usage.solicitud_id))
+                    receipt = client.get(response.headers["Location"])
+                    assert receipt.status_code == 200
+                    assert row.codigo_solicitud in receipt.get_data(as_text=True)
+                    with patch("clientes.routes._resolve_public_link_token", return_value=(None, "already_used", {})):
+                        plan_response = client.get(f"/clientes/solicitudes/publica/{token}/plan")
+                    assert plan_response.status_code == 404
+                    assert row.tipo_plan is None
+                    assert PagoSolicitud.query.filter_by(solicitud_id=row.id).count() == 0
+                    solicitud_count = Solicitud.query.filter_by(cliente_id=cliente_id).count()
+                    repeated = client.post(f"/clientes/solicitudes/publica/{token}", data=payload, follow_redirects=False)
+                    assert repeated.status_code == 410
+                    reopened = client.get(f"/clientes/solicitudes/publica/{token}", follow_redirects=False)
+                    assert reopened.status_code in (302, 303)
+                    assert f"/clientes/solicitudes/publica/confirmacion/{token}" in (reopened.headers.get("Location") or "")
+                    assert client.get(f"/clientes/solicitudes/publica/confirmacion/forged-{token}").status_code == 404
+                    assert Solicitud.query.filter_by(cliente_id=cliente_id).count() == solicitud_count
+                    assert int(row.cliente_id) == cliente_id and row.tipo_servicio == service
+                    assert row.detalles_servicio["tipo"] == service
+                    assert row.horario == _expected_horario(payload)
+                    details = row.detalles_servicio or {}
+                    assert details.get("direccion_precisa") == payload["direccion_precisa"], sorted(details)
+                    if service == "DOMESTICA_LIMPIEZA":
+                        assert row.ninos == 2 and row.edades_ninos == "4 y 8"
+                        with flask_app.test_request_context("/"):
+                            internal_copy = admin_routes._admin_build_public_copy_text(row)
+                            publication_copy = admin_routes._admin_build_order_text_for_copiar(row)
+                        assert internal_copy == publication_copy
+                        assert "Niños: 2 (4 y 8)" in publication_copy
+                        assert publication_copy.count("Niños:") == 1
+                        assert "Cuidar Niños" not in publication_copy
+                        assert payload["direccion_precisa"] not in publication_copy
+                    elif service == "NINERA":
+                        assert (details["cantidad_ninos"], details["edades_ninos"], details["tareas"]) == ("2", "2 y 6 años", ["supervision"])
+                    elif service == "ENFERMERA":
+                        person = details["personas_cuidado"][0]
+                        assert details["cantidad_personas"] == "1"
+                        assert (person["edad"], person["movilidad"], person["condiciones"], person["responsabilidades"]) == (78, "autonomo", ["ninguna"], ["acompanamiento"])
+                        assert "tareas" not in details
+                    elif service == "CHOFER":
+                        assert (details["finalidad"], details["tipo_vehiculo"]) == ("traslado_empleados", "carro")
+                    elif service == "LIMPIEZA_ESTABLECIMIENTOS":
+                        assert (details["tipo_establecimiento"], details["tamano"], details["areas"], details["funciones"]) == ("oficina", "Mediano", ["recepcion"], ["pisos"])
+                        assert details["caracteristicas"] == {"despachos": 2, "banos": 1}
+                        assert Solicitud.query.get(int(row.id)).experiencia == "Limpieza"
+                    elif service == "CONSERJERIA_RESIDENCIAL":
+                        assert details["tipo_residencial"] == "torre_apartamentos"
+                    created_ids.append(int(row.id))
+    finally:
+        if is_postgresql:
+            print(f"PG_CREATED_EXISTING_CLIENT_SCENARIO: cliente={cliente_id} solicitudes=" + ",".join(str(row_id) for row_id in created_ids))
+        with flask_app.app_context():
+            if hashes:
+                discovered_ids = [
+                    int(row[0]) for row in db.session.query(PublicSolicitudTokenUso.solicitud_id)
+                    .filter(PublicSolicitudTokenUso.token_hash.in_(hashes))
+                    .filter(PublicSolicitudTokenUso.solicitud_id.isnot(None)).all()
+                ]
+                db.session.execute(delete(PublicSolicitudTokenUso).where(PublicSolicitudTokenUso.token_hash.in_(hashes)))
+            else:
+                discovered_ids = []
+            exact_ids = sorted(set(created_ids + discovered_ids))
+            if exact_ids:
+                db.session.execute(delete(Solicitud).where(Solicitud.id.in_(exact_ids), Solicitud.cliente_id == cliente_id))
+            db.session.execute(delete(Cliente).where(Cliente.id == cliente_id, Cliente.email == f"bulk-{run_id}@example.com"))
+            db.session.commit()
+            assert (Solicitud.query.filter(Solicitud.id.in_(created_ids)).count() if created_ids else 0) == 0
+            assert PublicSolicitudTokenUso.query.filter(PublicSolicitudTokenUso.token_hash.in_(hashes)).count() == 0 if hashes else True
+            assert Cliente.query.filter_by(id=cliente_id).count() == 0
+            if is_postgresql:
+                print(f"PG_CLEANUP_REMAINDERS[{run_id}]: solicitudes=0, cliente=0, tokens=0")
+
+
+@pytest.mark.postgresql
+def test_domestic_children_are_persisted_and_published_for_new_and_existing_clients_postgresql():
+    """Domestic household children stay independent from selected childcare duties."""
+    if not os.environ.get("APP_WEB_PYTEST_POSTGRESQL_DATABASE_URL"):
+        pytest.skip("requiere PostgreSQL local de prueba configurado explícitamente")
+    identity = _assert_postgresql_local_test_database()
+    assert identity["database"].lower().endswith(("test", "pgtest")) or "pytest" in identity["database"].lower()
+    flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False, ENABLE_ATTRACTIVENESS_SCORE=False)
+    run_id = f"domkids{uuid.uuid4().hex[:8]}"
+    client = flask_app.test_client()
+    new_request_id = None
+    existing_request_id = None
+    existing_client_id = None
+    existing_token_hash = None
+    new_token = f"bulk-token-{run_id}-000"
+    new_hash = _public_link_token_hash_storage(new_token)
+    try:
+        new_payload = _case_payload(0, run_id=run_id)
+        new_payload.update({"tipo_servicio": "DOMESTICA_LIMPIEZA", "ninos": "2", "edades_ninos": "4 y 8"})
+        assert "ninos" not in new_payload["funciones"]
+        with patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
+             patch("clientes.routes.enforce_business_limit", return_value=(False, None)), \
+             patch("clientes.routes.enforce_min_human_interval", return_value=(False, None)), \
+             patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None):
+            response = client.post(f"/clientes/solicitudes/nueva-publica/{new_token}", data=new_payload, follow_redirects=False)
+        assert response.status_code in (302, 303), response.get_data(as_text=True)[:2000]
+        with flask_app.app_context():
+            db.session.remove()
+            new_usage = PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=new_hash).first()
+            assert new_usage is not None and new_usage.solicitud_id
+            new_row = db.session.get(Solicitud, int(new_usage.solicitud_id))
+            new_request_id = int(new_row.id)
+            assert new_row.ninos == 2 and new_row.edades_ninos == "4 y 8"
+            with flask_app.test_request_context("/"):
+                internal_copy = admin_routes._admin_build_public_copy_text(new_row)
+                publication_copy = admin_routes._admin_build_order_text_for_copiar(new_row)
+            assert internal_copy == publication_copy
+            assert publication_copy.count("Niños:") == 1 and "Niños: 2 (4 y 8)" in publication_copy
+            assert "Cuidar Niños" not in publication_copy
+        _cleanup_created_rows([new_request_id], run_id, count=1)
+        new_request_id = None
+
+        existing_email = f"bulk-{run_id}-existing@example.com"
+        with flask_app.app_context():
+            existing_client = Cliente(
+                codigo=f"A{uuid.uuid4().hex[:8]}", nombre_completo="Cliente Doméstica Ficticio",
+                email=existing_email, telefono=f"809{int(uuid.uuid4().hex[:7], 16) % 10_000_000:07d}",
+                ciudad="Santiago", sector="Centro",
+            )
+            db.session.add(existing_client)
+            db.session.commit()
+            existing_client_id = int(existing_client.id)
+        existing_token = f"bulk-token-{run_id}-existing"
+        existing_token_hash = _public_link_token_hash_storage(existing_token)
+        existing_payload = _case_payload(0, run_id=f"{run_id}e")
+        existing_payload.update({
+            "token": existing_token, "tipo_servicio": "DOMESTICA_LIMPIEZA",
+            "ninos": "2", "edades_ninos": "4 y 8",
+        })
+        assert "ninos" not in existing_payload["funciones"]
+        from clientes import routes as cliente_routes
+        existing_validation = {}
+        validate_public_form = cliente_routes.SolicitudPublicaForm.validate_on_submit
+        check_public_modalidad = cliente_routes._public_modalidad_context_is_consistent
+
+        def capture_public_validation(form):
+            valid = validate_public_form(form)
+            existing_validation["valid"] = valid
+            existing_validation["errors"] = dict(form.errors)
+            return valid
+
+        def capture_modalidad_consistency():
+            consistent = check_public_modalidad()
+            existing_validation["modalidad_consistent"] = consistent
+            return consistent
+
+        with patch("clientes.routes._resolve_public_link_token", return_value=(existing_client, "", {})), \
+             patch("clientes.routes._cliente_active_solicitudes_count", return_value=0), \
+             patch("clientes.routes.enforce_business_limit", return_value=(False, None)), \
+             patch("clientes.routes.enforce_min_human_interval", return_value=(False, None)), \
+             patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None), \
+             patch.object(cliente_routes.SolicitudPublicaForm, "validate_on_submit", capture_public_validation), \
+             patch("clientes.routes._public_modalidad_context_is_consistent", side_effect=capture_modalidad_consistency):
+            response = client.post(f"/clientes/solicitudes/publica/{existing_token}", data=existing_payload, follow_redirects=False)
+        existing_body = response.get_data(as_text=True)
+        existing_errors = [re.sub(r"<[^>]+>", "", item).strip() for item in re.findall(r'<div class="invalid-feedback[^>]*>(.*?)</div>', existing_body, re.S)]
+        assert response.status_code in (302, 303), (response.status_code, existing_validation, existing_errors[:20])
+        with flask_app.app_context():
+            db.session.remove()
+            existing_usage = PublicSolicitudTokenUso.query.filter_by(token_hash=existing_token_hash).first()
+            assert existing_usage is not None and int(existing_usage.cliente_id) == existing_client_id
+            assert existing_usage.solicitud_id
+            existing_row = db.session.get(Solicitud, int(existing_usage.solicitud_id))
+            existing_request_id = int(existing_row.id)
+            assert existing_row.ninos == 2 and existing_row.edades_ninos == "4 y 8"
+            with flask_app.test_request_context("/"):
+                internal_copy = admin_routes._admin_build_public_copy_text(existing_row)
+                publication_copy = admin_routes._admin_build_order_text_for_copiar(existing_row)
+            assert internal_copy == publication_copy
+            assert publication_copy.count("Niños:") == 1 and "Niños: 2 (4 y 8)" in publication_copy
+            assert "Cuidar Niños" not in publication_copy
+    finally:
+        with flask_app.app_context():
+            current_database, server_address, server_port = db.session.execute(
+                db.text("select current_database(), inet_server_addr()::text, inet_server_port()")
+            ).one()
+            assert current_database == identity["database"]
+            assert server_address in {"127.0.0.1/32", "::1/128"} and int(server_port or 5432) == 5432
+            if not new_request_id:
+                new_usage = PublicSolicitudClienteNuevoTokenUso.query.filter_by(token_hash=new_hash).first()
+                if new_usage and new_usage.solicitud_id:
+                    new_request_id = int(new_usage.solicitud_id)
+            if existing_token_hash:
+                if not existing_request_id:
+                    existing_usage = PublicSolicitudTokenUso.query.filter_by(token_hash=existing_token_hash).first()
+                    if existing_usage and existing_usage.solicitud_id:
+                        existing_request_id = int(existing_usage.solicitud_id)
+                db.session.execute(delete(PublicSolicitudTokenUso).where(PublicSolicitudTokenUso.token_hash == existing_token_hash))
+            if existing_request_id:
+                db.session.execute(delete(Solicitud).where(Solicitud.id == existing_request_id, Solicitud.cliente_id == existing_client_id))
+            if existing_client_id:
+                db.session.execute(delete(Cliente).where(Cliente.id == existing_client_id, Cliente.email == f"bulk-{run_id}-existing@example.com"))
+            db.session.commit()
+            db.session.remove()
+        if new_request_id:
+            _cleanup_created_rows([new_request_id], run_id, count=1)
 
 
 @pytest.mark.postgresql
@@ -434,7 +869,16 @@ def test_public_new_request_bulk_100_unique_payloads_persist_and_roundtrip_postg
     if not os.environ.get("APP_WEB_PYTEST_POSTGRESQL_DATABASE_URL"):
         pytest.skip("requiere APP_WEB_PYTEST_POSTGRESQL_DATABASE_URL apuntando a PostgreSQL local de test")
     db_info = _assert_postgresql_local_test_database()
-    result = _run_bulk_roundtrip(run_id=f"pg{uuid.uuid4().hex[:12]}", expect_count_delta=False)
+    run_id = f"regcat{uuid.uuid4().hex[:6]}"
+    exact_token_hashes = [_public_link_token_hash_storage(f"bulk-token-{run_id}-{i:03d}") for i in range(COUNT)]
+    with flask_app.app_context():
+        preexisting_clients = Cliente.query.filter(Cliente.email_norm.like(f"bulk-{run_id}-%")).count()
+        preexisting_tokens = PublicSolicitudClienteNuevoTokenUso.query.filter(
+            PublicSolicitudClienteNuevoTokenUso.token_hash.in_(exact_token_hashes)
+        ).count()
+    assert (preexisting_clients, preexisting_tokens) == (0, 0)
+    print(f"PG_PREEXISTING_MARKERS[{run_id}]: clientes={preexisting_clients}, tokens={preexisting_tokens}")
+    result = _run_bulk_roundtrip(run_id=run_id, expect_count_delta=False)
     assert result["attempted"] == COUNT
     assert result["saved"] == COUNT
     assert result["failed"] == 0

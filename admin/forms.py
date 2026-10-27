@@ -37,7 +37,7 @@ from wtforms.validators import (
     ValidationError
 )
 from wtforms.widgets import ListWidget, CheckboxInput
-from utils.modalidad import canonicalize_modalidad_trabajo
+from utils.modalidad import canonicalize_modalidad_trabajo, validate_modalidad_context
 from utils.horario_mode import build_horario_from_form
 from utils.envejeciente import clean_list as _clean_list_envejeciente
 from services.payment_rules import get_plan_choices, is_valid_plan, normalize_plan
@@ -47,6 +47,24 @@ from utils.experiencia_solicitud import (
     experiencia_value_from_form,
     load_experiencia_value,
     normalize_experiencia_submission,
+)
+from services.service_catalog import (
+    ENFERMERA_ASSISTANCE_CHOICES,
+    ENFERMERA_CONDITION_CHOICES,
+    ENFERMERA_EXPERIENCE_CHOICES,
+    ENFERMERA_LEGACY_TASK_CHOICES,
+    ENFERMERA_MOBILITY_CHOICES,
+    ENFERMERA_RESPONSIBILITY_CHOICES,
+    CHOFER_LICENSE_CHOICES, CHOFER_ROUTE_CHOICES, CHOFER_PURPOSE_CHOICES,
+    CONSERJE_INSTALLATION_CHOICES, CONSERJE_RESIDENTIAL_TYPES, CONSERJE_RESPONSIBILITY_CHOICES,
+    SERVICE_CHOICES,
+    NINERA_RESPONSIBILITY_CHOICES,
+    NINERA_SPECIAL_NEED_CHOICES,
+    NINERA_LEGACY_TASK_CHOICES,
+    OFFICE_ESTABLISHMENT_CHOICES, OFFICE_TASK_CHOICES, OFFICE_AREA_CHOICES,
+    admin_details_from_form,
+    canonical_service_code, is_legacy_service_code,
+    validate_service_details,
 )
 
 
@@ -318,6 +336,7 @@ class AdminClienteForm(FlaskForm):
 #                                 SOLICITUD
 # =============================================================================
 class AdminSolicitudForm(FlaskForm):
+    _strip = lambda v: v.strip() if isinstance(v, str) else v
     HOUSEHOLD_FUNCIONES = {"limpieza", "cocinar", "lavar", "planchar"}
     PLAN_CHOICES = get_plan_choices()
     # ─────────────────────────────────────────────
@@ -325,12 +344,7 @@ class AdminSolicitudForm(FlaskForm):
     # ─────────────────────────────────────────────
     tipo_servicio = SelectField(
         'Tipo de solicitud',
-        choices=[
-            ('DOMESTICA_LIMPIEZA', 'Doméstica de limpieza / general'),
-            ('NINERA',             'Niñera'),
-            ('ENFERMERA',          'Enfermera / Cuidadora'),
-            ('CHOFER',             'Chofer'),
-        ],
+        choices=[('', 'Selecciona un servicio…'), *SERVICE_CHOICES],
         validators=[DataRequired("Selecciona el tipo de solicitud.")],
         coerce=str
     )
@@ -342,6 +356,12 @@ class AdminSolicitudForm(FlaskForm):
         'Ciudad / Sector',
         validators=[DataRequired("Indica ciudad y sector."), Length(max=200)],
         render_kw={"placeholder": "Ej. Santiago / Los Jardines"}
+    )
+    direccion_precisa = StringField(
+        "Dirección precisa del servicio",
+        validators=[Optional(), Length(max=300)],
+        filters=[_strip],
+        render_kw={"placeholder": "Calle, número, residencial o referencia exacta", "autocomplete": "street-address"},
     )
     rutas_cercanas = StringField(
         'Rutas cercanas',
@@ -377,7 +397,6 @@ class AdminSolicitudForm(FlaskForm):
         validators=[Optional(), Length(max=100)],
         render_kw={"placeholder": "Ej. 30 a 40, 20-30, etc."}
     )
-
     experiencia = LegacyExperienceSelectField(
         'Experiencia',
         choices=EXPERIENCIA_CHOICES,
@@ -554,16 +573,8 @@ class AdminSolicitudForm(FlaskForm):
         render_kw={"placeholder": "Ej. 1 año y 4 años"}
     )
     ninera_tareas = MultiCheckboxField(
-        'Tareas principales con los niños',
-        choices=[
-            ('jugar',          'Jugar y actividades'),
-            ('tareas',         'Apoyo con tareas'),
-            ('llevar_colegio', 'Llevar / buscar al colegio'),
-            ('alimentar',      'Alimentarlos'),
-            ('banar',          'Bañarlos'),
-            ('dormir',         'Ayudar a dormir'),
-            ('otro',           'Otro'),
-        ],
+        'Responsabilidades con los niños',
+        choices=NINERA_RESPONSIBILITY_CHOICES + NINERA_LEGACY_TASK_CHOICES,
         validators=[Optional()],
         coerce=str,
         default=[]
@@ -571,13 +582,29 @@ class AdminSolicitudForm(FlaskForm):
     ninera_tareas_otro = StringField(
         'Otras tareas con los niños',
         validators=[Optional(), Length(max=200)],
-        render_kw={"placeholder": "Especifica tareas adicionales (opcional)"}
+        render_kw={"placeholder": "Describe otras responsabilidades relacionadas con el cuidado de los niños"}
+    )
+    ninera_necesidad_especial_publicable = TextAreaField(
+        'Describe los cuidados especiales que necesitará el niño',
+        validators=[Optional(), Length(max=500)],
+        render_kw={"rows": 3, "placeholder": "Describe las tareas de cuidado necesarias, sin diagnósticos ni historial médico"}
     )
     ninera_condicion_especial = TextAreaField(
-        'Condiciones especiales (salud / comportamiento)',
+        'Cuidados o adaptaciones necesarias (privado)',
         validators=[Optional(), Length(max=1000)],
-        render_kw={"rows": 3, "placeholder": "Ej. alergias, TDAH, autismo… (opcional)"}
+        render_kw={"rows": 2, "placeholder": "Describe brevemente los cuidados o adaptaciones (opcional)"}
     )
+    ninera_necesidad_especial_respuesta = SelectField(
+        'Necesidades de atención especial',
+        choices=[('', 'Selecciona'), *NINERA_SPECIAL_NEED_CHOICES],
+        validators=[Optional()], coerce=str, validate_choice=False,
+    )
+    ninera_responsable_principal = SelectField(
+        '¿La niñera será la principal responsable del cuidado?',
+        choices=[('', 'Selecciona'), ('si', 'Sí, tendrá la responsabilidad principal'), ('no', 'No, compartirá el cuidado con otra persona')],
+        validators=[Optional()], coerce=str,
+    )
+    ninera_responsabilidad_integral = BooleanField('Responsabilidad integral del cuidado de los niños')
 
     # ─────────────────────────────────────────────
     # CAMPOS ESPECÍFICOS – ENFERMERA / CUIDADORA
@@ -587,17 +614,32 @@ class AdminSolicitudForm(FlaskForm):
         validators=[Optional(), Length(max=200)],
         render_kw={"placeholder": "Ej. señora de 80 años, paciente postrado…"}
     )
+    enf_cantidad_personas = IntegerField(
+        'Cantidad de personas que necesitan cuidados', validators=[Optional(), NumberRange(min=1, max=20)],
+        render_kw={"min": 1, "max": 20, "inputmode": "numeric"}
+    )
+    enf_personas_cuidado = HiddenField(default="[]")
+    enf_personas_cuidado_historicas = HiddenField(default="[]")
+    enf_personas_cuidado_necesidades_historicas = HiddenField(default="[]")
+    enf_edad_persona = IntegerField(
+        'Edad de la persona', validators=[Optional(), NumberRange(min=0, max=120)],
+        render_kw={"min": 0, "max": 120, "inputmode": "numeric"}
+    )
+    enf_edades_personas = StringField(
+        'Edades de las personas', validators=[Optional(), Length(max=120)],
+        render_kw={"placeholder": "Ej. 72, 80 y 85 años"}
+    )
     enf_movilidad = SelectField(
         'Movilidad de la persona',
-        choices=[
-            ('',          'Selecciona…'),
-            ('autonomo',  'Se mueve sola'),
-            ('parcial',   'Necesita ayuda parcial'),
-            ('postrado',  'Postrado en cama'),
-        ],
+        choices=[('', 'Selecciona…'), *ENFERMERA_MOBILITY_CHOICES],
         validators=[Optional()],
         coerce=str
     )
+    enf_ayuda_higiene = SelectField('¿Necesita ayuda con su higiene personal?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    enf_ayuda_alimentacion = SelectField('¿Necesita ayuda para alimentarse?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    enf_tipo_asistencia = SelectField('Tipo de asistencia requerida', choices=[('', 'Selecciona'), *ENFERMERA_ASSISTANCE_CHOICES], validators=[Optional()], coerce=str)
+    enf_condiciones = MultiCheckboxField('Enfermedades y condiciones de salud', choices=ENFERMERA_CONDITION_CHOICES, validators=[Optional()], coerce=str, default=[])
+    enf_condicion_otro = StringField('Especifica otra condición', validators=[Optional(), Length(max=250)], render_kw={"placeholder": "Describe brevemente la condición relevante para el cuidado"})
     enf_condicion_principal = TextAreaField(
         'Condición principal / diagnóstico',
         validators=[Optional(), Length(max=1000)],
@@ -605,14 +647,7 @@ class AdminSolicitudForm(FlaskForm):
     )
     enf_tareas = MultiCheckboxField(
         'Tareas principales de cuidado',
-        choices=[
-            ('medicacion', 'Administrar medicamentos'),
-            ('aseo',       'Aseo personal'),
-            ('alimentar',  'Alimentación'),
-            ('movilizar',  'Ayudar a movilizar / caminar'),
-            ('control',    'Control de signos / chequeos básicos'),
-            ('otro',       'Otro'),
-        ],
+        choices=ENFERMERA_RESPONSIBILITY_CHOICES + ENFERMERA_LEGACY_TASK_CHOICES,
         validators=[Optional()],
         coerce=str,
         default=[]
@@ -622,10 +657,25 @@ class AdminSolicitudForm(FlaskForm):
         validators=[Optional(), Length(max=200)],
         render_kw={"placeholder": "Especifica tareas adicionales (opcional)"}
     )
+    enf_responsabilidad_principal = SelectField(
+        '¿La trabajadora será la principal responsable del cuidado?',
+        choices=[('', 'Selecciona'), ('si', 'Sí, tendrá la responsabilidad principal'), ('no', 'No, compartirá el cuidado con otra persona')],
+        validators=[Optional()], coerce=str,
+    )
+    enf_requiere_preparacion_profesional = BooleanField(
+        '¿Requiere preparación profesional específica?', default=False
+    )
+    enf_formacion_requerida = StringField(
+        'Preparación profesional requerida', validators=[Optional(), Length(max=200)],
+        render_kw={"placeholder": "Ej. Enfermería, auxiliar de geriatría…"}
+    )
 
     # ─────────────────────────────────────────────
     # CAMPOS ESPECÍFICOS – CHOFER
     # ─────────────────────────────────────────────
+    chofer_tipo_servicio = SelectField('¿Para qué necesitas el chofer?', choices=[('', 'Selecciona…'), *CHOFER_PURPOSE_CHOICES], validators=[Optional()], coerce=str)
+    chofer_tipo_servicio_otro = StringField('Especifica otra finalidad', validators=[Optional(), Length(max=120)])
+    chofer_responsabilidades = TextAreaField('Responsabilidades adicionales (opcional)', validators=[Optional(), Length(max=300)])
     chofer_vehiculo = RadioField(
         'Vehículo que usará',
         choices=[
@@ -654,22 +704,69 @@ class AdminSolicitudForm(FlaskForm):
         validators=[Optional(), Length(max=100)],
         render_kw={"placeholder": "Ej. Guagua turística, camión mediano…"}
     )
-    chofer_rutas = StringField(
-        'Rutas habituales',
-        validators=[Optional(), Length(max=255)],
-        render_kw={"placeholder": "Ej. Dentro de la ciudad, carretera, aeropuerto…"}
-    )
-    chofer_viajes_largos = RadioField(
-        '¿Hará viajes largos / fuera de la ciudad?',
-        choices=[('1', 'Sí'), ('0', 'No')],
-        validators=[Optional()],
-        coerce=lambda v: v == '1'
-    )
-    chofer_licencia_detalle = StringField(
-        'Licencia / experiencia manejando',
-        validators=[Optional(), Length(max=255)],
-        render_kw={"placeholder": "Ej. Licencia cat. 3, maneja mecánico y automático."}
-    )
+    chofer_rutas = MultiCheckboxField('¿Qué recorridos realizará?', choices=list(CHOFER_ROUTE_CHOICES), validators=[Optional()], coerce=str)
+    chofer_rutas_otro = StringField('Especifica los desplazamientos', validators=[Optional(), Length(max=200)])
+    chofer_categoria_licencia = SelectField('Categoría de licencia requerida', choices=[('', 'Selecciona…'), *CHOFER_LICENSE_CHOICES], validators=[Optional()], coerce=str)
+    # Campos históricos de solo lectura, conservados para solicitudes antiguas.
+    chofer_rutas_legacy = StringField('Rutas históricas', validators=[Optional()])
+    chofer_licencia_detalle = StringField('Licencia histórica', validators=[Optional()])
+
+    # Campos de instalaciones (sin nombres comerciales ni cantidad de empleados).
+    office_tipo_establecimiento = SelectField('Tipo de establecimiento', choices=[('', 'Selecciona…'), *OFFICE_ESTABLISHMENT_CHOICES], validators=[Optional()], coerce=str)
+    office_tipo_establecimiento_otro = StringField('Especifica el tipo de establecimiento', validators=[Optional(), Length(max=120)])
+    office_tamano = SelectField('Tamaño aproximado', choices=[('', 'Selecciona…'), ('Pequeño', 'Pequeño'), ('Mediano', 'Mediano'), ('Grande', 'Grande')], validators=[Optional()], coerce=str)
+    office_caracteristicas = HiddenField('Características estructuradas', validators=[Optional()])
+    office_espacios_otro = StringField('Describe los espacios', validators=[Optional(), Length(max=200)])
+    office_areas = MultiCheckboxField('Áreas que debe limpiar', choices=sorted({(code, label) for choices in OFFICE_AREA_CHOICES.values() for code, label in choices}), validators=[Optional()], coerce=str)
+    office_areas_legacy = StringField('Áreas históricas', validators=[Optional(), Length(max=250)])
+    office_areas_otro = StringField('Especifica otras áreas', validators=[Optional(), Length(max=200)])
+    office_funciones = MultiCheckboxField('Funciones que realizará el personal', choices=list(OFFICE_TASK_CHOICES), validators=[Optional()], coerce=str)
+    office_funciones_otro = StringField('Especifica otras funciones', validators=[Optional(), Length(max=200)])
+    office_trabaja_con_companeros = SelectField('¿La persona contratada trabajará con otros empleados de limpieza?', choices=[('', 'Selecciona…'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    office_cantidad_companeros_limpieza = IntegerField('Cantidad de compañeros de limpieza (sin incluir a la persona contratada)', validators=[Optional(), NumberRange(min=1)])
+    office_despachos = IntegerField('Cantidad de despachos u oficinas', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_reuniones = IntegerField('Cantidad de salas de reuniones', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_ventas = IntegerField('Cantidad de áreas de venta', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_probadores = IntegerField('Cantidad de probadores', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_aulas = IntegerField('Cantidad de aulas', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_administracion = IntegerField('Cantidad de oficinas administrativas', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_consultorios = IntegerField('Cantidad de consultorios', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_espera = IntegerField('Cantidad de salas de espera', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_comedores = IntegerField('Cantidad de salones o áreas de comedor', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_cocinas = IntegerField('Cantidad de cocinas', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_areas_comunes = IntegerField('Cantidad de áreas comunes', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_niveles = IntegerField('Cantidad de niveles', validators=[Optional(), NumberRange(min=0, max=100)])
+    office_banos = IntegerField('Cantidad de baños', validators=[Optional(), NumberRange(min=0, max=500)])
+    office_frecuencia = StringField('Frecuencia histórica', validators=[Optional(), Length(max=100)])
+    office_horario = StringField('Horario histórico', validators=[Optional(), Length(max=120)])
+    conserje_tipo_instalacion = StringField('Tipo de instalación', validators=[Optional(), Length(max=100)])
+    conserje_tipo_residencial = SelectField('Tipo de residencial', choices=[('', 'Selecciona…'), *CONSERJE_RESIDENTIAL_TYPES], validators=[Optional()], coerce=str)
+    conserje_tipo_residencial_otro = StringField('Especifica el tipo de residencial', validators=[Optional(), Length(max=120)])
+    conserje_niveles = IntegerField('Cantidad de niveles', validators=[Optional(), NumberRange(min=0)])
+    conserje_apartamentos = IntegerField('Cantidad de unidades o propiedades', validators=[Optional(), NumberRange(min=0)])
+    conserje_ascensores = IntegerField('Cantidad de ascensores', validators=[Optional(), NumberRange(min=0)])
+    conserje_cantidad_edificios = IntegerField('Cantidad de edificios o bloques', validators=[Optional(), NumberRange(min=1, max=10000)])
+    conserje_cantidad_casas = IntegerField('Cantidad de casas', validators=[Optional(), NumberRange(min=1, max=10000)])
+    conserje_unidades = IntegerField('Cantidad de unidades o propiedades', validators=[Optional(), NumberRange(min=1, max=10000)])
+    conserje_tiene_ascensor = SelectField('¿Tiene ascensor?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_parqueos_comunes = SelectField('¿Tiene parqueos comunes?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_areas_recreativas = SelectField('¿Tiene áreas recreativas comunes?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_jardines_comunes = SelectField('¿Tiene jardines o áreas verdes comunes?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_calles_internas = SelectField('¿Tiene calles internas comunes?', choices=[('', 'Selecciona'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_areas_comunes = StringField('Áreas comunes', validators=[Optional(), Length(max=250)])
+    conserje_banos = IntegerField('Cantidad de baños', validators=[Optional(), NumberRange(min=0)])
+    conserje_escaleras = IntegerField('Escaleras', validators=[Optional(), NumberRange(min=0)])
+    conserje_parqueos = IntegerField('Parqueos', validators=[Optional(), NumberRange(min=0, max=500)])
+    conserje_areas_exteriores = StringField('Áreas exteriores', validators=[Optional(), Length(max=200)])
+    conserje_manejo_basura = StringField('Manejo de basura', validators=[Optional(), Length(max=200)])
+    conserje_mantenimiento = StringField('Mantenimiento básico', validators=[Optional(), Length(max=200)])
+    conserje_estacionamiento = SelectField('¿Tiene estacionamiento?', choices=[('', 'Sin respuesta'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_instalaciones = MultiCheckboxField('Instalaciones a cargo', choices=CONSERJE_INSTALLATION_CHOICES, validators=[Optional()], coerce=str)
+    conserje_otras_instalaciones = StringField('Especifica otras instalaciones', validators=[Optional(), Length(max=200)])
+    conserje_responsabilidades = MultiCheckboxField('Responsabilidades', choices=CONSERJE_RESPONSIBILITY_CHOICES, validators=[Optional()], coerce=str)
+    conserje_responsabilidades_otro = StringField('Especifica otras responsabilidades', validators=[Optional(), Length(max=250)])
+    conserje_trabaja_con_conserjes = SelectField('¿Trabajará con otros conserjes?', choices=[('', 'Sin respuesta'), ('si', 'Sí'), ('no', 'No')], validators=[Optional()], coerce=str)
+    conserje_cantidad_conserjes = IntegerField('¿Cuántos conserjes trabajarán junto a la persona contratada?', validators=[Optional(), NumberRange(min=1)])
 
     # ─────────────────────────────────────────────
     # COMPENSACIÓN
@@ -712,6 +809,41 @@ class AdminSolicitudForm(FlaskForm):
 
     submit = SubmitField('Guardar solicitud')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        raw_service = (self.tipo_servicio.data or '').strip()
+        service = canonical_service_code(raw_service)
+        if is_legacy_service_code(raw_service):
+            label = {"LIMPIEZA_OFICINA": "Limpieza de oficina (histórico)", "CONSERJE": "Conserje (histórico)"}[raw_service]
+            self.tipo_servicio.choices = [('', 'Selecciona un servicio…'), *SERVICE_CHOICES, (raw_service, label)]
+        elif raw_service and service not in {code for code, _label in SERVICE_CHOICES}:
+            # Unknown historical identifiers must stay visible and must never
+            # fall through to the first catalog option (Doméstica).
+            self.tipo_servicio.choices = [
+                ('', 'Selecciona un servicio…'), *SERVICE_CHOICES,
+                (raw_service, f'Servicio sin clasificar ({raw_service})'),
+            ]
+        if service == "LIMPIEZA_ESTABLECIMIENTOS":
+            raw_office_type = str(self.office_tipo_establecimiento.data or '').strip()
+            if raw_office_type and raw_office_type not in {value for value, _ in OFFICE_ESTABLISHMENT_CHOICES}:
+                self.office_tipo_establecimiento.choices = [('', 'Selecciona…'), *OFFICE_ESTABLISHMENT_CHOICES, (raw_office_type, f'Histórico: {raw_office_type}')]
+            existing_exp = str(self.experiencia.data or '').strip()
+            self.experiencia.choices = [("Limpieza", "Limpieza")] + ([(existing_exp, f"Experiencia histórica: {existing_exp}")] if existing_exp and existing_exp != "Limpieza" else [])
+            if not existing_exp: self.experiencia.data = "Limpieza"
+        if service == "CHOFER":
+            self.experiencia.choices = [("Chofer", "Chofer")]
+            self.experiencia.data = "Chofer"
+        elif service == "LIMPIEZA_ESTABLECIMIENTOS":
+            self.experiencia.choices = [("Limpieza", "Limpieza")]
+            self.experiencia.data = "Limpieza"
+        elif service == "ENFERMERA":
+            choices = list(ENFERMERA_EXPERIENCE_CHOICES)
+            raw = str(self.experiencia.data or '').strip()
+            known = {value for value, _label in choices}
+            if raw and raw not in known:
+                choices.append((raw, f"Experiencia histórica: {raw}"))
+            self.experiencia.choices = choices
+
     @staticmethod
     def _has_limpieza_selected() -> bool:
         try:
@@ -744,14 +876,68 @@ class AdminSolicitudForm(FlaskForm):
     # ─────────────────────────────────────────────
     def validate(self, extra_validators=None):
         """Validación condicional según tipo de servicio."""
+        self.admin_non_field_errors = []
+        raw_tipo = (self.tipo_servicio.data or '').strip()
+        tipo = canonical_service_code(raw_tipo)
+        if tipo == "ENFERMERA":
+            self.experiencia.choices = ENFERMERA_EXPERIENCE_CHOICES
+        elif tipo == "CHOFER":
+            self.experiencia.choices = [("Chofer", "Chofer")]
+            self.experiencia.data = "Chofer"
+        elif tipo == "LIMPIEZA_ESTABLECIMIENTOS":
+            existing_exp = str(self.experiencia.data or '').strip()
+            self.experiencia.choices = [("Limpieza", "Limpieza")] + ([(existing_exp, f"Experiencia histórica: {existing_exp}")] if existing_exp and existing_exp != "Limpieza" else [])
+            if not existing_exp: self.experiencia.data = "Limpieza"
+        elif tipo == "CONSERJERIA_RESIDENCIAL" and request.method == "POST" and getattr(request, "endpoint", "") == "admin.nueva_solicitud_admin":
+            self.experiencia.choices = [("Conserjería", "Conserjería")]
+            self.experiencia.data = "Conserjería"
         rv = super().validate(extra_validators)
-        tipo = (self.tipo_servicio.data or '').strip()
+        if (
+            request.method == "POST"
+            and getattr(request, "endpoint", "") == "admin.nueva_solicitud_admin"
+            and len(request.form.getlist("edad_requerida")) > 1
+        ):
+            self.edad_requerida.errors.append("Selecciona una sola franja de edad.")
+            rv = False
+        if tipo == "LIMPIEZA_ESTABLECIMIENTOS":
+            if request.method == "POST" and getattr(request, "endpoint", "") == "admin.nueva_solicitud_admin" and self.office_trabaja_con_companeros.data not in {"si", "no"}:
+                self.office_trabaja_con_companeros.errors.append("Indica si trabajará con otros empleados de limpieza.")
+                rv = False
+            if self.office_trabaja_con_companeros.data == "si" and self.office_cantidad_companeros_limpieza.data is None:
+                self.office_cantidad_companeros_limpieza.errors.append("Indica un número entero positivo de compañeros de limpieza.")
+                rv = False
+            if self.office_trabaja_con_companeros.data == "no":
+                self.office_cantidad_companeros_limpieza.data = None
+            if self.office_tipo_establecimiento.data == "otro" and not (self.office_tipo_establecimiento_otro.data or "").strip():
+                self.office_tipo_establecimiento_otro.errors.append("Especifica el tipo de establecimiento.")
+                rv = False
+            if "otras" in (self.office_areas.data or []) and not (self.office_areas_otro.data or "").strip():
+                self.office_areas_otro.errors.append("Especifica las otras áreas.")
+                rv = False
+            if "otras" in (self.office_funciones.data or []) and not (self.office_funciones_otro.data or "").strip():
+                self.office_funciones_otro.errors.append("Especifica las otras funciones.")
+                rv = False
+        if tipo == "CONSERJERIA_RESIDENCIAL" and request.method == "POST" and getattr(request, "endpoint", "") == "admin.nueva_solicitud_admin":
+            modality_group = str(request.form.get("modalidad_grupo") or "").strip()
+            valid_modality, _label, _reason = validate_modalidad_context(
+                modality_group, request.form.get("modalidad_especifica"), request.form.get("modalidad_trabajo"),
+                other_value=request.form.get("modalidad_otro_text"),
+            )
+            duplicate_modality = any(len(request.form.getlist(name)) > 1 for name in ("modalidad_grupo", "modalidad_especifica", "modalidad_trabajo"))
+            if modality_group != "con_salida_diaria" or not valid_modality or duplicate_modality:
+                self.modalidad_trabajo.errors.append("Conserjería residencial requiere salida diaria.")
+                rv = False
+            if self.conserje_trabaja_con_conserjes.data == "no":
+                self.conserje_cantidad_conserjes.data = None
+        if tipo == "NINERA" and self.experiencia.data not in {"Niñera", "Enfermera"}:
+            self.experiencia.errors.append("Para NIÑERA selecciona Niñera o Enfermera.")
+            rv = False
         funciones_selected = self._selected_funciones_values()
         requiere_limpieza = 'limpieza' in funciones_selected
         requiere_adultos = self._requires_adultos_for_funciones(funciones_selected)
 
-        # Para DOMÉSTICA y ENFERMERA: hogar obligatorio
-        if tipo in ('DOMESTICA_LIMPIEZA', 'ENFERMERA', '') and requiere_limpieza:
+        # Las validaciones de vivienda solo corresponden al servicio doméstico.
+        if tipo in ('DOMESTICA_LIMPIEZA', '') and requiere_limpieza:
             if not self.tipo_lugar.data:
                 self.tipo_lugar.errors.append("Selecciona el tipo de lugar.")
                 rv = False
@@ -765,23 +951,52 @@ class AdminSolicitudForm(FlaskForm):
                 self.adultos.errors.append("Indica cuántos adultos hay en la casa.")
                 rv = False
 
-        # Para NIÑERA: no exigimos casa/baños, pero sí niños básicos
-        if tipo == 'NINERA':
-            # Si no llenan cantidad de niños, al menos avisa
-            if self.ninera_cant_ninos.data is None or self.ninera_cant_ninos.data <= 0:
-                self.ninera_cant_ninos.errors.append("Indica cuántos niños va a cuidar.")
-                rv = False
-            if not (self.ninera_edades.data or "").strip():
-                self.ninera_edades.errors.append("Especifica las edades de los niños.")
-                rv = False
-
-        # Para ENFERMERA: detalles mínimos de paciente
-        if tipo == 'ENFERMERA':
-            if not (self.enf_a_quien_cuida.data or "").strip():
-                self.enf_a_quien_cuida.errors.append("Indica a quién debe cuidar.")
-                rv = False
-            if self.enf_movilidad.data is None or self.enf_movilidad.data == '':
-                self.enf_movilidad.errors.append("Indica la movilidad de la persona.")
+        # Los campos obligatorios específicos se definen una sola vez en el catálogo.
+        if tipo in {"NINERA", "ENFERMERA", "CHOFER", "LIMPIEZA_ESTABLECIMIENTOS", "CONSERJERIA_RESIDENCIAL"}:
+            is_new_admin_request = request.method == "POST" and getattr(request, "endpoint", "") == "admin.nueva_solicitud_admin"
+            catalog_errors = validate_service_details(tipo, admin_details_from_form(tipo, self), strict_public=(tipo == "CONSERJERIA_RESIDENCIAL" and is_new_admin_request))
+            if tipo == "ENFERMERA" and self.enf_cantidad_personas.data is None and not (self.enf_a_quien_cuida.data or "").strip():
+                catalog_errors["cantidad_personas"] = "Indica cuántas personas necesitan cuidados."
+            fields_by_key = {
+                "cantidad_ninos": self.ninera_cant_ninos, "edades_ninos": self.ninera_edades,
+                "necesidad_especial_respuesta": self.ninera_necesidad_especial_respuesta,
+                "necesidad_especial_publicable": self.ninera_necesidad_especial_publicable,
+                "ninera_responsable_principal": self.ninera_responsable_principal,
+                "a_quien_cuida": self.enf_a_quien_cuida, "movilidad": self.enf_movilidad,
+                "tareas": self.enf_tareas if tipo == "ENFERMERA" else self.ninera_tareas,
+                "cantidad_personas": self.enf_cantidad_personas, "edad_persona": self.enf_edad_persona,
+                "edades_personas": self.enf_edades_personas, "tipo_asistencia": self.enf_tipo_asistencia,
+                "experiencia_requerida": self.experiencia,
+                "condiciones": self.enf_condiciones, "condicion_otro": self.enf_condicion_otro,
+                "ayuda_higiene": self.enf_ayuda_higiene, "ayuda_alimentacion": self.enf_ayuda_alimentacion,
+                "enf_tareas_otro": self.enf_tareas_otro,
+                "personas_cuidado": self.enf_personas_cuidado,
+                "tipo_servicio": self.chofer_tipo_servicio, "tipo_vehiculo": self.chofer_tipo_vehiculo,
+                "finalidad": self.chofer_tipo_servicio, "finalidad_otro": self.chofer_tipo_servicio_otro,
+                "tipo_vehiculo_otro": self.chofer_tipo_vehiculo_otro, "rutas_otro": self.chofer_rutas_otro,
+                "categoria_licencia_requerida": self.chofer_categoria_licencia, "rutas": self.chofer_rutas,
+                "tipo_establecimiento": self.office_tipo_establecimiento, "tipo_establecimiento_otro": self.office_tipo_establecimiento_otro,
+                "tamano": self.office_tamano, "areas": self.office_areas, "areas_legacy": self.office_areas_legacy, "areas_otro": self.office_areas_otro,
+                "funciones": self.office_funciones, "funciones_otro": self.office_funciones_otro,
+                "tipo_instalacion": self.conserje_tipo_instalacion,
+                "tipo_residencial": self.conserje_tipo_residencial, "tipo_residencial_otro": self.conserje_tipo_residencial_otro,
+                "niveles": self.conserje_niveles, "apartamentos": self.conserje_apartamentos, "ascensores": self.conserje_ascensores,
+                "cantidad_edificios": self.conserje_cantidad_edificios, "casas": self.conserje_cantidad_casas, "unidades": self.conserje_unidades,
+                "tiene_ascensor": self.conserje_tiene_ascensor, "parqueos_comunes": self.conserje_parqueos_comunes,
+                "areas_recreativas": self.conserje_areas_recreativas, "jardines_comunes": self.conserje_jardines_comunes,
+                "calles_internas": self.conserje_calles_internas,
+                "escaleras": self.conserje_escaleras, "banos": self.conserje_banos, "estacionamiento": self.conserje_estacionamiento,
+                "instalaciones": self.conserje_instalaciones, "otras_instalaciones": self.conserje_otras_instalaciones,
+                "responsabilidades": self.conserje_responsabilidades, "responsabilidades_otro": self.conserje_responsabilidades_otro,
+                "trabaja_con_conserjes": self.conserje_trabaja_con_conserjes, "cantidad_conserjes": self.conserje_cantidad_conserjes,
+                "formacion_requerida": self.enf_formacion_requerida,
+            }
+            for key, message in catalog_errors.items():
+                field = fields_by_key.get(key)
+                if field is not None:
+                    field.errors.append(message)
+                else:
+                    self.admin_non_field_errors.append(f"{key.replace('_', ' ').strip().capitalize()}: {message}")
                 rv = False
 
         # Para CHOFER: no exigimos hogar/ocupantes; pedimos lo mínimo de chofer
@@ -818,9 +1033,6 @@ class AdminSolicitudForm(FlaskForm):
         if tipo == 'CHOFER':
             if not self.chofer_vehiculo.data:
                 self.chofer_vehiculo.errors.append("Indica si usará vehículo del cliente o propio.")
-                rv = False
-            if not self.chofer_tipo_vehiculo.data:
-                self.chofer_tipo_vehiculo.errors.append("Selecciona el tipo de vehículo.")
                 rv = False
         requiere_envejeciente = "envejeciente" in _clean_list_envejeciente(funciones_selected)
         tipo_cuidado = (self.envejeciente_tipo_cuidado.data or "").strip().lower()

@@ -79,6 +79,12 @@
       <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Ciudad / sector</dt>
       <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.ciudad_sector }}</dd>
 
+      {% set _request_address = (solicitud.detalles_servicio or {}).get('direccion_precisa') %}
+      {% if _request_address %}
+      <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Dirección precisa del servicio</dt>
+      <dd class="col-sm-9 text-body-emphasis fw-medium">{{ _request_address }}</dd>
+      {% endif %}
+
       <dt class="col-sm-3 solicitud-detail-secondary fw-semibold">Modalidad</dt>
       <dd class="col-sm-9 text-body-emphasis fw-medium">{{ solicitud.modalidad_trabajo }}</dd>
       {% set _env_tipo = (solicitud.envejeciente_tipo_cuidado or '')|lower %}

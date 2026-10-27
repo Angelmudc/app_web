@@ -1540,20 +1540,13 @@ class Solicitud(db.Model):
     def tipo_servicio_label(self) -> str:
         """
         Devuelve una etiqueta legible según el código de tipo_servicio.
-        Si está en NULL, lo tratamos como 'Doméstica general' (las solicitudes antiguas).
+        Las solicitudes históricas sin código permanecen sin clasificar.
         """
-        mapping = {
-            'DOMESTICA_LIMPIEZA': 'Doméstica de limpieza',
-            'NINERA': 'Niñera',
-            'ENFERMERA': 'Enfermera / Cuidadora',
-            'CHOFER': 'Chofer',
-        }
-
         if not self.tipo_servicio:
-            # Solicitudes antiguas que no tienen tipo: las tratamos como doméstica general
-            return 'Doméstica general'
+            return 'Sin clasificar'
 
-        return mapping.get(self.tipo_servicio, self.tipo_servicio)
+        from services.service_catalog import service_label
+        return service_label(self.tipo_servicio, legacy_default='Sin clasificar')
 
     # ─────────────────────────────────────────────────────────
     # HELPERS – Acceso cómodo al JSON de detalles_servicio
@@ -3073,7 +3066,6 @@ class BotCandidateIntake(db.Model):
         db.UniqueConstraint("draft_id", name="uq_bot_candidate_intakes_draft_id"),
         db.Index("ix_bot_candidate_intakes_status_created", "status", "created_at"),
         db.Index("ix_bot_candidate_intakes_conversation", "conversation_id", "created_at"),
-        db.Index("ix_bot_candidate_intakes_phone", "phone"),
         db.Index("ix_bot_candidate_intakes_duplicate_score", "duplicate_score"),
     )
 

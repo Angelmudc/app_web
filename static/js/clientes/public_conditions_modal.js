@@ -180,7 +180,12 @@
 
     body.addEventListener('scroll', handleScroll, { passive: true });
     confirmButton.addEventListener('click', confirm);
-    if (indicator) indicator.addEventListener('click', function () { body.scrollTop = body.scrollHeight; });
+    if (indicator) indicator.addEventListener('click', function () {
+      body.scrollTop = body.scrollHeight;
+      // Programmatic scrolling can defer or omit the native scroll event in
+      // some browser states. Keep the visible read-complete state in sync.
+      handleScroll();
+    });
     Array.prototype.forEach.call(dismissButtons, function (button) { button.addEventListener('click', close); });
     form.addEventListener('submit', function (event) {
       if (form.__publicConditionsConfirmed && event.defaultPrevented) form.__publicConditionsConfirmed = false;

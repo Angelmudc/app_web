@@ -1,7 +1,7 @@
 /* Backward-compatible bridge for the two public request forms. */
 (function (window, document) {
   'use strict';
-  var ASSET_VERSION = '20261002-audit1';
+  var ASSET_VERSION = '20261019-premium-v2';
   function start() {
     if (!document.querySelector('form[data-form-ux="vue"]')) return;
     var css = document.createElement('link');
@@ -19,7 +19,12 @@
     vue.src = '/static/js/vendor/vue-3.5.13.global.prod.js?v=' + ASSET_VERSION;
     vue.dataset.publicFormVue = '3.5.13';
     vue.onload = loadController;
-    vue.onerror = function () { console.error('No se pudo cargar Vue local; el formulario nativo sigue disponible.'); };
+    vue.onerror = function () {
+      console.error('No se pudo cargar Vue local; el formulario nativo sigue disponible.');
+      document.querySelectorAll('form[data-form-ux="vue"]').forEach(function (form) {
+        document.dispatchEvent(new CustomEvent('public-form-draft-ready', { detail: { formId: form.id, restored: false } }));
+      });
+    };
     document.head.appendChild(vue);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();

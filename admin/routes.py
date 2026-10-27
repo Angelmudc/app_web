@@ -11873,116 +11873,17 @@ def crear_tarea_rapida(cliente_id):
 # ─────────────────────────────────────────────────────────────
 
 def _build_detalles_servicio_from_form(form) -> dict | None:
-    """
-    Construye el JSON que se guarda en Solicitud.detalles_servicio
-    según el tipo de servicio seleccionado.
-    """
-    ts = getattr(form, 'tipo_servicio', None).data if hasattr(form, 'tipo_servicio') else None
-    if not ts:
-        return None
+    """Compatibility adapter: capture HTTP schedule fields, delegate mapping."""
+    from services.service_details_mapping import build_service_details_from_form
 
-    detalles: dict = {
-        "tipo": ts  # siempre guardamos el tipo aquí
+    schedule_inputs = {
+        key: request.form.get(key)
+        for key in (
+            "modalidad_grupo", "horario_dias_trabajo", "horario_hora_entrada",
+            "horario_hora_salida", "horario_dormida_entrada", "horario_dormida_salida",
+        )
     }
-    _horario_text, horario_payload, _horario_errors = build_horario_from_form(
-        modalidad_group=request.form.get("modalidad_grupo"),
-        modalidad_trabajo=(getattr(form, "modalidad_trabajo", None).data if hasattr(form, "modalidad_trabajo") else ""),
-        dias_trabajo=request.form.get("horario_dias_trabajo"),
-        hora_entrada=request.form.get("horario_hora_entrada"),
-        hora_salida=request.form.get("horario_hora_salida"),
-        dormida_entrada=request.form.get("horario_dormida_entrada"),
-        dormida_salida=request.form.get("horario_dormida_salida"),
-        horario_legacy=(getattr(form, "horario", None).data if hasattr(form, "horario") else ""),
-    )
-    detalles.update(horario_payload)
-
-    # ─────────────────────────────
-    # NIÑERA
-    # ─────────────────────────────
-    if ts == 'NINERA':
-        cant_ninos = form.ninera_cant_ninos.data if hasattr(form, 'ninera_cant_ninos') else None
-        edades = (form.ninera_edades.data or '').strip() if hasattr(form, 'ninera_edades') else ''
-        tareas = _clean_list(form.ninera_tareas.data) if hasattr(form, 'ninera_tareas') else []
-        tareas_otro = (form.ninera_tareas_otro.data or '').strip() if hasattr(form, 'ninera_tareas_otro') else ''
-        condicion = (form.ninera_condicion_especial.data or '').strip() if hasattr(form, 'ninera_condicion_especial') else ''
-        usa_otro = ('otro' in tareas)
-        tareas = [t for t in tareas if t != 'otro']
-        if not usa_otro:
-            tareas_otro = ''
-
-        detalles.update({
-            "cantidad_ninos": cant_ninos,
-            "edades_ninos": edades or None,
-            "tareas": _clean_list(tareas or []),
-            # Clave específica para evitar cruces con ENFERMERA.
-            "ninera_tareas_otro": tareas_otro or None,
-            "condicion_especial": condicion or None,
-        })
-
-    # ─────────────────────────────
-    # ENFERMERA / CUIDADORA
-    # ─────────────────────────────
-    elif ts == 'ENFERMERA':
-        a_quien = (form.enf_a_quien_cuida.data or '').strip() if hasattr(form, 'enf_a_quien_cuida') else ''
-        condicion = (form.enf_condicion_principal.data or '').strip() if hasattr(form, 'enf_condicion_principal') else ''
-        movilidad = form.enf_movilidad.data if hasattr(form, 'enf_movilidad') else ''
-        tareas = _clean_list(form.enf_tareas.data) if hasattr(form, 'enf_tareas') else []
-        tareas_otro = (form.enf_tareas_otro.data or '').strip() if hasattr(form, 'enf_tareas_otro') else ''
-        usa_otro = ('otro' in tareas)
-        tareas = [t for t in tareas if t != 'otro']
-        if not usa_otro:
-            tareas_otro = ''
-
-        detalles.update({
-            "a_quien_cuida": a_quien or None,
-            "condicion_principal": condicion or None,
-            "movilidad": movilidad or None,
-            "tareas": _clean_list(tareas or []),
-            # Clave específica para evitar cruces con NIÑERA.
-            "enf_tareas_otro": tareas_otro or None,
-        })
-
-    # ─────────────────────────────
-    # CHOFER
-    # ─────────────────────────────
-    elif ts == 'CHOFER':
-        vehiculo = form.chofer_vehiculo.data if hasattr(form, 'chofer_vehiculo') else ''
-        tipo_vehiculo = form.chofer_tipo_vehiculo.data if hasattr(form, 'chofer_tipo_vehiculo') else ''
-        tipo_vehiculo_otro = (form.chofer_tipo_vehiculo_otro.data or '').strip() if hasattr(form, 'chofer_tipo_vehiculo_otro') else ''
-        if tipo_vehiculo != 'otro':
-            tipo_vehiculo_otro = ''
-        rutas = (form.chofer_rutas.data or '').strip() if hasattr(form, 'chofer_rutas') else ''
-        viajes_largos = bool(form.chofer_viajes_largos.data) if hasattr(form, 'chofer_viajes_largos') else None
-        licencia = (form.chofer_licencia_detalle.data or '').strip() if hasattr(form, 'chofer_licencia_detalle') else ''
-
-        detalles.update({
-            "vehiculo": vehiculo or None,
-            "tipo_vehiculo": tipo_vehiculo or None,
-            "tipo_vehiculo_otro": tipo_vehiculo_otro or None,
-            "rutas": rutas or None,
-            "viajes_largos": viajes_largos,
-            "licencia_requisitos": licencia or None,
-        })
-
-    # ─────────────────────────────
-    # DOMÉSTICA DE LIMPIEZA
-    # ─────────────────────────────
-    elif ts == 'DOMESTICA_LIMPIEZA':
-        # No metemos más cosas aquí porque ya usamos columnas normales (funciones, áreas, etc.)
-        pass
-
-    if hasattr(form, "ayuda_cuidado_ninos"):
-        selected = normalized_funciones(getattr(getattr(form, "funciones", None), "data", None))
-        ayuda = str(getattr(form.ayuda_cuidado_ninos, "data", "") or "").strip()
-        if ayuda and "ninos" in selected:
-            detalles["ayuda_cuidado_ninos"] = ayuda
-
-    # Limpiar claves vacías
-    clean = {
-        k: v for k, v in detalles.items()
-        if v not in (None, '', [], {})
-    }
-    return clean or None
+    return build_service_details_from_form(form, schedule_inputs=schedule_inputs)
 
 
 def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
@@ -11992,15 +11893,18 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
     """
     try:
         data = getattr(solicitud, 'detalles_servicio', None) or {}
+        if hasattr(form, "direccion_precisa"):
+            form.direccion_precisa.data = data.get("direccion_precisa") or ""
         if hasattr(form, "ayuda_cuidado_ninos"):
             form.ayuda_cuidado_ninos.data = str(data.get("ayuda_cuidado_ninos") or "")
         if not data:
             return
-        ts = data.get("tipo") or getattr(solicitud, 'tipo_servicio', None)
-
-        # Aseguramos que el select tenga el tipo
-        if hasattr(form, 'tipo_servicio') and not form.tipo_servicio.data:
-            form.tipo_servicio.data = ts
+        stored_ts = getattr(solicitud, 'tipo_servicio', None)
+        # The model column identifies the active service. JSON's type marker
+        # is only a fallback for historical rows with no column value.
+        raw_ts = stored_ts or data.get("tipo")
+        from services.service_catalog import service_details_for_type, canonical_service_code
+        ts = canonical_service_code(raw_ts)
 
         # ─────────────────────────────
         # NIÑERA
@@ -12031,17 +11935,39 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
                 pass
             if hasattr(form, 'ninera_condicion_especial'):
                 form.ninera_condicion_especial.data = data.get("condicion_especial") or ''
+            if hasattr(form, 'ninera_necesidad_especial_publicable'):
+                form.ninera_necesidad_especial_publicable.data = data.get("necesidad_especial_publicable") or ''
+            form.ninera_necesidad_especial_respuesta.data = data.get("necesidad_especial_respuesta") or ''
+            form.ninera_responsable_principal.data = data.get("ninera_responsable_principal") or ''
+            form.ninera_responsabilidad_integral.data = bool(data.get("responsabilidad_integral"))
 
         # ─────────────────────────────
         # ENFERMERA / CUIDADORA
         # ─────────────────────────────
         elif ts == 'ENFERMERA':
+            import json
             if hasattr(form, 'enf_a_quien_cuida'):
                 form.enf_a_quien_cuida.data = data.get("a_quien_cuida") or ''
             if hasattr(form, 'enf_condicion_principal'):
                 form.enf_condicion_principal.data = data.get("condicion_principal") or ''
             if hasattr(form, 'enf_movilidad'):
                 form.enf_movilidad.data = data.get("movilidad") or ''
+            form.enf_cantidad_personas.data = data.get("cantidad_personas")
+            form.enf_personas_cuidado.data = json.dumps(data.get("personas_cuidado") or [], ensure_ascii=False)
+            form.enf_personas_cuidado_historicas.data = json.dumps(data.get("personas_cuidado_historicas") or [], ensure_ascii=False)
+            form.enf_personas_cuidado_necesidades_historicas.data = json.dumps(data.get("personas_cuidado_necesidades_historicas") or [], ensure_ascii=False)
+            form.enf_edad_persona.data = data.get("edad_persona")
+            form.enf_edades_personas.data = data.get("edades_personas") or ''
+            form.enf_ayuda_higiene.data = data.get("ayuda_higiene") or ''
+            form.enf_ayuda_alimentacion.data = data.get("ayuda_alimentacion") or ''
+            form.enf_tipo_asistencia.data = data.get("tipo_asistencia") or ''
+            form.enf_condiciones.data = data.get("condiciones") or []
+            form.enf_condicion_otro.data = data.get("condicion_otro") or ''
+            form.enf_responsabilidad_principal.data = data.get("responsabilidad_principal") or ''
+            if hasattr(form, 'enf_requiere_preparacion_profesional'):
+                form.enf_requiere_preparacion_profesional.data = bool(data.get("requiere_preparacion_profesional"))
+            if hasattr(form, 'enf_formacion_requerida'):
+                form.enf_formacion_requerida.data = data.get("formacion_requerida") or ''
             if hasattr(form, 'enf_tareas'):
                 form.enf_tareas.data = data.get("tareas") or []
             if hasattr(form, 'enf_tareas_otro'):
@@ -12066,10 +11992,20 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
         # CHOFER
         # ─────────────────────────────
         elif ts == 'CHOFER':
+            if hasattr(form, 'chofer_tipo_servicio'):
+                purpose = data.get("finalidad") or data.get("tipo_servicio") or ''
+                if purpose and purpose not in {value for value, _label in form.chofer_tipo_servicio.choices}:
+                    form.chofer_tipo_servicio.choices = [*form.chofer_tipo_servicio.choices, (purpose, f"Histórico: {purpose}")]
+                form.chofer_tipo_servicio.data = purpose
+            if hasattr(form, 'chofer_tipo_servicio_otro'):
+                form.chofer_tipo_servicio_otro.data = data.get("finalidad_otro") or ''
+            if hasattr(form, 'chofer_responsabilidades'):
+                form.chofer_responsabilidades.data = data.get("responsabilidades") or ''
             if hasattr(form, 'chofer_vehiculo'):
                 form.chofer_vehiculo.data = data.get("vehiculo") or None
             if hasattr(form, 'chofer_tipo_vehiculo'):
-                form.chofer_tipo_vehiculo.data = data.get("tipo_vehiculo") or ''
+                legacy_vehicle = data.get("tipo_vehiculo") or ''
+                form.chofer_tipo_vehiculo.data = {"Carro":"carro", "Yipeta":"yipeta", "Pickup":"pickup", "Minibús":"minibus", "Camión ligero":"camion_ligero", "Otro":"otro"}.get(legacy_vehicle, legacy_vehicle)
             if hasattr(form, 'chofer_tipo_vehiculo_otro'):
                 form.chofer_tipo_vehiculo_otro.data = data.get("tipo_vehiculo_otro") or ''
             try:
@@ -12081,11 +12017,217 @@ def _populate_form_detalles_from_solicitud(form, solicitud: Solicitud) -> None:
             except Exception:
                 pass
             if hasattr(form, 'chofer_rutas'):
-                form.chofer_rutas.data = data.get("rutas") or ''
-            if hasattr(form, 'chofer_viajes_largos'):
-                form.chofer_viajes_largos.data = bool(data.get("viajes_largos")) if "viajes_largos" in data else None
+                form.chofer_rutas.data = data.get("rutas") if isinstance(data.get("rutas"), list) else []
+            if hasattr(form, 'chofer_rutas_legacy'):
+                form.chofer_rutas_legacy.data = data.get("rutas_legacy") or (data.get("rutas") if isinstance(data.get("rutas"), str) else '')
+            if hasattr(form, 'chofer_rutas_otro'):
+                form.chofer_rutas_otro.data = data.get("rutas_otro") or ''
+            if hasattr(form, 'chofer_categoria_licencia'):
+                form.chofer_categoria_licencia.data = data.get("categoria_licencia_requerida") or ''
             if hasattr(form, 'chofer_licencia_detalle'):
-                form.chofer_licencia_detalle.data = data.get("licencia_requisitos") or ''
+                form.chofer_licencia_detalle.data = data.get("licencia_requisitos") or data.get("licencia_detalle") or ''
+
+        elif ts == 'LIMPIEZA_ESTABLECIMIENTOS':
+            form.office_tipo_establecimiento.data = data.get("tipo_establecimiento") or ''
+            if form.office_tipo_establecimiento.data and form.office_tipo_establecimiento.data not in {value for value, _label in form.office_tipo_establecimiento.choices}:
+                form.office_tipo_establecimiento.choices.append((form.office_tipo_establecimiento.data, f"Histórico: {form.office_tipo_establecimiento.data}"))
+            form.office_tipo_establecimiento_otro.data = data.get("tipo_establecimiento_otro") or ''
+            form.office_tamano.data = data.get("tamano") or ''
+            form.office_caracteristicas.data = data.get("caracteristicas") or {}
+            form.office_despachos.data = (data.get("caracteristicas") or {}).get("despachos")
+            form.office_reuniones.data = (data.get("caracteristicas") or {}).get("reuniones")
+            form.office_ventas.data = (data.get("caracteristicas") or {}).get("ventas")
+            form.office_probadores.data = (data.get("caracteristicas") or {}).get("probadores")
+            form.office_aulas.data = (data.get("caracteristicas") or {}).get("aulas")
+            form.office_administracion.data = (data.get("caracteristicas") or {}).get("administracion")
+            form.office_consultorios.data = (data.get("caracteristicas") or {}).get("consultorios")
+            form.office_espera.data = (data.get("caracteristicas") or {}).get("espera")
+            form.office_comedores.data = (data.get("caracteristicas") or {}).get("comedores")
+            form.office_cocinas.data = (data.get("caracteristicas") or {}).get("cocinas")
+            form.office_niveles.data = data.get("niveles") or (data.get("caracteristicas") or {}).get("niveles")
+            form.office_areas_comunes.data = (data.get("caracteristicas") or {}).get("areas_comunes")
+            form.office_banos.data = data.get("banos") or (data.get("caracteristicas") or {}).get("banos")
+            form.office_areas.data = data.get("areas") if isinstance(data.get("areas"), list) else []
+            form.office_areas_legacy.data = data.get("areas_legacy") or (data.get("areas") if isinstance(data.get("areas"), str) else '')
+            form.office_areas_otro.data = data.get("areas_otro") or ''
+            form.office_funciones.data = data.get("funciones") if isinstance(data.get("funciones"), list) else []
+            form.office_funciones_otro.data = data.get("funciones_otro") or ''
+            form.office_trabaja_con_companeros.data = data.get("trabaja_con_companeros") or ''
+            form.office_cantidad_companeros_limpieza.data = data.get("cantidad_companeros_limpieza")
+            form.office_espacios_otro.data = data.get("espacios_otro") or ''
+            form.office_frecuencia.data = data.get("frecuencia") or ''
+            form.office_horario.data = data.get("horario_limpieza") or ''
+
+        elif ts == 'CONSERJERIA_RESIDENCIAL':
+            form.conserje_tipo_instalacion.data = data.get("tipo_instalacion") or ''
+            form.conserje_niveles.data = data.get("niveles")
+            form.conserje_areas_comunes.data = data.get("areas_comunes") or ''
+            form.conserje_banos.data = data.get("banos")
+            form.conserje_escaleras.data = data.get("escaleras")
+            form.conserje_parqueos.data = data.get("parqueos")
+            form.conserje_areas_exteriores.data = data.get("areas_exteriores") or ''
+            form.conserje_manejo_basura.data = data.get("manejo_basura") or ''
+            form.conserje_mantenimiento.data = data.get("mantenimiento_basico") or ''
+            form.conserje_tipo_residencial.data = data.get("tipo_residencial") or ''
+            form.conserje_tipo_residencial_otro.data = data.get("tipo_residencial_otro") or ''
+            form.conserje_apartamentos.data = data.get("apartamentos")
+            form.conserje_ascensores.data = data.get("ascensores")
+            form.conserje_cantidad_edificios.data = data.get("cantidad_edificios")
+            form.conserje_cantidad_casas.data = data.get("casas")
+            form.conserje_unidades.data = data.get("unidades")
+            form.conserje_tiene_ascensor.data = data.get("tiene_ascensor") or ''
+            form.conserje_parqueos_comunes.data = data.get("parqueos_comunes") or ''
+            form.conserje_areas_recreativas.data = data.get("areas_recreativas") or ''
+            form.conserje_jardines_comunes.data = data.get("jardines_comunes") or ''
+            form.conserje_calles_internas.data = data.get("calles_internas") or ''
+            form.conserje_estacionamiento.data = data.get("estacionamiento") or ''
+            form.conserje_instalaciones.data = data.get("instalaciones") if isinstance(data.get("instalaciones"), list) else []
+            form.conserje_otras_instalaciones.data = data.get("otras_instalaciones") or ''
+            form.conserje_responsabilidades.data = data.get("responsabilidades") if isinstance(data.get("responsabilidades"), list) else []
+            form.conserje_responsabilidades_otro.data = data.get("responsabilidades_otro") or ''
+            form.conserje_trabaja_con_conserjes.data = data.get("trabaja_con_conserjes") or ''
+            form.conserje_cantidad_conserjes.data = data.get("cantidad_conserjes")
+
+        # A type switch may leave details for another service intact. Populate
+        # every stored block so changing back in Admin does not hide old answers.
+        ninera_data = service_details_for_type(data, "NINERA")
+        form.ninera_cant_ninos.data = ninera_data.get("cantidad_ninos") or ninera_data.get("cant_ninos")
+        form.ninera_edades.data = ninera_data.get("edades_ninos") or ninera_data.get("edades") or ''
+        form.ninera_tareas.data = ninera_data.get("tareas") or []
+        form.ninera_tareas_otro.data = ninera_data.get("ninera_tareas_otro") or ninera_data.get("tareas_otro") or ''
+        form.ninera_condicion_especial.data = ninera_data.get("condicion_especial") or ''
+        form.ninera_necesidad_especial_publicable.data = ninera_data.get("necesidad_especial_publicable") or ''
+        form.ninera_necesidad_especial_respuesta.data = ninera_data.get("necesidad_especial_respuesta") or ''
+        form.ninera_responsable_principal.data = ninera_data.get("ninera_responsable_principal") or ("no" if ninera_data.get("co_cuidado") is True else "si" if ninera_data.get("co_cuidado") is False else '')
+        form.ninera_responsabilidad_integral.data = bool(ninera_data.get("responsabilidad_integral"))
+        enf_data = service_details_for_type(data, "ENFERMERA")
+        form.enf_a_quien_cuida.data = enf_data.get("a_quien_cuida") or enf_data.get("a_quien") or ''
+        form.enf_cantidad_personas.data = enf_data.get("cantidad_personas")
+        from services.service_catalog import (
+            parse_enfermera_necesidades_historicas,
+            parse_enfermera_perfiles_historicos,
+            parse_enfermera_personas,
+        )
+        nurse_profiles = parse_enfermera_personas(enf_data.get("personas_cuidado"))
+        if not nurse_profiles:
+            historic_profiles = parse_enfermera_perfiles_historicos(enf_data.get("personas_cuidado_historicas"))
+            if historic_profiles:
+                by_index = {entry["indice"]: entry["perfil"] for entry in historic_profiles}
+                nurse_profiles = [by_index[index] for index in range(max(by_index) + 1)]
+        try:
+            nurse_count = max(0, min(20, int(enf_data.get("cantidad_personas") or 0)))
+        except (TypeError, ValueError):
+            nurse_count = 0
+        # Rehydrate the one-person legacy fields into the per-person editor.
+        # The legacy keys remain untouched in the JSON details payload.
+        if not nurse_profiles and nurse_count == 1 and any(
+            enf_data.get(key) not in (None, "", [])
+            for key in ("edad_persona", "movilidad", "condiciones")
+        ):
+            nurse_profiles = [{
+                "edad": enf_data.get("edad_persona"),
+                "movilidad": enf_data.get("movilidad") or "",
+                "condiciones": enf_data.get("condiciones") or [],
+            }]
+        if nurse_count:
+            legacy_needs = parse_enfermera_necesidades_historicas(
+                enf_data.get("personas_cuidado_necesidades_historicas")
+            )
+            if legacy_needs:
+                while len(nurse_profiles) < min(nurse_count, max(item["indice"] for item in legacy_needs) + 1):
+                    nurse_profiles.append({"edad": None, "movilidad": "", "condiciones": []})
+                for item in legacy_needs:
+                    index = item["indice"]
+                    if index < nurse_count and index < len(nurse_profiles):
+                        nurse_profiles[index]["necesidades"] = list(dict.fromkeys([
+                            *nurse_profiles[index].get("necesidades", []), *item["necesidades"]
+                        ]))
+        form.enf_personas_cuidado.data = json.dumps(nurse_profiles, ensure_ascii=False)
+        form.enf_personas_cuidado_historicas.data = json.dumps(enf_data.get("personas_cuidado_historicas") or [], ensure_ascii=False)
+        form.enf_personas_cuidado_necesidades_historicas.data = json.dumps(enf_data.get("personas_cuidado_necesidades_historicas") or [], ensure_ascii=False)
+        form.enf_edad_persona.data = enf_data.get("edad_persona")
+        form.enf_edades_personas.data = enf_data.get("edades_personas") or ''
+        form.enf_condicion_principal.data = enf_data.get("condicion_principal") or ''
+        form.enf_movilidad.data = enf_data.get("movilidad") or ''
+        form.enf_ayuda_higiene.data = enf_data.get("ayuda_higiene") or ''
+        form.enf_ayuda_alimentacion.data = enf_data.get("ayuda_alimentacion") or ''
+        form.enf_tipo_asistencia.data = enf_data.get("tipo_asistencia") or ''
+        form.enf_condiciones.data = enf_data.get("condiciones") or []
+        form.enf_condicion_otro.data = enf_data.get("condicion_otro") or ''
+        form.enf_requiere_preparacion_profesional.data = bool(enf_data.get("requiere_preparacion_profesional"))
+        form.enf_formacion_requerida.data = enf_data.get("formacion_requerida") or ''
+        form.enf_tareas.data = enf_data.get("tareas") or []
+        form.enf_tareas_otro.data = enf_data.get("enf_tareas_otro") or enf_data.get("tareas_otro") or ''
+        form.enf_responsabilidad_principal.data = enf_data.get("responsabilidad_principal") or ''
+        driver_data = service_details_for_type(data, "CHOFER")
+        form.chofer_vehiculo.data = driver_data.get("vehiculo") or None
+        legacy_vehicle = driver_data.get("tipo_vehiculo") or ''
+        form.chofer_tipo_vehiculo.data = {"Carro":"carro", "Yipeta":"yipeta", "Pickup":"pickup", "Minibús":"minibus", "Camión ligero":"camion_ligero", "Otro":"otro"}.get(legacy_vehicle, legacy_vehicle)
+        form.chofer_tipo_vehiculo_otro.data = driver_data.get("tipo_vehiculo_otro") or ''
+        form.chofer_rutas.data = driver_data.get("rutas") if isinstance(driver_data.get("rutas"), list) else []
+        form.chofer_rutas_legacy.data = driver_data.get("rutas_legacy") or (driver_data.get("rutas") if isinstance(driver_data.get("rutas"), str) else '')
+        form.chofer_rutas_otro.data = driver_data.get("rutas_otro") or ''
+        form.chofer_categoria_licencia.data = driver_data.get("categoria_licencia_requerida") or ''
+        form.chofer_licencia_detalle.data = driver_data.get("licencia_requisitos") or driver_data.get("licencia_detalle") or ''
+        office_data = service_details_for_type(data, "LIMPIEZA_ESTABLECIMIENTOS")
+        form.office_tipo_establecimiento.data = office_data.get("tipo_establecimiento") or ''
+        if form.office_tipo_establecimiento.data and form.office_tipo_establecimiento.data not in {value for value, _label in form.office_tipo_establecimiento.choices}:
+            form.office_tipo_establecimiento.choices.append((form.office_tipo_establecimiento.data, f"Histórico: {form.office_tipo_establecimiento.data}"))
+        form.office_tipo_establecimiento_otro.data = office_data.get("tipo_establecimiento_otro") or ''
+        form.office_tamano.data = office_data.get("tamano") or ''
+        form.office_caracteristicas.data = office_data.get("caracteristicas") or {}
+        form.office_despachos.data = (office_data.get("caracteristicas") or {}).get("despachos")
+        form.office_reuniones.data = (office_data.get("caracteristicas") or {}).get("reuniones")
+        form.office_ventas.data = (office_data.get("caracteristicas") or {}).get("ventas")
+        form.office_probadores.data = (office_data.get("caracteristicas") or {}).get("probadores")
+        form.office_aulas.data = (office_data.get("caracteristicas") or {}).get("aulas")
+        form.office_administracion.data = (office_data.get("caracteristicas") or {}).get("administracion")
+        form.office_consultorios.data = (office_data.get("caracteristicas") or {}).get("consultorios")
+        form.office_espera.data = (office_data.get("caracteristicas") or {}).get("espera")
+        form.office_comedores.data = (office_data.get("caracteristicas") or {}).get("comedores")
+        form.office_cocinas.data = (office_data.get("caracteristicas") or {}).get("cocinas")
+        form.office_niveles.data = office_data.get("niveles") or (office_data.get("caracteristicas") or {}).get("niveles")
+        form.office_areas_comunes.data = (office_data.get("caracteristicas") or {}).get("areas_comunes")
+        form.office_banos.data = office_data.get("banos") or (office_data.get("caracteristicas") or {}).get("banos")
+        form.office_areas.data = office_data.get("areas") if isinstance(office_data.get("areas"), list) else []
+        form.office_areas_legacy.data = office_data.get("areas_legacy") or (office_data.get("areas") if isinstance(office_data.get("areas"), str) else '')
+        form.office_areas_otro.data = office_data.get("areas_otro") or ''
+        form.office_funciones.data = office_data.get("funciones") if isinstance(office_data.get("funciones"), list) else []
+        form.office_funciones_otro.data = office_data.get("funciones_otro") or ''
+        form.office_trabaja_con_companeros.data = office_data.get("trabaja_con_companeros") or ''
+        form.office_cantidad_companeros_limpieza.data = office_data.get("cantidad_companeros_limpieza")
+        form.office_espacios_otro.data = office_data.get("espacios_otro") or ''
+        form.office_frecuencia.data = office_data.get("frecuencia") or ''
+        form.office_horario.data = office_data.get("horario_limpieza") or ''
+        conserje_data = service_details_for_type(data, "CONSERJERIA_RESIDENCIAL")
+        form.conserje_tipo_instalacion.data = conserje_data.get("tipo_instalacion") or ''
+        form.conserje_niveles.data = conserje_data.get("niveles")
+        form.conserje_areas_comunes.data = conserje_data.get("areas_comunes") or ''
+        form.conserje_banos.data = conserje_data.get("banos")
+        form.conserje_escaleras.data = conserje_data.get("escaleras")
+        form.conserje_parqueos.data = conserje_data.get("parqueos")
+        form.conserje_areas_exteriores.data = conserje_data.get("areas_exteriores") or ''
+        form.conserje_manejo_basura.data = conserje_data.get("manejo_basura") or ''
+        form.conserje_mantenimiento.data = conserje_data.get("mantenimiento_basico") or ''
+        form.conserje_tipo_residencial.data = conserje_data.get("tipo_residencial") or ''
+        form.conserje_tipo_residencial_otro.data = conserje_data.get("tipo_residencial_otro") or ''
+        form.conserje_apartamentos.data = conserje_data.get("apartamentos")
+        form.conserje_ascensores.data = conserje_data.get("ascensores")
+        form.conserje_cantidad_edificios.data = conserje_data.get("cantidad_edificios")
+        form.conserje_cantidad_casas.data = conserje_data.get("casas")
+        form.conserje_unidades.data = conserje_data.get("unidades")
+        form.conserje_tiene_ascensor.data = conserje_data.get("tiene_ascensor") or ''
+        form.conserje_parqueos_comunes.data = conserje_data.get("parqueos_comunes") or ''
+        form.conserje_areas_recreativas.data = conserje_data.get("areas_recreativas") or ''
+        form.conserje_jardines_comunes.data = conserje_data.get("jardines_comunes") or ''
+        form.conserje_calles_internas.data = conserje_data.get("calles_internas") or ''
+        form.conserje_estacionamiento.data = conserje_data.get("estacionamiento") or ''
+        form.conserje_instalaciones.data = conserje_data.get("instalaciones") if isinstance(conserje_data.get("instalaciones"), list) else []
+        form.conserje_otras_instalaciones.data = conserje_data.get("otras_instalaciones") or ''
+        form.conserje_responsabilidades.data = conserje_data.get("responsabilidades") if isinstance(conserje_data.get("responsabilidades"), list) else []
+        form.conserje_responsabilidades_otro.data = conserje_data.get("responsabilidades_otro") or ''
+        form.conserje_trabaja_con_conserjes.data = conserje_data.get("trabaja_con_conserjes") or ''
+        form.conserje_cantidad_conserjes.data = conserje_data.get("cantidad_conserjes")
 
         # DOMESTICA_LIMPIEZA no tiene extras en JSON
 
@@ -12270,7 +12412,8 @@ def nueva_solicitud_admin(cliente_id):
                 next_detalles = _build_detalles_servicio_from_form(form) or {}
                 if previous_detalles.get("ayuda_cuidado_ninos") and not next_detalles.get("ayuda_cuidado_ninos"):
                     next_detalles["ayuda_cuidado_ninos"] = previous_detalles["ayuda_cuidado_ninos"]
-                s.detalles_servicio = next_detalles or None
+                from services.service_details_mapping import combine_service_details
+                s.detalles_servicio = combine_service_details(previous_detalles, next_detalles, s.tipo_servicio)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
                 if _has_limpieza_funcion(s.funciones):
@@ -12684,7 +12827,8 @@ def editar_solicitud_admin(cliente_id, id):
                 next_detalles = _build_detalles_servicio_from_form(form) or {}
                 if previous_detalles.get("ayuda_cuidado_ninos") and not next_detalles.get("ayuda_cuidado_ninos"):
                     next_detalles["ayuda_cuidado_ninos"] = previous_detalles["ayuda_cuidado_ninos"]
-                s.detalles_servicio = next_detalles or None
+                from services.service_details_mapping import combine_service_details
+                s.detalles_servicio = combine_service_details(previous_detalles, next_detalles, s.tipo_servicio)
                 if hasattr(s, 'nota_cliente'):
                     s.nota_cliente = strip_pasaje_marker_from_note(getattr(s, 'nota_cliente', ''))
                 if _has_limpieza_funcion(s.funciones):
@@ -26993,7 +27137,10 @@ def _admin_build_order_text_for_copiar(
     sueldo_block = f"Sueldo: {sueldo_final} mensual, {pasaje_texto}" if sueldo_final else ""
 
     adults_line = f"Adultos: {adultos_val}" if composition["show_adultos"] and adultos_val else ""
-    child_family_line = ninos_line if composition["show_ninos"] else ""
+    # Public household composition is collected independently from duties:
+    # a domestic request may include children without selecting childcare.
+    is_domestic_service = ts_det in {"", "DOMESTICA_LIMPIEZA"}
+    child_family_line = ninos_line if (composition["show_ninos"] or is_domestic_service) else ""
     mascota_copy_line = mascota_line if (composition["show_adultos"] or composition["show_ninos"]) else ""
     blocks = [header_block]
     if info_block.strip():

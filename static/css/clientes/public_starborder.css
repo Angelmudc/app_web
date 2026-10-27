@@ -1,0 +1,141 @@
+/* StarBorder monocromático para las acciones principales públicas. */
+@property --public-star-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+#publicServicePicker #publicContinueService,
+.public-flow-page .public-submit-btn,
+.public-flow-page #funciones_planchar_continue,
+.share-landing-page #continueBtn {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background-color: #0C0C0F;
+  color: #FFFFFF;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+  transition: border-color 180ms ease, box-shadow 180ms ease, background-color 180ms ease;
+}
+
+#publicServicePicker #publicContinueService:not(:disabled):not([aria-disabled="true"]):hover,
+.public-flow-page .public-submit-btn:not(:disabled):not([aria-disabled="true"]):hover,
+.public-flow-page #funciones_planchar_continue:not(:disabled):hover,
+.share-landing-page #continueBtn:hover {
+  border-color: rgba(255, 255, 255, 0.48);
+  background-color: #0C0C0F;
+  color: #FFFFFF;
+  box-shadow: 0 7px 19px rgba(0, 0, 0, 0.32);
+}
+
+#publicServicePicker #publicContinueService:disabled,
+#publicServicePicker #publicContinueService[aria-disabled="true"],
+.public-flow-page .public-submit-btn:disabled,
+.public-flow-page .public-submit-btn[aria-disabled="true"],
+.public-flow-page #funciones_planchar_continue:disabled,
+.public-flow-page #funciones_planchar_continue[aria-disabled="true"] {
+  border-color: rgba(255, 255, 255, 0.18);
+  background-color: #0C0C0F;
+  color: rgba(255, 255, 255, 0.58);
+  box-shadow: none;
+}
+
+#publicServicePicker #publicContinueService::before,
+.public-flow-page .public-submit-btn::before,
+.public-flow-page #funciones_planchar_continue::before,
+.share-landing-page #continueBtn::before {
+  --public-star-thickness: 1.5px;
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  padding: var(--public-star-thickness);
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.84;
+  background: conic-gradient(
+    from var(--public-star-angle),
+    transparent 0deg 286deg,
+    rgba(255, 255, 255, 0.08) 300deg,
+    rgba(255, 255, 255, 0.3) 318deg,
+    rgba(255, 255, 255, 0.82) 337deg,
+    #FFFFFF 348deg,
+    rgba(255, 255, 255, 0.72) 356deg,
+    transparent 360deg
+  );
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.62));
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: public-star-cruise 4s linear infinite;
+  transition: opacity 180ms ease, filter 180ms ease;
+}
+
+#publicServicePicker #publicContinueService > *,
+.public-flow-page .public-submit-btn > *,
+.public-flow-page #funciones_planchar_continue > *,
+.share-landing-page #continueBtn > * {
+  position: relative;
+  z-index: 1;
+}
+
+#publicServicePicker #publicContinueService:disabled::before,
+#publicServicePicker #publicContinueService[aria-disabled="true"]::before,
+.public-flow-page .public-submit-btn:disabled::before,
+.public-flow-page .public-submit-btn[aria-disabled="true"]::before,
+.public-flow-page #funciones_planchar_continue:disabled::before,
+.public-flow-page #funciones_planchar_continue[aria-disabled="true"]::before {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes public-star-cruise {
+  from { --public-star-angle: 0deg; }
+  to { --public-star-angle: 360deg; }
+}
+
+#publicServicePicker #publicContinueService:not(:disabled):not([aria-disabled="true"]):hover::before,
+.public-flow-page .public-submit-btn:not(:disabled):not([aria-disabled="true"]):hover::before,
+.public-flow-page #funciones_planchar_continue:not(:disabled):hover::before,
+.share-landing-page #continueBtn:hover::before,
+#publicServicePicker #publicContinueService:not(:disabled):not([aria-disabled="true"]):focus-visible::before,
+.public-flow-page .public-submit-btn:not(:disabled):not([aria-disabled="true"]):focus-visible::before,
+.public-flow-page #funciones_planchar_continue:not(:disabled):focus-visible::before,
+.share-landing-page #continueBtn:focus-visible::before {
+  opacity: 1;
+  filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.78));
+}
+
+#publicServicePicker #publicContinueService:focus-visible,
+.public-flow-page .public-submit-btn:focus-visible,
+.public-flow-page #funciones_planchar_continue:focus-visible,
+.share-landing-page #continueBtn:focus-visible {
+  outline: 3px solid #FFFFFF;
+  outline-offset: 3px;
+}
+
+.public-flow-page .public-submit-btn::before {
+  --public-star-thickness: 1.8px;
+}
+
+#publicServicePicker #publicContinueService:not(:disabled):not([aria-disabled="true"]):active::before,
+.public-flow-page .public-submit-btn:not(:disabled):not([aria-disabled="true"]):active::before,
+.public-flow-page #funciones_planchar_continue:not(:disabled):active::before,
+.share-landing-page #continueBtn:active::before {
+  opacity: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.9));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #publicServicePicker #publicContinueService::before,
+  .public-flow-page .public-submit-btn::before,
+  .public-flow-page #funciones_planchar_continue::before,
+  .share-landing-page #continueBtn::before {
+    animation: none !important;
+    opacity: 0.42;
+    filter: none;
+    transition: none;
+  }
+}

@@ -606,7 +606,15 @@ def _public_usage_resume_target(token_hash_storage: str, *, link_type: str):
 
 def _public_usage_has_pending_plan(token_hash_storage: str, *, link_type: str) -> bool:
     usage_row, solicitud = _public_usage_resume_target(token_hash_storage, link_type=link_type)
-    return usage_row is not None and solicitud is not None and not _solicitud_has_selected_plan(solicitud)
+    # Only records created by the previous public flow should resume plan
+    # selection. New submissions finish at the receipt screen without choosing
+    # a plan or changing their financial state.
+    return (
+        usage_row is not None
+        and solicitud is not None
+        and str(getattr(usage_row, "consumption_reason", "") or "") == "plan_pending"
+        and not _solicitud_has_selected_plan(solicitud)
+    )
 
 
 def _cliente_active_solicitudes_count(cliente_id: int) -> Optional[int]:
@@ -726,6 +734,7 @@ def _clientes_force_login_view():
         'clientes.solicitud_publica_nueva',
         'clientes.solicitud_publica_nueva_token',
         'clientes.solicitud_publica_nueva_short',
+        'clientes.solicitud_publica_confirmacion',
         'clientes.solicitud_publica_nueva_plan',
         'clientes.solicitud_publica_nueva_short_plan',
         'clientes.solicitud_publica_nueva_plan_resumen',
@@ -1356,7 +1365,19 @@ def _public_external_url(endpoint: str, **values) -> str:
         parsed = urllib.parse.urlparse(base_raw)
         if parsed.scheme and parsed.netloc:
             base = f"{parsed.scheme}://{parsed.netloc}{parsed.path or ''}"
-            rel = url_for(endpoint, _external=False, **values).lstrip("/")
+            if has_request_context():
+                rel = url_for(endpoint, _external=False, **values).lstrip("/")
+            else:
+                # A deferred worker has an app context but no request. Bind
+                # Flask's existing URL map to the configured public origin so
+                # endpoint/path generation remains canonical without setting
+                # SERVER_NAME globally or creating a fake request context.
+                adapter = current_app.url_map.bind(
+                    parsed.netloc,
+                    script_name=parsed.path or None,
+                    url_scheme=parsed.scheme,
+                )
+                rel = adapter.build(endpoint, values=values, force_external=False).lstrip("/")
             return urllib.parse.urljoin(base.rstrip("/") + "/", rel)
     return url_for(endpoint, _external=True, **values)
 
@@ -1608,6 +1629,8 @@ def _public_existing_pending_plan_solicitud(token_hash_storage: str):
     usage_row = _public_link_usage_by_hash(token_hash_storage)
     if usage_row is None:
         return None, None
+    if str(getattr(usage_row, "consumption_reason", "") or "") not in {"plan_pending", "plan_selected"}:
+        return usage_row, None
     if getattr(usage_row, "solicitud", None) is not None:
         return usage_row, getattr(usage_row, "solicitud", None)
     solicitud_id = int(getattr(usage_row, "solicitud_id", 0) or 0)
@@ -1622,6 +1645,8 @@ def _public_new_pending_plan_solicitud(token_hash_storage: str):
     usage_row = _public_new_link_usage_by_hash(token_hash_storage)
     if usage_row is None:
         return None, None
+    if str(getattr(usage_row, "consumption_reason", "") or "") not in {"plan_pending", "plan_selected"}:
+        return usage_row, None
     if getattr(usage_row, "solicitud", None) is not None:
         return usage_row, getattr(usage_row, "solicitud", None)
     solicitud_id = int(getattr(usage_row, "solicitud_id", 0) or 0)
@@ -1630,6 +1655,59 @@ def _public_new_pending_plan_solicitud(token_hash_storage: str):
         return usage_row, None
     solicitud = Solicitud.query.filter_by(id=solicitud_id, cliente_id=cliente_id).first()
     return usage_row, solicitud
+
+
+@clientes_bp.route('/solicitudes/publica/confirmacion/<token>', methods=['GET'])
+def solicitud_publica_confirmacion(token):
+    """Show the receipt for a request already committed through a one-use link."""
+    token_hash_storage = _public_link_token_hash_storage(token)
+    usage_row = _public_new_link_usage_by_hash(token_hash_storage)
+    is_new_client = usage_row is not None
+    if usage_row is None:
+        usage_row = _public_link_usage_by_hash(token_hash_storage)
+    solicitud = getattr(usage_row, "solicitud", None) if usage_row is not None else None
+    if usage_row is not None and solicitud is None:
+        solicitud_id = int(getattr(usage_row, "solicitud_id", 0) or 0)
+        cliente_id = int(getattr(usage_row, "cliente_id", 0) or 0)
+        if solicitud_id > 0 and cliente_id > 0:
+            solicitud = Solicitud.query.filter_by(id=solicitud_id, cliente_id=cliente_id).first()
+
+    if usage_row is None or solicitud is None:
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=404,
+            og_url=_public_existing_short_external_url(token),
+            canonical_url=_public_existing_short_external_url(token),
+        ), 404
+
+    consumption_reason = str(getattr(usage_row, "consumption_reason", "") or "")
+    if consumption_reason == "plan_pending":
+        endpoint = "clientes.solicitud_publica_nueva_plan" if is_new_client else "clientes.solicitud_publica_plan"
+        return redirect(url_for(endpoint, token=token))
+    if consumption_reason != "request_created" or not str(getattr(solicitud, "codigo_solicitud", "") or "").strip():
+        return render_template(
+            'clientes/public_link_invalid.html',
+            reason_key="invalid",
+            status_code=404,
+            og_url=_public_existing_short_external_url(token),
+            canonical_url=_public_existing_short_external_url(token),
+        ), 404
+
+    template = 'clientes/public_new_success.html' if is_new_client else 'clientes/public_link_success.html'
+    receipt_url = _public_new_short_external_url(token) if is_new_client else _public_existing_short_external_url(token)
+    response = make_response(render_template(
+        template,
+        solicitud=solicitud,
+        solicitud_codigo=str(getattr(solicitud, "codigo_solicitud", "") or ""),
+        tipo_plan=normalize_plan(getattr(solicitud, "tipo_plan", None)),
+        og_url=receipt_url,
+        canonical_url=receipt_url,
+    ))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 
 def _log_public_new_link_event(
@@ -3508,7 +3586,14 @@ def _apply_public_solicitud_fields(
 ) -> None:
     """Aplica de forma consistente los campos de solicitud pública en ambos flujos."""
     form.populate_obj(solicitud_obj)
-    solicitud_obj.experiencia = experiencia_value_from_form(form)
+    service_code = str(getattr(getattr(form, "tipo_servicio", None), "data", "") or "").strip()
+    if service_code:
+        from services.service_catalog import merge_service_details, public_details_from_form
+        solicitud_obj.tipo_servicio = service_code
+        prior_details = getattr(solicitud_obj, "detalles_servicio", None)
+        specific_details = public_details_from_form(service_code, request.form)
+        solicitud_obj.detalles_servicio = merge_service_details(prior_details, specific_details, service_code)
+    solicitud_obj.experiencia = "Limpieza" if service_code == "LIMPIEZA_ESTABLECIMIENTOS" else experiencia_value_from_form(form)
     if hasattr(solicitud_obj, "tipo_plan"):
         solicitud_obj.tipo_plan = None
     _apply_banos_from_request(solicitud_obj, form)
@@ -3754,7 +3839,17 @@ _SOLICITUD_DRAFT_EXTRA_FIELDS = {
     "modalidad_otro_text",
     "pisos_selector",
     "wizard_step",
+    "svc_ninera_count", "svc_ninera_ages", "svc_ninera_responsibility", "svc_ninera_integral", "svc_ninera_primary", "svc_ninera_special_need", "svc_ninera_special_note", "svc_ninera_other",
+    "svc_care_age", "svc_care_mobility", "svc_care_tasks", "svc_care_professional", "svc_care_training",
+    "svc_care_task", "svc_care_injection_type", "svc_care_count", "svc_care_profiles", "svc_care_profile_history", "svc_care_assistance",
+    "svc_driver_service", "svc_driver_purpose", "svc_driver_purpose_other", "svc_driver_vehicle", "svc_driver_vehicle_other", "svc_driver_license_category", "svc_driver_route", "svc_driver_routes_other", "svc_driver_tasks",
+    "svc_office_type", "svc_office_type_other", "svc_office_size", "svc_office_spaces_other", "svc_office_area", "svc_office_areas_other", "svc_office_task", "svc_office_tasks_other", "svc_office_support", "svc_office_coworker_count",
+    "svc_office_despachos", "svc_office_reuniones", "svc_office_banos", "svc_office_ventas", "svc_office_probadores", "svc_office_aulas", "svc_office_administracion", "svc_office_consultorios", "svc_office_espera", "svc_office_comedores", "svc_office_cocinas", "svc_office_niveles", "svc_office_areas_comunes",
+    "svc_office_floors", "svc_office_bathrooms", "svc_office_areas", "svc_office_frequency", "svc_office_time", "svc_office_tasks",
+    "svc_conserje_facility", "svc_conserje_floors", "svc_conserje_areas", "svc_conserje_bathrooms", "svc_conserje_stairs", "svc_conserje_parking", "svc_conserje_outdoor", "svc_conserje_garbage", "svc_conserje_maintenance",
+    "svc_conserje_type", "svc_conserje_type_other", "svc_conserje_levels", "svc_conserje_units", "svc_conserje_elevators", "svc_conserje_parking", "svc_conserje_recreation", "svc_conserje_buildings", "svc_conserje_common_parking", "svc_conserje_common_gardens", "svc_conserje_houses", "svc_conserje_internal_streets", "svc_conserje_other_units", "svc_conserje_has_elevator", "svc_conserje_installation", "svc_conserje_installation_other", "svc_conserje_responsibility", "svc_conserje_responsibility_other", "svc_conserje_support", "svc_conserje_coworker_count", "svc_conserje_profile_cache",
 }
+_SOLICITUD_DRAFT_MULTI_FIELDS = {"svc_care_task", "svc_driver_route", "svc_office_area", "svc_office_task", "svc_conserje_installation", "svc_conserje_responsibility"}
 _SOLICITUD_DRAFT_DROP_FIELDS = {
     "csrf_token", "submit", "token", "codigo_solicitud", "id", "created_at", "updated_at",
     "save_draft", "discard_draft",
@@ -3786,13 +3881,14 @@ def _extract_solicitud_draft_payload_from_request(form_obj) -> dict:
 
         field = getattr(form_obj, "_fields", {}).get(name)
         field_type = str(getattr(field, "type", "") or "")
-        if field_type == "SelectMultipleField":
+        if field_type == "SelectMultipleField" or name in _SOLICITUD_DRAFT_MULTI_FIELDS:
             clean_vals = [_safe_trim_draft_value(v, max_len=180) for v in vals if _safe_trim_draft_value(v, max_len=180)]
             if clean_vals:
                 payload[name] = clean_vals[:40]
             continue
 
-        val = _safe_trim_draft_value(vals[-1], max_len=1600)
+        max_len = 30000 if name in {"svc_care_profiles", "svc_care_profile_history"} else 1600
+        val = _safe_trim_draft_value(vals[-1], max_len=max_len)
         if val:
             payload[name] = val
     return payload
@@ -4038,6 +4134,8 @@ def nueva_solicitud():
     initial_wizard_step = 1
     cliente_id = int(getattr(current_user, "id", 0) or 0)
 
+    if request.method == "GET":
+        session.pop("cliente_solicitud_legacy_edad", None)
     if request.method == "GET" and str(request.args.get("fresh") or "").strip() in {"1", "true", "yes"}:
         _clear_cliente_solicitud_draft(cliente_id=cliente_id)
         flash("Borrador descartado. Puedes iniciar una solicitud nueva.", "info")
@@ -4050,6 +4148,13 @@ def nueva_solicitud():
             _apply_solicitud_draft_to_form(form, draft_payload)
             draft_restored = True
             draft_meta = _cliente_solicitud_draft_meta(cliente_id)
+            legacy_age_draft = draft_payload.get("edad_requerida")
+            if isinstance(legacy_age_draft, (list, tuple)) and len(legacy_age_draft) > 1:
+                # A signed session marker lets the server preserve a historical
+                # multi-age draft while rejecting new multi-select submissions.
+                session["cliente_solicitud_legacy_edad"] = [str(value) for value in legacy_age_draft]
+            else:
+                session.pop("cliente_solicitud_legacy_edad", None)
 
         form.funciones.data       = form.funciones.data or []
         form.areas_comunes.data   = form.areas_comunes.data or []
@@ -4125,6 +4230,7 @@ def nueva_solicitud():
             pass
 
     if is_valid_submit:
+        session.pop("cliente_solicitud_legacy_edad", None)
         actor_user = str(int(getattr(current_user, 'id', 0) or 0))
         actor_ip = _client_ip_for_security_layer() or "0.0.0.0"
 
@@ -4241,7 +4347,7 @@ def nueva_solicitud():
             if hasattr(s, "lead_source"):
                 s.lead_source = _normalize_lead_source(request.form.get("lead_source"))
             form.populate_obj(s)
-            s.experiencia = experiencia_value_from_form(form)
+            s.experiencia = "Limpieza" if str(getattr(form.tipo_servicio, "data", "") or "") == "LIMPIEZA_ESTABLECIMIENTOS" else experiencia_value_from_form(form)
             _apply_banos_from_request(s, form)
             _normalize_modalidad_on_solicitud(s)
             apply_horario_to_solicitud(
@@ -4423,6 +4529,7 @@ def nueva_solicitud():
         public_modalidad_other=public_modalidad_other,
         draft_meta=(draft_meta or _cliente_solicitud_draft_meta(cliente_id)),
         draft_restored=draft_restored,
+        public_draft_extra_values={k: v for k, v in (draft_payload or {}).items() if str(k).startswith("svc_")},
     )
 
 
@@ -4509,6 +4616,14 @@ def editar_solicitud(id):
         ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=False)
 
     if request.method == "POST":
+        from services.service_catalog import canonical_service_code
+        if (
+            canonical_service_code(getattr(s, "tipo_servicio", "")) == "CONSERJERIA_RESIDENCIAL"
+            and canonical_service_code(request.form.get("tipo_servicio")) == "CONSERJERIA_RESIDENCIAL"
+        ):
+            # Customer edits must not replace historical or canonical
+            # Conserjería experience values with another service's value.
+            form.load_experiencia_from_model(getattr(s, "experiencia", None))
         public_pasaje_mode, public_pasaje_otro = normalize_pasaje_mode_text(
             request.form.get("pasaje_mode"),
             request.form.get("pasaje_otro_text"),
@@ -4522,7 +4637,8 @@ def editar_solicitud(id):
             public_modalidad_other,
         ) = _resolve_modalidad_ui_context_from_request(form, prefer_post=True)
 
-    if form.validate_on_submit():
+    is_valid_submit = form.validate_on_submit()
+    if is_valid_submit:
         actor_user = str(int(getattr(current_user, 'id', 0) or 0))
         blocked_edit_burst, _ = enforce_business_limit(
             cache_obj=cache,
@@ -7927,10 +8043,13 @@ def solicitud_publica_nueva_token(token):
         ), 503
 
     token_hash_storage = _public_link_token_hash_storage(token)
+    g.public_form_draft_scope = token_hash_storage[:24]
     used_row = _public_new_link_usage_by_hash(token_hash_storage)
     if used_row is not None:
         if _public_usage_has_pending_plan(token_hash_storage, link_type="nuevo"):
             return redirect(url_for("clientes.solicitud_publica_nueva_plan", token=token))
+        if request.method == "GET" and str(getattr(used_row, "consumption_reason", "") or "") == "request_created":
+            return redirect(url_for("clientes.solicitud_publica_confirmacion", token=token))
         _log_public_new_link_event(
             "PUBLIC_NEW_LINK_VIEW_FAIL",
             token,
@@ -8187,7 +8306,7 @@ def solicitud_publica_nueva_token(token):
                     token_hash=token_hash_storage,
                     cliente_id=None,
                     solicitud_id=None,
-                    consumption_reason="plan_pending",
+                    consumption_reason="request_created",
                     public_form_source="cliente_nuevo",
                     request_ip=str(terms_evidence_ip or "")[:64] or None,
                     request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
@@ -8325,11 +8444,7 @@ def solicitud_publica_nueva_token(token):
                     trigger_source="public_link_new_cliente_create",
                     requested_by=f"public_new_cliente:{int(state.get('cliente_id') or 0)}",
                 )
-                if share_code:
-                    return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token, public_saved='1'))
-                if request.endpoint == "clientes.solicitud_publica_nueva_short":
-                    return redirect(url_for('clientes.solicitud_publica_nueva_short_plan', token=token, public_saved='1'))
-                return redirect(url_for('clientes.solicitud_publica_nueva_plan', token=token, public_saved='1'))
+                return redirect(url_for('clientes.solicitud_publica_confirmacion', token=token))
 
             usage_after_fail = _public_new_link_usage_by_hash(token_hash_storage)
             if usage_after_fail is not None:
@@ -8477,10 +8592,13 @@ def solicitud_publica(token):
         ), 503
 
     token_hash_storage = _public_link_token_hash_storage(token)
+    g.public_form_draft_scope = token_hash_storage[:24]
     used_row = _public_link_usage_by_hash(token_hash_storage)
     if used_row is not None:
         if _public_usage_has_pending_plan(token_hash_storage, link_type="existente"):
             return redirect(url_for("clientes.solicitud_publica_plan", token=token))
+        if request.method == "GET" and str(getattr(used_row, "consumption_reason", "") or "") == "request_created":
+            return redirect(url_for("clientes.solicitud_publica_confirmacion", token=token))
         _log_public_link_event(
             "PUBLIC_LINK_VIEW_FAIL",
             token,
@@ -8822,7 +8940,7 @@ def solicitud_publica(token):
                 token_hash=token_hash_storage,
                 cliente_id=int(c.id),
                 solicitud_id=None,
-                consumption_reason="plan_pending",
+                consumption_reason="request_created",
                 public_form_source="cliente_existente",
                 request_ip=str(terms_evidence_ip or "")[:64] or None,
                 request_user_agent=str(terms_evidence_user_agent or "")[:512] or None,
@@ -8929,12 +9047,8 @@ def solicitud_publica(token):
                     "attempts": int(result.attempts),
                 },
             )
-            flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente. Falta elegir el plan.", "success")
-            if share_code:
-                return redirect(url_for('clientes.solicitud_publica_plan', token=token, public_saved='1'))
-            if request.endpoint == "clientes.solicitud_publica_short":
-                return redirect(url_for('clientes.solicitud_publica_short_plan', token=token, public_saved='1'))
-            return redirect(url_for('clientes.solicitud_publica_plan', token=token, public_saved='1'))
+            flash(f"Solicitud {codigo_holder.get('value') or ''} enviada correctamente.", "success")
+            return redirect(url_for('clientes.solicitud_publica_confirmacion', token=token))
         usage_after_fail = _public_link_usage_by_hash(token_hash_storage)
         if usage_after_fail is not None:
             return render_template(

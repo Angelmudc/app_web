@@ -43,7 +43,7 @@
   <meta name="twitter:image" content="{{ _og_image }}">
   <meta name="twitter:image:alt" content="{{ _og_image_alt }}">
   <meta name="twitter:url" content="{{ _og_url }}">
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo_nuevo.png') }}">
+  <link rel="icon" type="image/webp" href="{{ url_for('static', filename='logo_nuevo.webp') }}">
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -61,6 +61,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -144,6 +145,7 @@
   </style>
 
   {% block head %}{% endblock %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/clientes/public_starborder.css', v='20261020-4') }}">
 </head>
 <body class="public-flow" data-live-presence-enabled="0" data-live-presence-url="">
   <div class="public-flash-wrap">
@@ -159,7 +161,7 @@
   <div class="public-trust-shell">
     <div class="public-trust" role="note" aria-label="Enlace oficial de uso único">
       <div class="public-trust-brand">
-        <img src="{{ url_for('static', filename='logo_nuevo.png') }}" alt="Doméstica del Cibao A&D">
+        <img src="{{ url_for('static', filename='logo_nuevo.webp') }}" width="144" height="58" decoding="async" alt="Doméstica del Cibao A&D">
         Doméstica del Cibao A&D · Formulario oficial
       </div>
       <div class="public-trust-meta">
@@ -178,5 +180,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
   {% block scripts %}{% endblock %}
+  <script src="{{ url_for('static', filename='js/clientes/public_starborder.js', v='20261020-2') }}" defer></script>
 </body>
 </html>

@@ -63,7 +63,7 @@
 {% macro render_errors(field) -%}
   {% if field.errors %}
     {% for e in field.errors %}
-      <div class="invalid-feedback">{{ e }}</div>
+      <div class="invalid-feedback" data-public-wtforms-error>{{ e }}</div>
     {% endfor %}
   {% endif %}
 {%- endmacro %}
@@ -128,6 +128,102 @@
     display: grid;
     gap: 12px;
     container-type: inline-size;
+  }
+
+  .public-service-dialog {
+    width:min(1110px,calc(100vw - 52px)); max-width:none; max-height:min(830px,calc(100dvh - 36px));
+    padding:0; border:1px solid rgba(207,222,228,.92); border-radius:24px; color:#142e43; background:#fbfdfe;
+    box-shadow:0 34px 110px rgba(13,38,54,.25),0 5px 18px rgba(13,38,54,.08); overflow:hidden;
+    opacity:0; transform:translateY(8px) scale(.99); transition:opacity .16s ease,transform .16s ease,display .16s allow-discrete,overlay .16s allow-discrete;
+  }
+  .public-service-dialog::backdrop { background:rgba(12,31,47,.58); backdrop-filter:blur(5px); }
+  .public-service-dialog.is-fallback-open[open] { position:fixed; inset:8px; z-index:2000; display:flex; margin:auto; }
+  .public-service-dialog[open] { display:flex; flex-direction:column; opacity:1; transform:translateY(0) scale(1); animation:public-service-dialog-in .34s cubic-bezier(.2,.75,.25,1) both; }
+  @starting-style { .public-service-dialog[open] { opacity:0; transform:translateY(11px) scale(.985); } }
+  @keyframes public-service-dialog-in { from { opacity:0; transform:translateY(11px) scale(.985); } to { opacity:1; transform:translateY(0) scale(1); } }
+  .public-service-dialog-inner { display:flex; flex:1 1 auto; flex-direction:column; min-height:0; width:100%; box-sizing:border-box; padding:24px 28px 19px; }
+  .public-service-dialog-heading { display:flex; flex:0 0 auto; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:14px; }
+  .public-service-dialog-kicker { margin:0 0 8px; color:#1b7185; font-size:10px; font-weight:770; letter-spacing:.105em; text-transform:uppercase; }
+  .public-service-dialog-title { margin:0; color:#14324a; font-size:clamp(1.4rem,2.4vw,1.9rem); font-weight:680; letter-spacing:-.045em; line-height:1.16; }
+  .public-service-dialog-description { max-width:56ch; margin:7px 0 0; color:#627584; font-size:13px; line-height:1.45; }
+  .public-service-dialog-step { display:inline-flex; flex:none; align-items:baseline; gap:5px; margin-top:18px; color:#1c6579; font-size:13px; font-weight:760; letter-spacing:.035em; }
+  .public-service-dialog-step span { color:#91a2ae; font-size:10px; font-weight:600; }
+  .public-service-dialog-grid { display:grid; flex:1 1 auto; grid-template-columns:repeat(3,minmax(0,1fr)); grid-auto-rows:minmax(175px,1fr); gap:22px; min-height:0; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#b7cbd2 transparent; padding:18px; perspective:1100px; }
+  .public-service-choice {
+    position:relative; display:block; min-width:0; min-height:0; overflow:hidden; padding:0; border:1px solid rgba(255,255,255,.86); border-radius:16px;
+    color:#fff; background:#ced9dd; box-shadow:0 5px 15px rgba(18,41,56,.13),inset 0 0 0 1px rgba(10,35,53,.04);
+    cursor:pointer; isolation:isolate; text-align:left; transform:translateZ(-5px) rotateX(.4deg);
+    transition:transform .34s cubic-bezier(.2,.75,.25,1),border-color .25s,box-shadow .3s,filter .3s;
+    -webkit-tap-highlight-color:transparent; touch-action:manipulation; scroll-margin:20px;
+  }
+  .public-service-choice picture { position:absolute; inset:0; display:block; }
+  .public-service-choice img { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; transform:scale(1.001); transition:transform .65s cubic-bezier(.2,.75,.25,1),filter .45s; }
+  .public-service-choice[data-service-code="CONSERJERIA_RESIDENCIAL"] img { object-position:center 42%; }
+  .public-service-choice-shade { position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,rgba(10,28,41,.04) 0%,rgba(10,28,41,.02) 35%,rgba(10,28,41,.42) 68%,rgba(8,25,39,.91) 100%); transition:background .3s; }
+  .public-service-choice-index { position:absolute; z-index:2; top:12px; left:13px; display:grid; place-items:center; min-width:27px; height:24px; padding:0 6px; border:1px solid rgba(255,255,255,.49); border-radius:999px; color:#fff; background:rgba(13,37,53,.25); backdrop-filter:blur(6px); font-size:10px; font-weight:750; letter-spacing:.05em; }
+  .public-service-choice-copy { position:absolute; z-index:2; right:13px; bottom:14px; left:14px; display:grid; gap:4px; }
+  .public-service-choice-copy strong { color:#fff; font-size:clamp(14px,1.4vw,17px); font-weight:740; letter-spacing:-.025em; line-height:1.18; text-shadow:0 1px 8px rgba(0,0,0,.25); }
+  .public-service-choice-description { color:rgba(255,255,255,.9); font-size:11px; line-height:1.3; text-shadow:0 1px 6px rgba(0,0,0,.26); }
+  .public-service-choice-selected { position:absolute; z-index:3; top:11px; right:11px; display:flex; align-items:center; gap:5px; padding:5px 8px 5px 5px; border:1px solid rgba(255,255,255,.34); border-radius:999px; opacity:0; color:#fff; background:rgba(10,46,61,.8); backdrop-filter:blur(8px); font-size:10px; font-weight:720; transform:translateY(-4px) scale(.96); transition:opacity .2s,transform .25s cubic-bezier(.2,.75,.25,1); }
+  .public-service-choice-selected > span { display:grid; place-items:center; width:16px; height:16px; border-radius:50%; color:#0a3446; background:#94f0e5; font-size:11px; font-weight:900; }
+  .public-service-choice:hover { z-index:1; transform:translateY(-4px) translateZ(12px) scale(1.008); border-color:rgba(255,255,255,.96); box-shadow:0 7px 13px rgba(16,47,64,.2),0 0 0 1px rgba(255,255,255,.38); }
+  .public-service-choice:hover img { transform:scale(1.045); }
+  .public-service-choice:active { transform:translateY(-1px) scale(.992); }
+  .public-service-choice[aria-pressed="true"] { z-index:2; border:2px solid #33c3c9; box-shadow:0 7px 13px rgba(8,52,67,.2),0 0 0 2px rgba(39,196,222,.2); transform:translateY(-3px) translateZ(22px) scale(1.008); }
+  .public-service-choice[aria-pressed="true"] img { transform:scale(1.05); filter:saturate(1.06); }
+  .public-service-choice[aria-pressed="true"] .public-service-choice-selected { opacity:1; transform:translateY(0) scale(1); }
+  .public-service-choice:focus-visible { z-index:4; outline:3px solid #0d566f; outline-offset:3px; box-shadow:0 0 0 6px rgba(255,255,255,.9),0 8px 22px rgba(15,45,62,.2); }
+  .public-service-choice[aria-pressed="true"]:focus-visible { outline-color:#0d566f; }
+  .public-service-dialog-note { flex:0 0 auto; min-height:1.4em; margin:10px 0 0; color:#53687b; font-size:.83rem; line-height:1.45; }
+  .public-service-dialog-error { margin:10px 0 0; color:#a12b24; font-size:.85rem; font-weight:650; }
+  .public-service-dialog-footer { position:sticky; bottom:0; z-index:5; display:flex; flex:0 0 auto; justify-content:space-between; align-items:center; gap:12px; margin-top:12px; padding:14px 3px 0; border-top:1px solid #e5ecef; background:#fbfdfe; }
+  .public-service-dialog-footer .btn { min-height:48px; border-radius:12px; padding-inline:17px; font-weight:720; }
+  .public-service-dialog-footer #publicCancelServiceChange { flex:none; }
+  #publicServicePicker #publicContinueService { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:15px; min-width:156px; padding-inline:17px; font-size:13px; }
+  .public-service-continue-arrow { font-size:18px; line-height:1; transition:transform .2s; }
+  #publicServicePicker #publicContinueService:not(:disabled):hover .public-service-continue-arrow { transform:translateX(3px); }
+  #publicServicePicker #publicContinueService:focus-visible { outline-offset:4px; }
+  #publicServicePicker #publicContinueService:disabled { opacity:.66; cursor:not-allowed; }
+  #publicServicePicker #publicContinueService:disabled > * { opacity:.65; }
+  .public-service-form-actions { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 14px; border:1px solid #d8e4ef; border-radius:12px; background:#f7fafc; }
+  .public-service-form-actions .btn { flex:0 0 auto; }
+  @media (min-width:1200px) { .public-service-dialog-grid { grid-auto-rows:205px; } }
+  @media (max-width:760px) {
+    .public-service-dialog { width:calc(100vw - 18px); max-height:calc(100dvh - 18px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); border-radius:19px; }
+    .public-service-dialog-inner { max-height:calc(100dvh - 18px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); padding:17px 15px max(12px,env(safe-area-inset-bottom)); }
+    .public-service-dialog-heading { gap:12px; margin-bottom:10px; }
+    .public-service-dialog-kicker { margin-bottom:7px; font-size:9px; }
+    .public-service-dialog-title { max-width:340px; font-size:clamp(19px,5.1vw,23px); }
+    .public-service-dialog-description { max-width:37ch; margin-top:5px; font-size:12px; }
+    .public-service-dialog-step { margin-top:16px; font-size:11px; }
+    .public-service-dialog-grid { grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:clamp(142px,42vw,174px); gap:16px; padding:15px 15px 34px; }
+    .public-service-choice { border-radius:13px; scroll-margin:16px; }
+    .public-service-choice-copy { right:9px; bottom:11px; left:10px; gap:3px; }
+    .public-service-choice-copy strong { font-size:clamp(12px,3.6vw,14px); line-height:1.17; }
+    .public-service-choice-description { font-size:10px; line-height:1.22; }
+    .public-service-choice-index { top:8px; left:8px; min-width:24px; height:21px; font-size:9px; }
+    .public-service-choice-selected { top:7px; right:7px; gap:3px; padding:3px 4px 3px 3px; font-size:8px; }
+    .public-service-choice-selected > span { width:13px; height:13px; }
+    .public-service-dialog-footer { gap:10px; margin-top:10px; padding-top:10px; }
+    .public-service-dialog-footer .btn { padding-inline:10px; }
+    .public-service-dialog-note { max-width:34ch; font-size:11px; }
+    #publicServicePicker #publicContinueService { min-width:129px; min-height:46px; padding-inline:12px; gap:9px; font-size:12px; }
+    .public-service-form-actions { align-items:flex-start; flex-direction:column; }
+  }
+  @media (max-width:360px) {
+    .public-service-dialog-inner { padding-inline:11px; }
+    .public-service-dialog-grid { grid-auto-rows:145px; gap:14px; padding:14px 14px 34px; }
+    .public-service-choice-copy { bottom:9px; }
+    .public-service-choice-copy strong { font-size:11.5px; }
+    .public-service-choice-description { font-size:9px; }
+    .public-service-choice-selected { top:37px; }
+    .public-service-dialog-note { max-width:20ch; font-size:10px; }
+    #publicServicePicker #publicContinueService { min-width:118px; min-height:44px; }
+  }
+  @media (prefers-reduced-motion:reduce) {
+    .public-service-dialog[open],.public-service-choice,.public-service-choice img,.public-service-choice-selected { animation:none !important; transition:none !important; }
+    .public-service-choice,.public-service-choice:hover,.public-service-choice[aria-pressed="true"] { transform:none; }
+    .public-service-choice img { transform:none !important; }
   }
 
   .atractivo-preview-compact {
@@ -303,6 +399,22 @@
     background: linear-gradient(90deg, #2da7f5 0%, #7bcfff 100%);
   }
 
+  .public-form-card-step {
+    display: inline-flex;
+    align-items: center;
+    min-height: 22px;
+    margin: 0 0 7px;
+    padding: 3px 9px;
+    border: 1px solid #cfe5e7;
+    border-radius: 999px;
+    background: #e8f4f7;
+    color: #0f6a7f;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .015em;
+    line-height: 1.2;
+  }
+
   .public-form-card-title {
     margin: 0;
     font-size: clamp(1rem, 1.6vw, 1.08rem);
@@ -369,26 +481,37 @@
     color: #27405e;
     cursor: pointer;
     touch-action: manipulation;
-    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease, transform .16s ease;
+    transition: box-shadow .16s ease, transform .16s ease;
   }
 
   .public-choice-item:hover {
-    border-color: #95b2cf;
-    background: #f2f8ff;
     transform: translateY(-.5px);
   }
 
   .public-choice-item:focus-within {
-    border-color: #58aee6;
-    box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
-    background: #edf6ff;
+    outline: 2px solid #3278a8;
+    outline-offset: 2px;
   }
 
-  .public-choice-item.is-selected {
+  .public-choice-item:has(input:checked) {
     border-color: #2a8fd4;
     background: #e7f2fb;
     color: #1f507b;
     box-shadow: inset 0 0 0 1px rgba(33, 105, 140, 0.18);
+  }
+
+  /* Keep checked colors authoritative while retaining a distinct focus ring. */
+  .public-choice-item:has(input:checked):focus-within {
+    border-color: #2a8fd4;
+    background: #e7f2fb;
+    color: #1f507b;
+    outline: 2px solid #3278a8;
+    outline-offset: 2px;
+  }
+
+  [data-service-panel="NINERA"] .public-choice-item:focus-within:not(:has(input:checked)) {
+    outline: 2px solid #3278a8;
+    outline-offset: 2px;
   }
 
   .public-choice-item input[type="checkbox"],
@@ -398,6 +521,72 @@
     flex: 0 0 auto;
     margin: 0;
     accent-color: #167b91;
+  }
+
+  /* NIÑERA: responsabilidades agrupadas como controles de formulario, no etiquetas sueltas. */
+  [data-service-panel="NINERA"] .public-fields-grid { gap: 20px 16px; }
+  [data-service-panel="NINERA"] fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+  [data-service-panel="NINERA"] .ninera-special-group,
+  [data-service-panel="NINERA"] .ninera-primary-group,
+  [data-service-panel="NINERA"] .ninera-responsibility-group { padding-top: 16px; border-top: 1px solid #e3ebf4; }
+  [data-service-panel="NINERA"] .ninera-responsibility-heading { margin: 0 0 10px; }
+  [data-service-panel="NINERA"] .ninera-integral-card {
+    display: flex; align-items: flex-start; gap: 11px; margin: 0 0 16px; padding: 14px 15px;
+    border: 1px solid #b9d5ed; border-radius: 13px; background: #edf6fd; color: #244663;
+  }
+  [data-service-panel="NINERA"] .ninera-integral-card input { margin-top: 2px; }
+  [data-service-panel="NINERA"] .ninera-integral-title { display: block; color: #1e4c73; font-weight: 700; line-height: 1.35; }
+  [data-service-panel="NINERA"] .ninera-integral-description { display: block; margin-top: 5px; color: #526f89; font-size: .82rem; line-height: 1.45; }
+  [data-service-panel="NINERA"] .ninera-task-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  [data-service-panel="NINERA"] .ninera-task-group { min-width: 0; padding: 12px; border: 1px solid #e0e8f1; border-radius: 12px; background: #fff; }
+  [data-service-panel="NINERA"] .ninera-task-group h4 { margin: 0 0 9px; color: #405a76; font-size: .82rem; font-weight: 700; }
+  [data-service-panel="NINERA"] .ninera-task-options { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  [data-service-panel="NINERA"] .ninera-task-options .public-choice-item { width: 100%; min-height: 44px; padding: 9px 10px; line-height: 1.35; }
+  [data-service-panel="NINERA"] .ninera-special-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  [data-service-panel="NINERA"] .ninera-special-options .public-choice-item { width: 100%; }
+  .ninera-profile-slot { margin-top: 7px; padding-top: 16px; border-top: 1px solid #e3ebf4; }
+  .ninera-profile-slot h4 { margin: 0 0 12px; color: #405a76; font-size: .92rem; font-weight: 700; }
+  .ninera-profile-slot .public-fields-grid { gap: 14px; }
+  @media (max-width: 767.98px) {
+    [data-service-panel="NINERA"] .ninera-task-groups { grid-template-columns: 1fr; gap: 11px; }
+    [data-service-panel="NINERA"] .public-fields-grid { gap: 16px; }
+  }
+
+  [data-service-panel="ENFERMERA"] .public-fields-grid { gap: 20px 16px; }
+  [data-service-panel="ENFERMERA"] fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+  [data-service-panel="ENFERMERA"] .enfermera-assistance-group,
+  [data-service-panel="ENFERMERA"] .enfermera-conditions-group,
+  [data-service-panel="ENFERMERA"] .enfermera-responsibilities-group,
+  [data-service-panel="ENFERMERA"] .enfermera-primary-group { padding-top: 16px; border-top: 1px solid #e3ebf4; }
+  [data-service-panel="ENFERMERA"] .enfermera-yes-no { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  [data-service-panel="ENFERMERA"] .enfermera-yes-no .public-choice-item { width: 100%; min-height: 44px; }
+  [data-service-panel="ENFERMERA"] .enfermera-assistance-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+  [data-service-panel="ENFERMERA"] .enfermera-assistance-options .public-choice-item { width: 100%; min-height: 56px; align-items: flex-start; padding: 10px; transition: none; }
+  [data-service-panel="ENFERMERA"] .enfermera-condition-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  [data-service-panel="ENFERMERA"] .enfermera-condition-grid .public-choice-item { width: 100%; min-height: 44px; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-group { min-width: 0; padding: 12px; border: 1px solid #e0e8f1; border-radius: 12px; background: #fff; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-group h4 { margin: 0 0 9px; color: #405a76; font-size: .84rem; font-weight: 700; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-group h4 small { display: block; margin-top: 4px; color: #657a90; font-size: .74rem; font-weight: 500; line-height: 1.4; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-options { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  [data-service-panel="ENFERMERA"] .enfermera-task-options .public-choice-item { width: 100%; min-height: 44px; padding: 9px 10px; line-height: 1.35; }
+  [data-service-panel="ENFERMERA"] .enfermera-person-card { padding: 14px; border: 1px solid #dfe7ef; border-radius: 12px; background: #fff; }
+  [data-service-panel="ENFERMERA"] .enfermera-person-card h4 { margin: 0 0 12px; font-size: .96rem; color: #344d67; }
+  [data-service-panel="ENFERMERA"] .enfermera-person-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+  [data-service-panel="ENFERMERA"] .enfermera-profile-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; margin-top: 7px; }
+  [data-service-panel="ENFERMERA"] .enfermera-profile-options label { display:flex; align-items:flex-start; gap:8px; padding:8px 9px; border:1px solid #e1e7ee; border-radius:9px; font-size:.84rem; line-height:1.3; }
+  [data-service-panel="ENFERMERA"] .enfermera-profile-options input { margin-top:2px; flex:0 0 auto; }
+  [data-service-panel="ENFERMERA"] .public-choice-item:focus-within:not(:has(input:checked)) { outline: 2px solid #3278a8; outline-offset: 2px; }
+  .enfermera-profile-slot { margin-top: 7px; padding-top: 16px; border-top: 1px solid #e3ebf4; }
+  .enfermera-profile-slot h4 { margin: 0 0 12px; color: #405a76; font-size: .92rem; font-weight: 700; }
+  .enfermera-profile-slot .public-fields-grid { gap: 14px; }
+  @media (max-width: 767.98px) {
+    [data-service-panel="ENFERMERA"] .public-fields-grid { gap: 16px; }
+    [data-service-panel="ENFERMERA"] .enfermera-task-groups,
+    [data-service-panel="ENFERMERA"] .enfermera-condition-grid,
+    [data-service-panel="ENFERMERA"] .enfermera-assistance-options { grid-template-columns: 1fr; gap: 10px; }
+    [data-service-panel="ENFERMERA"] .enfermera-person-grid,
+    [data-service-panel="ENFERMERA"] .enfermera-profile-options { grid-template-columns: 1fr; }
   }
 
   .public-experience-grid {
@@ -420,7 +609,7 @@
     cursor: pointer;
     font-size: .84rem;
     line-height: 1.25;
-    transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease;
+    transition: box-shadow .16s ease;
   }
 
   .public-experience-card:hover {
@@ -433,7 +622,7 @@
     box-shadow: 0 0 0 .2rem rgba(56, 117, 167, 0.14);
   }
 
-  .public-experience-card.is-selected {
+  .public-experience-card:has(input:checked) {
     border-color: #2a8fd4;
     background: #e7f2fb;
     color: #1f507b;
@@ -1044,6 +1233,48 @@
 </style>
 
 <div class="public-form-sections">
+  {% if form.tipo_servicio is defined and form.tipo_servicio.type == 'HiddenField' %}
+  <dialog class="public-service-dialog" id="publicServicePicker" aria-labelledby="publicServicePickerTitle" aria-describedby="publicServicePickerDescription">
+    <div class="public-service-dialog-inner">
+      <header class="public-service-dialog-heading">
+        <div>
+          <p class="public-service-dialog-kicker">Doméstica del Cibao · Servicios</p>
+          <h2 class="public-service-dialog-title" id="publicServicePickerTitle">¿Qué tipo de personal necesitas?</h2>
+          <p class="public-service-dialog-description" id="publicServicePickerDescription">Selecciona una opción. Verás tu selección antes de continuar.</p>
+        </div>
+        <span class="public-service-dialog-step" aria-label="Paso 1 de 1">01 <span>/ 01</span></span>
+      </header>
+      <div class="public-service-dialog-grid" role="group" aria-label="Seis servicios disponibles">
+        {% set image_slugs = {'DOMESTICA_LIMPIEZA': 'domestica', 'NINERA': 'ninera', 'ENFERMERA': 'enfermera', 'CHOFER': 'chofer', 'LIMPIEZA_ESTABLECIMIENTOS': 'establecimientos', 'CONSERJERIA_RESIDENCIAL': 'conserjeria'} %}
+        {% set service_descriptions = {'DOMESTICA_LIMPIEZA': 'Limpieza y tareas del hogar', 'NINERA': 'Cuidado y rutinas infantiles', 'ENFERMERA': 'Acompañamiento y asistencia', 'CHOFER': 'Traslados y rutas personales', 'LIMPIEZA_ESTABLECIMIENTOS': 'Oficinas, comercios y otros espacios', 'CONSERJERIA_RESIDENCIAL': 'Cuidado de áreas comunes'} %}
+        {% for service in service_catalog() %}
+        {% set image_slug = image_slugs.get(service.code) %}
+        <button class="public-service-choice" type="button" data-service-code="{{ service.code }}" aria-pressed="false" aria-label="{{ service.label }}. {{ service_descriptions.get(service.code, '') }}">
+          <picture>
+            <source media="(max-width: 760px)" srcset="{{ url_for('static', filename='public/img/service-selector/' ~ image_slug ~ '-mobile.webp') if image_slug else '' }}" type="image/webp">
+            <img src="{{ url_for('static', filename='public/img/service-selector/' ~ image_slug ~ '-desktop.webp') if image_slug else '' }}" width="900" height="570" alt="" {% if loop.first %}fetchpriority="high"{% else %}loading="eager"{% endif %} decoding="async">
+          </picture>
+          <span class="public-service-choice-shade" aria-hidden="true"></span><span class="public-service-choice-index" aria-hidden="true">{{ '%02d'|format(loop.index) }}</span>
+          <span class="public-service-choice-copy"><strong>{{ service.label }}</strong><span class="public-service-choice-description">{{ service_descriptions.get(service.code, '') }}</span></span>
+          <span class="public-service-choice-selected" aria-hidden="true"><span>✓</span> Seleccionado</span>
+        </button>
+        {% endfor %}
+      </div>
+      <p class="public-service-dialog-note" id="publicServiceDialogNote" aria-live="polite">Elige un servicio para continuar.</p>
+      <p class="public-service-dialog-error" id="publicServiceError" role="alert" hidden>Selecciona el servicio que necesitas para continuar.</p>
+      {{ render_errors(form.tipo_servicio) }}
+      <footer class="public-service-dialog-footer">
+        <button type="button" class="btn btn-outline-secondary" id="publicCancelServiceChange" hidden>Cancelar</button>
+        <span id="publicServiceDialogFooterSpacer" aria-hidden="true"></span>
+        <button type="button" class="btn btn-primary public-service-dialog-continue" id="publicContinueService" disabled><span>Continuar</span><span class="public-service-continue-arrow" aria-hidden="true">→</span></button>
+      </footer>
+    </div>
+  </dialog>
+  <div class="public-service-form-actions d-none" id="publicServiceFormActions">
+    <div><strong>Servicio seleccionado:</strong> <span id="publicServiceSelectedLabel"></span><div class="public-field-hint">Puedes cambiar de servicio cuando lo necesites.</div></div>
+    <button type="button" class="btn btn-outline-secondary" id="publicChangeService">Cambiar servicio</button>
+  </div>
+  {% endif %}
   {% if config.get("ENABLE_ATTRACTIVENESS_SCORE", False) %}
   <div id="atractivoPreviewBox" class="atractivo-preview-compact d-none" aria-live="polite" aria-hidden="true">
     <div class="atractivo-preview-compact-copy">
@@ -1126,6 +1357,12 @@
           {% endif %}
         </div>
       {% endif %}
+      <div class="public-field public-full">
+        <label class="public-field-label" for="{{ form.direccion_precisa.id }}">Dirección precisa del servicio</label>
+        {{ form.direccion_precisa(class='form-control' ~ (' is-invalid' if form.direccion_precisa.errors else ''), maxlength='300', autocomplete='street-address', required=True, aria_required='true') }}
+        <div class="public-field-hint">Se guarda en esta solicitud para ubicar el servicio. No cambia la dirección del cliente ni de otras solicitudes.</div>
+        {% if form.direccion_precisa.errors %}<div class="invalid-feedback d-block">{{ form.direccion_precisa.errors[0] }}</div>{% endif %}
+      </div>
       <div class="public-field" id="wrap_rutas_cercanas_field">
         {{ render_field(form.rutas_cercanas) }}
         <div class="public-santiago-warning d-none" id="wrap_rutas_santiago_notice" aria-live="polite" aria-hidden="true">
@@ -1134,14 +1371,14 @@
       </div>
       <div class="public-field public-full" id="wrap_modalidad_guiada">
         <label class="public-field-label">Modalidad de trabajo</label>
-        {{ form.modalidad_trabajo(class='form-control d-none' ~ (' is-invalid' if form.modalidad_trabajo.errors else ''), id='modalidad_trabajo_hidden') }}
+        {{ form.modalidad_trabajo(class='form-control d-none' ~ (' is-invalid' if form.modalidad_trabajo.errors else ''), id='modalidad_trabajo_hidden', required=False) }}
 
         <div class="public-field-hint mb-2">Primero selecciona el tipo principal y luego la modalidad específica.</div>
 
         <div class="public-segmented" id="modalidad_grupo_wrap" role="radiogroup" aria-required="true">
           {% for group_value, group_label in _modalidad_grupos %}
             <label class="public-segmented-item">
-              <input type="radio" name="modalidad_grupo" value="{{ group_value }}" aria-required="false" {% if _modalidad_group_value == group_value %}checked{% endif %}>
+              <input type="radio" name="modalidad_grupo" value="{{ group_value }}" {% if not service_form_public|default(false) %}required{% endif %} aria-required="true" {% if _modalidad_group_value == group_value %}checked{% endif %}>
               <span>{{ group_label }}</span>
             </label>
           {% endfor %}
@@ -1149,7 +1386,7 @@
 
         <div class="mt-2" id="wrap_modalidad_especifica" style="{{ '' if _modalidad_group_value else 'display:none;' }}">
           <label class="public-field-label mb-1" for="modalidad_especifica_select">Modalidad específica</label>
-          <select class="form-select{{ ' is-invalid' if form.modalidad_trabajo.errors else '' }}" id="modalidad_especifica_select" name="modalidad_especifica" required aria-required="true">
+          <select class="form-select{{ ' is-invalid' if form.modalidad_trabajo.errors else '' }}" id="modalidad_especifica_select" name="modalidad_especifica">
             <option value="">Selecciona una opción</option>
             {% for spec in _modalidad_initial_specs %}
               <option value="{{ spec.label }}" {% if _modalidad_specific_value == spec.label %}selected{% endif %}>{{ spec.label }}</option>
@@ -1176,7 +1413,7 @@
       </div>
       <div class="public-field public-full" id="wrap_horario_inteligente" style="{{ '' if (_modalidad_group_value and _modalidad_specific_value) else 'display:none;' }}">
         {% if form.horario is defined %}
-          {{ form.horario(class='form-control d-none' ~ (' is-invalid' if form.horario.errors else ''), id='horario_hidden') }}
+          {{ form.horario(class='form-control d-none' ~ (' is-invalid' if form.horario.errors else ''), id='horario_hidden', required=False) }}
         {% else %}
           <input type="text" class="form-control d-none" id="horario_hidden" name="horario" value="">
         {% endif %}
@@ -1219,10 +1456,121 @@
           </div>
         </div>
         <div class="public-field-hint mt-2">Horario final guardado: <span id="horario_preview_text">{{ (form.horario.data or '') if form.horario is defined else '' }}</span></div>
-        {% if form.horario is defined and form.horario.errors %}
+      {% if form.horario is defined and form.horario.errors %}
           <div class="invalid-feedback d-block">{{ form.horario.errors[0] }}</div>
         {% endif %}
       </div>
+      <div class="public-field public-full d-none" id="chofer-age-slot" hidden><div class="public-fields-grid" id="chofer-age-fields"></div></div>
+      <div class="public-field public-full d-none" id="office-age-slot" hidden><div class="public-fields-grid" id="office-age-fields"></div></div>
+      <div class="public-field public-full d-none" id="conserje-age-slot" hidden><div class="public-fields-grid" id="conserje-age-fields"></div></div>
+      <div class="public-field public-full ninera-profile-slot" id="ninera-profile-slot" hidden>
+        <h4>Edad y experiencia requerida</h4>
+        <div class="public-fields-grid" id="ninera-profile-fields"></div>
+      </div>
+      <div class="public-field public-full enfermera-profile-slot" id="enfermera-profile-slot" hidden>
+        <h4>Edad del personal y experiencia requerida</h4>
+        <div class="public-fields-grid" id="enfermera-profile-fields"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="public-form-card public-service-specific d-none" data-service-panel="NINERA">
+    {% set _nanny = service_catalog() | selectattr('code', 'equalto', 'NINERA') | first %}
+    <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Cuidado de niños</h3><p class="public-form-card-desc">Indica lo necesario para cuidar a los niños.</p></header>
+    <div class="public-fields-grid">
+      <div class="public-field"><label class="public-field-label" for="svc_ninera_count">Cantidad de niños</label><input class="form-control" id="svc_ninera_count" name="svc_ninera_count" type="number" min="1" max="20" inputmode="numeric" required></div>
+      <div class="public-field"><label class="public-field-label" for="svc_ninera_ages">Edad de los niños</label><input class="form-control" id="svc_ninera_ages" name="svc_ninera_ages" maxlength="120" placeholder="Ej. 2 y 6 años" required></div>
+      <fieldset class="public-field public-full ninera-special-group"><legend class="public-field-label">¿Alguno de los niños necesita atención especial?</legend><p class="public-field-hint">No incluyas diagnósticos ni historial médico.</p>
+        <div class="ninera-special-options">{% for choice in _nanny.special_need_choices %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_ninera_special_need" value="{{ choice.code }}"><span>{{ choice.label }}</span></label>{% endfor %}</div>
+      </fieldset>
+      <div class="public-field public-full d-none" id="wrap-svc-ninera-special-care"><label class="public-field-label" for="svc_ninera_special_care">Describe los cuidados especiales que necesitará el niño</label><textarea class="form-control" id="svc_ninera_special_care" name="svc_ninera_special_care" maxlength="500" rows="3" placeholder="Ej. requiere apoyo para movilizarse o supervisión durante la alimentación" disabled></textarea><p class="public-field-hint">Describe las tareas de cuidado necesarias; no incluyas diagnósticos ni historial médico.</p></div>
+      <fieldset class="public-field public-full ninera-primary-group"><legend class="public-field-label">¿La niñera será la principal responsable del cuidado?</legend>
+        <label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_ninera_primary" value="si"><span>Sí, tendrá la responsabilidad principal</span></label>
+        <label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_ninera_primary" value="no"><span>No, compartirá el cuidado con otra persona</span></label>
+      </fieldset>
+      <fieldset class="public-field public-full ninera-responsibility-group"><legend class="public-field-label ninera-responsibility-heading">¿Qué responsabilidades tendrá la niñera?</legend><p class="public-field-hint">Selecciona todas las que correspondan.</p>
+        <label class="ninera-integral-card"><input type="checkbox" class="form-check-input" id="svc_ninera_integral" name="svc_ninera_integral" value="1"><span><span class="ninera-integral-title">Responsabilidad integral del cuidado de los niños</span><span class="ninera-integral-description" id="svc-ninera-integral-help">Incluye el cuidado diario, alimentación, ropa y organización de los espacios de los niños. No incluye labores domésticas generales.</span></span></label>
+        <div class="ninera-task-groups">
+          {% for group in _nanny.responsibility_groups %}
+            <section class="ninera-task-group" aria-labelledby="ninera-task-group-{{ group.code }}"><h4 id="ninera-task-group-{{ group.code }}">{{ group.label }}</h4><div class="ninera-task-options">
+              {% for task in group.responsibilities %}<label class="public-choice-item"><input type="checkbox" class="form-check-input" name="svc_ninera_responsibility" value="{{ task.code }}"><span>{{ task.label }}</span></label>{% endfor %}
+            </div></section>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="public-field public-full d-none" id="wrap-svc-ninera-other"><label class="public-field-label" for="svc_ninera_other">Describe otras responsabilidades</label><input class="form-control" id="svc_ninera_other" name="svc_ninera_other" maxlength="200" placeholder="Describe cualquier otra responsabilidad relacionada con el cuidado de los niños" disabled></div>
+    </div>
+  </section>
+  {% set _nurse = service_catalog() | selectattr('code', 'equalto', 'ENFERMERA') | first %}
+  <section class="public-form-card public-service-specific d-none" data-service-panel="ENFERMERA">
+    <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Cuidado y asistencia</h3><p class="public-form-card-desc">Cuéntanos qué apoyo necesita la persona y qué tareas tendrá el empleo.</p></header>
+    {% set _nurse_server_errors = form.service_detail_errors|default({}, true) %}
+    {% if _nurse_server_errors and form.tipo_servicio.data == 'ENFERMERA' %}
+      {% set _nurse_error_labels = {'cantidad_personas': 'Cantidad de personas', 'personas_cuidado': 'Perfiles y responsabilidades individuales', 'tipo_asistencia': 'Tipo de asistencia requerida', 'condiciones': 'Condiciones de salud', 'condicion_otro': 'Otra condición', 'ayuda_higiene': 'Ayuda con la higiene', 'ayuda_alimentacion': 'Ayuda con la alimentación', 'movilidad': 'Movilidad', 'experiencia_requerida': 'Experiencia del personal', 'responsabilidad_por_persona': 'Perfiles individuales'} %}
+      <div class="public-field public-full" id="enfermeraServerValidationErrors" role="alert" aria-live="assertive">
+        <strong>Revisa estos datos de Enfermería:</strong>
+        <ul class="mb-0 mt-1">{% for key, message in _nurse_server_errors.items() %}<li data-public-server-error-key="{{ key }}"><strong>{{ _nurse_error_labels.get(key, 'Datos de cuidado') }}:</strong> {{ message }}</li>{% endfor %}</ul>
+      </div>
+    {% endif %}
+    <div class="public-fields-grid enfermera-fields-grid">
+      <div class="public-field"><label class="public-field-label" for="svc_care_count">Cantidad de personas que necesitan cuidados</label><input class="form-control" id="svc_care_count" name="svc_care_count" type="number" min="1" max="20" inputmode="numeric" placeholder="Ej. 1" value="{{ request.form.get('svc_care_count', '')|e }}" required></div>
+      <input type="hidden" id="svc_care_profiles" name="svc_care_profiles" value="{{ request.form.get('svc_care_profiles', '[]')|e }}">
+      <input type="hidden" id="svc_care_profile_history" name="svc_care_profile_history" value="{{ request.form.get('svc_care_profile_history', '[]')|e }}">
+      <div class="public-field public-full"><div id="enfermera-person-profiles" class="enfermera-person-profiles" data-mobility='{{ _nurse.mobility_choices | tojson }}' data-conditions='{{ _nurse.condition_choices | tojson }}' data-responsibility-groups='{{ _nurse.responsibility_groups | tojson }}' aria-live="polite"></div><p class="public-field-hint">Describe cada perfil sin nombres ni datos que identifiquen a la persona.</p><div id="enfermeraProfilesError" class="invalid-feedback d-block" role="alert" hidden></div></div>
+      <div class="public-field d-none" id="wrap-svc-care-age-single"><label class="public-field-label" for="svc_care_age_single">Edad de la persona</label><input class="form-control" id="svc_care_age_single" name="svc_care_age_single" type="number" min="0" max="120" inputmode="numeric" placeholder="Ej. 78" disabled></div>
+      <div class="public-field public-full d-none" id="wrap-svc-care-ages-multiple"><label class="public-field-label" for="svc_care_ages_multiple">Edades de las personas</label><input class="form-control" id="svc_care_ages_multiple" name="svc_care_ages_multiple" maxlength="120" placeholder="Ej. 72, 80 y 85 años" disabled></div>
+      <div class="public-field d-none"><label class="public-field-label" for="svc_care_mobility">Nivel de movilidad</label><select class="form-select" id="svc_care_mobility" name="svc_care_mobility"><option value="">Selecciona</option>{% for item in _nurse.mobility_choices %}<option value="{{ item.code }}">{{ item.label }}</option>{% endfor %}</select></div>
+      <fieldset class="public-field d-none"><legend class="public-field-label">¿Necesita ayuda con su higiene personal?</legend><div class="enfermera-yes-no">{% for value, label in [('si','Sí'),('no','No')] %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_care_hygiene" value="{{ value }}"{% if request.form.get('svc_care_hygiene') == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div></fieldset>
+      <fieldset class="public-field d-none"><legend class="public-field-label">¿Necesita ayuda para alimentarse?</legend><div class="enfermera-yes-no">{% for value, label in [('si','Sí'),('no','No')] %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_care_feeding" value="{{ value }}"{% if request.form.get('svc_care_feeding') == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div></fieldset>
+      <fieldset class="public-field public-full enfermera-assistance-group"><legend class="public-field-label">Tipo de asistencia requerida</legend><div class="public-field-hint mb-2">Si se necesitan procedimientos de enfermería, selecciona esa opción y el perfil de Enfermera.</div><div class="enfermera-assistance-options">{% for item in _nurse.assistance_choices %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_care_assistance" value="{{ item.code }}"{% if request.form.get('svc_care_assistance') == item.code %} checked{% endif %}><span>{{ item.label }}</span></label>{% endfor %}</div></fieldset>
+      <fieldset class="public-field public-full enfermera-conditions-group d-none"><legend class="public-field-label">¿La persona presenta alguna de las siguientes condiciones?</legend><p class="public-field-hint">Selecciona una o varias. No incluyas diagnósticos extensos ni historiales médicos.</p><div class="enfermera-condition-grid">{% for item in _nurse.condition_choices %}<label class="public-choice-item"><input type="checkbox" class="form-check-input" name="svc_care_condition" value="{{ item.code }}"{% if item.code in request.form.getlist('svc_care_condition') %} checked{% endif %}><span>{{ item.label }}</span></label>{% endfor %}</div></fieldset>
+      <div class="public-field public-full d-none" id="wrap-svc-care-condition-other"><label class="public-field-label" for="svc_care_condition_other">Especifica otra condición</label><textarea class="form-control" id="svc_care_condition_other" name="svc_care_condition_other" maxlength="250" rows="2" placeholder="Describe brevemente solo lo relevante para el cuidado" disabled>{{ request.form.get('svc_care_condition_other', '')|e }}</textarea><p class="public-field-hint">El personal de Administración revisará esta descripción antes de publicarla.</p></div>
+      <div class="public-field public-full enfermera-assistance-note">El tipo de asistencia describe el nivel general de apoyo. Las responsabilidades concretas se seleccionan dentro del perfil de cada persona.</div>
+      <fieldset class="public-field public-full enfermera-primary-group"><legend class="public-field-label">¿La trabajadora será la principal responsable del cuidado?</legend><div class="enfermera-yes-no">{% for value, label in [('si','Sí, tendrá la responsabilidad principal'),('no','No, compartirá el cuidado con otra persona')] %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_care_primary" value="{{ value }}"{% if request.form.get('svc_care_primary') == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div></fieldset>
+    </div>
+  </section>
+  <section class="public-form-card public-service-specific d-none" data-service-panel="CHOFER">
+    {% set _driver = service_catalog() | selectattr('code', 'equalto', 'CHOFER') | first %}
+    <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Servicio de chofer</h3><p class="public-form-card-desc">Indica el servicio, vehículo, licencia y desplazamientos generales.</p></header>
+    {% if form.tipo_servicio.errors %}<div class="public-field public-full" role="alert">{% for message in form.tipo_servicio.errors %}<p class="text-danger mb-1">{{ message }}</p>{% endfor %}</div>{% endif %}
+    <div class="public-fields-grid">
+      <div class="public-field"><label class="public-field-label" for="svc_driver_purpose">¿Para qué necesitas el chofer?</label><select class="form-select" id="svc_driver_purpose" name="svc_driver_purpose"><option value="">Selecciona</option>{% for item in _driver.purpose_choices %}<option value="{{ item.code }}">{{ item.label }}</option>{% endfor %}</select><div class="public-field d-none mt-2" id="wrap-svc-driver-purpose-other"><label class="public-field-label" for="svc_driver_purpose_other">Especifica para qué necesitas el chofer</label><input class="form-control" id="svc_driver_purpose_other" name="svc_driver_purpose_other" maxlength="120" disabled></div></div>
+      <div class="public-field"><label class="public-field-label" for="svc_driver_vehicle">Tipo de vehículo</label><select class="form-select" id="svc_driver_vehicle" name="svc_driver_vehicle"><option value="">Selecciona</option><option value="carro">Carro</option><option value="yipeta">Yipeta</option><option value="pickup">Pickup</option><option value="minibus">Minibús</option><option value="otro">Otro</option></select><div class="public-field public-full d-none mt-2" id="wrap-svc-driver-vehicle-other"><label class="public-field-label" for="svc_driver_vehicle_other">Especifica el tipo de vehículo</label><input class="form-control" id="svc_driver_vehicle_other" name="svc_driver_vehicle_other" maxlength="100" placeholder="Ej. Minibús, camión, vehículo especial…" disabled></div></div>
+      <div class="public-field"><label class="public-field-label" for="svc_driver_license_category">Categoría de licencia requerida</label><select class="form-select" id="svc_driver_license_category" name="svc_driver_license_category"><option value="">Selecciona</option>{% for item in _driver.license_choices %}<option value="{{ item.code }}">{{ item.label }}</option>{% endfor %}</select></div>
+      <fieldset class="public-field public-full"><legend class="public-field-label">¿Qué recorridos realizará?</legend><div class="public-choice-grid">{% for item in _driver.route_choices %}<label class="public-choice-item"><input type="checkbox" class="form-check-input" name="svc_driver_route" value="{{ item.code }}"><span>{{ item.label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-driver-routes-other"><label class="public-field-label" for="svc_driver_routes_other">Especifica los desplazamientos</label><input class="form-control" id="svc_driver_routes_other" name="svc_driver_routes_other" maxlength="200" disabled></div></fieldset>
+      <div class="public-field public-full"><label class="public-field-label" for="svc_driver_tasks">Responsabilidades adicionales (opcional)</label><p class="public-field-hint">Completa este campo únicamente si necesitas que el chofer realice alguna tarea adicional.</p><textarea class="form-control" id="svc_driver_tasks" name="svc_driver_tasks" maxlength="300" rows="2"></textarea></div>
+    </div>
+  </section>
+  {% set _office = service_catalog() | selectattr('code', 'equalto', 'LIMPIEZA_ESTABLECIMIENTOS') | first %}
+  <section class="public-form-card public-service-specific d-none" data-service-panel="LIMPIEZA_ESTABLECIMIENTOS">
+    <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Limpieza de establecimientos</h3><p class="public-form-card-desc">Indica el tipo de establecimiento, sus áreas y las funciones necesarias.</p></header>
+    <div class="public-fields-grid">
+      <div class="public-field"><label class="public-field-label" for="svc_office_type">Tipo de establecimiento</label><select class="form-select" id="svc_office_type" name="svc_office_type"><option value="">Selecciona</option>{% for item in _office.establishment_choices %}<option value="{{ item.code }}">{{ item.label }}</option>{% endfor %}</select></div>
+      <div class="public-field d-none" id="wrap-svc-office-type-other"><label class="public-field-label" for="svc_office_type_other">Especifica el tipo de establecimiento</label><input class="form-control" id="svc_office_type_other" name="svc_office_type_other" maxlength="120" disabled></div>
+      <div class="public-field"><label class="public-field-label" for="svc_office_size">Tamaño aproximado</label><select class="form-select" id="svc_office_size" name="svc_office_size"><option value="">Selecciona</option><option>Pequeño</option><option>Mediano</option><option>Grande</option></select></div>
+      <div class="public-field public-full d-none" id="office-characteristics"><h4 class="public-field-label">Características del establecimiento</h4><div class="public-fields-grid">
+        {% for kind, fields in [('oficina',[('despachos','Cantidad de despachos u oficinas'),('reuniones','Cantidad de salas de reuniones')]),('tienda',[('ventas','Cantidad de áreas de venta'),('probadores','Cantidad de probadores')]),('educativo',[('aulas','Cantidad de aulas'),('administracion','Cantidad de oficinas administrativas')]),('salud',[('consultorios','Cantidad de consultorios'),('espera','Cantidad de salas de espera')]),('restaurante',[('comedores','Cantidad de salones o áreas de comedor'),('cocinas','Cantidad de cocinas')]),('edificio',[('niveles','Cantidad de niveles'),('areas_comunes','Cantidad de áreas comunes')])] %}{% for name,label in fields %}<div class="public-field office-characteristic d-none" data-office-type="{{ kind }}"><label class="public-field-label" for="svc_office_{{ name }}">{{ label }}</label><input class="form-control office-number" id="svc_office_{{ name }}" name="svc_office_{{ name }}" data-characteristic="{{ name }}" type="number" min="0" max="500" inputmode="numeric" disabled></div>{% endfor %}{% endfor %}
+        <div class="public-field office-characteristic office-shared-bathroom d-none" data-office-type="all"><label class="public-field-label" id="office-bathrooms-label" for="svc_office_banos">Cantidad de baños</label><input class="form-control office-number" id="svc_office_banos" name="svc_office_banos" data-characteristic="banos" type="number" min="0" max="500" inputmode="numeric" disabled></div>
+        <div class="public-field d-none" id="wrap-svc-office-spaces-other"><label class="public-field-label" for="svc_office_spaces_other">Describe brevemente los espacios que necesitan limpieza</label><input class="form-control" id="svc_office_spaces_other" name="svc_office_spaces_other" maxlength="200" disabled></div>
+      </div></div>
+      <fieldset class="public-field public-full" id="office-support-field"><legend class="public-field-label">¿La persona contratada trabajará con otros empleados de limpieza?</legend><p class="public-field-hint">Cuenta únicamente a sus compañeros; no incluyas a la persona que se contratará.</p><div class="public-choice-grid">{% for value, label in [('si','Sí'),('no','No')] %}<label class="public-choice-item"><input class="form-check-input" type="radio" name="svc_office_support" value="{{ value }}"><span>{{ label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-office-coworkers"><label class="public-field-label" for="svc_office_coworker_count">¿Cuántos empleados de limpieza trabajarán junto a ella?</label><input class="form-control" id="svc_office_coworker_count" name="svc_office_coworker_count" type="number" min="1" step="1" inputmode="numeric" placeholder="Ej. 2" disabled></div></fieldset>
+      <fieldset class="public-field public-full d-none" id="office-areas-field"><legend class="public-field-label">¿Qué áreas necesita limpiar?</legend>{% for kind, options in _office.area_choices.items() %}<div class="office-area-options d-none public-choice-grid" data-office-type="{{ kind }}">{% for item in options %}<label class="public-choice-item"><input class="form-check-input" type="checkbox" name="svc_office_area" value="{{ item.code }}" disabled><span>{{ item.label }}</span></label>{% endfor %}</div>{% endfor %}<div class="public-field d-none mt-2" id="wrap-svc-office-areas-other"><label class="public-field-label" for="svc_office_areas_other">Especifica las otras áreas</label><input class="form-control" id="svc_office_areas_other" name="svc_office_areas_other" maxlength="200" disabled></div></fieldset>
+      <fieldset class="public-field public-full d-none" id="office-tasks-field"><legend class="public-field-label">Funciones que realizará el personal</legend><div class="public-choice-grid">{% for item in _office.task_choices %}<label class="public-choice-item office-task-option{% if item.code in ['cafe','visitantes'] %} d-none{% endif %}" data-office-task="{{ item.code }}"><input class="form-check-input" type="checkbox" name="svc_office_task" value="{{ item.code }}" disabled><span>{{ item.label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-office-tasks-other"><label class="public-field-label" for="svc_office_tasks_other">Especifica las otras funciones</label><input class="form-control" id="svc_office_tasks_other" name="svc_office_tasks_other" maxlength="200" disabled></div></fieldset>
+    </div>
+  </section>
+  <section class="public-form-card public-service-specific d-none" data-service-panel="CONSERJERIA_RESIDENCIAL">
+    {% set _conserje = service_catalog() | selectattr('code', 'equalto', 'CONSERJERIA_RESIDENCIAL') | first %}
+    <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Conserjería residencial</h3><p class="public-form-card-desc">Personal para el cuidado, limpieza y conservación de las áreas comunes de edificios y residenciales.</p></header>
+    <div class="public-fields-grid">
+      <div class="public-field public-full"><label class="public-field-label" for="svc_conserje_type">Tipo de residencial</label><select class="form-select" id="svc_conserje_type" name="svc_conserje_type"><option value="">Selecciona</option>{% for item in _conserje.residential_types %}<option value="{{ item.code }}">{{ item.label }}</option>{% endfor %}</select></div>
+      <div class="public-field public-full d-none" id="wrap-svc-conserje-type-other"><label class="public-field-label" for="svc_conserje_type_other">Especifica el tipo de residencial</label><input class="form-control" id="svc_conserje_type_other" name="svc_conserje_type_other" maxlength="120" disabled></div>
+      <input type="hidden" id="svc_conserje_profile_cache" name="svc_conserje_profile_cache" value="{}">
+      <fieldset class="public-field public-full d-none" id="conserje-characteristics"><legend class="public-field-label">Características del residencial</legend><div class="public-fields-grid">
+        {% for field in _conserje.characteristic_fields %}<div class="public-field conserje-characteristic" data-conserje-types="{{ field.types }}" data-conserje-field-key="{{ field.key }}"><label class="public-field-label" id="label-{{ field.name }}" for="{{ field.name }}">{{ field.label }}</label>{% if field.type == 'number' %}<input class="form-control" id="{{ field.name }}" name="{{ field.name }}" type="number" min="{{ field.min }}" max="10000" step="1" inputmode="numeric" required disabled>{% else %}<div class="public-choice-grid">{% for value,label in [('si','Sí'),('no','No')] %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="{{ field.name }}" value="{{ value }}" required disabled><span>{{ label }}</span></label>{% endfor %}</div>{% endif %}</div>{% endfor %}
+      </div></fieldset>
+      <fieldset class="public-field public-full d-none" id="conserje-installations-field"><legend class="public-field-label">Instalaciones comunes que estarán a su cargo</legend><div class="public-choice-grid">{% for item in _conserje.installation_options %}<label class="public-choice-item conserje-installation-option" data-conserje-types="{{ item.types }}" data-conserje-requires="{{ item.requires }}"><input type="checkbox" class="form-check-input" name="svc_conserje_installation" value="{{ item.code }}" disabled><span>{{ item.label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-conserje-installation-other"><label class="public-field-label" for="svc_conserje_installation_other">Especifica otras instalaciones</label><input class="form-control" id="svc_conserje_installation_other" name="svc_conserje_installation_other" maxlength="200" disabled></div></fieldset>
+      <fieldset class="public-field public-full d-none" id="conserje-responsibilities-field"><legend class="public-field-label">Responsabilidades de conserjería</legend><p class="public-field-hint">Selecciona solo tareas relacionadas con las áreas comunes. No incluye reparaciones técnicas ni trabajos peligrosos o especializados.</p><div class="public-choice-grid">{% for item in _conserje.responsibility_options %}<label class="public-choice-item conserje-responsibility-option{% if item.code == 'riego_jardines' %} d-none{% endif %}" data-conserje-types="{{ item.types }}" data-conserje-responsibility="{{ item.code }}"><input type="checkbox" class="form-check-input" name="svc_conserje_responsibility" value="{{ item.code }}" disabled><span>{{ item.label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-conserje-responsibility-other"><label class="public-field-label" for="svc_conserje_responsibility_other">Especifica otras responsabilidades</label><input class="form-control" id="svc_conserje_responsibility_other" name="svc_conserje_responsibility_other" maxlength="250" disabled></div></fieldset>
+      <fieldset class="public-field public-full d-none" id="conserje-support-field"><legend class="public-field-label">¿Trabajará con otros conserjes?</legend><div class="public-choice-grid">{% for value,label in [('si','Sí'),('no','No')] %}<label class="public-choice-item"><input type="radio" class="form-check-input" name="svc_conserje_support" value="{{ value }}"><span>{{ label }}</span></label>{% endfor %}</div><div class="public-field d-none mt-2" id="wrap-svc-conserje-coworkers"><label class="public-field-label" for="svc_conserje_coworker_count">¿Cuántos conserjes trabajarán junto a la persona contratada?</label><input class="form-control" id="svc_conserje_coworker_count" name="svc_conserje_coworker_count" type="number" min="1" step="1" inputmode="numeric" disabled><p class="public-field-hint">No incluyas a la persona que se contratará.</p></div></fieldset>
     </div>
   </section>
 
@@ -1233,19 +1581,40 @@
       <p class="public-form-card-desc">Orden recomendado para definir el perfil correcto.</p>
     </header>
     <div class="public-fields-grid">
-      {{ render_field(form.edad_requerida, hint='Selecciona una sola opcion.', wrapper_class='public-full') }}
+      {{ render_field(form.edad_requerida, hint='Selecciona una sola opcion.', wrapper_id='wrap_edad_requerida_field', wrapper_class='public-full') }}
       {{ render_field(form.edad_otro, wrapper_id='wrap_edad_otro') }}
       {% if form.experiencia is defined %}
         <div class="public-field public-full" id="wrap_experiencia">
           <label class="public-field-label" for="{{ form.experiencia.id }}">{{ form.experiencia.label.text }}</label>
-          {{ form.experiencia(class='form-select d-none' ~ (' is-invalid' if form.experiencia.errors else ''), required=False, aria_required='false') }}
+          <select class="form-select d-none{{ ' is-invalid' if form.experiencia.errors else '' }}" id="{{ form.experiencia.id }}" name="{{ form.experiencia.name }}" aria-required="false">
+            {% for experience_value, experience_label in form.experiencia.choices %}
+              <option value="{{ experience_value }}"{% if form.experiencia.data == experience_value %} selected{% endif %}>{{ experience_label }}</option>
+            {% endfor %}
+          <option value="Chofer" data-service-chofer-option="true"{% if form.experiencia.data == 'Chofer' %} selected{% endif %} disabled>Chofer</option>
+          <option value="Limpieza" data-service-office-option="true"{% if form.experiencia.data == 'Limpieza' %} selected{% endif %} disabled>Limpieza</option>
+          {% for nurse_experience in _nurse.experience_choices %}
+            {% if nurse_experience.code != 'Enfermera' and nurse_experience.code not in (form.experiencia.choices | map(attribute=0) | list) %}
+              <option value="{{ nurse_experience.code }}" data-service-catalog-option="true"{% if form.experiencia.data == nurse_experience.code %} selected{% endif %}{% if not (form.tipo_servicio is defined and form.tipo_servicio.data == 'ENFERMERA') %} disabled{% endif %}>{{ nurse_experience.label }}</option>
+            {% endif %}
+          {% endfor %}
+          </select>
           <div class="public-experience-grid{% if form.experiencia.errors %} is-invalid{% endif %}" role="radiogroup" aria-required="true" aria-describedby="experiencia_hint" aria-label="{{ form.experiencia.label.text }}">
-            {% for value, label in form.experiencia.choices %}
-              <label class="public-experience-card">
+            {% set _experience_choices = _nanny.experience_choices if form.tipo_servicio is defined and form.tipo_servicio.data == 'NINERA' else _nurse.experience_choices if form.tipo_servicio is defined and form.tipo_servicio.data == 'ENFERMERA' else form.experiencia.choices %}
+            {% for item in _experience_choices %}
+              {% set value, label = (item.code, item.label) if item.code is defined else item %}
+              <label class="public-experience-card" data-base-label="{{ label }}"{% if value in (_nurse.experience_choices | map(attribute='code') | list) and value != 'Enfermera' %} data-service-only="ENFERMERA"{% endif %}>
                 <input type="radio" name="experiencia_visual" value="{{ value }}"{% if form.experiencia.data == value %} checked{% endif %}>
                 <span class="public-experience-card-text">{{ label }}</span>
               </label>
             {% endfor %}
+            {% for item in _nurse.experience_choices %}
+              {% if item.code not in (form.experiencia.choices | map(attribute=0) | list) %}
+                <label class="public-experience-card" data-base-label="{{ item.label }}" data-service-only="ENFERMERA"><input type="radio" name="experiencia_visual" value="{{ item.code }}"><span class="public-experience-card-text">{{ item.label }}</span></label>
+              {% endif %}
+            {% endfor %}
+            {% if not service_form_public|default(false) and form.tipo_servicio is defined and form.tipo_servicio.data == 'ENFERMERA' and form.experiencia.data and form.experiencia.data not in (_nurse.experience_choices | map(attribute='code') | list) %}
+              <label class="public-experience-card" data-experience-legacy="true"><input type="radio" name="experiencia_visual" value="{{ form.experiencia.data }}" checked><span class="public-experience-card-text">Experiencia histórica: {{ form.experiencia.data }}</span></label>
+            {% endif %}
           </div>
           <div class="public-field-hint" id="experiencia_hint">Selecciona una sola opción.</div>
           {{ render_errors(form.experiencia) }}
@@ -1324,7 +1693,7 @@
           </div>
           {{ render_field(form.tipo_lugar_otro, wrapper_id='wrap_tipo_lugar_otro') }}
           {% if form.habitaciones is defined %}
-            <div class="public-field" id="wrap_habitaciones_selector">
+            <div class="public-field" id="wrap_habitaciones_selector" data-posted-choice="{{ request.form.get('habitaciones_selector', '') if request.method == 'POST' else '' }}">
               <label class="public-field-label">Habitaciones</label>
               {{ form.habitaciones(class='form-control d-none' ~ (' is-invalid' if form.habitaciones.errors else ''), id='habitaciones_hidden') }}
               <div class="public-segmented public-segmented-grid public-segmented-grid-compact">
@@ -1354,7 +1723,7 @@
             </div>
           {% endif %}
           {% if form.banos is defined %}
-            <div class="public-field" id="wrap_banos_selector">
+            <div class="public-field" id="wrap_banos_selector" data-posted-choice="{{ request.form.get('banos_selector', '') if request.method == 'POST' else '' }}">
               <label class="public-field-label">Baños</label>
               {{ form.banos(class='form-control d-none' ~ (' is-invalid' if form.banos.errors else ''), id='banos_hidden') }}
               <div class="public-segmented public-segmented-grid public-segmented-grid-compact">
@@ -1738,15 +2107,22 @@
       }
     }
 
-    function syncChoiceSelectedState() {
-      var labels = hostForm.querySelectorAll('.public-choice-item');
+    function syncChoiceSelectedState(root) {
+      var labels = (root || hostForm).querySelectorAll('.public-choice-item');
       for (var i = 0; i < labels.length; i++) {
         var input = labels[i].querySelector('input[type="checkbox"], input[type="radio"]');
         if (!input) continue;
-        if (input.checked) labels[i].classList.add('is-selected');
-        else labels[i].classList.remove('is-selected');
+        labels[i].classList.toggle('is-selected', input.checked);
       }
     }
+
+    // One delegated handler covers existing and later-rendered choice cards.
+    // CSS reads :checked directly, while this class remains a synchronized hook
+    // for scripts and tests that need to inspect the state.
+    hostForm.addEventListener('change', function (event) {
+      if (event.target && event.target.matches('input[type="checkbox"], input[type="radio"]')) syncChoiceSelectedState();
+    });
+    syncChoiceSelectedState();
 
     function syncTipoLugarVisualState() {
       var wrap = byId('wrap_tipo_lugar_field');
@@ -1793,7 +2169,6 @@
         var radios = hostForm.querySelectorAll('input[name="envejeciente_tipo_cuidado"]');
         for (var i = 0; i < radios.length; i++) radios[i].checked = false;
       }
-      syncChoiceSelectedState();
     }
 
     function syncPisosAndPasaje() {
@@ -2288,7 +2663,15 @@
       var isOther = isModalidadOtherOption(selectedSpecific);
       if (wrapSelect) wrapSelect.style.display = group ? '' : 'none';
       if (wrapOther) wrapOther.style.display = (group && isOther) ? '' : 'none';
+      if (select) {
+        select.disabled = !group;
+        select.required = !!group;
+        select.setAttribute('aria-required', group ? 'true' : 'false');
+      }
       if (otherInput) {
+        otherInput.disabled = !(group && isOther);
+        otherInput.required = !!(group && isOther);
+        otherInput.setAttribute('aria-required', group && isOther ? 'true' : 'false');
         if (!isOther && fromUserEvent) otherInput.value = '';
       }
       if (hidden) {
@@ -2566,6 +2949,11 @@
       var sectorInput = byId('sector_input_ui');
       if (!hidden || !ciudadInput || !sectorInput) return;
 
+      // The visible city and sector inputs own validation; this hidden field
+      // carries only the canonical combined value and cannot receive focus.
+      hidden.required = false;
+      hidden.setAttribute('aria-required', 'false');
+
       var parsed = parseCiudadSectorValue(hidden.value || '');
       if (!ciudadInput.value && parsed.ciudad) ciudadInput.value = parsed.ciudad;
       if (!sectorInput.value && parsed.sector) sectorInput.value = parsed.sector;
@@ -2575,6 +2963,8 @@
     function syncHabitacionesBanosSelectors() {
       var habHidden = byId('habitaciones_hidden');
       var banHidden = byId('banos_hidden');
+      var habSelectorWrap = byId('wrap_habitaciones_selector');
+      var banSelectorWrap = byId('wrap_banos_selector');
       var habOtroWrap = byId('wrap_habitaciones_otro');
       var banOtroWrap = byId('wrap_banos_otro');
       var habOtroInput = byId('habitaciones_otro_input');
@@ -2584,6 +2974,7 @@
       if (habHidden) {
         var habVal = normalizeNumericSelectorValue(habHidden.value);
         var habRadioVal = allowedHab[habVal] ? habVal : (habVal ? 'otro' : '');
+        if (!habRadioVal && habSelectorWrap && habSelectorWrap.getAttribute('data-posted-choice') === 'otro') habRadioVal = 'otro';
         var habRadio = hostForm.querySelector('input[name="habitaciones_selector"][value="' + habRadioVal + '"]');
         if (habRadio) habRadio.checked = true;
         if (habOtroWrap) habOtroWrap.classList.toggle('d-none', habRadioVal !== 'otro');
@@ -2592,6 +2983,7 @@
       if (banHidden) {
         var banVal = normalizeNumericSelectorValue(banHidden.value);
         var banRadioVal = allowedBan[banVal] ? banVal : (banVal ? 'otro' : '');
+        if (!banRadioVal && banSelectorWrap && banSelectorWrap.getAttribute('data-posted-choice') === 'otro') banRadioVal = 'otro';
         var banRadio = hostForm.querySelector('input[name="banos_selector"][value="' + banRadioVal + '"]');
         if (banRadio) banRadio.checked = true;
         if (banOtroWrap) banOtroWrap.classList.toggle('d-none', banRadioVal !== 'otro');
@@ -3406,6 +3798,37 @@
       });
     }
 
+    function setupChoferFields() {
+      var purpose = byId('svc_driver_purpose');
+      var purposeWrap = byId('wrap-svc-driver-purpose-other');
+      var purposeOther = byId('svc_driver_purpose_other');
+      var vehicle = byId('svc_driver_vehicle');
+      var vehicleWrap = byId('wrap-svc-driver-vehicle-other');
+      var vehicleOther = byId('svc_driver_vehicle_other');
+      var routeOtherWrap = byId('wrap-svc-driver-routes-other');
+      var routeOther = byId('svc_driver_routes_other');
+      var routeChecks = hostForm.querySelectorAll('input[name="svc_driver_route"]');
+      function syncPurpose() {
+        var show = !!purpose && purpose.value === 'otro';
+        if (purposeWrap) { purposeWrap.classList.toggle('d-none', !show); purposeWrap.setAttribute('aria-hidden', show ? 'false' : 'true'); }
+        if (purposeOther) { purposeOther.disabled = !show; purposeOther.required = show; if (!show) purposeOther.value = ''; }
+      }
+      function syncVehicle() {
+        var show = !!vehicle && vehicle.value === 'otro';
+        if (vehicleWrap) { vehicleWrap.classList.toggle('d-none', !show); vehicleWrap.setAttribute('aria-hidden', show ? 'false' : 'true'); }
+        if (vehicleOther) { vehicleOther.disabled = !show; vehicleOther.required = show; if (!show) { vehicleOther.value = ''; vehicleOther.setCustomValidity(''); } }
+      }
+      function syncRoutes() {
+        var show = Array.prototype.some.call(routeChecks, function (input) { return input.checked && input.value === 'otro'; });
+        if (routeOtherWrap) { routeOtherWrap.classList.toggle('d-none', !show); routeOtherWrap.setAttribute('aria-hidden', show ? 'false' : 'true'); }
+        if (routeOther) { routeOther.disabled = !show; routeOther.required = show; if (!show) { routeOther.value = ''; routeOther.setCustomValidity(''); } }
+      }
+      if (purpose) purpose.addEventListener('change', syncPurpose);
+      if (vehicle) vehicle.addEventListener('change', syncVehicle);
+      Array.prototype.forEach.call(routeChecks, function (input) { input.addEventListener('change', syncRoutes); });
+      syncPurpose(); syncVehicle(); syncRoutes();
+    }
+
     function setupExperienciaSelector() {
       var select = byId('{{ form.experiencia.id if form.experiencia is defined else "" }}');
       var wrap = byId('wrap_experiencia_otro');
@@ -3452,6 +3875,7 @@
     initModalidadGuided();
     setupEdadSingleChoice();
     setupExperienciaSelector();
+    setupChoferFields();
     setupPlancharWarning();
     var ninosLimpiezaSmartAlertCtrl = setupNinosLimpiezaSmartAlert();
     var mascotaGuidanceCtrl = setupMascotaGuidance();
@@ -3656,4 +4080,763 @@
   window.SolicitudSharedFields.init = initSolicitudSharedFields;
   initSolicitudSharedFields(document);
 })();
+</script>
+<script>
+  (function () {
+    var host = document.getElementById('publicServicePicker');
+    if (!host) return;
+    var form = host.closest('form');
+    var input = document.getElementById('tipo_servicio');
+    var actions = document.getElementById('publicServiceFormActions');
+    var label = document.getElementById('publicServiceSelectedLabel');
+    var error = document.getElementById('publicServiceError');
+    var cards = Array.prototype.slice.call(host.querySelectorAll('[data-service-code]'));
+    var continueButton = document.getElementById('publicContinueService');
+    var cancelButton = document.getElementById('publicCancelServiceChange');
+    var dialogNote = document.getElementById('publicServiceDialogNote');
+    var serviceDefs = {{ service_catalog()|tojson }};
+    var serviceAliases = {};
+    serviceDefs.forEach(function (service) {
+      (service.legacy_codes || []).forEach(function (legacyCode) { serviceAliases[legacyCode] = service.code; });
+    });
+    var currentCode = '';
+    var pendingCode = '';
+    var openedFromChange = false;
+    var focusAfterClose = null;
+    var serviceDraftState = form.__serviceDraftState || (form.__serviceDraftState = {});
+    var modalityStateByService = {};
+    var serverDraftValues = {{ public_draft_extra_values|default({})|tojson }};
+    if (serverDraftValues.svc_driver_service && !serverDraftValues.svc_driver_purpose) {
+      var legacyPurpose = String(serverDraftValues.svc_driver_service).toLowerCase();
+      serverDraftValues.svc_driver_purpose = /otro/.test(legacyPurpose) ? 'otro' : /personal/.test(legacyPurpose) ? 'personal_familiar' : /diligencia/.test(legacyPurpose) ? 'transporte_diligencias' : 'traslado_empleados';
+      delete serverDraftValues.svc_driver_service;
+    }
+    Object.keys(serverDraftValues).forEach(function (name) {
+      if (name === 'tipo_servicio' || !form) return;
+      var controls = form.querySelectorAll('[name="' + name + '"]');
+      Array.prototype.forEach.call(controls, function (control) {
+        var value = serverDraftValues[name];
+        if (control.type === 'checkbox') control.checked = Array.isArray(value) ? value.indexOf(control.value) >= 0 : ['1', 'true', 'on', 'yes'].indexOf(String(value).toLowerCase()) >= 0;
+        else if (control.type === 'radio') control.checked = Array.isArray(value) ? value.indexOf(control.value) >= 0 : String(value) === control.value;
+        else control.value = Array.isArray(value) ? (value[value.length - 1] || '') : value;
+      });
+    });
+    var names = {};
+    serviceDefs.forEach(function (item) { names[item.code] = item.label; });
+    var sections = Array.prototype.slice.call(document.querySelectorAll('.public-form-sections > .public-form-card'));
+    var specific = Array.prototype.slice.call(document.querySelectorAll('[data-service-panel]'));
+    var profileCard = document.querySelector('.public-form-card--profile');
+    var nineraProfileSlot = document.getElementById('ninera-profile-fields');
+    var nurseProfileSlot = document.getElementById('enfermera-profile-fields');
+    var nineraProfileNodes = ['wrap_edad_requerida_field', 'wrap_edad_otro', 'wrap_experiencia', 'wrap_experiencia_otro']
+      .map(function (id) { return document.getElementById(id); }).filter(Boolean);
+    var nineraProfileOrigins = nineraProfileNodes.map(function (node) {
+      return { node: node, parent: node.parentNode, next: node.nextSibling };
+    });
+    var choferAgeSlot = document.getElementById('chofer-age-fields');
+    var officeAgeSlot = document.getElementById('office-age-fields');
+    var conserjeAgeSlot = document.getElementById('conserje-age-fields');
+    var choferAgeNodes = nineraProfileNodes.filter(function (node) { return node.id === 'wrap_edad_requerida_field' || node.id === 'wrap_edad_otro'; });
+    var domesticOnly = ['#wrap_funciones', '#wrap_funciones_otro', '#wrap_envejeciente_info', '#wrap_ninos', '#wrap_edades_ninos', '#wrap_ayuda_cuidado_ninos', '#wrap_adultos', '#wrap_mascota'];
+    function disableControls(section, disabled) {
+      if (!section) return;
+      Array.prototype.forEach.call(section.querySelectorAll('input,select,textarea,button'), function (control) {
+        control.disabled = !!disabled;
+      });
+    }
+    function updatePendingService(code) {
+      pendingCode = names[code] ? code : '';
+      cards.forEach(function (button) { button.setAttribute('aria-pressed', button.dataset.serviceCode === pendingCode ? 'true' : 'false'); });
+      continueButton.disabled = !pendingCode;
+      error.hidden = true;
+      if (dialogNote) {
+        if (!pendingCode) dialogNote.textContent = currentCode
+          ? 'Servicio actual: ' + (names[currentCode] || 'este servicio') + '. Elige otro si deseas cambiarlo.'
+          : 'Elige un servicio para continuar.';
+        else if (currentCode && pendingCode !== currentCode) dialogNote.textContent = 'Has seleccionado: ' + names[pendingCode] + '. Tus respuestas de ' + (names[currentCode] || 'este servicio') + ' se conservan y no se enviarán con el nuevo servicio.';
+        else dialogNote.textContent = 'Has seleccionado: ' + names[pendingCode] + '. Pulsa “Continuar” para completar tu solicitud.';
+      }
+    }
+    function openPicker(fromChange) {
+      openedFromChange = !!fromChange && !!currentCode;
+      focusAfterClose = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      updatePendingService(currentCode);
+      cancelButton.hidden = !openedFromChange;
+      if (typeof host.showModal === 'function') {
+        if (!host.open) host.showModal();
+      } else {
+        // Progressive fallback for older browsers without the native dialog API.
+        host.classList.add('is-fallback-open');
+        host.setAttribute('open', '');
+      }
+      var selected = host.querySelector('[data-service-code][aria-pressed="true"]');
+      var initial = selected || cards[0];
+      if (initial) window.requestAnimationFrame(function () { initial.focus(); });
+    }
+    function closePicker() {
+      if (typeof host.close === 'function' && host.open) host.close();
+      host.classList.remove('is-fallback-open');
+      host.removeAttribute('open');
+      if (focusAfterClose && document.contains(focusAfterClose)) focusAfterClose.focus({ preventScroll: true });
+      focusAfterClose = null;
+      openedFromChange = false;
+    }
+    function placeNineraProfile(code) {
+      var isNinera = code === 'NINERA';
+      var isNurse = code === 'ENFERMERA';
+      var nannySlotCard = document.getElementById('ninera-profile-slot');
+      var nurseSlotCard = document.getElementById('enfermera-profile-slot');
+      if (nannySlotCard) nannySlotCard.hidden = !isNinera;
+      if (nurseSlotCard) nurseSlotCard.hidden = !isNurse;
+      if (isNinera && nineraProfileSlot) {
+        nineraProfileNodes.forEach(function (node) { nineraProfileSlot.appendChild(node); });
+      } else if (isNurse && nurseProfileSlot) {
+        nineraProfileNodes.forEach(function (node) { nurseProfileSlot.appendChild(node); });
+      } else if ((code === 'CHOFER' && choferAgeSlot) || (code === 'LIMPIEZA_ESTABLECIMIENTOS' && officeAgeSlot) || (code === 'CONSERJERIA_RESIDENCIAL' && conserjeAgeSlot)) {
+        nineraProfileOrigins.slice().reverse().forEach(function (origin) {
+          if (choferAgeNodes.indexOf(origin.node) === -1 && origin.parent) origin.parent.insertBefore(origin.node, origin.next && origin.next.parentNode === origin.parent ? origin.next : null);
+        });
+        choferAgeNodes.forEach(function (node) { (code === 'CHOFER' ? choferAgeSlot : code === 'LIMPIEZA_ESTABLECIMIENTOS' ? officeAgeSlot : conserjeAgeSlot).appendChild(node); });
+      } else {
+        nineraProfileOrigins.slice().reverse().forEach(function (origin) {
+          if (origin.parent) origin.parent.insertBefore(origin.node, origin.next && origin.next.parentNode === origin.parent ? origin.next : null);
+        });
+      }
+      var choferAgeCard = document.getElementById('chofer-age-slot');
+      if (choferAgeCard) { choferAgeCard.hidden = code !== 'CHOFER'; choferAgeCard.classList.toggle('d-none', code !== 'CHOFER'); }
+      var officeAgeCard = document.getElementById('office-age-slot');
+      if (officeAgeCard) { officeAgeCard.hidden = code !== 'LIMPIEZA_ESTABLECIMIENTOS'; officeAgeCard.classList.toggle('d-none', code !== 'LIMPIEZA_ESTABLECIMIENTOS'); }
+      var conserjeAgeCard = document.getElementById('conserje-age-slot');
+      if (conserjeAgeCard) { conserjeAgeCard.hidden = code !== 'CONSERJERIA_RESIDENCIAL'; conserjeAgeCard.classList.toggle('d-none', code !== 'CONSERJERIA_RESIDENCIAL'); }
+      if (profileCard) profileCard.hidden = isNinera || isNurse || code === 'CHOFER' || code === 'LIMPIEZA_ESTABLECIMIENTOS' || code === 'CONSERJERIA_RESIDENCIAL';
+      var nannyStep = document.querySelector('[data-service-panel="NINERA"] .public-form-card-step');
+      var nurseStep = document.querySelector('[data-service-panel="ENFERMERA"] .public-form-card-step');
+      var finalStep = document.querySelector('.public-form-card--final .public-form-card-step');
+      if (nannyStep) nannyStep.textContent = isNinera ? 'Paso 2' : 'Servicio';
+      if (nurseStep) nurseStep.textContent = isNurse ? 'Paso 3' : 'Servicio';
+      if (finalStep) finalStep.textContent = isNinera ? 'Paso 3' : 'Paso 4';
+    }
+    function setupOfficeControls() {
+      var panel = document.querySelector('[data-service-panel="LIMPIEZA_ESTABLECIMIENTOS"]');
+      if (!panel) return;
+      var type = panel.querySelector('#svc_office_type');
+      var typeOther = panel.querySelector('#svc_office_type_other');
+      function update() {
+        var kind = type.value;
+        var active = !!kind;
+        panel.querySelector('#office-characteristics').classList.toggle('d-none', !active);
+        panel.querySelector('#office-areas-field').classList.toggle('d-none', !active);
+        panel.querySelector('#office-tasks-field').classList.toggle('d-none', !active);
+        panel.querySelectorAll('.office-characteristic,.office-area-options').forEach(function (node) {
+          var show = node.dataset.officeType === kind || (node.classList.contains('office-shared-bathroom') && kind !== 'otro');
+          node.classList.toggle('d-none', !show);
+          node.querySelectorAll('input').forEach(function (input) { input.disabled = !show; });
+        });
+        var other = kind === 'otro';
+        var bathroomsLabel = panel.querySelector('#office-bathrooms-label'); if (bathroomsLabel) bathroomsLabel.textContent = kind === 'edificio' ? 'Cantidad de baños comunes' : 'Cantidad de baños';
+        panel.querySelector('#wrap-svc-office-type-other').classList.toggle('d-none', !other); typeOther.disabled = !other; typeOther.required = other;
+        panel.querySelector('#wrap-svc-office-spaces-other').classList.toggle('d-none', !other);
+        var spaces = panel.querySelector('#svc_office_spaces_other'); spaces.disabled = !other; spaces.required = other;
+        var beverage = ['oficina','salud','otro'].indexOf(kind) >= 0;
+        panel.querySelectorAll('.office-task-option').forEach(function (node) { var code = node.dataset.officeTask; var show = !['cafe','visitantes'].includes(code) || beverage; node.classList.toggle('d-none', !show); var input=node.querySelector('input'); input.disabled=!show; });
+        var areaOther = panel.querySelector('.office-area-options:not(.d-none) input[name="svc_office_area"][value="otras"]');
+        var showAreasOther = !!areaOther && areaOther.checked;
+        panel.querySelector('#wrap-svc-office-areas-other').classList.toggle('d-none', !showAreasOther); panel.querySelector('#svc_office_areas_other').disabled = !showAreasOther; panel.querySelector('#svc_office_areas_other').required = showAreasOther;
+        var taskOther = panel.querySelector('input[name="svc_office_task"][value="otras"]');
+        var showTasksOther = !!taskOther && taskOther.checked;
+        panel.querySelector('#wrap-svc-office-tasks-other').classList.toggle('d-none', !showTasksOther); panel.querySelector('#svc_office_tasks_other').disabled = !showTasksOther; panel.querySelector('#svc_office_tasks_other').required = showTasksOther;
+        var officeActive = input.value === 'LIMPIEZA_ESTABLECIMIENTOS';
+        var supportRadios = panel.querySelectorAll('input[name="svc_office_support"]');
+        supportRadios.forEach(function (radio) { radio.required = officeActive; });
+        var support = panel.querySelector('input[name="svc_office_support"]:checked');
+        var hasCoworkers = !!support && support.value === 'si';
+        var count = panel.querySelector('#svc_office_coworker_count');
+        panel.querySelector('#wrap-svc-office-coworkers').classList.toggle('d-none', !hasCoworkers);
+        count.disabled = !hasCoworkers || !officeActive; count.required = hasCoworkers && officeActive;
+        if (!support || support.value === 'no') count.value = '';
+      }
+      panel._syncOfficeControls = update;
+      type.addEventListener('change', update);
+      panel.addEventListener('change', function (event) { if (event.target.matches('input[type=checkbox]')) update(); });
+      panel.addEventListener('change', function (event) { if (event.target.matches('input[name="svc_office_support"]')) update(); });
+      update();
+    }
+    setupOfficeControls();
+    function setupConserjeControls() {
+      var panel = document.querySelector('[data-service-panel="CONSERJERIA_RESIDENCIAL"]');
+      if (!panel) return;
+      var type = panel.querySelector('#svc_conserje_type');
+      var typeOther = panel.querySelector('#svc_conserje_type_other');
+      var profileCache = panel.querySelector('#svc_conserje_profile_cache');
+      var catalog = {{ (service_catalog() | selectattr('code', 'equalto', 'CONSERJERIA_RESIDENCIAL') | first) | tojson }};
+      var activeKind = type.value || '';
+      function readProfile(kind) {
+        var values = {};
+        var selectedProfile = catalog.residential_profiles[kind];
+        if (!selectedProfile) return values;
+        selectedProfile.fields.forEach(function (field) {
+          var node = panel.querySelector('[data-conserje-field-key="' + field.key + '"]');
+          if (!node) return;
+          var selected = node.querySelector('input[type="radio"]:checked');
+          var input = selected || node.querySelector('input[type="number"]');
+          values[field.key] = input ? input.value : '';
+        });
+        values.instalaciones = Array.from(panel.querySelectorAll('input[name="svc_conserje_installation"]:checked')).map(function (item) { return item.value; });
+        values.otras_instalaciones = panel.querySelector('#svc_conserje_installation_other').value;
+        values.responsabilidades = Array.from(panel.querySelectorAll('input[name="svc_conserje_responsibility"]:checked')).map(function (item) { return item.value; });
+        values.responsabilidades_otro = panel.querySelector('#svc_conserje_responsibility_other').value;
+        return values;
+      }
+      function readCache() {
+        try { var cache = JSON.parse(profileCache.value || '{}'); return cache && typeof cache === 'object' && !Array.isArray(cache) ? cache : {}; }
+        catch (_) { return {}; }
+      }
+      function writeCache(cache) { profileCache.value = JSON.stringify(cache); }
+      function restoreProfile(kind, values) {
+        if (!values) return;
+        var selectedProfile = catalog.residential_profiles[kind];
+        if (!selectedProfile) return;
+        selectedProfile.fields.forEach(function (field) {
+          var node = panel.querySelector('[data-conserje-field-key="' + field.key + '"]');
+          if (!node || values[field.key] == null) return;
+          var control = node.querySelector('input[type="number"]');
+          if (control) control.value = values[field.key];
+          node.querySelectorAll('input[type="radio"]').forEach(function (radio) { radio.checked = radio.value === values[field.key]; });
+        });
+        panel.querySelectorAll('input[name="svc_conserje_installation"]').forEach(function (item) { item.checked = (values.instalaciones || []).indexOf(item.value) >= 0; });
+        panel.querySelector('#svc_conserje_installation_other').value = values.otras_instalaciones || '';
+        panel.querySelectorAll('input[name="svc_conserje_responsibility"]').forEach(function (item) { item.checked = (values.responsabilidades || []).indexOf(item.value) >= 0; });
+        panel.querySelector('#svc_conserje_responsibility_other').value = values.responsabilidades_otro || '';
+      }
+      function fieldValue(key) {
+        var node = panel.querySelector('[data-conserje-field-key="' + key + '"]');
+        if (!node) return '';
+        var checked = node.querySelector('input[type="radio"]:checked');
+        var number = node.querySelector('input[type="number"]');
+        return checked ? checked.value : number ? number.value : '';
+      }
+      function requirementSatisfied(requirement, kind) {
+        if (!requirement) return true;
+        var keys = { elevator: kind === 'torre_apartamentos' ? 'ascensores' : 'tiene_ascensor', parking: kind === 'condominio_residencial' ? 'parqueos_comunes' : 'estacionamiento', recreation: 'areas_recreativas', gardens: 'jardines_comunes', streets: 'calles_internas' };
+        var declaredFields = (catalog.residential_profiles[kind] || { fields: [] }).fields.map(function (item) { return item.key; });
+        if (kind === 'otro' || declaredFields.indexOf(keys[requirement]) < 0) return true;
+        var value = fieldValue(keys[requirement]);
+        return requirement === 'elevator' && kind === 'torre_apartamentos' ? Number(value || 0) > 0 : value === 'si';
+      }
+      function transitionProfile(nextKind) {
+        var previousKind = activeKind;
+        if (nextKind === previousKind) return;
+        var cache = readCache();
+        if (previousKind && previousKind !== nextKind) cache[previousKind] = readProfile(previousKind);
+        var nextProfile = catalog.residential_profiles[nextKind];
+        var previousValues = previousKind ? readProfile(previousKind) : {};
+        var nextValues = cache[nextKind];
+        if (!nextValues && previousKind && nextProfile && catalog.residential_profiles[previousKind]) {
+          var oldKeys = catalog.residential_profiles[previousKind].fields.map(function (item) { return item.key; });
+          nextValues = {};
+          nextProfile.fields.forEach(function (item) { if (oldKeys.indexOf(item.key) >= 0) nextValues[item.key] = previousValues[item.key]; });
+          nextValues.instalaciones = previousValues.instalaciones || [];
+          nextValues.responsabilidades = previousValues.responsabilidades || [];
+        }
+        if (previousKind) {
+          panel.querySelectorAll('.conserje-characteristic input').forEach(function (control) { if (control.type === 'number') control.value = ''; else control.checked = false; });
+          panel.querySelectorAll('input[name="svc_conserje_installation"],input[name="svc_conserje_responsibility"]').forEach(function (control) { control.checked = false; });
+          panel.querySelector('#svc_conserje_installation_other').value = '';
+          panel.querySelector('#svc_conserje_responsibility_other').value = '';
+        }
+        if (nextValues) restoreProfile(nextKind, nextValues);
+        writeCache(cache);
+        activeKind = nextKind;
+      }
+      function update() {
+        var kind = type.value;
+        var active = !!kind;
+        var serviceActive = input.value === 'CONSERJERIA_RESIDENCIAL';
+        type.required = serviceActive;
+        panel.querySelector('#wrap-svc-conserje-type-other').classList.toggle('d-none', kind !== 'otro');
+        typeOther.disabled = kind !== 'otro' || !serviceActive; typeOther.required = kind === 'otro' && serviceActive;
+        ['#conserje-characteristics','#conserje-installations-field','#conserje-responsibilities-field','#conserje-support-field'].forEach(function (selector) {
+          var node = panel.querySelector(selector); node.classList.toggle('d-none', !active);
+          node.querySelectorAll('input,select,textarea').forEach(function (control) { control.disabled = !active || !serviceActive; });
+        });
+        panel.querySelectorAll('.conserje-characteristic').forEach(function (node) {
+          var allowed = (node.dataset.conserjeTypes || '').split(',');
+          var show = active && serviceActive && allowed.indexOf(kind) >= 0;
+          node.classList.toggle('d-none', !show);
+          node.querySelectorAll('input').forEach(function (control) { control.disabled = !show; control.required = show; });
+        });
+        var profile = catalog.residential_profiles[kind] || { fields: [], installations: [], responsibilities: [] };
+        profile.fields.forEach(function (field) {
+          var label = panel.querySelector('#label-' + field.name);
+          if (label) label.textContent = field.label;
+        });
+        var installationCodes = profile.installations.map(function (item) { return item.code; });
+        panel.querySelectorAll('.conserje-installation-option').forEach(function (node) {
+          var control = node.querySelector('input');
+          var show = active && serviceActive && installationCodes.indexOf(control.value) >= 0 && requirementSatisfied(node.dataset.conserjeRequires, kind);
+          node.classList.toggle('d-none', !show); control.disabled = !show;
+          if (!show && !form._restoringDraft) control.checked = false;
+        });
+        var responsibilityCodes = profile.responsibilities.map(function (item) { return item.code; });
+        var selectedInstallations = Array.from(panel.querySelectorAll('input[name="svc_conserje_installation"]:checked')).map(function (item) { return item.value; });
+        var gardensExist = fieldValue('jardines_comunes') === 'si' || selectedInstallations.indexOf('jardines') >= 0;
+        panel.querySelectorAll('.conserje-responsibility-option').forEach(function (node) {
+          var control = node.querySelector('input');
+          var show = active && serviceActive && responsibilityCodes.indexOf(control.value) >= 0 && (control.value !== 'riego_jardines' || gardensExist);
+          node.classList.toggle('d-none', !show); control.disabled = !show;
+          if (!show && !form._restoringDraft) control.checked = false;
+        });
+        var otherInstallation = panel.querySelector('input[name="svc_conserje_installation"][value="otras"]');
+        var installationOther = panel.querySelector('#svc_conserje_installation_other');
+        var showInstallationOther = active && serviceActive && otherInstallation.checked;
+        panel.querySelector('#wrap-svc-conserje-installation-other').classList.toggle('d-none', !showInstallationOther);
+        installationOther.disabled = !showInstallationOther; installationOther.required = showInstallationOther;
+        if (!showInstallationOther && serviceActive && !form._restoringDraft) installationOther.value = '';
+        var otherResponsibility = panel.querySelector('input[name="svc_conserje_responsibility"][value="otras"]');
+        var responsibilityOther = panel.querySelector('#svc_conserje_responsibility_other');
+        var showResponsibilityOther = active && serviceActive && otherResponsibility.checked;
+        panel.querySelector('#wrap-svc-conserje-responsibility-other').classList.toggle('d-none', !showResponsibilityOther);
+        responsibilityOther.disabled = !showResponsibilityOther; responsibilityOther.required = showResponsibilityOther;
+        if (!showResponsibilityOther && serviceActive && !form._restoringDraft) responsibilityOther.value = '';
+        var support = panel.querySelector('input[name="svc_conserje_support"]:checked');
+        var hasCoworkers = active && serviceActive && !!support && support.value === 'si';
+        var count = panel.querySelector('#svc_conserje_coworker_count');
+        panel.querySelector('#wrap-svc-conserje-coworkers').classList.toggle('d-none', !hasCoworkers);
+        count.disabled = !hasCoworkers; count.required = hasCoworkers;
+        if (!hasCoworkers && serviceActive && !form._restoringDraft) count.value = '';
+        panel.querySelectorAll('input[name="svc_conserje_support"]').forEach(function (radio) { radio.required = active && serviceActive; });
+      }
+      panel._syncConserjeControls = update;
+      panel._setConserjeActiveKind = function (kind) { activeKind = kind || ''; };
+      type.addEventListener('change', function () { if (!form._restoringDraft) transitionProfile(type.value); update(); });
+      panel.addEventListener('change', function (event) { if (event.target.matches('input[type=checkbox],input[type=radio]')) update(); });
+      panel.addEventListener('input', function (event) { if (event.target.matches('input[type=number]')) update(); });
+      form.addEventListener('submit', function (event) {
+        if (!event.submitter || event.submitter.name !== 'save_draft') profileCache.value = '{}';
+      });
+      update();
+    }
+    setupConserjeControls();
+    function setService(code) {
+      code = serviceAliases[code] || code;
+      if (!names[code]) return;
+      if (currentCode === code && input.value === code) return;
+      if (currentCode) {
+        var previousGroup = form.querySelector('input[name="modalidad_grupo"]:checked');
+        var previousSelect = form.querySelector('#modalidad_especifica_select');
+        var previousOther = form.querySelector('#modalidad_otro_text');
+        modalityStateByService[currentCode] = { group: previousGroup ? previousGroup.value : '', specific: previousSelect ? previousSelect.value : '', other: previousOther ? previousOther.value : '' };
+        var previousExperience = form.querySelector('#{{ form.experiencia.id if form.experiencia is defined else "" }}');
+        var previousExperienceOther = form.querySelector('#{{ form.experiencia_otro.id if form.experiencia_otro is defined else "" }}');
+        var previousExperienceVisual = Array.prototype.map.call(form.querySelectorAll('input[name="experiencia_visual"]:checked'), function (radio) { return radio.value; });
+        serviceDraftState[currentCode] = Object.assign({}, serviceDraftState[currentCode] || {}, {
+          modalidad_grupo: modalityStateByService[currentCode].group,
+          modalidad_especifica: modalityStateByService[currentCode].specific,
+          modalidad_otro_text: modalityStateByService[currentCode].other,
+          experiencia: previousExperience ? previousExperience.value : '',
+          experiencia_visual: previousExperienceVisual,
+          experiencia_otro: previousExperienceOther ? previousExperienceOther.value : ''
+        });
+      }
+      currentCode = code;
+      input.value = code;
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      updatePendingService(code);
+      actions.classList.remove('d-none');
+      label.textContent = names[code];
+      var selectedDef = serviceDefs.find(function (item) { return item.code === code; });
+      var modalityGroups = document.querySelectorAll('#modalidad_grupo_wrap input[name=modalidad_grupo]');
+      modalityGroups.forEach(function (radio) {
+        var restricted = ['LIMPIEZA_ESTABLECIMIENTOS','CONSERJERIA_RESIDENCIAL'].indexOf(code) >= 0;
+        var hide = restricted && radio.value !== 'con_salida_diaria';
+        radio.closest('label').hidden = hide;
+        var groupText = radio.closest('label').querySelector('span');
+        if (groupText && radio.value === 'con_salida_diaria') groupText.textContent = code === 'CONSERJERIA_RESIDENCIAL' ? 'Con salida diaria' : 'Salida diaria';
+        if (hide && radio.checked) radio.checked = false;
+      });
+      var savedState = serviceDraftState[code] || {};
+      var savedModality = modalityStateByService[code] || (savedState.modalidad_grupo ? {
+        group: savedState.modalidad_grupo, specific: savedState.modalidad_especifica || '', other: savedState.modalidad_otro_text || ''
+      } : null);
+      if (code === 'CONSERJERIA_RESIDENCIAL') savedModality = savedModality && savedModality.group === 'con_salida_diaria' ? savedModality : null;
+      if (savedModality && savedModality.group) {
+        var savedGroupRadio = form.querySelector('input[name="modalidad_grupo"][value="' + savedModality.group + '"]');
+        if (savedGroupRadio && !savedGroupRadio.closest('label').hidden) savedGroupRadio.checked = true;
+        syncModalidadGuided(false);
+        var savedSelect = form.querySelector('#modalidad_especifica_select');
+        var savedOther = form.querySelector('#modalidad_otro_text');
+        if (savedSelect && savedModality.specific && (MODALIDAD_OPTIONS[savedModality.group] || []).indexOf(savedModality.specific) >= 0) savedSelect.value = savedModality.specific;
+        if (savedOther) savedOther.value = savedModality.other || '';
+        syncModalidadGuided(false);
+      } else if (['LIMPIEZA_ESTABLECIMIENTOS','CONSERJERIA_RESIDENCIAL'].indexOf(code) >= 0) {
+        var daily = form.querySelector('#modalidad_grupo_wrap input[name="modalidad_grupo"][value="con_salida_diaria"]');
+        if (daily && !daily.checked) { daily.checked = true; daily.dispatchEvent(new Event('change', {bubbles:true})); }
+      }
+      var experienceOptions = selectedDef && selectedDef.experience_choices;
+      var experienceSelect = document.getElementById('{{ form.experiencia.id if form.experiencia is defined else "" }}');
+      if (experienceSelect) {
+        Array.prototype.forEach.call(experienceSelect.querySelectorAll('option[data-service-catalog-option]'), function (option) {
+          var selected = code === 'ENFERMERA';
+          option.disabled = !selected;
+          if (!selected && experienceSelect.value === option.value) experienceSelect.value = '';
+        });
+      }
+      var experienceWrap = document.getElementById('wrap_experiencia');
+      var choferOption = experienceSelect && experienceSelect.querySelector('option[data-service-chofer-option]');
+      if (choferOption) choferOption.disabled = code !== 'CHOFER';
+      if (experienceWrap) {
+        experienceWrap.hidden = ['CHOFER', 'LIMPIEZA_ESTABLECIMIENTOS', 'CONSERJERIA_RESIDENCIAL'].indexOf(code) >= 0;
+        experienceWrap.setAttribute('aria-hidden', ['CHOFER', 'LIMPIEZA_ESTABLECIMIENTOS', 'CONSERJERIA_RESIDENCIAL'].indexOf(code) >= 0 ? 'true' : 'false');
+      }
+      if (code === 'CHOFER' && experienceSelect) experienceSelect.value = 'Chofer';
+      else if (code === 'LIMPIEZA_ESTABLECIMIENTOS' && experienceSelect) experienceSelect.value = 'Limpieza';
+      else if (code === 'CONSERJERIA_RESIDENCIAL' && experienceSelect) experienceSelect.value = 'Conserjería';
+      else if (experienceSelect && ['Chofer', 'Limpieza', 'Conserjería'].indexOf(experienceSelect.value) >= 0) experienceSelect.value = '';
+      var officeExpOption = experienceSelect && experienceSelect.querySelector('option[data-service-office-option]');
+      if (officeExpOption) officeExpOption.disabled = code !== 'LIMPIEZA_ESTABLECIMIENTOS';
+      var experienceCards = Array.prototype.slice.call(document.querySelectorAll('.public-experience-card'));
+      if (experienceCards.length) {
+        experienceCards.forEach(function (card) {
+          var radio = card.querySelector('input[name="experiencia_visual"]');
+          var legacyAdmin = code === 'ENFERMERA' && card.dataset.experienceLegacy === 'true';
+          var serviceOnly = !card.dataset.serviceOnly || card.dataset.serviceOnly === code;
+          var allowed = legacyAdmin || (serviceOnly && (!experienceOptions || experienceOptions.some(function (option) { return option.code === radio.value; })));
+          card.hidden = !allowed;
+          radio.disabled = !allowed;
+          if (!allowed) radio.checked = false;
+          var label = card.querySelector('.public-experience-card-text');
+          if (label) {
+            var matching = (experienceOptions || []).find(function (option) { return option.code === radio.value; });
+            label.textContent = matching ? matching.label : (card.dataset.baseLabel || label.textContent);
+          }
+        });
+        if (experienceSelect && experienceOptions) {
+          var allowedValues = experienceOptions.map(function (option) { return option.code; });
+          if (allowedValues.indexOf(experienceSelect.value) === -1) experienceSelect.value = '';
+        }
+      }
+      if (savedState.experiencia && experienceSelect) {
+        var savedExperienceOption = Array.prototype.find.call(experienceSelect.options, function (option) {
+          return option.value === savedState.experiencia && !option.disabled;
+        });
+        if (savedExperienceOption) experienceSelect.value = savedState.experiencia;
+      }
+      var savedExperienceVisual = Array.isArray(savedState.experiencia_visual) ? savedState.experiencia_visual : [];
+      if (savedExperienceVisual.length) {
+        experienceCards.forEach(function (card) {
+          var radio = card.querySelector('input[name="experiencia_visual"]');
+          if (radio && !radio.disabled) {
+            radio.checked = savedExperienceVisual.indexOf(radio.value) >= 0;
+            card.classList.toggle('is-selected', radio.checked);
+          }
+        });
+      }
+      var experienceOtherInput = form.querySelector('#{{ form.experiencia_otro.id if form.experiencia_otro is defined else "" }}');
+      if (experienceOtherInput && Object.prototype.hasOwnProperty.call(savedState, 'experiencia_otro')) {
+        experienceOtherInput.value = String(savedState.experiencia_otro || '');
+        experienceOtherInput.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      if (experienceSelect) {
+        var nannyExperience = experienceSelect.closest('#wrap_experiencia');
+        if (nannyExperience) {
+          var hint = nannyExperience.querySelector('#experiencia_hint');
+          if (hint) hint.textContent = code === 'NINERA' ? 'Selecciona una opción: Niñera o Enfermera.' : 'Selecciona una sola opción.';
+        }
+      }
+      error.hidden = true;
+      sections.forEach(function (section) {
+        var isPicker = section === host;
+        if (isPicker) return;
+        var isHome = section.classList.contains('public-form-card--home');
+        var isProfile = section.classList.contains('public-form-card--profile');
+        section.hidden = isHome && code !== 'DOMESTICA_LIMPIEZA';
+        if (!section.hasAttribute('data-service-panel')) disableControls(section, section.hidden);
+        else disableControls(section, true);
+        if (isProfile || isHome) {
+          domesticOnly.forEach(function (selector) {
+            var node = section.querySelector(selector);
+            if (!node) return;
+            var hideDomestic = code !== 'DOMESTICA_LIMPIEZA';
+            node.hidden = hideDomestic;
+            Array.prototype.forEach.call(node.querySelectorAll('input,select,textarea'), function (control) { control.disabled = hideDomestic; });
+          });
+        }
+      });
+      specific.forEach(function (panel) {
+        var active = panel.dataset.servicePanel === code;
+        panel.classList.toggle('d-none', !active);
+        disableControls(panel, !active);
+      });
+      var officePanel = document.querySelector('[data-service-panel="LIMPIEZA_ESTABLECIMIENTOS"]');
+      if (officePanel && typeof officePanel._syncOfficeControls === 'function') officePanel._syncOfficeControls();
+      var conserjePanel = document.querySelector('[data-service-panel="CONSERJERIA_RESIDENCIAL"]');
+      if (conserjePanel && typeof conserjePanel._syncConserjeControls === 'function') conserjePanel._syncConserjeControls();
+      placeNineraProfile(code);
+      syncNineraControls();
+      syncEnfermeraControls();
+      renderEnfermeraPersonProfiles();
+    }
+    function syncNineraControls() {
+      function syncNineraChoiceVisuals() {
+        var nannyPanel = document.querySelector('[data-service-panel="NINERA"]');
+        if (!nannyPanel) return;
+        var nannyChoices = nannyPanel.querySelectorAll('.public-choice-item');
+        for (var choiceIndex = 0; choiceIndex < nannyChoices.length; choiceIndex++) {
+          var choiceInput = nannyChoices[choiceIndex].querySelector('input[type="checkbox"], input[type="radio"]');
+          if (choiceInput) nannyChoices[choiceIndex].classList.toggle('is-selected', choiceInput.checked);
+        }
+      }
+      var special = form.querySelector('input[name="svc_ninera_special_need"]:checked');
+      var careWrap = document.getElementById('wrap-svc-ninera-special-care');
+      var care = document.getElementById('svc_ninera_special_care');
+      var showCare = !!special && special.value === 'si';
+      if (careWrap) { careWrap.classList.toggle('d-none', !showCare); careWrap.setAttribute('aria-hidden', showCare ? 'false' : 'true'); }
+      if (care) { care.disabled = !showCare || input.value !== 'NINERA'; care.required = showCare && input.value === 'NINERA'; }
+      var otherToggle = form.querySelector('input[name="svc_ninera_responsibility"][value="otro"]');
+      var otherWrap = document.getElementById('wrap-svc-ninera-other');
+      var other = document.getElementById('svc_ninera_other');
+      var showOther = !!otherToggle && otherToggle.checked;
+      if (otherWrap) { otherWrap.classList.toggle('d-none', !showOther); otherWrap.setAttribute('aria-hidden', showOther ? 'false' : 'true'); }
+      if (other) other.disabled = !showOther || input.value !== 'NINERA';
+      var integral = document.getElementById('svc_ninera_integral');
+      var def = serviceDefs.find(function (item) { return item.code === 'NINERA'; });
+      if (integral && def && integral.checked && !integral.dataset.applied) {
+        (def.integral_responsibilities || []).forEach(function (code) {
+          var task = form.querySelector('input[name="svc_ninera_responsibility"][value="' + code + '"]');
+          if (task) task.checked = true;
+        });
+        integral.dataset.applied = 'true';
+      }
+      syncNineraChoiceVisuals();
+    }
+    function syncEnfermeraControls() {
+      var panel = document.querySelector('[data-service-panel="ENFERMERA"]');
+      if (!panel) return;
+      function toggleWrap(id, show, required) {
+        var wrap = document.getElementById(id);
+        if (!wrap) return;
+        wrap.classList.toggle('d-none', !show);
+        wrap.setAttribute('aria-hidden', show ? 'false' : 'true');
+        Array.prototype.forEach.call(wrap.querySelectorAll('input,textarea,select'), function (field) {
+          field.disabled = input.value !== 'ENFERMERA' || !show;
+          if (required !== undefined) field.required = !!required && show && input.value === 'ENFERMERA';
+        });
+      }
+      toggleWrap('wrap-svc-care-age-single', false, false);
+      toggleWrap('wrap-svc-care-ages-multiple', false, false);
+      var conditions = Array.prototype.slice.call(panel.querySelectorAll('input[name="svc_care_condition"]'));
+      var none = conditions.find(function (field) { return field.value === 'ninguna'; });
+      var otherSelected = conditions.some(function (field) { return field.checked && field.value === 'otra'; });
+      var noneSelected = !!none && none.checked;
+      toggleWrap('wrap-svc-care-condition-other', otherSelected, otherSelected);
+      if (noneSelected) conditions.forEach(function (field) { if (field !== none) field.checked = false; });
+      panel.querySelectorAll('.public-choice-item').forEach(function (choice) {
+        var choiceInput = choice.querySelector('input[type="checkbox"], input[type="radio"]');
+        if (choiceInput) choice.classList.toggle('is-selected', choiceInput.checked);
+      });
+    }
+    function renderEnfermeraPersonProfiles() {
+      var container = document.getElementById('enfermera-person-profiles');
+      var countField = document.getElementById('svc_care_count');
+      var hidden = document.getElementById('svc_care_profiles');
+      var historyHidden = document.getElementById('svc_care_profile_history');
+      if (!container || !countField || !hidden || !historyHidden) return;
+      var count = Math.max(0, Math.min(20, Number(countField.value || 0)));
+      var previous = [];
+      try { previous = JSON.parse(hidden.value || '[]'); } catch (_) { previous = []; }
+      if (!Array.isArray(previous)) previous = [];
+      if (Number(container.dataset.count || -1) === count) return;
+      var history = []; try { history = JSON.parse(historyHidden.value || '[]'); } catch (_) { history = []; }
+      if (!Array.isArray(history)) history = [];
+      previous.slice(count).forEach(function (profile, offset) {
+        if (profile) {
+          var archivedIndex = count + offset;
+          var existing = history.find(function (entry) { return entry.indice === archivedIndex; });
+          if (existing) existing.perfil = profile;
+          else history.push({ indice: archivedIndex, perfil: profile });
+        }
+      });
+      historyHidden.value = JSON.stringify(history);
+      container.dataset.count = String(count);
+      container.replaceChildren();
+      var mobility = JSON.parse(container.dataset.mobility || '[]');
+      var conditions = JSON.parse(container.dataset.conditions || '[]');
+      var responsibilityGroups = JSON.parse(container.dataset.responsibilityGroups || '[]');
+      function makeOption(label, value, type, name, checked) {
+        var wrapper = document.createElement('label');
+        var input = document.createElement('input'); input.type = type; input.name = name; input.value = value; input.checked = !!checked;
+        wrapper.appendChild(input); wrapper.appendChild(document.createTextNode(label));
+        return { wrapper: wrapper, input: input };
+      }
+      for (var index = 0; index < count; index += 1) {
+        var archived = history.find(function (entry) { return entry.indice === index; });
+        var state = previous[index] || (archived && archived.perfil) || { edad: '', movilidad: '', condiciones: [] };
+        var card = document.createElement('section'); card.className = 'enfermera-person-card';
+        card.dataset.legacyNeeds = JSON.stringify(state.necesidades || []);
+        var title = document.createElement('h4'); title.textContent = 'Persona ' + (index + 1); card.appendChild(title);
+        var grid = document.createElement('div'); grid.className = 'enfermera-person-grid'; card.appendChild(grid);
+        var ageWrap = document.createElement('div');
+        var ageLabel = document.createElement('label'); ageLabel.className = 'public-field-label'; ageLabel.textContent = 'Edad';
+        var age = document.createElement('input'); age.type = 'number'; age.min = '0'; age.max = '120'; age.required = true; age.inputMode = 'numeric'; age.className = 'form-control'; age.value = state.edad == null ? '' : state.edad;
+        ageLabel.appendChild(age); ageWrap.appendChild(ageLabel); grid.appendChild(ageWrap);
+        var mobilityWrap = document.createElement('div'); var mobilityLabel = document.createElement('label'); mobilityLabel.className = 'public-field-label'; mobilityLabel.textContent = 'Movilidad';
+        var mobilitySelect = document.createElement('select'); mobilitySelect.className = 'form-select'; mobilitySelect.required = true;
+        var empty = document.createElement('option'); empty.value = ''; empty.textContent = 'Selecciona'; mobilitySelect.appendChild(empty);
+        mobility.forEach(function (item) { var option = document.createElement('option'); option.value = item.code; option.textContent = item.label; mobilitySelect.appendChild(option); });
+        mobilitySelect.value = state.movilidad || ''; mobilityLabel.appendChild(mobilitySelect); mobilityWrap.appendChild(mobilityLabel); grid.appendChild(mobilityWrap);
+        var conditionWrap = document.createElement('div'); conditionWrap.className = 'public-full';
+        var conditionTitle = document.createElement('div'); conditionTitle.className = 'public-field-label'; conditionTitle.textContent = 'Condiciones de salud'; conditionWrap.appendChild(conditionTitle);
+        var conditionOptions = document.createElement('div'); conditionOptions.className = 'enfermera-profile-options';
+        conditions.forEach(function (item) { var choice = makeOption(item.label, item.code, 'checkbox', 'profile-condition-' + index, (state.condiciones || []).indexOf(item.code) >= 0); conditionOptions.appendChild(choice.wrapper); });
+        conditionWrap.appendChild(conditionOptions); grid.appendChild(conditionWrap);
+        var responsibilitiesWrap = document.createElement('div'); responsibilitiesWrap.className = 'public-full enfermera-person-responsibilities';
+        var responsibilitiesTitle = document.createElement('div'); responsibilitiesTitle.className = 'public-field-label'; responsibilitiesTitle.textContent = 'Cuidados y responsabilidades específicos de esta persona'; responsibilitiesWrap.appendChild(responsibilitiesTitle);
+        var selectedResponsibilities = state.responsabilidades || [];
+        responsibilityGroups.forEach(function (group) {
+          var groupSection = document.createElement('section'); groupSection.className = 'enfermera-task-group';
+          var heading = document.createElement('h5'); heading.textContent = group.label; groupSection.appendChild(heading);
+          var options = document.createElement('div'); options.className = 'enfermera-task-options';
+          group.responsibilities.forEach(function (item) {
+            var choice = makeOption(item.label, item.code, 'checkbox', 'profile-responsibility-' + index, selectedResponsibilities.indexOf(item.code) >= 0);
+            choice.wrapper.className = 'public-choice-item'; options.appendChild(choice.wrapper);
+          });
+          groupSection.appendChild(options); responsibilitiesWrap.appendChild(groupSection);
+        });
+        var otherWrap = document.createElement('div'); otherWrap.className = 'public-full';
+        var otherLabel = document.createElement('label'); otherLabel.className = 'public-field-label'; otherLabel.textContent = 'Especifica otras responsabilidades';
+        var otherInput = document.createElement('textarea'); otherInput.className = 'form-control'; otherInput.name = 'profile-responsibilities-other-' + index; otherInput.maxLength = 250; otherInput.rows = 2; otherInput.value = state.responsabilidades_otro || '';
+        otherLabel.appendChild(otherInput); otherWrap.appendChild(otherLabel); responsibilitiesWrap.appendChild(otherWrap);
+        var otherSelected = selectedResponsibilities.indexOf('otro') >= 0;
+        otherWrap.hidden = !otherSelected; otherInput.disabled = !otherSelected;
+        card.appendChild(grid);
+        card.appendChild(responsibilitiesWrap); container.appendChild(card);
+      }
+      function syncProfiles() {
+        var result = [];
+        Array.prototype.forEach.call(container.querySelectorAll('.enfermera-person-card'), function (card) {
+          var inputs = card.querySelectorAll('input');
+          var profile = { edad: inputs[0].value, movilidad: card.querySelector('select').value,
+            condiciones: Array.prototype.filter.call(card.querySelectorAll('input[name^="profile-condition-"]:checked'), function (item) { return true; }).map(function (item) { return item.value; }) };
+          var legacyNeeds = []; try { legacyNeeds = JSON.parse(card.dataset.legacyNeeds || '[]'); } catch (_) { legacyNeeds = []; }
+          if (Array.isArray(legacyNeeds) && legacyNeeds.length) profile.necesidades = Array.from(new Set(legacyNeeds));
+          var selectedResponsibilities = Array.prototype.map.call(card.querySelectorAll('input[name^="profile-responsibility-"]:checked'), function (item) { return item.value; });
+          profile.responsabilidades = selectedResponsibilities;
+          var otherInput = card.querySelector('textarea[name^="profile-responsibilities-other-"]');
+          if (otherInput && otherInput.value.trim()) profile.responsabilidades_otro = otherInput.value.trim();
+          result.push(profile);
+        });
+        hidden.value = JSON.stringify(result);
+      }
+      if (container.dataset.profileHandlersInitialized !== '1') {
+      container.dataset.profileHandlersInitialized = '1';
+      container.addEventListener('input', function (event) {
+        if (event.target && event.target.name && event.target.name.indexOf('profile-responsibility-') === 0) {
+          var card = event.target.closest('.enfermera-person-card');
+          var other = card && card.querySelector('textarea[name^="profile-responsibilities-other-"]');
+          if (other) { var showOther = !!card.querySelector('input[name^="profile-responsibility-"][value="otro"]:checked'); other.disabled = !showOther; other.closest('.public-full').hidden = !showOther; }
+        }
+        syncProfiles();
+      });
+      container.addEventListener('change', function (event) {
+        var selected = event.target;
+        if (selected && selected.name.indexOf('profile-condition-') === 0 && selected.checked) {
+          var related = selected.closest('.enfermera-person-card').querySelectorAll('input[name="' + selected.name + '"]');
+          related.forEach(function (item) { if (item !== selected && (selected.value === 'ninguna' || item.value === 'ninguna')) item.checked = false; });
+        }
+        syncProfiles();
+      });
+      }
+      syncProfiles();
+    }
+    form.addEventListener('change', function (event) {
+      if (event.target && (event.target.name === 'svc_ninera_special_need' || event.target.name === 'svc_ninera_responsibility' || event.target.id === 'svc_ninera_integral')) {
+        if (event.target.id === 'svc_ninera_integral' && !event.target.checked) event.target.dataset.applied = '';
+        if (event.target.name === 'svc_ninera_responsibility') {
+          var selectedIntegral = document.getElementById('svc_ninera_integral');
+          var nineraDef = serviceDefs.find(function (item) { return item.code === 'NINERA'; });
+          if (selectedIntegral && selectedIntegral.checked && nineraDef &&
+              (nineraDef.integral_responsibilities || []).some(function (code) {
+                var task = form.querySelector('input[name="svc_ninera_responsibility"][value="' + code + '"]');
+                return !task || !task.checked;
+              })) {
+            selectedIntegral.checked = false;
+            selectedIntegral.dataset.applied = '';
+          }
+        }
+        syncNineraControls();
+      }
+      if (event.target && (event.target.name === 'svc_care_assistance' || event.target.name === 'svc_care_condition' || event.target.id === 'svc_care_count')) {
+        if (event.target.id === 'svc_care_count') renderEnfermeraPersonProfiles();
+        if (event.target.name === 'svc_care_condition') {
+          var nurseConditions = form.querySelectorAll('input[name="svc_care_condition"]');
+          if (event.target.value === 'ninguna' && event.target.checked) nurseConditions.forEach(function (field) { if (field !== event.target) field.checked = false; });
+          else if (event.target.checked) { var nurseNone = form.querySelector('input[name="svc_care_condition"][value="ninguna"]'); if (nurseNone) nurseNone.checked = false; }
+        }
+        syncEnfermeraControls();
+      }
+    });
+    cards.forEach(function (button) { button.addEventListener('click', function () { updatePendingService(button.dataset.serviceCode); }); });
+    continueButton.addEventListener('click', function () {
+      if (!pendingCode || !names[pendingCode]) { error.hidden = false; return; }
+      setService(pendingCode);
+      closePicker();
+      var firstEnabled = form.querySelector('[data-service-panel="' + pendingCode + '"] input:not(:disabled):not([type="hidden"]),[data-service-panel="' + pendingCode + '"] select:not(:disabled),[data-service-panel="' + pendingCode + '"] textarea:not(:disabled)');
+      if (pendingCode === 'DOMESTICA_LIMPIEZA') firstEnabled = form.querySelector('.public-form-card--home input:not(:disabled):not([type="hidden"]),.public-form-card--home select:not(:disabled)');
+      if (firstEnabled) firstEnabled.focus({ preventScroll: true });
+    });
+    cancelButton.addEventListener('click', closePicker);
+    host.addEventListener('cancel', function (event) {
+      if (!currentCode) { event.preventDefault(); return; }
+      event.preventDefault();
+      closePicker();
+    });
+    input.addEventListener('change', function () { if (names[input.value] && input.value !== currentCode) setService(input.value); });
+    input.addEventListener('input', function () { if (names[input.value] && input.value !== currentCode) setService(input.value); });
+    document.getElementById('publicChangeService').addEventListener('click', function () {
+      openPicker(true);
+    });
+    document.addEventListener('public-form-draft-ready', function (event) {
+      if (event.detail && event.detail.formId && event.detail.formId !== form.id) return;
+      if (input.value && names[input.value]) setService(input.value);
+      else openPicker(false);
+    }, { once: true });
+    if (form) form.addEventListener('submit', function (event) {
+      if (!input.value || !names[input.value]) {
+        event.preventDefault();
+        openPicker(false);
+        error.hidden = false;
+        return;
+      }
+      if (input.value === 'ENFERMERA') {
+        var profileContainer = document.getElementById('enfermera-person-profiles');
+        var profileCards = profileContainer ? Array.prototype.slice.call(profileContainer.querySelectorAll('.enfermera-person-card')) : [];
+        var incomplete = profileCards.find(function (card) {
+          return !card.querySelector('input[type="number"]').value || !card.querySelector('select').value ||
+            !card.querySelector('input[name^="profile-condition-"]:checked');
+        });
+        var profilesError = document.getElementById('enfermeraProfilesError');
+        if (incomplete) {
+          event.preventDefault();
+          if (profilesError) { profilesError.hidden = false; profilesError.textContent = 'Completa la edad, movilidad y condiciones de cada persona.'; }
+          incomplete.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          var missing = !incomplete.querySelector('input[type="number"]').value ? incomplete.querySelector('input[type="number"]') : !incomplete.querySelector('select').value ? incomplete.querySelector('select') : incomplete.querySelector('input[name^="profile-condition-"]');
+          if (missing) missing.focus({ preventScroll: true });
+          return;
+        }
+        if (profilesError) profilesError.hidden = true;
+      }
+      var invalid = document.querySelector('[data-service-panel="' + input.value + '"] :invalid');
+      if (invalid) { invalid.focus({ preventScroll: true }); invalid.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    });
+    sections.forEach(function (section) {
+      if (section === host) return;
+      section.hidden = true;
+      disableControls(section, true);
+    });
+    specific.forEach(function (panel) { disableControls(panel, true); });
+    if (input.value && names[input.value]) setService(input.value);
+    form.addEventListener('input', function (event) {
+      if (event.target && event.target.id === 'svc_care_count') { renderEnfermeraPersonProfiles(); syncEnfermeraControls(); }
+    });
+  })();
 </script>

@@ -18,6 +18,8 @@ from core.routes import candidatas_bp, procesos_bp, entrevistas_bp, archivos_bp
 
 app = create_app()
 
+from services.service_catalog import public_catalog as _public_service_catalog
+app.jinja_env.globals['service_catalog'] = _public_service_catalog
 
 app.jinja_env.globals['has_endpoint'] = lambda name: name in app.view_functions
 

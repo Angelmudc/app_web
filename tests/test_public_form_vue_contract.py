@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +34,10 @@ def test_public_form_uses_versioned_local_vue_and_single_controller_bridge():
 def test_public_form_assets_are_cache_busted_and_reconciled_after_mobile_restore():
     bridge = read("static/js/clientes/public_form_ux.js")
     shared = read("templates/clientes/_solicitud_form_fields.html")
+    asset_version = re.search(r"ASSET_VERSION = '([^']+)'", bridge).group(1)
     for html in (read("templates/clientes/solicitud_form_publica.html"), read("templates/clientes/solicitud_form_publica_nueva.html")):
-        assert "public_form_ux.js', v='20261002-audit1'" in html
-    assert "ASSET_VERSION = '20261002-audit1'" in bridge
+        assert f"public_form_ux.js', v='{asset_version}'" in html
+    assert f"ASSET_VERSION = '{asset_version}'" in bridge
     assert "public_form_vue.css?v=' + ASSET_VERSION" in bridge
     assert "public_form_vue.js?v=' + ASSET_VERSION" in bridge
     assert "vue-3.5.13.global.prod.js?v=' + ASSET_VERSION" in bridge
@@ -75,8 +77,9 @@ def test_vue_controller_keeps_draft_non_sensitive_and_expires_after_24_hours():
     assert "telefono_contacto" in source
     assert "sessionStorage.setItem" in source
     assert "sessionStorage.removeItem" in source
-    assert "DRAFT_SCHEMA_VERSION = 3" in source
+    assert "DRAFT_SCHEMA_VERSION = 4" in source
     assert "LEGACY_DRAFT_SCHEMA_VERSION = 2" in source
+    assert "[LEGACY_DRAFT_SCHEMA_VERSION, 3, DRAFT_SCHEMA_VERSION]" in source
     assert "first.multiple" in source
     assert "token" in source
 
@@ -159,6 +162,17 @@ def test_top_progress_is_removed_but_bottom_status_navigation_remains():
         assert "Solicitud completa. Ya puedes enviarla." in asset
     for html in (read("templates/clientes/solicitud_form_publica.html"), read("templates/clientes/solicitud_form_publica_nueva.html")):
         assert 'aria-label="Estado de la solicitud"' in html
+
+
+def test_server_postback_values_take_precedence_over_stale_session_drafts():
+    source = read("static/ts/clientes/public_form_vue.ts")
+    generated = read("static/js/clientes/public_form_vue.js")
+    for asset in (source, generated):
+        assert "const serverPostback = form.dataset.serverPostback === 'true'" in asset
+        assert "serverPostback ? { restored: false } : restoreDraft(form)" in asset
+        assert re.search(r"if \(serverPostback\)\s+saveDraft\(form\);", asset)
+    for html in (read("templates/clientes/solicitud_form_publica.html"), read("templates/clientes/solicitud_form_publica_nueva.html")):
+        assert "data-server-postback=\"{{ 'true' if request.method == 'POST' else 'false' }}\"" in html
 
 
 def test_pending_button_does_not_treat_vue_click_event_as_form_error():

@@ -47,6 +47,7 @@ class _FakeField:
 
 class _FakePublicForm:
     def __init__(self, *, token="tok123", codigo="CL-001", nombre="Cliente Uno", email="cliente@example.com"):
+        self.tipo_servicio = _FakeField("DOMESTICA_LIMPIEZA")
         self.token = _FakeField(token)
         self.codigo_cliente = _FakeField(codigo)
         self.nombre_cliente = _FakeField(nombre)
@@ -232,15 +233,16 @@ def test_public_link_form_has_expected_field_order_and_structure_grouping():
     assert -1 not in (idx_edad, idx_exp, idx_func)
     assert idx_edad < idx_exp < idx_func
 
-    idx_tl = html.find("Tipo de lugar")
-    idx_hab = html.find("Habitaciones")
-    idx_banos = html.find("Baños")
-    idx_pisos = html.find("Cantidad de pisos")
-    idx_areas = html.find("Áreas comunes")
-    idx_adultos = html.find("Cantidad de adultos")
-    idx_ninos = html.find("Cantidad de niños")
-    idx_edades = html.find("Edades de los niños")
-    idx_mascota = html.find("Mascota")
+    home_start = html.find('id="wrap_tipo_lugar_field"')
+    idx_tl = html.find("Tipo de lugar", home_start)
+    idx_hab = html.find("Habitaciones", idx_tl)
+    idx_banos = html.find("Baños", idx_hab)
+    idx_pisos = html.find("Cantidad de pisos", idx_banos)
+    idx_areas = html.find("Áreas comunes", idx_pisos)
+    idx_adultos = html.find("Cantidad de adultos", idx_areas)
+    idx_ninos = html.find("Cantidad de niños", idx_adultos)
+    idx_edades = html.find("Edades de los niños", idx_ninos)
+    idx_mascota = html.find("Mascota", idx_edades)
     assert -1 not in (idx_tl, idx_hab, idx_banos, idx_pisos, idx_areas, idx_adultos, idx_ninos, idx_edades, idx_mascota)
     assert idx_tl < idx_hab < idx_banos < idx_pisos < idx_areas < idx_adultos < idx_ninos < idx_edades < idx_mascota
 
@@ -556,6 +558,7 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
         cliente_id=7,
         solicitud_id=88,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-A"),
     )
 
@@ -577,10 +580,10 @@ def test_public_link_successful_save_invalidates_token_and_second_access_is_bloc
         second = client.get("/clientes/solicitudes/publica/tok123")
 
     assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
-    assert second.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (second.location or "")
+    assert second.status_code == 302
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (second.location or "")
 
 
 def test_public_link_short_route_keeps_same_validation_and_security_behavior():
@@ -660,6 +663,7 @@ def test_public_link_successful_save_redirects_to_plan_selection():
         cliente_id=7,
         solicitud_id=102,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-C"),
     )
 
@@ -681,9 +685,9 @@ def test_public_link_successful_save_redirects_to_plan_selection():
         later = client.get("/clientes/solicitudes/publica/tok123")
 
     assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (success.location or "")
-    assert later.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (later.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (success.location or "")
+    assert later.status_code == 302
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (later.location or "")
 
 
 def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
@@ -696,6 +700,7 @@ def test_public_link_public_views_do_not_include_private_shell_or_live_ping():
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="plan_pending",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
@@ -742,6 +747,7 @@ def test_public_link_used_without_plan_redirects_to_plan_selection():
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="plan_pending",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
     with patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
@@ -760,6 +766,7 @@ def test_public_link_used_without_joined_solicitud_relation_still_redirects_to_p
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="plan_pending",
         solicitud=None,
     )
     pending_solicitud = SimpleNamespace(id=91, cliente_id=7, codigo_solicitud="CL-001-B", tipo_plan=None)
@@ -866,6 +873,7 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
@@ -876,8 +884,8 @@ def test_share_continue_route_blocks_used_or_invalid_aliases():
     with patch("clientes.routes.resolve_public_share_alias", return_value=None):
         invalid_resp = client.get("/solicitud/ZZZZ")
 
-    assert used_resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (used_resp.location or "")
+    assert used_resp.status_code == 302
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (used_resp.location or "")
     assert invalid_resp.status_code == 404
 
 
@@ -891,6 +899,7 @@ def test_share_continue_existing_used_alias_blocks_repost_with_clear_used_messag
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
@@ -898,8 +907,7 @@ def test_share_continue_existing_used_alias_blocks_repost_with_clear_used_messag
          patch("clientes.routes._public_link_usage_by_hash", return_value=used_row):
         resp = client.post("/solicitud/ABCD2345EF/continuar", data={"dummy": "1"})
 
-    assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (resp.location or "")
+    assert resp.status_code == 410
 
 
 def test_share_continue_route_shows_success_once_after_submit_then_used_for_existing_flow():
@@ -913,6 +921,7 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
@@ -921,9 +930,10 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_exis
         success = client.get("/solicitud/ABCD2345EF/continuar")
         later = client.get("/solicitud/ABCD2345EF/continuar")
 
-    assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/publica/tok123/plan" in (success.location or "")
-    assert later.status_code in (302, 303)
+    assert success.status_code == 302
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (success.location or "")
+    assert later.status_code == 302
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (later.location or "")
 
 
 def test_public_link_post_with_incomplete_form_shows_validation_and_not_bad_request():
@@ -1203,6 +1213,7 @@ def test_public_link_double_post_same_token_blocks_second_submit_without_new_sav
         cliente_id=7,
         solicitud_id=91,
         used_at=datetime.utcnow(),
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="CL-001-B"),
     )
 
@@ -1231,7 +1242,7 @@ def test_public_link_double_post_same_token_blocks_second_submit_without_new_sav
         )
 
     assert first.status_code in (302, 303)
-    assert second.status_code in (302, 303)
+    assert second.status_code == 410
     assert save_calls["count"] == 1
 
 
@@ -1285,7 +1296,7 @@ def test_public_link_post_crea_solicitud_sin_plan_y_redirige_a_seleccion_sin_toc
     assert solicitud.payment_cycle_opened_at is None
     assert solicitud.payment_cycle_closed_at is None
     assert solicitud.payment_cycle_motivo_apertura is None
-    assert "/clientes/solicitudes/publica/tok-plan/plan" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok-plan" in (resp.location or "")
 
 
 def test_public_link_plan_summary_shows_selected_plan_when_available():

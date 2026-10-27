@@ -551,7 +551,7 @@
 <section class="public-flow-page">
   <div class="public-flow-shell">
     <header class="public-flow-hero">
-      <img class="public-flow-logo" src="{{ url_for('static', filename='public/img/logo_proceso_transparente.png') }}" alt="Doméstica del Cibao A&D">
+      <img class="public-flow-logo" src="{{ url_for('static', filename='public/img/logo_proceso_transparente.webp') }}" width="920" height="337" fetchpriority="high" decoding="async" alt="Doméstica del Cibao A&D">
       <div class="d-flex flex-wrap align-items-start justify-content-between gap-2">
         <div>
           <h1 class="public-flow-title">Formulario oficial de solicitud</h1>
@@ -573,7 +573,7 @@
 
           <div id="publicSolicitudNuevaFormVueRoot" class="public-form-vue-root" aria-label="Estado de la solicitud"></div>
 
-          <form method="post" id="publicSolicitudNuevaForm" data-form-ux="vue" data-conditions-modal-id="publicEmploymentConditionsNuevaModal" novalidate>
+          <form method="post" id="publicSolicitudNuevaForm" data-form-ux="vue" data-server-postback="{{ 'true' if request.method == 'POST' else 'false' }}" data-draft-scope="{{ g.public_form_draft_scope|default('', true) }}" data-conditions-modal-id="publicEmploymentConditionsNuevaModal" novalidate>
             {{ form.hidden_tag() }}
             <input type="hidden" name="lead_source" id="lead_source" value="direct">
 
@@ -613,17 +613,19 @@
               </div>
             </section>
 
+            {% set service_form_public = true %}
             {% include 'clientes/_solicitud_form_fields.html' %}
 
             <section class="public-terms-wrap" aria-label="Términos y condiciones">
               <h3 class="public-terms-title">Términos y condiciones de servicio</h3>
               <p class="public-terms-text">Autorizo a Doméstica del Cibao A&D S.R.L a iniciar un reclutamiento para colocar una empleada doméstica u otro servicio en mi hogar u oficina. Declaro además que la responsabilidad de Doméstica del Cibao A&D S.R.L termina en el momento que coloca el recurso en mi casa u oficina.</p>
-              <input type="hidden" name="terms_accepted" id="termsAcceptedNuevaInput" value="0">
-              <input type="hidden" name="terms_decision" id="termsDecisionNuevaInput" value="">
-              <input type="hidden" name="terms_accepted_at" id="termsAcceptedAtNuevaInput" value="">
+              {% set _public_terms_accepted = request.form.get('terms_accepted') == '1' and request.form.get('terms_decision') == 'accept' %}
+              <input type="hidden" name="terms_accepted" id="termsAcceptedNuevaInput" value="{{ '1' if _public_terms_accepted else '0' }}">
+              <input type="hidden" name="terms_decision" id="termsDecisionNuevaInput" value="{{ 'accept' if _public_terms_accepted else '' }}">
+              <input type="hidden" name="terms_accepted_at" id="termsAcceptedAtNuevaInput" value="{{ request.form.get('terms_accepted_at', '') if _public_terms_accepted else '' }}">
               <div class="politica-box" id="politicaBoxNueva">
                 <label class="politica-label">
-                  <input type="checkbox" id="acepta_politica_nueva" required aria-required="true">
+                  <input type="checkbox" id="acepta_politica_nueva" required aria-required="true"{% if _public_terms_accepted %} checked{% endif %}>
                   <span>
                     Acepto los <a href="/politicas" target="_blank" rel="noopener noreferrer">términos y condiciones</a> y la <a href="/privacidad" target="_blank" rel="noopener noreferrer">política de privacidad</a>
                   </span>
@@ -710,7 +712,7 @@
 
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/clientes/public_conditions_modal.js') }}"></script>
-<script src="{{ url_for('static', filename='js/clientes/public_form_ux.js', v='20261002-audit1') }}"></script>
+<script src="{{ url_for('static', filename='js/clientes/public_form_ux.js', v='20261019-premium-v2') }}"></script>
 <script>
 (function () {
   var initialized = false;
@@ -759,7 +761,10 @@
     var accepted = !!(termsCheckbox && termsCheckbox.checked);
     if (termsAcceptedInput) termsAcceptedInput.value = accepted ? '1' : '0';
     if (termsDecisionInput) termsDecisionInput.value = accepted ? 'accept' : '';
-    if (termsAcceptedAtInput) termsAcceptedAtInput.value = accepted ? new Date().toISOString() : '';
+    if (termsAcceptedAtInput) {
+      if (!accepted) termsAcceptedAtInput.value = '';
+      else if (!termsAcceptedAtInput.value) termsAcceptedAtInput.value = new Date().toISOString();
+    }
     if (politicaBox) politicaBox.classList.toggle('checked', accepted);
     if (termsInlineError) termsInlineError.classList.toggle('d-none', accepted);
     btn.setAttribute('aria-disabled', 'false');
@@ -769,6 +774,10 @@
   syncTermsState();
 
   form.addEventListener('submit', function (ev) {
+    // Otro validador (por ejemplo, el chequeo de pasos de Vue) puede haber
+    // cancelado el envío en fase capture. No reabrir el modal de condiciones
+    // encima del error que ese validador acaba de mostrar.
+    if (ev.defaultPrevented) return;
     syncTermsState();
     var formIsValid = form.checkValidity();
     if (!formIsValid) {

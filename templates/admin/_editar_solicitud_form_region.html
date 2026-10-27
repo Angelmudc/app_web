@@ -2,7 +2,7 @@
   {% set _cat = async_feedback.category or 'info' %}
   <div class="alert alert-{{ 'danger' if _cat in ['danger', 'error'] else _cat }} border-0 mb-4" role="alert" aria-live="polite">
     {{ async_feedback.message }}
-  </div>
+</div>
 {% endif %}
 
     <form id="solicitud-form"
@@ -16,7 +16,8 @@
           data-async-preserve-scroll="true"
           data-async-fallback="native"
           {% endif %}>
-      {{ form.hidden_tag() }}
+      {# Render CSRF here; structured hidden fields are rendered once beside their controls below. #}
+      {{ form.hidden_tag('csrf_token') }}
       {% if not nuevo %}
       <input type="hidden" name="_async_target" value="#editarSolicitudAsyncRegion">
       {% endif %}
@@ -24,8 +25,16 @@
       <input type="hidden" name="next" value="{{ next_url }}">
       {% endif %}
 
-      {% if form.errors %}
-        <div class="alert alert-danger border-0 mb-4">
+      {% if service_identity and service_identity.warning %}
+        <div class="alert {{ 'alert-danger' if service_identity.blocking else 'alert-info' }} border-0 mb-4" role="alert" data-service-identity-state="{{ service_identity.status }}">
+          <strong>{{ 'Edición bloqueada por seguridad' if service_identity.blocking else 'Identificación histórica' }}:</strong>
+          {{ service_identity.warning }}
+        </div>
+      {% endif %}
+
+      {% set _admin_non_field_errors = form.admin_non_field_errors|default([]) %}
+      {% if form.errors or _admin_non_field_errors %}
+        <div class="alert alert-danger border-0 mb-4" id="admin-solicitud-validation-summary" data-admin-validation-summary role="alert" aria-live="assertive" tabindex="-1">
           <div class="d-flex">
             <i class="fa-solid fa-triangle-exclamation me-2"></i>
             <div>
@@ -33,8 +42,11 @@
               <ul class="mb-0 mt-1">
                 {% for field, errs in form.errors.items() %}
                   {% for e in errs %}
-                    <li><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
+                    <li id="admin-validation-error-{{ field|replace('_','-') }}-{{ loop.index }}" data-admin-error-field="{{ field }}"><strong>{{ form[field].label.text if form[field] else field }}:</strong> {{ e }}</li>
                   {% endfor %}
+                {% endfor %}
+                {% for e in _admin_non_field_errors %}
+                  <li id="admin-validation-error-general-{{ loop.index }}" data-admin-error-field=""><strong>Validación del servicio:</strong> {{ e }}</li>
                 {% endfor %}
               </ul>
             </div>
@@ -50,9 +62,7 @@
           <div class="col-md-6">
             <label class="form-label required">{{ form.tipo_servicio.label.text }}</label>
             {{ form.tipo_servicio(class="form-select", id=form.tipo_servicio.id) }}
-            <div class="hint mt-1">
-              Selecciona si la solicitud es para doméstica de limpieza, niñera, enfermera/cuidadora o chofer.
-            </div>
+            <div class="hint mt-1">Selecciona el servicio asociado a esta solicitud. Los códigos históricos conservan su etiqueta.</div>
           </div>
           <div class="col-md-6 d-flex align-items-end justify-content-md-end">
             {% if not nuevo and solicitud is defined %}
@@ -66,16 +76,15 @@
       </section>
 
       <div class="admin-solicitud-form">
+        {% set service_section_title = 'Seccion 2 - Datos de la solicitud' %}
+        {% set service_section_desc = 'Completa los detalles del servicio y la ubicacion especifica donde se trabajara.' %}
         {% include 'clientes/_solicitud_form_fields.html' %}
       </div>
 
-      <section class="mt-4">
-        <div class="divider"></div>
-        <h2 class="h5 fw-semibold mb-3">
-          <i class="fa-solid fa-user-gear text-warning"></i> Detalles específicos según el tipo
-        </h2>
+      <section class="mt-4 admin-service-cards" id="admin-service-cards" aria-label="Preguntas específicas del servicio">
 
-        <div id="bloque-ninera" class="{{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
+        <section id="bloque-ninera" data-admin-service-panel="NINERA" class="public-form-card admin-service-card {{ 'd-block' if (form.tipo_servicio.data == 'NINERA') else 'd-none' }}">
+          <header class="public-form-card-header"><span class="public-form-card-step">Paso 2</span><h3 class="public-form-card-title">Cuidado de niños</h3><p class="public-form-card-desc">Indica lo necesario para cuidar a los niños.</p></header>
           <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>niñera</strong>.</div>
           <div class="row g-4">
             <div class="col-md-3">
@@ -87,120 +96,264 @@
               {{ form.ninera_edades(class="form-control", placeholder="Ej. 2 y 6 años") }}
             </div>
           </div>
-          <div class="mt-3">
-            <label class="form-label">{{ form.ninera_tareas.label.text }}</label>
-            <div class="row g-2">
-              {% for sub in form.ninera_tareas %}
-              <div class="col-12 col-sm-6 col-lg-4">
-                <div class="form-check">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-              </div>
-              {% endfor %}
+          {% set _nanny_catalog = service_catalog() | selectattr('code', 'equalto', 'NINERA') | first %}
+          {% set _nanny_codes = _nanny_catalog.responsibilities | map(attribute='code') | list %}
+          <fieldset class="public-field public-full ninera-special-group mt-3"><legend class="form-label">¿Alguno de los niños necesita atención especial?</legend><p class="form-text">No incluyas diagnósticos ni historial médico.</p>
+            <div class="row g-2">{% for choice in _nanny_catalog.special_need_choices %}<label class="col-12 col-sm-6 public-choice-item"><input type="radio" class="form-check-input" name="ninera_necesidad_especial_respuesta" value="{{ choice.code }}"{% if form.ninera_necesidad_especial_respuesta.data == choice.code %} checked{% endif %}><span>{{ choice.label }}</span></label>{% endfor %}
+              {% if form.ninera_necesidad_especial_respuesta.data == 'conversar' %}<label class="col-12 public-choice-item"><input type="radio" class="form-check-input" name="ninera_necesidad_especial_respuesta" value="conversar" checked><span>Prefirió conversarlo con la agencia (histórico)</span></label>{% endif %}
             </div>
-            <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-block' if (form.ninera_tareas.data and ('otro' in form.ninera_tareas.data)) else 'd-none' }}">
-              <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>
-              {{ form.ninera_tareas_otro(class="form-control", placeholder="Especifica otras tareas") }}
+          </fieldset>
+          <div class="mt-3 {{ 'd-none' if form.ninera_necesidad_especial_respuesta.data != 'si' else '' }}" id="wrap-ninera-public-care">
+            <label class="form-label" for="ninera_necesidad_especial_publicable">{{ form.ninera_necesidad_especial_publicable.label.text }}</label>
+            {{ form.ninera_necesidad_especial_publicable(class="form-control", id="ninera_necesidad_especial_publicable", maxlength="500") }}
+            <div class="hint mt-1">Describe solo las tareas de cuidado necesarias. No incluyas diagnósticos ni historial médico.</div>
+          </div>
+          <fieldset class="public-field public-full ninera-primary-group mt-3"><legend class="form-label">¿La niñera será la principal responsable del cuidado?</legend><div class="row g-2">
+            {% for value, label in form.ninera_responsable_principal.choices if value %}<label class="col-12 col-sm-6 public-choice-item"><input type="radio" class="form-check-input" name="ninera_responsable_principal" value="{{ value }}"{% if form.ninera_responsable_principal.data == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+          </div></fieldset>
+          <fieldset class="public-field public-full ninera-responsibility-group mt-3"><legend class="form-label">¿Qué responsabilidades tendrá la niñera?</legend><p class="form-text">Selecciona todas las que correspondan.</p>
+            <label class="ninera-integral-card"><input type="checkbox" class="form-check-input" id="ninera_responsabilidad_integral" name="ninera_responsabilidad_integral" value="1"{% if form.ninera_responsabilidad_integral.data %} checked{% endif %}><span><span class="ninera-integral-title">Responsabilidad integral del cuidado de los niños</span><span class="ninera-integral-description">Incluye el cuidado diario, alimentación, ropa y organización de los espacios de los niños. No incluye labores domésticas generales.</span></span></label>
+            {% for group in _nanny_catalog.responsibility_groups %}<section class="ninera-task-group"><h4>{{ group.label }}</h4><div class="row g-2">
+              {% for task in group.responsibilities %}{% for sub in form.ninera_tareas %}{% if sub._value() == task.code %}<label class="col-12 col-sm-6 public-choice-item">{{ sub(class="form-check-input", id=sub.id) }}<span>{{ task.label }}</span></label>{% endif %}{% endfor %}{% endfor %}
+            </div></section>{% endfor %}
+            {% for sub in form.ninera_tareas %}{% if sub._value() not in _nanny_codes and sub._value() in (form.ninera_tareas.data or []) %}<input type="hidden" name="ninera_tareas" value="{{ sub._value() }}">{% endif %}{% endfor %}
+            <div id="wrap-ninera-tareas-otro" class="mt-2 {{ 'd-none' if not (form.ninera_tareas.data and 'otro' in form.ninera_tareas.data) else '' }}">
+              <label class="form-label">{{ form.ninera_tareas_otro.label.text }}</label>{{ form.ninera_tareas_otro(class="form-control", placeholder="Describe cualquier otra responsabilidad relacionada con el cuidado de los niños") }}
             </div>
-          </div>
-          <div class="mt-3">
-            <label class="form-label">{{ form.ninera_condicion_especial.label.text }}</label>
-            {{ form.ninera_condicion_especial(class="form-control", rows="3") }}
-            <div class="hint mt-1">Si el niño tiene alguna condición especial, descríbela brevemente.</div>
-          </div>
-        </div>
+          </fieldset>
+          <details class="mt-3" id="wrap-ninera-private-note"{% if form.ninera_necesidad_especial_respuesta.data == 'si' %} open{% endif %}><summary>Nota privada para Administración</summary>
+            <label class="form-label mt-2">{{ form.ninera_condicion_especial.label.text }}</label>{{ form.ninera_condicion_especial(class="form-control", rows="3") }}<div class="hint mt-1">No se incluye en publicaciones. Describe necesidades de cuidado, no diagnósticos.</div>
+          </details>
+        </section>
 
-        <div id="bloque-enfermera" class="{{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
-          <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>enfermera o cuidadora</strong>.</div>
-          <div class="row g-4">
-            <div class="col-md-6">
-              <label class="form-label">{{ form.enf_a_quien_cuida.label.text }}</label>
-              {{ form.enf_a_quien_cuida(class="form-control", placeholder="Ej. Señora de 80 años, adulto postrado…") }}
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">{{ form.enf_movilidad.label.text }}</label>
-              {{ form.enf_movilidad(class="form-select") }}
+        <section id="bloque-enfermera" data-admin-service-panel="ENFERMERA" class="public-form-card admin-service-card {{ 'd-block' if (form.tipo_servicio.data == 'ENFERMERA') else 'd-none' }}">
+          <header class="public-form-card-header"><span class="public-form-card-step">Paso 3</span><h3 class="public-form-card-title">Cuidado y asistencia</h3><p class="public-form-card-desc">Cuéntanos qué apoyo necesita la persona y qué tareas tendrá el empleo.</p></header>
+          <div class="hint mb-2">Indica el tipo general de asistencia y define por separado los cuidados y responsabilidades de cada persona.</div>
+          {% set _nurse_admin = service_catalog() | selectattr('code', 'equalto', 'ENFERMERA') | first %}
+          <div class="row g-3">
+            <div class="col-12 col-sm-6"><label class="form-label">{{ form.enf_cantidad_personas.label.text }}</label>{{ form.enf_cantidad_personas(class="form-control" ~ (' is-invalid' if form.enf_cantidad_personas.errors else ''), min="1", max="20", **({'aria-invalid':'true'} if form.enf_cantidad_personas.errors else {})) }}{% for error in form.enf_cantidad_personas.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            <div class="col-12">{{ form.enf_personas_cuidado(id="enf_personas_cuidado") }}{{ form.enf_personas_cuidado_historicas(id="enf_personas_cuidado_historicas") }}{{ form.enf_personas_cuidado_necesidades_historicas(id="enf_personas_cuidado_necesidades_historicas") }}<div id="admin-enfermera-person-profiles" class="{{ 'is-invalid' if form.enf_personas_cuidado.errors else '' }}" data-mobility='{{ _nurse_admin.mobility_choices | tojson }}' data-conditions='{{ _nurse_admin.condition_choices | tojson }}' data-responsibility-groups='{{ _nurse_admin.responsibility_groups | tojson }}' {% if form.enf_personas_cuidado.errors %}aria-invalid="true"{% endif %}></div><div id="admin-enfermera-legacy-needs" data-labels='{{ _nurse_admin.person_care_needs | tojson }}'></div><div class="hint">Completa edad, movilidad, condiciones y responsabilidades de cada persona. No agregues nombres ni datos identificativos.</div>{% for error in form.enf_personas_cuidado.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+          </div>
+          <fieldset id="wrap_enf_tipo_asistencia" class="public-field public-full enfermera-assistance-group mt-3{% if form.enf_tipo_asistencia.errors %} is-invalid{% endif %}" {% if form.enf_tipo_asistencia.errors %}aria-invalid="true"{% endif %}><legend class="form-label">Tipo de asistencia requerida</legend><p class="form-text">Este campo describe el nivel general de apoyo para toda la solicitud; las responsabilidades se definen dentro de cada perfil. Si se necesitan procedimientos de enfermería, selecciona esa opción y el perfil de Enfermera.</p><div class="row g-2">
+            {% for value, label in form.enf_tipo_asistencia.choices if value %}<label class="col-12 col-sm-6 public-choice-item"><input type="radio" class="form-check-input" name="enf_tipo_asistencia" value="{{ value }}"{% if form.enf_tipo_asistencia.data == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}
+          </div>{% for error in form.enf_tipo_asistencia.errors %}<div class="invalid-feedback d-block" id="admin-enf-assistance-error">{{ error }}</div>{% endfor %}</fieldset>
+          <details class="mt-3"><summary>Datos generales e históricos de cuidado</summary><div class="row g-3 mt-1">
+            <div class="col-12 col-sm-6"><label class="form-label">{{ form.enf_edad_persona.label.text }}</label>{{ form.enf_edad_persona(class="form-control") }}</div>
+            <div class="col-12"><label class="form-label">{{ form.enf_edades_personas.label.text }}</label>{{ form.enf_edades_personas(class="form-control") }}<div class="hint">Usa solo edades; no agregues nombres ni datos de identificación.</div></div>
+            <div class="col-12 col-sm-6"><label class="form-label">{{ form.enf_movilidad.label.text }}</label>{{ form.enf_movilidad(class="form-select") }}</div>
+            <div class="col-12 col-sm-6"><label class="form-label">{{ form.enf_ayuda_higiene.label.text }}</label>{{ form.enf_ayuda_higiene(class="form-select") }}</div>
+            <div class="col-12 col-sm-6"><label class="form-label">{{ form.enf_ayuda_alimentacion.label.text }}</label>{{ form.enf_ayuda_alimentacion(class="form-select") }}</div>
+            <div class="col-12">
+              <label class="form-label mt-2">{{ form.enf_formacion_requerida.label.text }}</label>{{ form.enf_formacion_requerida(class="form-control") }}
             </div>
           </div>
-          <div class="mt-3">
-            <label class="form-label">{{ form.enf_condicion_principal.label.text }}</label>
-            {{ form.enf_condicion_principal(class="form-control", rows="3") }}
+          <fieldset class="mt-3"><legend class="form-label">{{ form.enf_condiciones.label.text }}</legend><div class="row g-2">
+            {% for sub in form.enf_condiciones %}<div class="col-12 col-sm-6 col-lg-4"><div class="form-check">{{ sub(class="form-check-input", id=sub.id) }}<label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label></div></div>{% endfor %}
+          </div></fieldset>
+          <div class="mt-2"><label class="form-label">{{ form.enf_condicion_otro.label.text }}</label>{{ form.enf_condicion_otro(class="form-control", rows="2") }}
           </div>
-          <div class="mt-3">
-            <label class="form-label">{{ form.enf_tareas.label.text }}</label>
-            <div class="row g-2">
-              {% for sub in form.enf_tareas %}
-              <div class="col-12 col-sm-6 col-lg-4">
-                <div class="form-check">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-              </div>
-              {% endfor %}
-            </div>
-            <div id="wrap-enf-tareas-otro" class="mt-2 {{ 'd-block' if (form.enf_tareas.data and ('otro' in form.enf_tareas.data)) else 'd-none' }}">
-              <label class="form-label">{{ form.enf_tareas_otro.label.text }}</label>
-              {{ form.enf_tareas_otro(class="form-control", placeholder="Especifica otras tareas de cuidado") }}
-            </div>
-          </div>
-        </div>
+          </details>
+          {% for sub in form.enf_tareas %}{% if sub._value() in (form.enf_tareas.data or []) %}<input type="hidden" name="enf_tareas" value="{{ sub._value() }}">{% endif %}{% endfor %}
+          <input type="hidden" name="enf_tareas_otro" value="{{ form.enf_tareas_otro.data or '' }}">
+          {% if form.enf_tareas.data or form.enf_tareas_otro.data %}<details class="mt-3" id="enfermera-legacy-shared-responsibilities"><summary>Responsabilidades generales históricas sin atribución individual</summary><p class="form-text mt-2">Estos datos pertenecen a un formato anterior. Se conservan sin asignarlos a ninguna persona.</p><ul class="mb-2">{% for sub in form.enf_tareas %}{% if sub._value() in (form.enf_tareas.data or []) %}<li>{{ sub.label.text }}</li>{% endif %}{% endfor %}</ul>{% if form.enf_tareas_otro.data %}<p class="mb-0">Otra responsabilidad histórica: {{ form.enf_tareas_otro.data }}</p>{% endif %}</details>{% endif %}
+          <fieldset class="public-field public-full enfermera-primary-group mt-3"><legend class="form-label">¿La trabajadora será la principal responsable del cuidado?</legend><div class="row g-2">{% for value, label in form.enf_responsabilidad_principal.choices if value %}<label class="col-12 col-sm-6 public-choice-item"><input type="radio" class="form-check-input" name="enf_responsabilidad_principal" value="{{ value }}"{% if form.enf_responsabilidad_principal.data == value %} checked{% endif %}><span>{{ label }}</span></label>{% endfor %}</div></fieldset>
+          <details class="mt-3"><summary>Datos históricos conservados</summary><div class="mt-2"><label class="form-label">{{ form.enf_a_quien_cuida.label.text }}</label>{{ form.enf_a_quien_cuida(class="form-control") }}<label class="form-label mt-2">{{ form.enf_condicion_principal.label.text }}</label>{{ form.enf_condicion_principal(class="form-control", rows="2") }}<div class="hint">Estos textos históricos no se copian a publicaciones.</div></div></details>
+        </section>
 
-        <div id="bloque-chofer" class="{{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
+        <section id="bloque-chofer" data-admin-service-panel="CHOFER" class="public-form-card admin-service-card {{ 'd-block' if (form.tipo_servicio.data == 'CHOFER') else 'd-none' }}">
+          <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Servicio de chofer</h3><p class="public-form-card-desc">Indica el servicio, vehículo, licencia y desplazamientos generales.</p></header>
           <div class="hint mb-2">Esta información solo aplica si la solicitud es para <strong>chofer</strong>.</div>
           <div class="row g-4">
-            <div class="col-md-6">
-              <label class="form-label">{{ form.chofer_vehiculo.label.text }}</label>
-              <div>
-                {% for sub in form.chofer_vehiculo %}
-                <div class="form-check form-check-inline">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-                {% endfor %}
-              </div>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>
-              {{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}
-              <div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if (form.chofer_tipo_vehiculo.data == 'otro') else 'd-none' }}">
-                <label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>
-                {{ form.chofer_tipo_vehiculo_otro(class="form-control", placeholder="Ej. Minibús, camión ligero…") }}
-              </div>
-            </div>
+            <div class="col-md-6"><label class="form-label">{{ form.chofer_tipo_servicio.label.text }}</label>{{ form.chofer_tipo_servicio(class="form-select", id=form.chofer_tipo_servicio.id) }}<div id="wrap-admin-chofer-purpose-other" class="mt-2 {{ 'd-block' if form.chofer_tipo_servicio.data == 'otro' else 'd-none' }}"><label class="form-label">{{ form.chofer_tipo_servicio_otro.label.text }}</label>{{ form.chofer_tipo_servicio_otro(class="form-control") }}{% for error in form.chofer_tipo_servicio_otro.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div></div>
+            <div class="col-md-6"><label class="form-label">{{ form.chofer_tipo_vehiculo.label.text }}</label>{{ form.chofer_tipo_vehiculo(class="form-select", id=form.chofer_tipo_vehiculo.id) }}<div id="wrap-chofer-tipo-otro" class="mt-2 {{ 'd-block' if form.chofer_tipo_vehiculo.data == 'otro' else 'd-none' }}"><label class="form-label">{{ form.chofer_tipo_vehiculo_otro.label.text }}</label>{{ form.chofer_tipo_vehiculo_otro(class="form-control") }}{% for error in form.chofer_tipo_vehiculo_otro.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div></div>
+            <div class="col-md-6"><label class="form-label">{{ form.chofer_categoria_licencia.label.text }}</label>{{ form.chofer_categoria_licencia(class="form-select") }}{% for error in form.chofer_categoria_licencia.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}<div class="hint">Verifica la categoría requerida según la clasificación oficial del vehículo.</div></div>
           </div>
-          <div class="row g-4 mt-2">
-            <div class="col-md-8">
-              <label class="form-label">{{ form.chofer_rutas.label.text }}</label>
-              {{ form.chofer_rutas(class="form-control", placeholder="Ej. Puerto Plata – Santiago, dentro de la ciudad…") }}
-            </div>
-            <div class="col-md-4">
-              <label class="form-label d-block">{{ form.chofer_viajes_largos.label.text }}</label>
-              <div>
-                {% for sub in form.chofer_viajes_largos %}
-                <div class="form-check form-check-inline">
-                  {{ sub(class="form-check-input", id=sub.id) }}
-                  <label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label>
-                </div>
-                {% endfor %}
-              </div>
-            </div>
+          <fieldset class="mt-3"><legend class="form-label">¿Qué recorridos realizará?</legend><div class="row">{% for sub in form.chofer_rutas %}<div class="col-12 col-sm-6 col-lg-4 form-check">{{ sub(class="form-check-input", id=sub.id) }}<label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label></div>{% endfor %}</div><div id="wrap-admin-chofer-rutas-otro" class="mt-2 {{ 'd-block' if 'otro' in (form.chofer_rutas.data or []) else 'd-none' }}"><label class="form-label">{{ form.chofer_rutas_otro.label.text }}</label>{{ form.chofer_rutas_otro(class="form-control") }}{% for error in form.chofer_rutas_otro.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div></fieldset>
+          <div class="mt-3"><label class="form-label">{{ form.chofer_responsabilidades.label.text }}</label>{{ form.chofer_responsabilidades(class="form-control", rows="2") }}{% for error in form.chofer_responsabilidades.errors %}<div class="text-danger small">{{ error }}</div>{% endfor %}</div>
+          {% if form.chofer_rutas_legacy.data %}<div class="hint mt-2">Ruta histórica conservada: {{ form.chofer_rutas_legacy.data }}</div>{% endif %}
+          {% if form.chofer_licencia_detalle.data %}<div class="hint mt-2">Licencia histórica conservada: {{ form.chofer_licencia_detalle.data }}</div>{% endif %}
+          {% if form.chofer_vehiculo.data %}<details class="mt-3" id="admin-chofer-legacy-vehicle"><summary>Dato histórico conservado</summary><p class="form-text mt-2">Esta pregunta ya no forma parte del formulario público vigente. La respuesta original se conserva aquí.</p><label class="form-label">{{ form.chofer_vehiculo.label.text }}</label>{% for sub in form.chofer_vehiculo %}<div class="form-check">{{ sub(class="form-check-input", id=sub.id) }}<label class="form-check-label" for="{{ sub.id }}">{{ sub.label.text }}</label></div>{% endfor %}</details>{% endif %}
+        </section>
+        {% set _office = service_catalog() | selectattr('code', 'equalto', 'LIMPIEZA_ESTABLECIMIENTOS') | first %}
+        <section id="bloque-limpieza-oficina" data-admin-service-panel="LIMPIEZA_ESTABLECIMIENTOS" class="public-form-card admin-service-card {{ 'd-block' if (form.tipo_servicio.data == 'LIMPIEZA_ESTABLECIMIENTOS') else 'd-none' }}">
+          <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Limpieza de establecimientos</h3><p class="public-form-card-desc">Indica el tipo de establecimiento, sus áreas y las funciones necesarias.</p></header>
+          <div class="row g-3">
+            {{ form.office_caracteristicas() }}
+            <div class="col-md-6"><label class="form-label">{{ form.office_tipo_establecimiento.label.text }}</label>{{ form.office_tipo_establecimiento(class="form-select", id="office_tipo_establecimiento") }}</div>
+            <div class="col-md-6 d-none" id="admin-office-other-type"><label class="form-label">{{ form.office_tipo_establecimiento_otro.label.text }}</label>{{ form.office_tipo_establecimiento_otro(class="form-control") }}</div>
+            <div class="col-md-6"><label class="form-label">{{ form.office_tamano.label.text }}</label>{{ form.office_tamano(class="form-select") }}</div>
+            {% for kind, fields in [('oficina',[form.office_despachos,form.office_reuniones]),('tienda',[form.office_ventas,form.office_probadores]),('educativo',[form.office_aulas,form.office_administracion]),('salud',[form.office_consultorios,form.office_espera]),('restaurante',[form.office_comedores,form.office_cocinas]),('edificio',[form.office_niveles,form.office_areas_comunes])] %}{% for field in fields %}<div class="col-md-6 office-admin-characteristic d-none" data-office-type="{{ kind }}"><label class="form-label">{{ field.label.text }}</label>{{ field(class="form-control", min="0") }}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}{% endfor %}
+            <div class="col-md-6 office-admin-characteristic office-admin-bathrooms d-none" data-office-type="all"><label class="form-label" id="office-admin-bathroom-label">Cantidad de baños</label>{{ form.office_banos(class="form-control", min="0") }}</div>
+            <fieldset class="col-12"><legend class="form-label">{{ form.office_trabaja_con_companeros.label.text }}</legend>{{ form.office_trabaja_con_companeros(class="form-select", id="office_trabaja_con_companeros") }}{% for error in form.office_trabaja_con_companeros.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}<p class="form-text">Cuenta únicamente a sus compañeros; no incluyas a la persona que se contratará.</p><div class="col-md-6 d-none mt-2" id="office-admin-coworker-count-wrap"><label class="form-label">{{ form.office_cantidad_companeros_limpieza.label.text }}</label>{{ form.office_cantidad_companeros_limpieza(class="form-control", min="1", step="1", inputmode="numeric") }}{% for error in form.office_cantidad_companeros_limpieza.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div></fieldset>
+            <div class="col-12 d-none" id="office-admin-other-spaces"><label class="form-label">{{ form.office_espacios_otro.label.text }}</label>{{ form.office_espacios_otro(class="form-control") }}</div>
+            <fieldset class="col-12"><legend class="form-label">Áreas que necesita limpiar</legend>{% for kind, options in _office.area_choices.items() %}<div class="row office-admin-area-group d-none" data-office-type="{{ kind }}">{% for item in options %}<div class="col-sm-6 form-check"><input class="form-check-input" type="checkbox" name="office_areas" id="office_area_{{ kind }}_{{ item.code }}" value="{{ item.code }}" disabled {% if item.code in (form.office_areas.data or []) %}checked{% endif %}><label class="form-check-label" for="office_area_{{ kind }}_{{ item.code }}">{{ item.label }}</label></div>{% endfor %}</div>{% endfor %}</fieldset>
+            <div class="col-12 d-none" id="office-admin-areas-other"><label class="form-label">{{ form.office_areas_otro.label.text }}</label>{{ form.office_areas_otro(class="form-control", disabled=true) }}</div>
+            <div class="col-12"><label class="form-label">Funciones que realizará el personal</label><div class="row">{% for field in form.office_funciones %}<div class="col-sm-6 form-check office-admin-task-option{% if field.data in ['cafe','visitantes'] %} d-none{% endif %}" data-office-task="{{ field.data }}">{{ field(class="form-check-input", id=field.id, disabled=(field.data in ['cafe','visitantes'])) }}<label class="form-check-label" for="{{ field.id }}">{{ field.label.text }}</label></div>{% endfor %}</div></div>
+            <div class="col-12 d-none" id="office-admin-functions-other"><label class="form-label">{{ form.office_funciones_otro.label.text }}</label>{{ form.office_funciones_otro(class="form-control", disabled=true) }}</div>
+            {% if form.office_areas_legacy.data %}<div class="col-12 hint">Área histórica conservada: {{ form.office_areas_legacy.data }}{{ form.office_areas_legacy(class="d-none") }}</div>{% endif %}
+            {% if form.office_frecuencia.data or form.office_horario.data %}<details class="col-12"><summary>Datos históricos de frecuencia y horario</summary><div class="row g-3 mt-1"><div class="col-md-6"><label class="form-label">{{ form.office_frecuencia.label.text }}</label>{{ form.office_frecuencia(class="form-control") }}</div><div class="col-md-6"><label class="form-label">{{ form.office_horario.label.text }}</label>{{ form.office_horario(class="form-control") }}</div></div></details>{% endif %}
           </div>
-          <div class="mt-3">
-            <label class="form-label">{{ form.chofer_licencia_detalle.label.text }}</label>
-            {{ form.chofer_licencia_detalle(class="form-control", placeholder="Ej. Licencia categoría 3, maneja mecánico…") }}
+        </section>
+        <section id="bloque-conserje" data-admin-service-panel="CONSERJERIA_RESIDENCIAL" class="public-form-card admin-service-card {{ 'd-block' if (form.tipo_servicio.data == 'CONSERJERIA_RESIDENCIAL') else 'd-none' }}">
+          <header class="public-form-card-header"><span class="public-form-card-step">Servicio</span><h3 class="public-form-card-title">Conserjería residencial</h3><p class="public-form-card-desc">Personal para el cuidado, limpieza y conservación de las áreas comunes de edificios y residenciales.</p></header>
+          {% set _conserje = service_catalog() | selectattr('code', 'equalto', 'CONSERJERIA_RESIDENCIAL') | first %}
+          <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">{{ form.conserje_tipo_residencial.label.text }}</label>{{ form.conserje_tipo_residencial(class="form-select") }}{% for error in form.conserje_tipo_residencial.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            <div class="col-md-6 d-none" id="admin-conserje-type-other"><label class="form-label">{{ form.conserje_tipo_residencial_otro.label.text }}</label>{{ form.conserje_tipo_residencial_otro(class="form-control") }}{% for error in form.conserje_tipo_residencial_otro.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>
+            <fieldset class="col-12 d-none" id="admin-conserje-characteristics"><legend class="form-label">Características del residencial</legend><div class="row g-3">
+              {% for item in _conserje.characteristic_fields %}{% set field = form[item.admin] %}<div class="col-md-6 conserje-admin-characteristic" data-conserje-admin-types="{{ item.types }}" data-conserje-admin-field="{{ item.key }}"><label class="form-label" id="label-{{ item.admin }}">{{ item.label }}</label>{% if item.type == 'number' %}{{ field(class="form-control", min=item.min, max="10000", step="1", inputmode="numeric") }}{% else %}{{ field(class="form-select") }}{% endif %}{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}</div>{% endfor %}
+            </div></fieldset>
+            <fieldset class="col-12 d-none" id="admin-conserje-installations"><legend class="form-label">Instalaciones comunes a cargo</legend><div class="row">{% for item in _conserje.installation_options %}<div class="col-sm-6 form-check conserje-admin-installation" data-conserje-admin-types="{{ item.types }}" data-conserje-admin-requires="{{ item.requires }}"><input class="form-check-input" type="checkbox" id="conserje_instalaciones_{{ item.code }}" name="conserje_instalaciones" value="{{ item.code }}"{% if item.code in (form.conserje_instalaciones.data or []) %} checked{% endif %}><label class="form-check-label" for="conserje_instalaciones_{{ item.code }}">{{ item.label }}</label></div>{% endfor %}</div><div class="mt-2 d-none" id="admin-conserje-installations-other"><label class="form-label">{{ form.conserje_otras_instalaciones.label.text }}</label>{{ form.conserje_otras_instalaciones(class="form-control") }}</div></fieldset>
+            <fieldset class="col-12 d-none" id="admin-conserje-responsibilities"><legend class="form-label">Responsabilidades de conserjería</legend><p class="form-text">Solo tareas en áreas comunes. Se excluyen reparaciones técnicas y trabajos peligrosos o especializados.</p><div class="row">{% for item in _conserje.responsibility_options %}<div class="col-sm-6 form-check conserje-admin-responsibility" data-conserje-admin-types="{{ item.types }}" data-conserje-admin-responsibility="{{ item.code }}"><input class="form-check-input" type="checkbox" id="conserje_responsabilidades_{{ item.code }}" name="conserje_responsabilidades" value="{{ item.code }}"{% if item.code in (form.conserje_responsabilidades.data or []) %} checked{% endif %}><label class="form-check-label" for="conserje_responsabilidades_{{ item.code }}">{{ item.label }}</label></div>{% endfor %}</div><div class="mt-2 d-none" id="admin-conserje-responsibilities-other"><label class="form-label">{{ form.conserje_responsabilidades_otro.label.text }}</label>{{ form.conserje_responsabilidades_otro(class="form-control") }}</div></fieldset>
+            <fieldset class="col-12 d-none" id="admin-conserje-support"><legend class="form-label">{{ form.conserje_trabaja_con_conserjes.label.text }}</legend>{{ form.conserje_trabaja_con_conserjes(class="form-select") }}<div class="mt-2 d-none" id="admin-conserje-coworkers"><label class="form-label">{{ form.conserje_cantidad_conserjes.label.text }}</label>{{ form.conserje_cantidad_conserjes(class="form-control", min="1", step="1", inputmode="numeric") }}<p class="form-text">No incluyas a la persona que se contratará.</p></div></fieldset>
+            {% set conserje_details = solicitud.detalles_servicio or {} %}
+            {% if conserje_details.tipo_instalacion or conserje_details.areas_comunes or conserje_details.areas_exteriores or conserje_details.manejo_basura or conserje_details.mantenimiento_basico or conserje_details.parqueos is not none %}
+            <details class="col-12"><summary>Datos históricos conservados</summary><div class="row g-3 mt-1">
+              {% for field in [form.conserje_tipo_instalacion, form.conserje_areas_comunes, form.conserje_areas_exteriores, form.conserje_manejo_basura, form.conserje_mantenimiento, form.conserje_parqueos] %}<div class="col-md-6"><label class="form-label">{{ field.label.text }}</label>{{ field(class="form-control") }}</div>{% endfor %}
+            </div></details>
+            {% endif %}
           </div>
-        </div>
+        </section>
       </section>
+
+      {% if admin_preserved_answer_groups %}
+      <section class="mt-4" id="admin-preserved-answers" aria-labelledby="admin-preserved-answers-title">
+        <h2 class="h6 fw-semibold" id="admin-preserved-answers-title">Respuestas históricas conservadas</h2>
+        <p class="form-text">Estos datos se mantienen en el registro y pueden no corresponder al tipo o subtipo activo. No se borran al editar otras respuestas.</p>
+        {% for group in admin_preserved_answer_groups %}
+          <details class="mb-2">
+            <summary>{{ group.title }}</summary>
+            <dl class="row mt-2 mb-0">
+              {% for row in group.rows %}
+                <dt class="col-sm-4">{{ row.label }}</dt>
+                <dd class="col-sm-8 text-break" style="white-space: pre-line">{{ row.value }}</dd>
+              {% endfor %}
+            </dl>
+          </details>
+        {% endfor %}
+      </section>
+      {% endif %}
 
       <div class="sticky-actions mt-4">
         <div class="d-flex gap-2 justify-content-end">
           <a href="{{ next_url or url_for('admin.detalle_cliente', cliente_id=(solicitud.cliente_id if not nuevo else cliente_id)) }}" class="btn btn-outline-secondary" data-admin-nav="true">
             <i class="fa-solid fa-circle-xmark me-1"></i> Cancelar
           </a>
-          <button type="submit" class="btn btn-primary px-4">
+          <button type="submit" class="btn btn-primary px-4"{% if service_identity and service_identity.blocking %} disabled aria-disabled="true"{% endif %}>
             <i class="fa-solid fa-floppy-disk me-1"></i> {{ 'Crear' if nuevo else 'Actualizar' }}
           </button>
         </div>
       </div>
     </form>
+<script>
+(function () {
+  var service = document.getElementById('tipo_servicio');
+  var nannyCatalog = {{ (service_catalog() | selectattr('code', 'equalto', 'NINERA') | first) | tojson }};
+  var nurseCatalog = {{ (service_catalog() | selectattr('code', 'equalto', 'ENFERMERA') | first) | tojson }};
+  var nannyChoices = nannyCatalog.experience_choices;
+  var nurseChoices = nurseCatalog.experience_choices;
+  var driverVehicle = document.getElementById('{{ form.chofer_tipo_vehiculo.id }}');
+  var driverPurpose = document.getElementById('{{ form.chofer_tipo_servicio.id }}');
+  var driverPurposeOther = document.getElementById('{{ form.chofer_tipo_servicio_otro.id }}');
+  var driverPurposeWrap = document.getElementById('wrap-admin-chofer-purpose-other');
+  var driverVehicleOther = document.getElementById('{{ form.chofer_tipo_vehiculo_otro.id }}');
+  var driverVehicleWrap = document.getElementById('wrap-chofer-tipo-otro');
+  var driverRouteOther = document.getElementById('{{ form.chofer_rutas_otro.id }}');
+  var driverRouteWrap = document.getElementById('wrap-admin-chofer-rutas-otro');
+  var driverRouteChecks = document.querySelectorAll('input[name="chofer_rutas"]');
+  function syncDriverFields() {
+    var otherPurpose = driverPurpose && driverPurpose.value === 'otro';
+    if (driverPurposeWrap) driverPurposeWrap.classList.toggle('d-none', !otherPurpose);
+    if (driverPurposeOther) driverPurposeOther.required = !!otherPurpose;
+    var otherVehicle = driverVehicle && driverVehicle.value === 'otro';
+    if (driverVehicleWrap) driverVehicleWrap.classList.toggle('d-none', !otherVehicle);
+    if (driverVehicleOther) driverVehicleOther.required = !!otherVehicle;
+    var otherRoute = Array.prototype.some.call(driverRouteChecks, function (input) { return input.checked && input.value === 'otro'; });
+    if (driverRouteWrap) driverRouteWrap.classList.toggle('d-none', !otherRoute);
+    if (driverRouteOther) driverRouteOther.required = !!otherRoute;
+  }
+  if (driverPurpose) driverPurpose.addEventListener('change', syncDriverFields);
+  if (driverVehicle) driverVehicle.addEventListener('change', syncDriverFields);
+  Array.prototype.forEach.call(driverRouteChecks, function (input) { input.addEventListener('change', syncDriverFields); });
+  syncDriverFields();
+  var experienceSelect = document.getElementById('experiencia');
+  var cards = Array.prototype.slice.call(document.querySelectorAll('.public-experience-card'));
+  if (!service || !cards.length) return;
+  function syncServiceExperience() {
+    var selectedChoices = service.value === 'NINERA' ? nannyChoices : service.value === 'ENFERMERA' ? nurseChoices : null;
+    var selectedValue = experienceSelect ? experienceSelect.value : '';
+    if (experienceSelect) {
+      if (service.value === 'ENFERMERA') nurseChoices.forEach(function (item) {
+        if (item.code === 'Enfermera') return;
+        var existing = Array.prototype.find.call(experienceSelect.options, function (option) { return option.value === item.code; });
+        if (existing) existing.dataset.serviceCatalogOption = 'true';
+      });
+      Array.prototype.slice.call(experienceSelect.querySelectorAll('option[data-service-catalog-option]')).forEach(function (option) {
+        option.remove();
+      });
+      (selectedChoices || []).forEach(function (item) {
+        var exists = Array.prototype.some.call(experienceSelect.options, function (option) { return option.value === item.code; });
+        if (!exists) {
+          var option = document.createElement('option');
+          option.value = item.code;
+          option.textContent = item.label;
+          option.dataset.serviceCatalogOption = 'true';
+          experienceSelect.appendChild(option);
+        }
+      });
+      if (selectedChoices && selectedChoices.some(function (item) { return item.code === selectedValue; })) {
+        experienceSelect.value = selectedValue;
+      }
+    }
+    cards.forEach(function (card) {
+      var radio = card.querySelector('input[name="experiencia_visual"]');
+      var legacy = service.value === 'ENFERMERA' && card.dataset.experienceLegacy === 'true';
+      var nurseOnly = card.dataset.serviceOnly === 'ENFERMERA';
+      var allowed = legacy || (selectedChoices ? selectedChoices.some(function (item) { return item.code === radio.value; }) : !nurseOnly);
+      card.hidden = !allowed;
+      radio.disabled = !allowed;
+      var label = card.querySelector('.public-experience-card-text');
+      if (label) {
+        var matching = selectedChoices && selectedChoices.find(function (item) { return item.code === radio.value; });
+        label.textContent = matching ? matching.label : (card.dataset.baseLabel || label.textContent);
+      }
+    });
+    if (experienceSelect && !experienceSelect.value) {
+      var checked = cards.map(function (card) { return card.querySelector('input[name="experiencia_visual"]'); })
+        .find(function (radio) { return radio && radio.checked && !radio.disabled; });
+      if (checked && Array.prototype.some.call(experienceSelect.options, function (option) { return option.value === checked.value; })) {
+        experienceSelect.value = checked.value;
+      }
+    }
+  }
+  var specialChoices = Array.prototype.slice.call(document.querySelectorAll('input[name="ninera_necesidad_especial_respuesta"][type="radio"]'));
+  function selectedNineraNeed() {
+    var selected = specialChoices.find(function (choice) { return choice.checked; });
+    return selected ? selected.value : '';
+  }
+  var privateNote = document.getElementById('wrap-ninera-private-note');
+  function syncPrivateNote() {
+    var visible = selectedNineraNeed() === 'si';
+    if (privateNote) privateNote.classList.toggle('d-none', !visible);
+  }
+  specialChoices.forEach(function (choice) { choice.addEventListener('change', function () { syncPrivateNote(); syncPublicCare(); }); });
+  syncPrivateNote();
+  function syncPublicCare() {
+    var visible = selectedNineraNeed() === 'si';
+    var wrapper = document.getElementById('wrap-ninera-public-care');
+    if (wrapper) wrapper.classList.toggle('d-none', !visible);
+  }
+  syncPublicCare();
+  var integral = document.getElementById('ninera_responsabilidad_integral');
+  if (integral) integral.addEventListener('change', function () {
+    var taskControls = Array.prototype.slice.call(document.querySelectorAll('input[name="ninera_tareas"]'));
+    if (!integral.checked) return;
+    (nannyCatalog.integral_responsibilities || []).forEach(function (code) {
+      var control = taskControls.find(function (input) { return input.value === code; });
+      if (control) control.checked = true;
+    });
+  });
+  service.addEventListener('change', syncServiceExperience);
+  syncServiceExperience();
+})();
+</script>
