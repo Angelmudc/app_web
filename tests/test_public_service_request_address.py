@@ -1,5 +1,6 @@
 import pytest
 from types import SimpleNamespace
+from flask import render_template
 
 from app import app as flask_app
 from admin.forms import AdminSolicitudForm
@@ -15,7 +16,7 @@ class PublicFormData(dict):
         return value if isinstance(value, list) else ([value] if value else [])
 
 
-def test_public_service_details_store_precise_address_per_request():
+def test_public_service_details_ignore_precise_address_even_if_submitted():
     details = public_details_from_form(
         "NINERA",
         PublicFormData({
@@ -25,7 +26,7 @@ def test_public_service_details_store_precise_address_per_request():
         }),
     )
 
-    assert details["direccion_precisa"] == "Calle Ficticia 123, Residencial Sol, casa 4"
+    assert "direccion_precisa" not in details
 
 
 def test_service_switch_preserves_precise_request_address():
@@ -47,23 +48,51 @@ def test_public_service_details_do_not_invent_address_when_missing():
     assert "direccion_precisa" not in details
 
 
-def test_domestica_service_keeps_common_address_in_json_details():
+def test_domestica_public_service_ignores_precise_address_even_if_submitted():
     details = public_details_from_form(
         "DOMESTICA_LIMPIEZA",
         PublicFormData({"direccion_precisa": "Calle Ficticia 10, casa 2"}),
     )
 
-    assert details == {"direccion_precisa": "Calle Ficticia 10, casa 2"}
+    assert "direccion_precisa" not in details
 
 
 @pytest.mark.parametrize("form_type", [SolicitudPublicaForm, SolicitudClienteNuevoPublicaForm])
-def test_public_form_rejects_missing_precise_request_address(form_type):
+def test_public_form_does_not_require_precise_request_address(form_type):
     flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
     with flask_app.test_request_context("/clientes/solicitudes/publica/test", method="POST", data={}):
         form = form_type()
         form.validate()
 
-    assert "Indica la dirección precisa" in form.direccion_precisa.errors[0]
+    assert not form.direccion_precisa.errors
+
+
+@pytest.mark.parametrize("form_type", [SolicitudPublicaForm, SolicitudClienteNuevoPublicaForm])
+def test_public_form_partial_does_not_render_precise_request_address(form_type):
+    flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    with flask_app.test_request_context("/clientes/solicitudes/publica/test"):
+        html = render_template(
+            "clientes/_solicitud_form_fields.html",
+            form=form_type(),
+            service_form_public=True,
+        )
+
+    assert "Dirección precisa del servicio" not in html
+    assert "Se guarda en esta solicitud para ubicar el servicio." not in html
+    assert 'name="direccion_precisa"' not in html
+
+
+def test_admin_form_partial_keeps_precise_request_address_editable():
+    flask_app.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    with flask_app.test_request_context("/admin/solicitud/editar"):
+        html = render_template(
+            "clientes/_solicitud_form_fields.html",
+            form=AdminSolicitudForm(),
+            service_form_public=False,
+        )
+
+    assert "Dirección precisa del servicio" in html
+    assert 'name="direccion_precisa"' in html
 
 
 def test_admin_edit_form_loads_the_request_specific_address():

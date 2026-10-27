@@ -1357,12 +1357,14 @@
           {% endif %}
         </div>
       {% endif %}
-      <div class="public-field public-full">
-        <label class="public-field-label" for="{{ form.direccion_precisa.id }}">Dirección precisa del servicio</label>
-        {{ form.direccion_precisa(class='form-control' ~ (' is-invalid' if form.direccion_precisa.errors else ''), maxlength='300', autocomplete='street-address', required=True, aria_required='true') }}
-        <div class="public-field-hint">Se guarda en esta solicitud para ubicar el servicio. No cambia la dirección del cliente ni de otras solicitudes.</div>
-        {% if form.direccion_precisa.errors %}<div class="invalid-feedback d-block">{{ form.direccion_precisa.errors[0] }}</div>{% endif %}
-      </div>
+      {% if not service_form_public %}
+        <div class="public-field public-full">
+          <label class="public-field-label" for="{{ form.direccion_precisa.id }}">Dirección precisa del servicio</label>
+          {{ form.direccion_precisa(class='form-control' ~ (' is-invalid' if form.direccion_precisa.errors else ''), maxlength='300', autocomplete='street-address', required=True, aria_required='true') }}
+          <div class="public-field-hint">Se guarda en esta solicitud para ubicar el servicio. No cambia la dirección del cliente ni de otras solicitudes.</div>
+          {% if form.direccion_precisa.errors %}<div class="invalid-feedback d-block">{{ form.direccion_precisa.errors[0] }}</div>{% endif %}
+        </div>
+      {% endif %}
       <div class="public-field" id="wrap_rutas_cercanas_field">
         {{ render_field(form.rutas_cercanas) }}
         <div class="public-santiago-warning d-none" id="wrap_rutas_santiago_notice" aria-live="polite" aria-hidden="true">

@@ -977,14 +977,11 @@ def public_details_from_form(code: str | None, form: Any) -> dict[str, Any]:
             result[key] = nonnegative_integer(name)
     else:
         # The household service stores its general answers in Solicitud
-        # columns, but common per-request JSON metadata (such as address)
-        # still belongs in this service's details payload.
+        # columns, while service-specific public request metadata belongs in
+        # this service's details payload.
         result = {}
-    # Every request owns its location. Keep it at the common JSONB level so
-    # switching service type cannot overwrite another request's address.
-    precise_address = str(get("direccion_precisa") or "").strip()
-    if precise_address:
-        result["direccion_precisa"] = precise_address
+    # Public intake must not collect the precise service address. Admin flows
+    # manage this value separately and continue preserving existing JSONB data.
     # Never accept business names or headcount even if a client submits forged fields.
     return {key: value.strip() if isinstance(value, str) else value
             for key, value in result.items() if value not in (None, "", [])}

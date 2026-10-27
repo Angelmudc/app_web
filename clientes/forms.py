@@ -477,7 +477,15 @@ class SolicitudForm(FlaskForm):
         public_creation_form = self.__class__.__name__ in {"SolicitudPublicaForm", "SolicitudClienteNuevoPublicaForm"} or getattr(request, "endpoint", "") in {
             "clientes.nueva_solicitud", "clientes.solicitud_publica_nueva_token", "clientes.solicitud_publica_nueva_short", "clientes.solicitud_publica", "clientes.solicitud_publica_short"
         }
-        if request.method == "POST" and public_creation_form and not (self.direccion_precisa.data or "").strip():
+        public_link_creation = self.__class__.__name__ in {
+            "SolicitudPublicaForm", "SolicitudClienteNuevoPublicaForm"
+        } or getattr(request, "endpoint", "") in {
+            "clientes.solicitud_publica_nueva_token",
+            "clientes.solicitud_publica_nueva_short",
+            "clientes.solicitud_publica",
+            "clientes.solicitud_publica_short",
+        }
+        if request.method == "POST" and public_creation_form and not public_link_creation and not (self.direccion_precisa.data or "").strip():
             self.direccion_precisa.errors.append("Indica la dirección precisa donde se realizará el servicio.")
             ok = False
         if service_code == "LIMPIEZA_ESTABLECIMIENTOS" and request.method == "POST" and public_creation_form:

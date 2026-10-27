@@ -554,7 +554,7 @@ def test_public_new_client_persists_all_six_service_types():
                     assert owner is not None and owner.email_norm == payload["email_contacto"]
                     assert row.horario == _expected_horario(payload)
                     details = row.detalles_servicio or {}
-                    assert details.get("direccion_precisa") == payload["direccion_precisa"], sorted(details)
+                    assert "direccion_precisa" not in details, sorted(details)
                     if service == "DOMESTICA_LIMPIEZA":
                         assert row.ninos == 2 and row.edades_ninos == "4 y 8"
                         with flask_app.test_request_context("/"):
@@ -684,7 +684,7 @@ def test_public_existing_client_persists_all_six_service_types_for_the_resolved_
                     assert row.detalles_servicio["tipo"] == service
                     assert row.horario == _expected_horario(payload)
                     details = row.detalles_servicio or {}
-                    assert details.get("direccion_precisa") == payload["direccion_precisa"], sorted(details)
+                    assert "direccion_precisa" not in details, sorted(details)
                     if service == "DOMESTICA_LIMPIEZA":
                         assert row.ninos == 2 and row.edades_ninos == "4 y 8"
                         with flask_app.test_request_context("/"):
