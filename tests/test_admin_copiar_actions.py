@@ -205,6 +205,25 @@ class _LookupCandidataQueryChain:
 
 
 class AdminCopiarActionsTest(unittest.TestCase):
+    def test_publicacion_formatea_funciones_y_vivienda_sin_afectar_otras_copias(self):
+        s = _SolicitudStub(estado="activa")
+        s.funciones = ["limpieza", "cocinar", "lavar", "ninos"]
+        s.tipo_lugar = "apto"
+        s.dos_pisos = True
+        s.banos = 1
+        s.areas_comunes = ["Sala", "Comedor", "Cocina"]
+
+        with flask_app.app_context():
+            publicacion = admin_routes._admin_build_public_copy_text(s)
+            interno = admin_routes._admin_build_order_text_for_copiar(s)
+
+        self.assertIn("Funciones: Limpieza General, Cocinar, Lavar, Cuidar Niños", publicacion)
+        self.assertNotIn("Funciones:\nLimpieza General", publicacion)
+        self.assertIn("apto (2 niveles) - 3 habitaciones, 1 baños, Sala, Comedor, Cocina", publicacion)
+        self.assertNotIn("Características de la vivienda:", publicacion)
+        self.assertIn("Funciones:\nLimpieza General, Cocinar, Lavar, Cuidar Niños", interno)
+        self.assertIn("Características de la vivienda:\n", interno)
+
     def setUp(self):
         flask_app.config["TESTING"] = True
         flask_app.config["WTF_CSRF_ENABLED"] = False
@@ -285,7 +304,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("order_text", "")
         self.assertIn(
-            "Funciones:\nLimpieza general, Cocinar, Lavar, Cuidar niños, Mandados",
+            "Funciones: Limpieza general, Cocinar, Lavar, Cuidar niños, Mandados",
             html,
         )
         self.assertTrue(("Salón de juegos" in html) or ("Sal\\u00f3n de juegos" in html))
