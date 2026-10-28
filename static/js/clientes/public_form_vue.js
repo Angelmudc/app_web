@@ -603,7 +603,15 @@ function showError(error, form) {
         note.classList.add('public-vue-field-error', 'd-block');
         note.textContent = error.message;
     }
-    const controls = describedControls.length ? describedControls : primary ? [primary] : [];
+    // A service card can contain several independent groups inside one visual
+    // field (for example functions and experience). Mark only the errored
+    // checkbox/radio group, not every control sharing its presentation wrapper.
+    const isSelectionGroup = error.element instanceof HTMLInputElement &&
+        ['checkbox', 'radio'].includes(error.element.type) && !!error.element.name;
+    const selectionName = isSelectionGroup && error.element instanceof HTMLInputElement ? error.element.name : '';
+    const controls = isSelectionGroup
+        ? describedControls.filter((control) => control.name === selectionName)
+        : describedControls.length ? describedControls : primary ? [primary] : [];
     controls.forEach((control) => {
         control.setAttribute('aria-invalid', 'true');
         control.dataset.publicVueInvalid = 'true';
@@ -753,6 +761,75 @@ function renderStepStates(form, cards, errors, attempted) {
         state.classList.toggle('is-incomplete', !isComplete);
     });
 }
+function collectAllFormErrors(form, cards) {
+    const currentErrors = collectErrors(form, cards);
+    const renderedFieldErrors = serverRenderedFieldErrors(form);
+    const reconciledServerErrors = serverValidationErrors(form, currentErrors);
+    const errors = renderedFieldErrors.concat(currentErrors, reconciledServerErrors).filter((candidate, index, all) => all.findIndex((other) => {
+        if (other.element === candidate.element)
+            return true;
+        if (!isFieldElement(other.element) || !isFieldElement(candidate.element))
+            return false;
+        const otherField = other.element.closest('.public-field, .public-input-block, .public-terms-wrap');
+        const candidateField = candidate.element.closest('.public-field, .public-input-block, .public-terms-wrap');
+        if (!otherField || otherField !== candidateField)
+            return false;
+        const otherIsSelection = other.element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(other.element.type);
+        const candidateIsSelection = candidate.element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(candidate.element.type);
+        // Different logical selection groups may share a visual wrapper. Keep
+        // both errors; collapse only sibling errors from the same named group.
+        if (otherIsSelection || candidateIsSelection) {
+            return otherIsSelection && candidateIsSelection && other.element.name === candidate.element.name;
+        }
+        return true;
+    }) === index);
+    return errors.sort((left, right) => {
+        const position = left.element.compareDocumentPosition(right.element);
+        if (position & Node.DOCUMENT_POSITION_FOLLOWING)
+            return -1;
+        if (position & Node.DOCUMENT_POSITION_PRECEDING)
+            return 1;
+        return 0;
+    });
+}
+function focusValidationError(error) {
+    if (!isFieldElement(error.element) && error.element.id === 'wrap_home_structure_conditional') {
+        error.element.classList.remove('d-none', 'is-hidden');
+        error.element.setAttribute('aria-hidden', 'false');
+        error.element.querySelectorAll('input, select, textarea').forEach((node) => {
+            if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement || node instanceof HTMLTextAreaElement)
+                node.disabled = false;
+        });
+    }
+    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        const target = navigationTarget(error);
+        if (!target)
+            return;
+        if (isNavigableControl(target))
+            target.focus({ preventScroll: true });
+        else {
+            target.tabIndex = -1;
+            target.focus({ preventScroll: true });
+        }
+        scrollValidationRegionIntoView(target);
+    }));
+}
+window.PublicFormValidation = {
+    collect(form) {
+        const cards = topLevelCards(form);
+        if (!cards.length)
+            return [];
+        normalizeSelectionGroupNativeValidity(form);
+        return collectAllFormErrors(form, cards);
+    },
+    render(form, errors, attempted) {
+        const cards = topLevelCards(form);
+        removeMessages(form);
+        errors.forEach((error) => showError(error, form));
+        renderStepStates(form, cards, errors, attempted);
+    },
+    focus(error) { focusValidationError(error); },
+};
 function bootForm(form, root) {
     const vue = window.Vue;
     if (!vue)
@@ -782,21 +859,7 @@ function bootForm(form, root) {
         }),
     });
     const sync = () => {
-        const currentErrors = collectErrors(form, cards);
-        const renderedFieldErrors = serverRenderedFieldErrors(form);
-        const reconciledServerErrors = serverValidationErrors(form, currentErrors);
-        state.errors = renderedFieldErrors.concat(currentErrors, reconciledServerErrors).filter((candidate, index, all) => all.findIndex((other) => other.element === candidate.element ||
-            (isFieldElement(other.element) && isFieldElement(candidate.element) &&
-                other.element.closest('.public-field, .public-input-block, .public-terms-wrap') ===
-                    candidate.element.closest('.public-field, .public-input-block, .public-terms-wrap'))) === index);
-        state.errors = state.errors.sort((left, right) => {
-            const position = left.element.compareDocumentPosition(right.element);
-            if (position & Node.DOCUMENT_POSITION_FOLLOWING)
-                return -1;
-            if (position & Node.DOCUMENT_POSITION_PRECEDING)
-                return 1;
-            return 0;
-        });
+        state.errors = collectAllFormErrors(form, cards);
         state.dirty = true;
         reconcileServerNotices(form, state.errors);
         if (state.validationAttempted) {
@@ -809,30 +872,7 @@ function bootForm(form, root) {
         const error = preferred && 'element' in preferred ? preferred : state.errors[0];
         if (!error)
             return;
-        if (!isFieldElement(error.element) && error.element.id === 'wrap_home_structure_conditional') {
-            error.element.classList.remove('d-none', 'is-hidden');
-            error.element.setAttribute('aria-hidden', 'false');
-            error.element.querySelectorAll('input, select, textarea').forEach((node) => {
-                if (node instanceof HTMLInputElement || node instanceof HTMLSelectElement || node instanceof HTMLTextAreaElement) {
-                    node.disabled = false;
-                }
-            });
-        }
-        window.requestAnimationFrame(() => {
-            window.requestAnimationFrame(() => {
-                const target = navigationTarget(error);
-                if (!target)
-                    return;
-                if (isNavigableControl(target)) {
-                    target.focus({ preventScroll: true });
-                }
-                else {
-                    target.tabIndex = -1;
-                    target.focus({ preventScroll: true });
-                }
-                scrollValidationRegionIntoView(target);
-            });
-        });
+        focusValidationError(error);
     };
     const statusMessage = vue.computed(() => {
         if (state.submitting)

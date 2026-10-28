@@ -145,9 +145,11 @@ def test_pending_navigation_has_one_shared_visible_target_resolver():
 
     for asset in (source, generated):
         assert "function navigationTarget" in asset
-        assert "function scrollToNavigableTarget" in asset
+        assert "function scrollValidationRegionIntoView" in asset
         assert "isNavigableControl" in asset
-        assert "scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })" in asset
+        assert "scrollIntoView({" in asset
+        assert "window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'" in asset
+        assert "block: 'nearest'" in asset
         assert "target.focus({ preventScroll: true })" in asset
         assert "compareDocumentPosition" in asset
 
@@ -217,7 +219,8 @@ def test_terms_pending_is_part_of_both_forms_and_is_not_the_conditions_modal():
         assert f'id="{modal_id}"' in html
     assert "public-terms-wrap" in source
     assert "MESSAGES[element.id]" in source
-    assert "statusRoot.querySelector('.public-form-vue-status')" in source
+    assert "const root = document.getElementById(`${form.id}VueRoot`)" in source
+    assert "class=\"public-form-vue-status\"" in source
 
 
 def test_pending_order_is_document_order_and_group_navigation_skips_hidden_controls():

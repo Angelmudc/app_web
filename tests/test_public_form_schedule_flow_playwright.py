@@ -45,6 +45,9 @@ def test_both_modalities_use_canonical_values_in_formdata_and_block_partial_sche
 
         page = browser.new_page()
         page.set_content(HTML)
+        # Keep this case focused on schedule validation; terms are a separate
+        # required gate in the real form and should be accepted here.
+        page.locator('[name="acepta_politica"]').check()
         page.add_script_tag(path=str(ROOT / "static/js/vendor/vue-3.5.13.global.prod.js"))
         page.add_script_tag(path=str(ROOT / "static/js/clientes/public_form_vue.js"))
         page.evaluate(
