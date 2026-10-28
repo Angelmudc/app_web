@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.parse import urlparse
 
 import pytest
 from playwright.sync_api import sync_playwright
@@ -116,6 +117,8 @@ def test_real_rendered_form_selects_service_and_exposes_linked_errors_without_po
     page.locator(f"#{form_id} button[type='submit']").last.click()
     summary = page.locator(f"#{root_id} .public-form-vue-error-summary")
     assert summary.is_visible(), f"{client_type}/{service} no mostró el resumen de errores"
+    assert summary.count() == 1, f"{client_type}/{service} mostró un resumen duplicado"
+    assert page.locator(f"#{form_id}").get_attribute("data-public-form-fallback") is None
     assert "Faltan datos para continuar" in summary.inner_text()
     assert summary.locator("a[href^='#']").count() > 0
     assert page.locator(f"#{form_id} [aria-invalid='true']").count() > 0
@@ -200,6 +203,85 @@ def test_selection_group_error_navigation_keeps_label_and_error_visible(browser,
     }""", region_selector)
     assert result and min(rect["top"] for rect in result) >= 12, f"Etiqueta/grupo recortado: {result}"
     assert max(rect["bottom"] for rect in result) <= 832, f"Grupo/mensaje fuera del viewport: {result}"
+    page.close()
+
+
+@pytest.mark.parametrize("client_type", CLIENT_TYPES)
+@pytest.mark.parametrize("service", SERVICES)
+def test_vue_load_failure_uses_custom_fallback_errors_instead_of_native_validation(browser, rendered_forms, client_type, service):
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.set_default_timeout(5000)
+    form_html = rendered_forms[client_type].replace("<head>", '<head><base href="http://127.0.0.1/">', 1)
+
+    def serve_local_assets(route):
+        path = urlparse(route.request.url).path
+        if path.endswith("/vue-3.5.13.global.prod.js"):
+            route.abort()
+            return
+        relative = path.removeprefix("/static/")
+        asset = (ROOT / "static" / relative).resolve()
+        if asset.is_relative_to(ROOT / "static") and asset.is_file():
+            route.fulfill(path=str(asset))
+        else:
+            route.fulfill(status=404, body="not found")
+
+    page.route("http://127.0.0.1/static/**", serve_local_assets)
+    page.set_content(form_html, wait_until="domcontentloaded")
+    page.evaluate("""() => {
+      window.__reportValidityCalls = 0;
+      const original = HTMLFormElement.prototype.reportValidity;
+      HTMLFormElement.prototype.reportValidity = function () {
+        window.__reportValidityCalls += 1;
+        return original.call(this);
+      };
+    }""")
+    page.add_script_tag(path=str(ROOT / "static/js/clientes/public_form_ux.js"))
+    form_id = "publicSolicitudForm" if client_type == "existing" else "publicSolicitudNuevaForm"
+    root_id = f"{form_id}VueRoot"
+    page.wait_for_selector("#publicServicePicker[open]")
+    page.locator(f'#{form_id} [data-service-code="{service}"]').click()
+    page.locator("#publicContinueService").click()
+    page.locator(f'#{form_id} button[type="submit"]').last.click()
+
+    summary = page.locator(f"#{root_id} .public-form-vue-error-summary")
+    assert summary.is_visible(), f"{client_type}: falta resumen personalizado cuando Vue no carga"
+    assert summary.get_by_role("link").count() > 0
+    assert page.locator(f"#{form_id} [aria-invalid='true']").count() > 0
+    assert page.evaluate("window.__reportValidityCalls") == 0
+    form = page.locator(f"#{form_id}[data-form-ux='vue']")
+    assert form.evaluate("form => form.noValidate")
+    assert form.evaluate("form => form.dataset.publicFallbackAttempted === 'true'")
+    assert page.evaluate("document.activeElement.matches('[aria-invalid=true]')")
+    assert page.evaluate("document.querySelector('form').checkValidity() === false")
+    wait_for_scroll_settled(page)
+    focused_rect = page.evaluate("document.activeElement.getBoundingClientRect().toJSON()")
+    assert focused_rect["top"] >= 0 and focused_rect["bottom"] <= 844
+    page.close()
+
+
+def test_valid_submit_continues_to_existing_submit_handler_when_vue_is_unavailable(browser):
+    page = browser.new_page(viewport={"width": 390, "height": 844})
+    page.set_content('''<head><base href="http://127.0.0.1/"></head>
+      <form id="syntheticForm" data-form-ux="vue" novalidate>
+        <label for="syntheticName">Nombre completo</label>
+        <input id="syntheticName" name="nombre_completo" required value="María Pérez">
+        <button type="submit">Enviar</button><div id="syntheticFormVueRoot"></div>
+      </form>''')
+    page.route("http://127.0.0.1/static/**", lambda route: route.abort() if route.request.url.endswith("vue-3.5.13.global.prod.js?v=20261028-validation-v1") else route.fulfill(status=200, body=""))
+    page.add_script_tag(path=str(ROOT / "static/js/clientes/public_form_ux.js"))
+    page.wait_for_function("document.querySelector('#syntheticForm').dataset.publicFormFallback === 'true'")
+    page.evaluate("""() => document.querySelector('form').addEventListener('submit', event => {
+      window.existingSubmitHandlerReached = !event.defaultPrevented;
+      event.preventDefault();
+    })""")
+
+    page.get_by_role("button", name="Enviar").click()
+
+    assert page.evaluate("document.querySelector('form').checkValidity()")
+    assert page.evaluate("window.existingSubmitHandlerReached === true")
+    assert page.locator("[data-public-fallback-summary]").count() == 0
+    assert page.locator("[aria-invalid='true']").count() == 0
+    assert page.evaluate("document.querySelector('form').dataset.publicFallbackAttempted") is None
     page.close()
 
 
