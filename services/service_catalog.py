@@ -88,6 +88,7 @@ def is_legacy_service_code(code: str | None) -> bool:
 
 # Stable data contracts for details_servicio. Existing keys remain readable.
 DETAIL_CONTRACTS: dict[str, dict[str, Any]] = {
+    "DOMESTICA_LIMPIEZA": {"required": (), "keys": ("experiencia_requerida",)},
     "NINERA": {"required": ("cantidad_ninos", "edades_ninos"), "keys": ("cantidad_ninos", "edades_ninos", "tareas", "ninera_tareas_otro", "ninera_tareas_otro_revision_sha256", "necesidad_especial_publicable", "necesidad_especial_revision_sha256", "condicion_especial", "necesidad_especial_respuesta", "ninera_responsable_principal", "responsabilidad_integral")},
     "ENFERMERA": {"required": ("a_quien_cuida", "movilidad", "tareas"), "keys": ("a_quien_cuida", "cantidad_personas", "edad_persona", "edades_personas", "personas_cuidado", "personas_cuidado_historicas", "personas_cuidado_necesidades_historicas", "responsabilidad_por_persona", "movilidad", "ayuda_higiene", "ayuda_alimentacion", "tipo_asistencia", "condiciones", "condicion_otro", "condicion_otro_revision_sha256", "tareas", "responsabilidad_integral", "responsabilidad_principal", "tipo_inyeccion", "enf_tareas_otro", "enf_tareas_otro_revision_sha256", "requiere_preparacion_profesional", "experiencia_requerida", "formacion_requerida", "condicion_principal")},
     "CHOFER": {"required": ("finalidad", "tipo_vehiculo"), "keys": ("finalidad", "finalidad_otro", "tipo_servicio", "vehiculo", "tipo_vehiculo", "tipo_vehiculo_otro", "rutas", "rutas_legacy", "rutas_otro", "categoria_licencia_requerida", "responsabilidades", "viajes_largos", "licencia_requisitos", "licencia_detalle", "disponibilidad")},
@@ -980,6 +981,15 @@ def public_details_from_form(code: str | None, form: Any) -> dict[str, Any]:
         # columns, while service-specific public request metadata belongs in
         # this service's details payload.
         result = {}
+    if code == "DOMESTICA_LIMPIEZA":
+        experience = str(get("experiencia") or "").strip()
+        domestic_choices = {"Doméstica completa", "Cocina", "Niñera", "Enfermera", "Cuidado de envejeciente", "Limpieza"}
+        if experience in domestic_choices:
+            result["experiencia_requerida"] = experience
+        elif experience == "otro":
+            custom_experience = str(get("experiencia_otro") or "").strip()
+            if custom_experience:
+                result["experiencia_requerida"] = custom_experience
     # Public intake must not collect the precise service address. Admin flows
     # manage this value separately and continue preserving existing JSONB data.
     # Never accept business names or headcount even if a client submits forged fields.

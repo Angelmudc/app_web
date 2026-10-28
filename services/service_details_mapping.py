@@ -196,7 +196,12 @@ def build_service_details_from_form(
     # ─────────────────────────────
     elif ts == 'DOMESTICA_LIMPIEZA':
         # No metemos más cosas aquí porque ya usamos columnas normales (funciones, áreas, etc.)
-        pass
+        experience_field = getattr(form, "experiencia", None)
+        raw_selection = (getattr(experience_field, "raw_data", None) or [None])[0]
+        experience_value = experiencia_value_from_form(form)
+        domestic_choices = {"Doméstica completa", "Cocina", "Niñera", "Enfermera", "Cuidado de envejeciente", "Limpieza"}
+        if experience_value in domestic_choices or (raw_selection == "otro" and experience_value):
+            detalles["experiencia_requerida"] = experience_value
 
     if hasattr(form, "ayuda_cuidado_ninos"):
         selected = normalized_funciones(getattr(getattr(form, "funciones", None), "data", None))

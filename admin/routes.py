@@ -4193,8 +4193,15 @@ def _admin_copy_experience_for_service(value, service_code: str, details: dict |
         if explicit in allowed:
             return explicit
         return raw if raw in allowed else ""
+    if (
+        code == "DOMESTICA_LIMPIEZA"
+        and explicit
+        and canonical_service_code(detail_values.get("tipo")) == code
+        and explicit != "otro"
+    ):
+        return _admin_public_copy_text(explicit, limit=160)
     allowed_by_service = {
-        "DOMESTICA_LIMPIEZA": {"Doméstica completa", "Cocina", "Niñera", "Enfermera", "Cuidado de envejeciente", "Limpieza"},
+        "DOMESTICA_LIMPIEZA": {"Doméstica completa", "Cocina", "Niñera", "Enfermera", "Cuidado de envejeciente", "Limpieza", "Conserjería"},
         "NINERA": {"Niñera", "Enfermera"},
         "CHOFER": {"Chofer"},
         "LIMPIEZA_ESTABLECIMIENTOS": {"Limpieza"},
@@ -27971,6 +27978,14 @@ def _admin_build_order_text_for_copiar(
         known_areas = {str(value) for value, _label in AREAS_COMUNES_CHOICES}
         details_values = dict(allowed_details)
         details_values["tipo"] = code
+        if (
+            canonical_service_code(raw_details.get("tipo")) == code
+            and _s(raw_details.get("experiencia_requerida"))
+            and _s(raw_details.get("experiencia_requerida")) != "otro"
+        ):
+            allowed_details["experiencia_requerida"] = _admin_public_copy_text(
+                raw_details.get("experiencia_requerida"), limit=160
+            )
         # The legacy household fields below are copied from an explicit set of
         # categorical codes and numeric counts only.
 
