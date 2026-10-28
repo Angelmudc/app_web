@@ -359,6 +359,7 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -374,15 +375,16 @@ def test_new_public_form_token_post_success_invalidates_token_and_second_access_
          patch("clientes.routes._public_new_link_usage_by_hash", side_effect=_usage_side_effect), \
          patch("clientes.routes._resolve_public_new_link_token", return_value=(True, "", {})), \
          patch("clientes.routes._find_cliente_contact_duplicate", return_value=(None, "")), \
-         patch("clientes.routes.execute_robust_save", side_effect=_save_ok):
+         patch("clientes.routes.execute_robust_save", side_effect=_save_ok), \
+         patch("clientes.routes._trigger_recommendation_generation_safe", return_value=None):
         resp = client.post("/clientes/solicitudes/nueva-publica/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
         second = client.get("/clientes/solicitudes/nueva-publica/tok123")
 
     assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (resp.location or "")
     assert "/clientes/login" not in (resp.location or "")
     assert second.status_code in (302, 303)
-    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (second.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (second.location or "")
 
 
 def test_new_public_used_token_reanuda_plan_selection():
@@ -395,6 +397,7 @@ def test_new_public_used_token_reanuda_plan_selection():
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="plan_pending",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -610,6 +613,7 @@ def test_new_public_short_route_success_redirect_stays_on_short_path():
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -629,7 +633,7 @@ def test_new_public_short_route_success_redirect_stays_on_short_path():
         resp = client.post("/clientes/n/tok123", data={"dummy": "1", "terms_decision": "accept", "terms_accepted": "1"}, follow_redirects=False)
 
     assert resp.status_code in (302, 303)
-    assert "/clientes/n/tok123" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (resp.location or "")
 
 
 def test_share_continue_route_supports_new_client_flow_without_exposing_token_in_url():
@@ -699,6 +703,7 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -709,7 +714,7 @@ def test_share_continue_route_shows_success_once_after_submit_then_used_for_new_
         later = client.get("/solicitud/WXYZ5678JK/continuar")
 
     assert success.status_code in (302, 303)
-    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (success.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok123" in (success.location or "")
     assert later.status_code in (302, 303)
 
 
@@ -723,6 +728,7 @@ def test_share_continue_new_used_alias_blocks_repost_with_clear_used_message():
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -731,8 +737,8 @@ def test_share_continue_new_used_alias_blocks_repost_with_clear_used_message():
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row):
         resp = client.post("/solicitud/WXYZ5678JK/continuar", data={"dummy": "1"})
 
-    assert resp.status_code in (302, 303)
-    assert "/clientes/solicitudes/nueva-publica/tok123/plan" in (resp.location or "")
+    assert resp.status_code == 410
+    assert "Tu solicitud ya fue enviada correctamente." in resp.get_data(as_text=True)
 
 
 def test_new_public_post_rerender_preserves_modalidad_otro_value_on_validation_error():
@@ -854,6 +860,7 @@ def test_new_public_double_post_same_token_blocks_second_submit_without_new_save
         cliente_id=7,
         solicitud_id=88,
         used_at=None,
+        consumption_reason="request_created",
         solicitud=SimpleNamespace(codigo_solicitud="2,154-A"),
     )
 
@@ -883,7 +890,7 @@ def test_new_public_double_post_same_token_blocks_second_submit_without_new_save
         )
 
     assert first.status_code in (302, 303)
-    assert second.status_code in (302, 303)
+    assert second.status_code == 410
     assert save_calls["count"] == 1
 
 
@@ -937,7 +944,7 @@ def test_new_public_post_guarda_tipo_plan_y_no_toca_payment_cycle_fields():
     assert solicitud.payment_cycle_opened_at is None
     assert solicitud.payment_cycle_closed_at is None
     assert solicitud.payment_cycle_motivo_apertura is None
-    assert "/clientes/solicitudes/nueva-publica/tok-plan/plan" in (resp.location or "")
+    assert "/clientes/solicitudes/publica/confirmacion/tok-plan" in (resp.location or "")
 
 
 def test_new_public_used_without_joined_solicitud_relation_still_redirects_to_plan_selection():
@@ -945,7 +952,13 @@ def test_new_public_used_without_joined_solicitud_relation_still_redirects_to_pl
     flask_app.config["WTF_CSRF_ENABLED"] = False
     client = flask_app.test_client()
 
-    used_row = SimpleNamespace(cliente_id=91, solicitud_id=11, used_at=datetime.utcnow(), solicitud=None)
+    used_row = SimpleNamespace(
+        cliente_id=91,
+        solicitud_id=11,
+        used_at=datetime.utcnow(),
+        consumption_reason="plan_pending",
+        solicitud=None,
+    )
     pending_solicitud = SimpleNamespace(id=11, cliente_id=91, codigo_solicitud="SOL-001", tipo_plan=None)
     with patch("clientes.routes._ensure_public_new_token_usage_table", return_value=True), \
          patch("clientes.routes._public_new_link_usage_by_hash", return_value=used_row), \
