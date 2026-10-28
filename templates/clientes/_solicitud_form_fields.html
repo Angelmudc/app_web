@@ -4803,6 +4803,10 @@
       else openPicker(false);
     }, { once: true });
     if (form) form.addEventListener('submit', function (event) {
+      // The progressive validator owns focus and scrolling after it has
+      // prevented submission. Do not let this legacy bridge focus a second,
+      // unrelated native :invalid control (often an age field).
+      if (event.defaultPrevented) return;
       if (!input.value || !names[input.value]) {
         event.preventDefault();
         openPicker(false);

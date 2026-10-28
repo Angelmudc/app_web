@@ -53,6 +53,10 @@ form[data-form-ux="vue"] { padding-bottom: 18px; }
 
 .public-vue-error-target { border-color: #b42318 !important; box-shadow: 0 0 0 .22rem rgba(180, 35, 24, .13) !important; }
 .public-vue-error-block { border-color: #b42318 !important; box-shadow: inset 0 0 0 1px rgba(180, 35, 24, .24) !important; }
+.public-form-vue-navigation-target {
+  scroll-margin-block-start: calc(var(--public-form-validation-top-inset, 0px) + 16px + env(safe-area-inset-top));
+  scroll-margin-block-end: calc(var(--public-form-validation-bottom-inset, 0px) + 16px + env(safe-area-inset-bottom));
+}
 
 @media (prefers-reduced-motion: reduce) {
   .public-form-vue-status,

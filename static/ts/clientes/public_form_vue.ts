@@ -717,20 +717,43 @@ function navigationTarget(error: FormError): HTMLElement | null {
   return fieldControl || (field instanceof HTMLElement && isVisible(field) ? field : null);
 }
 
-function scrollToNavigableTarget(target: HTMLElement, statusRoot: HTMLElement): void {
+function validationRegion(target: HTMLElement): HTMLElement {
+  return target.closest<HTMLElement>('.public-field, .public-input-block, .public-terms-wrap') ||
+    target.closest<HTMLElement>('fieldset, [role="group"], [role="radiogroup"]') || target;
+}
+
+function scrollValidationRegionIntoView(target: HTMLElement): void {
+  const region = validationRegion(target);
   const viewport = window.visualViewport;
   const viewportTop = viewport ? viewport.offsetTop : 0;
   const viewportBottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
-  const status = statusRoot.querySelector('.public-form-vue-status');
-  const bottomInset = status instanceof HTMLElement && getComputedStyle(status).position === 'fixed'
-    ? status.getBoundingClientRect().height + 24
-    : 24;
-  const topInset = 24;
-  const rect = target.getBoundingClientRect();
-  let delta = 0;
-  if (rect.top < viewportTop + topInset) delta = rect.top - (viewportTop + topInset);
-  else if (rect.bottom > viewportBottom - bottomInset) delta = rect.bottom - (viewportBottom - bottomInset);
-  window.scrollBy({ top: delta, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  const regionRect = region.getBoundingClientRect();
+  let topInset = 0;
+  let bottomInset = 0;
+
+  // Respect fixed or sticky bars only when they actually overlap this field at
+  // a viewport edge. This also accounts for Safari's visual viewport and the
+  // fixed preview panel used on small screens.
+  document.querySelectorAll<HTMLElement>('body *').forEach((overlay) => {
+    if (overlay === region || region.contains(overlay) || overlay.contains(region)) return;
+    const position = getComputedStyle(overlay).position;
+    if (position !== 'fixed' && position !== 'sticky') return;
+    const rect = overlay.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0 || rect.right <= regionRect.left || rect.left >= regionRect.right) return;
+    if (rect.top <= viewportTop + 2 && rect.bottom > viewportTop) topInset = Math.max(topInset, rect.bottom - viewportTop);
+    if (rect.bottom >= viewportBottom - 2 && rect.top < viewportBottom) {
+      bottomInset = Math.max(bottomInset, viewportBottom - rect.top);
+    }
+  });
+
+  region.classList.add('public-form-vue-navigation-target');
+  region.style.setProperty('--public-form-validation-top-inset', `${Math.ceil(topInset)}px`);
+  region.style.setProperty('--public-form-validation-bottom-inset', `${Math.ceil(bottomInset)}px`);
+  region.scrollIntoView({
+    behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    block: 'nearest',
+    inline: 'nearest',
+  });
 }
 
 function topLevelCards(form: HTMLFormElement): HTMLElement[] {
@@ -836,17 +859,13 @@ function bootForm(form: HTMLFormElement, root: HTMLElement): void {
       window.requestAnimationFrame(() => {
         const target = navigationTarget(error);
         if (!target) return;
-        target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
-        window.setTimeout(() => {
-          if (isNavigableControl(target)) {
-            target.focus({ preventScroll: true });
-            scrollToNavigableTarget(target, root);
-          } else if (target instanceof HTMLElement) {
-            target.tabIndex = -1;
-            target.focus({ preventScroll: true });
-            scrollToNavigableTarget(target, root);
-          }
-        }, 260);
+        if (isNavigableControl(target)) {
+          target.focus({ preventScroll: true });
+        } else {
+          target.tabIndex = -1;
+          target.focus({ preventScroll: true });
+        }
+        scrollValidationRegionIntoView(target);
       });
     });
   };
