@@ -21,6 +21,7 @@ interface FormError {
   message: string;
   targetName?: string;
   validationKey?: string;
+  targetId?: string;
 }
 
 interface HTMLFormElement {
@@ -42,6 +43,7 @@ interface FormState {
   submitting: boolean;
   dirty: boolean;
   serverFailure: boolean;
+  validationAttempted: boolean;
 }
 
 interface VueApi {
@@ -55,6 +57,7 @@ interface Window { Vue?: VueApi; }
 const DRAFT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DRAFT_SCHEMA_VERSION = 4;
 const LEGACY_DRAFT_SCHEMA_VERSION = 2;
+let publicFormErrorSequence = 0;
 const DRAFT_EXCLUDED_FIELDS = new Set([
   'csrf_token', 'token', 'codigo_solicitud', 'id', 'created_at', 'updated_at',
   'terms_accepted', 'terms_decision', 'terms_accepted_at', 'acepta_politica', 'lead_source',
@@ -465,8 +468,22 @@ function collectErrors(form: HTMLFormElement, cards: HTMLElement[]): FormError[]
   });
 }
 
+function clearVueInvalid(control: HTMLElement): void {
+  control.removeAttribute('aria-invalid');
+  control.removeAttribute('data-public-vue-invalid');
+  const describedBy = (control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+  const errorId = control.getAttribute('data-public-vue-error-id');
+  control.removeAttribute('data-public-vue-error-id');
+  if (errorId) {
+    const remaining = describedBy.filter((id) => id !== errorId);
+    if (remaining.length) control.setAttribute('aria-describedby', remaining.join(' '));
+    else control.removeAttribute('aria-describedby');
+  }
+}
+
 function removeMessages(form: HTMLFormElement): void {
-  form.querySelectorAll('.public-vue-field-error').forEach((node) => node.remove());
+  form.querySelectorAll('[data-public-vue-generated-error="true"]').forEach((node) => node.remove());
+  form.querySelectorAll<HTMLElement>('[data-public-vue-invalid="true"]').forEach(clearVueInvalid);
   form.querySelectorAll('.public-vue-error-target, .public-vue-error-block').forEach((node) => {
     node.classList.remove('public-vue-error-target', 'public-vue-error-block');
   });
@@ -600,6 +617,7 @@ function reconcileServerNotices(form: HTMLFormElement, errors: FormError[]): voi
     if (!hasCurrentError) {
       notice.remove();
       field.querySelectorAll('.is-invalid').forEach((node) => node.classList.remove('is-invalid'));
+      field.querySelectorAll<HTMLElement>('[data-public-vue-invalid="true"]').forEach(clearVueInvalid);
     }
   });
   const formComplete = errors.length === 0;
@@ -613,17 +631,60 @@ function reconcileServerNotices(form: HTMLFormElement, errors: FormError[]): voi
   });
 }
 
-function showError(error: FormError): void {
+function showError(error: FormError, form: HTMLFormElement): void {
   const target = isFieldElement(error.element)
     ? error.element.closest('.public-field, .public-input-block, .public-terms-wrap') || error.element.parentElement
     : error.element;
   if (!target) return;
   target.classList.add(error.element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(error.element.type) ? 'public-vue-error-block' : 'public-vue-error-target');
-  const note = document.createElement('div');
-  note.className = 'public-vue-field-error';
-  note.setAttribute('role', 'alert');
-  note.textContent = error.message;
-  target.appendChild(note);
+  const candidates = target.querySelectorAll('input, select, textarea');
+  const describedControls = Array.from(candidates).filter((node): node is FieldElement =>
+    isFieldElement(node) && isVisible(node) && !node.disabled && node.type !== 'hidden',
+  );
+  const primary = isFieldElement(error.element) && isVisible(error.element) && !error.element.disabled
+    ? error.element : describedControls[0];
+  const existing = target.querySelector<HTMLElement>('[data-public-wtforms-error]');
+  const note = existing || document.createElement('div');
+  if (!note.id) note.id = `public-form-error-${form.id}-${++publicFormErrorSequence}`;
+  if (!existing) {
+    note.className = 'public-vue-field-error d-block';
+    note.dataset.publicVueGeneratedError = 'true';
+    note.textContent = error.message;
+    target.appendChild(note);
+  } else {
+    note.classList.add('public-vue-field-error', 'd-block');
+    note.textContent = error.message;
+  }
+  const controls = describedControls.length ? describedControls : primary ? [primary] : [];
+  controls.forEach((control) => {
+    control.setAttribute('aria-invalid', 'true');
+    control.dataset.publicVueInvalid = 'true';
+    const describedBy = (control.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean);
+    if (!describedBy.includes(note.id)) describedBy.push(note.id);
+    control.setAttribute('aria-describedby', describedBy.join(' '));
+    control.dataset.publicVueErrorId = note.id;
+  });
+  const navigation = navigationTarget(error);
+  const summaryTarget = navigation || (error.element instanceof HTMLElement ? error.element : primary);
+  if (summaryTarget) {
+    if (!summaryTarget.id) summaryTarget.id = `public-form-target-${form.id}-${++publicFormErrorSequence}`;
+    error.targetId = summaryTarget.id;
+  }
+}
+
+function serverRenderedFieldErrors(form: HTMLFormElement): FormError[] {
+  const result: FormError[] = [];
+  form.querySelectorAll<HTMLElement>('[data-public-wtforms-error]').forEach((notice) => {
+    const field = notice.closest('.public-field, .public-input-block, .public-terms-wrap');
+    if (!field || !isVisible(field, form)) return;
+    const target = Array.from(field.querySelectorAll('input, select, textarea'))
+      .find((node): node is FieldElement => isFieldElement(node) && isNavigableControl(node));
+    if (!target) return;
+    const message = notice.textContent?.trim();
+    if (!message || result.some((error) => error.element === target)) return;
+    result.push({ element: target, message });
+  });
+  return result;
 }
 
 function navigationTarget(error: FormError): HTMLElement | null {
@@ -669,7 +730,7 @@ function scrollToNavigableTarget(target: HTMLElement, statusRoot: HTMLElement): 
   let delta = 0;
   if (rect.top < viewportTop + topInset) delta = rect.top - (viewportTop + topInset);
   else if (rect.bottom > viewportBottom - bottomInset) delta = rect.bottom - (viewportBottom - bottomInset);
-  window.scrollBy({ top: delta, behavior: 'smooth' });
+  window.scrollBy({ top: delta, behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
 }
 
 function topLevelCards(form: HTMLFormElement): HTMLElement[] {
@@ -682,6 +743,32 @@ function topLevelCards(form: HTMLFormElement): HTMLElement[] {
     if (child instanceof HTMLElement && child.classList.contains('public-terms-wrap')) cards.push(child);
   }
   return cards;
+}
+
+function renderStepStates(form: HTMLFormElement, cards: HTMLElement[], errors: FormError[], attempted: boolean): void {
+  const stepCards = cards.filter((card) => card.matches(
+    '.public-form-card--service, .public-form-card--profile, .public-form-card--home, .public-form-card--final, [data-service-panel]:not(.d-none)',
+  ));
+  stepCards.forEach((card) => {
+    const marker = card.querySelector<HTMLElement>('.public-form-card-step');
+    if (!marker) return;
+    let state = card.querySelector<HTMLElement>('.public-form-card-state');
+    if (!attempted) { state?.remove(); return; }
+    const cardErrors = errors.some((error) => card.contains(error.element));
+    const hasRequired = controlsInCard(form, card).some((control) => control.required || control.getAttribute('aria-required') === 'true' ||
+      !!control.closest('[aria-required="true"]')) || cardErrors;
+    if (!hasRequired) { state?.remove(); return; }
+    if (!state) {
+      state = document.createElement('span');
+      state.className = 'public-form-card-state';
+      state.setAttribute('aria-live', 'polite');
+      marker.insertAdjacentElement('afterend', state);
+    }
+    const isComplete = !cardErrors;
+    state.textContent = isComplete ? 'Paso completo' : 'Paso incompleto';
+    state.classList.toggle('is-complete', isComplete);
+    state.classList.toggle('is-incomplete', !isComplete);
+  });
 }
 
 function bootForm(form: HTMLFormElement, root: HTMLElement): void {
@@ -703,6 +790,7 @@ function bootForm(form: HTMLFormElement, root: HTMLElement): void {
   if (serverPostback) saveDraft(form);
   const state = vue.reactive<FormState>({
     errors: [], restored: restoredDraft.restored, submitting: false, dirty: false,
+    validationAttempted: serverPostback && form.querySelector('[data-public-wtforms-error], #enfermeraServerValidationErrors [data-public-server-error-key]') !== null,
     serverFailure: Array.from(document.querySelectorAll('.public-flash.danger, .public-flash.error')).some((notice) => {
       const text = (notice.textContent || '').trim();
       return text !== 'Revisa los campos marcados en rojo.' && !/aceptar los términos y condiciones/i.test(text);
@@ -710,15 +798,27 @@ function bootForm(form: HTMLFormElement, root: HTMLElement): void {
   });
   const sync = (): void => {
     const currentErrors = collectErrors(form, cards);
+    const renderedFieldErrors = serverRenderedFieldErrors(form);
     const reconciledServerErrors = serverValidationErrors(form, currentErrors);
-    state.errors = currentErrors.concat(reconciledServerErrors.filter((serverError) => !currentErrors.some((error) => {
-      if (error.element === serverError.element) return true;
-      const currentField = error.element.closest('.public-field');
-      const serverField = serverError.element.closest('.public-field');
-      return !!currentField && currentField === serverField;
-    })));
+    state.errors = renderedFieldErrors.concat(currentErrors, reconciledServerErrors).filter((candidate, index, all) =>
+      all.findIndex((other) => other.element === candidate.element ||
+        (isFieldElement(other.element) && isFieldElement(candidate.element) &&
+          other.element.closest('.public-field, .public-input-block, .public-terms-wrap') ===
+          candidate.element.closest('.public-field, .public-input-block, .public-terms-wrap'))) === index,
+    );
+    state.errors = state.errors.sort((left, right) => {
+      const position = left.element.compareDocumentPosition(right.element);
+      if (position & Node.DOCUMENT_POSITION_FOLLOWING) return -1;
+      if (position & Node.DOCUMENT_POSITION_PRECEDING) return 1;
+      return 0;
+    });
     state.dirty = true;
     reconcileServerNotices(form, state.errors);
+    if (state.validationAttempted) {
+      removeMessages(form);
+      state.errors.forEach((error) => showError(error, form));
+    }
+    renderStepStates(form, cards, state.errors, state.validationAttempted);
   };
   const focusFirst = (preferred?: FormError): void => {
     const error = preferred && 'element' in preferred ? preferred : state.errors[0];
@@ -732,13 +832,11 @@ function bootForm(form: HTMLFormElement, root: HTMLElement): void {
         }
       });
     }
-    removeMessages(form);
-    showError(error);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         const target = navigationTarget(error);
         if (!target) return;
-        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
         window.setTimeout(() => {
           if (isNavigableControl(target)) {
             target.focus({ preventScroll: true });
@@ -752,31 +850,45 @@ function bootForm(form: HTMLFormElement, root: HTMLElement): void {
       });
     });
   };
-  const complete = vue.computed(() => state.errors.length === 0);
+  const statusMessage = vue.computed(() => {
+    if (state.submitting) return 'Enviando la solicitud. Espera la confirmación.';
+    if (state.serverFailure) return 'No se pudo confirmar el envío. Tus respuestas se conservaron; revisa el aviso y vuelve a intentarlo.';
+    if (state.validationAttempted && state.errors.length) return `Faltan datos para continuar: ${state.errors.length} por revisar.`;
+    if (state.validationAttempted) return 'No hay errores pendientes. Pulsa «Enviar solicitud» para enviar tus datos.';
+    return 'Completa los datos obligatorios. Te indicaremos si falta algo al continuar o enviar.';
+  });
+  const readyToSubmit = vue.computed(() => state.validationAttempted && state.errors.length === 0 && !state.serverFailure && !state.submitting);
   vue.createApp({
-    setup: () => ({ state, complete, focusFirst: () => focusFirst(), focusPending: (error: FormError) => focusFirst(error) }),
-    template: '<div class="public-form-vue-ui"><p v-if="state.restored" class="public-field-hint mt-2 mb-0" role="status">Recuperamos los datos no sensibles de tu borrador en este teléfono. Revísalos antes de enviar.</p><div class="public-form-vue-status" :class="{\'is-complete\': complete && !state.serverFailure}"><span class="public-form-vue-status__message" role="status" aria-live="polite"><span class="public-form-vue-status__icon" aria-hidden="true">{{ complete && !state.serverFailure ? \'✓\' : \'!\' }}</span>{{ !complete ? \'Faltan \' + state.errors.length + \' datos pendientes o inválidos\' : state.serverFailure ? \'Los datos están completos. El último envío no se completó; revisa el aviso antes de reenviar.\' : \'Solicitud completa. Ya puedes enviarla.\' }}</span><div v-if="!complete" class="public-form-vue-status__actions"><details class="public-form-vue-status__details"><summary>Ver pendientes</summary><ul><li v-for="(error, index) in state.errors" :key="index"><button type="button" @click="focusPending(error)">{{ error.message }}</button></li></ul></details><button type="button" class="public-form-vue-status__action" @click="focusFirst()">Ir al pendiente</button></div></div></div>',
+    setup: () => ({ state, readyToSubmit, statusMessage, focusFirst: () => focusFirst(), focusPending: (error: FormError) => focusFirst(error) }),
+    template: '<div class="public-form-vue-ui"><p v-if="state.restored" class="public-field-hint mt-2 mb-0" role="status">Recuperamos los datos no sensibles de tu borrador en este teléfono. Revísalos antes de enviar.</p><section v-if="state.validationAttempted && state.errors.length" class="public-form-vue-error-summary" role="alert" aria-labelledby="public-form-error-summary-title" tabindex="-1"><h2 id="public-form-error-summary-title">Faltan datos para continuar</h2><p>Revisa estos campos y vuelve a intentar:</p><ul><li v-for="(error, index) in state.errors" :key="index"><a :href="error.targetId ? \'#\' + error.targetId : \'#\'" @click.prevent="focusPending(error)">{{ error.message }}</a></li></ul></section><div class="public-form-vue-status" :class="{\'is-ready-to-submit\': readyToSubmit}"><span class="public-form-vue-status__message" role="status" aria-live="polite"><span class="public-form-vue-status__icon" aria-hidden="true">{{ readyToSubmit ? \'✓\' : \'!\' }}</span>{{ statusMessage }}</span><button v-if="state.validationAttempted && state.errors.length" type="button" class="public-form-vue-status__action" @click="focusFirst()">Ir al primer campo</button></div></div>',
   }).mount(root);
   let saveTimer = 0;
-  const onChange = (): void => {
+  const onChange = (event: Event): void => {
+    const changed = event.target;
+    if (changed instanceof HTMLElement) {
+      const field = changed.closest('.public-field, .public-input-block, .public-terms-wrap');
+      field?.querySelectorAll('[data-public-wtforms-error]').forEach((notice) => notice.remove());
+      field?.querySelectorAll('.is-invalid').forEach((node) => node.classList.remove('is-invalid'));
+    }
     sync();
-    removeMessages(form);
     window.clearTimeout(saveTimer);
     saveTimer = window.setTimeout(() => saveDraft(form), 120);
   };
   form.addEventListener('input', onChange);
   form.addEventListener('change', onChange);
   form.addEventListener('submit', (event) => {
-    // The bubble-phase bridge opens the conditions modal when it is pending.
-    // Do not start first-error navigation in capture phase before that bridge
-    // runs: Safari keeps the smooth scroll animation alive while closing.
-    // Keep the conditionsForm wording in the source contract while the actual
-    // form reference remains the browser-facing object used by the bridge.
-    // !conditionsForm.__publicConditionsConfirmed
-    if (form.hasAttribute('data-conditions-modal-id') && !form.__publicConditionsConfirmed) return;
+    // Validate first so an incomplete form gets the same visible summary and
+    // field-level guidance before the terms dialog is allowed to open. Once
+    // valid, leave the event to the existing bubble-phase dialog bridge.
+    if (form.hasAttribute('data-conditions-modal-id') && !form.__publicConditionsConfirmed) {
+      state.validationAttempted = true;
+      sync();
+      if (state.errors.length) { event.preventDefault(); focusFirst(); }
+      return;
+    }
     if (state.submitting) { event.preventDefault(); return; }
+    state.validationAttempted = true;
     sync();
-    removeMessages(form);
     if (state.errors.length) { event.preventDefault(); focusFirst(); return; }
     state.serverFailure = false;
     document.querySelectorAll('.public-flash.danger, .public-flash.error').forEach((notice) => {

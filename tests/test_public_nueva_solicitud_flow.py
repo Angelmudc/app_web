@@ -31,6 +31,7 @@ class _FakeField:
 class _FakeNewPublicForm:
     def __init__(self):
         self.hp = _FakeField("")
+        self.tipo_servicio = _FakeField("DOMESTICA_LIMPIEZA")
         self.nombre_completo = _FakeField("Cliente Nuevo")
         self.email_contacto = _FakeField("nuevo@example.com")
         self.telefono_contacto = _FakeField("809-123-4567")

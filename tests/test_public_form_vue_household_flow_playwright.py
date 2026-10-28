@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HTML = """
 <form id="publicSolicitudForm" data-form-ux="vue" novalidate>
+  <div class="public-form-sections">
   <section class="public-form-card">
     <input type="checkbox" name="funciones" value="limpieza" checked>
   </section>
@@ -22,6 +23,8 @@ HTML = """
       <label><input type="checkbox" name="areas_comunes" value="sala">Sala</label>
     </div>
   </section>
+  </div>
+  <button type="submit">Enviar solicitud</button>
   <div id="publicSolicitudFormVueRoot"></div>
 </form>
 """
@@ -57,7 +60,7 @@ def test_cleaning_household_error_reveals_navigates_and_clears_in_real_dom():
             """
         )
 
-        page.get_by_role("button", name="Ir al pendiente").click()
+        page.get_by_role("button", name="Enviar solicitud").click()
         page.wait_for_timeout(700)
         assert page.locator("#wrap_home_structure_conditional").get_attribute("aria-hidden") == "false"
         assert page.locator("#wrap_home_structure_conditional .public-vue-field-error").inner_text() == "Indica qué tipo de lugar es."
@@ -68,12 +71,13 @@ def test_cleaning_household_error_reveals_navigates_and_clears_in_real_dom():
         page.locator("input[name='banos_selector']").check()
         page.locator("input[name='areas_comunes']").check()
         page.wait_for_timeout(250)
-        assert "Solicitud completa" in page.locator(".public-form-vue-status").inner_text()
+        assert "No hay errores pendientes" in page.locator(".public-form-vue-status").inner_text()
+        assert "Solicitud completa" not in page.locator(".public-form-vue-status").inner_text()
         assert page.locator(".public-vue-field-error").count() == 0
 
         page.locator("input[name='funciones']").uncheck()
         page.locator("input[name='funciones']").check()
         page.wait_for_timeout(250)
-        assert "Faltan 1" not in page.locator(".public-form-vue-status").inner_text()
+        assert "por revisar" not in page.locator(".public-form-vue-status").inner_text()
         assert page.locator(".public-vue-field-error").count() == 0
         browser.close()

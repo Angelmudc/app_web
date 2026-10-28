@@ -147,19 +147,23 @@ def test_pending_navigation_has_one_shared_visible_target_resolver():
         assert "function navigationTarget" in asset
         assert "function scrollToNavigableTarget" in asset
         assert "isNavigableControl" in asset
-        assert "scrollIntoView({ behavior: 'smooth', block: 'center' })" in asset
+        assert "scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })" in asset
         assert "target.focus({ preventScroll: true })" in asset
         assert "compareDocumentPosition" in asset
 
 
-def test_top_progress_is_removed_but_bottom_status_navigation_remains():
+def test_status_never_claims_submission_before_confirmed_server_save():
     source = read("static/ts/clientes/public_form_vue.ts")
     generated = read("static/js/clientes/public_form_vue.js")
     for asset in (source, generated):
         assert "Paso {{" not in asset
         assert "100% completo" not in asset
-        assert "Ir al pendiente" in asset
-        assert "Solicitud completa. Ya puedes enviarla." in asset
+        assert "Ir al primer campo" in asset
+        assert "Pulsa «Enviar solicitud» para enviar tus datos." in asset
+        assert "Solicitud completa. Ya puedes enviarla." not in asset
+        assert "Faltan datos para continuar" in asset
+        assert "aria-invalid" in asset
+        assert "aria-describedby" in asset
     for html in (read("templates/clientes/solicitud_form_publica.html"), read("templates/clientes/solicitud_form_publica_nueva.html")):
         assert 'aria-label="Estado de la solicitud"' in html
 
@@ -187,16 +191,16 @@ def test_pending_button_does_not_treat_vue_click_event_as_form_error():
     assert "preferred && 'element' in preferred ? preferred : state.errors[0]" in generated
 
 
-def test_conditions_modal_submit_does_not_start_validation_scroll_before_modal_bridge():
+def test_invalid_forms_show_validation_before_the_existing_conditions_modal():
     source = read("static/ts/clientes/public_form_vue.ts")
     generated = read("static/js/clientes/public_form_vue.js")
-    assert "!conditionsForm.__publicConditionsConfirmed" in source
-    for asset in (generated,):
-        assert "form.hasAttribute('data-conditions-modal-id')" in asset
-        assert "!form.__publicConditionsConfirmed" in asset
-        assert "Safari" in asset
-    assert "form.hasAttribute('data-conditions-modal-id')" in source
-    assert "Safari" in source
+    for asset in (source, generated):
+        assert "form.hasAttribute('data-conditions-modal-id') && !form.__publicConditionsConfirmed" in asset
+        assert "state.validationAttempted = true" in asset
+        assert "if (state.errors.length)" in asset
+        assert "event.preventDefault();" in asset
+        assert "focusFirst();" in asset
+        assert "leave the event to the existing bubble-phase dialog bridge" in asset
 
 
 def test_terms_pending_is_part_of_both_forms_and_is_not_the_conditions_modal():

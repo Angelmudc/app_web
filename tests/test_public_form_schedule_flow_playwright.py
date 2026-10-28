@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 HTML = """
 <form id="publicSolicitudForm" data-form-ux="vue" novalidate>
+ <div class="public-form-sections">
   <section class="public-form-card">
     <input type="radio" name="modalidad_grupo" value="con_dormida">
     <input type="radio" name="modalidad_grupo" value="con_salida_diaria">
@@ -23,6 +24,8 @@ HTML = """
     <span id="horario_preview_text"></span>
   </section>
   <section class="public-form-card"><input type="checkbox" name="acepta_politica" required></section>
+ </div>
+ <button type="submit">Enviar solicitud</button>
   <div id="publicSolicitudFormVueRoot"></div>
 </form>
 """
@@ -95,7 +98,10 @@ def test_both_modalities_use_canonical_values_in_formdata_and_block_partial_sche
 
         page.locator('[name="horario_dormida_salida"]').fill("")
         page.wait_for_timeout(100)
-        assert "Faltan" in page.locator('.public-form-vue-status').inner_text()
+        assert "Completa los datos obligatorios" in page.locator('.public-form-vue-status').inner_text()
+        assert page.locator('.public-vue-field-error').count() == 0
+        page.get_by_role("button", name="Enviar solicitud").click()
+        assert "Faltan datos para continuar" in page.locator('.public-form-vue-status').inner_text()
         assert "Indica cuándo sale de descanso." in page.locator('.public-vue-field-error').inner_text()
 
         page.locator('[name="horario_dormida_salida"]').fill("viernes 5:00 PM")
@@ -104,6 +110,8 @@ def test_both_modalities_use_canonical_values_in_formdata_and_block_partial_sche
         page.locator('[name="horario_dias_trabajo"]').fill("Lunes a viernes")
         page.locator('[name="horario_hora_entrada"]').fill("7:30 AM")
         page.locator('[name="horario_hora_salida"]').fill("5:00 PM")
+        for field_name in ("[name='modalidad_especifica']", "[name='horario_dias_trabajo']", "[name='horario_hora_entrada']", "[name='horario_hora_salida']"):
+            page.locator(field_name).dispatch_event("change")
         page.wait_for_timeout(100)
         assert page.locator('[name="horario_dormida_entrada"]').input_value() == ""
         assert page.locator('[name="horario"]').input_value() == "Lunes a viernes, de 7:30 AM a 5:00 PM"

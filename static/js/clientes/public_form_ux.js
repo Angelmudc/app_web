@@ -1,7 +1,7 @@
 /* Backward-compatible bridge for the two public request forms. */
 (function (window, document) {
   'use strict';
-  var ASSET_VERSION = '20261019-premium-v2';
+  var ASSET_VERSION = '20261028-validation-v1';
   function start() {
     if (!document.querySelector('form[data-form-ux="vue"]')) return;
     var css = document.createElement('link');
