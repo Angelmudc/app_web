@@ -221,8 +221,41 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertNotIn("Funciones:\nLimpieza General", publicacion)
         self.assertIn("apto (2 niveles) - 3 habitaciones, 1 baños, Sala, Comedor, Cocina", publicacion)
         self.assertNotIn("Características de la vivienda:", publicacion)
-        self.assertIn("Funciones:\nLimpieza General, Cocinar, Lavar, Cuidar Niños", interno)
-        self.assertIn("Características de la vivienda:\n", interno)
+        self.assertIn("Funciones: Limpieza General, Cocinar, Lavar, Cuidar Niños", interno)
+        self.assertNotIn("Características de la vivienda:", interno)
+        self.assertIn("Nota: Nota interna", interno)
+
+    def test_copiado_interno_aplica_formato_domestico_solo_cuando_hay_datos_en_seis_servicios(self):
+        services = (
+            "DOMESTICA_LIMPIEZA", "NINERA", "ENFERMERA", "CHOFER",
+            "LIMPIEZA_ESTABLECIMIENTOS", "CONSERJERIA_RESIDENCIAL",
+        )
+        for service in services:
+            with self.subTest(service=service):
+                s = _SolicitudStub(estado="activa")
+                s.tipo_servicio = service
+                s.detalles_servicio = {"tipo": service}
+                with flask_app.app_context():
+                    populated = admin_routes._admin_build_order_text_for_copiar(s)
+                self.assertIn("Nota: Nota interna", populated)
+                if service == "DOMESTICA_LIMPIEZA":
+                    self.assertIn("Funciones: Limpieza General", populated)
+                    self.assertNotIn("Características de la vivienda:", populated)
+                    self.assertIn("Casa - 3 habitaciones, 2 baños", populated)
+                else:
+                    self.assertNotIn("Funciones: Limpieza General", populated)
+                    self.assertNotIn("Casa - 3 habitaciones, 2 baños", populated)
+
+                s.funciones = []
+                s.tipo_lugar = ""
+                s.habitaciones = 0
+                s.banos = 0
+                s.dos_pisos = False
+                with flask_app.app_context():
+                    empty = admin_routes._admin_build_order_text_for_copiar(s)
+                self.assertNotIn("Funciones:", empty)
+                self.assertNotIn("Características de la vivienda:", empty)
+                self.assertIn("Nota: Nota interna", empty)
 
     def setUp(self):
         flask_app.config["TESTING"] = True

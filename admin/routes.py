@@ -27657,7 +27657,6 @@ def _admin_build_order_text_for_copiar(
     label_maps: dict | None = None,
     *,
     include_nota_cliente: bool = True,
-    public_copy_format: bool = False,
 ) -> str:
     source_solicitud = s
     labels = label_maps or _admin_copiar_form_label_maps()
@@ -28475,9 +28474,7 @@ def _admin_build_order_text_for_copiar(
         info_lines.extend(schedule_lines)
     info_block = "\n".join([x for x in info_lines])
     funciones_block = (
-        ("Funciones: " + ", ".join(funcs))
-        if public_copy_format and funcs and ts_det in {"DOMESTICA_LIMPIEZA", ""}
-        else _admin_labeled_copy_section("Funciones", ", ".join(funcs))
+        "Funciones: " + ", ".join(funcs)
         if funcs and ts_det in {"DOMESTICA_LIMPIEZA", ""}
         else ""
     )
@@ -28506,8 +28503,6 @@ def _admin_build_order_text_for_copiar(
     if ts_det == "DOMESTICA_LIMPIEZA":
         if envejeciente_block:
             envejeciente_block = _admin_labeled_copy_section("Cuidados de la persona envejeciente", envejeciente_block)
-        if hogar_descr and not public_copy_format:
-            hogar_descr = _admin_labeled_copy_section("Características de la vivienda", hogar_descr)
     for conditional_block in (envejeciente_block, ninera_block, enf_block, chofer_block):
         if conditional_block:
             blocks.append(conditional_block)
@@ -28542,7 +28537,6 @@ def _admin_build_public_copy_text(solicitud: Solicitud, *, label_maps: dict | No
         solicitud,
         label_maps=label_maps,
         include_nota_cliente=False,
-        public_copy_format=True,
     )
 
 
