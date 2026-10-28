@@ -5,290 +5,12 @@
     </div>
     <div class="p-3 p-md-4">
       <p class="small solicitud-detail-secondary mb-3">
-        Texto interno para el equipo. Listo para copiar y pegar tal cual.
+        Texto de publicación para compartir con candidatas. Incluye únicamente condiciones del empleo.
       </p>
 
-      {# Usa resumen_interno si el backend lo envía; si no, cae a resumen_cliente #}
-      {% set _rutas = (solicitud.rutas_cercanas or '') %}
-      {% set _composition = composition_flags if composition_flags is defined else {
-        'show_house': true, 'show_adultos': true, 'show_ninos': true,
-        'show_child_help': true, 'show_envejeciente': true
-      } %}
-      {% set _modalidad = (solicitud.modalidad_trabajo or '') %}
-      {% set _modalidad_low = _modalidad|lower %}
-      {% if 'viernes a lunes' in _modalidad_low %}
-        {% if 'dormida' in _modalidad_low or 'interna' in _modalidad_low %}
-          {% set _modalidad = 'Con dormida 💤 fin de semana' %}
-        {% elif 'salida diaria' in _modalidad_low %}
-          {% set _modalidad = 'Salida diaria - fin de semana' %}
-        {% endif %}
-      {% endif %}
-      {% if _modalidad and _modalidad_low.startswith('con dormida') and '💤' not in _modalidad %}
-        {% set _modalidad = _modalidad|replace('Con dormida', 'Con dormida 💤', 1) %}
-      {% endif %}
-
-      {# Edad: combina opciones + "otro", evitando mostrar el literal "otro". #}
-      {% set _edad_txt = (solicitud.edad_texto if solicitud.edad_texto is defined else '') %}
-      {% if not _edad_txt %}
-        {% set _edad_ns = namespace(items=[]) %}
-        {% if solicitud.edad_requerida is defined and solicitud.edad_requerida %}
-          {% if solicitud.edad_requerida is string %}
-            {% for _e in solicitud.edad_requerida.split(',') %}
-              {% set _e_clean = (_e|string)|trim %}
-              {% if _e_clean %}
-                {% set _ = _edad_ns.items.append(_e_clean) %}
-              {% endif %}
-            {% endfor %}
-          {% else %}
-            {% for _e in solicitud.edad_requerida %}
-              {% set _e_clean = (_e|string)|trim %}
-              {% if _e_clean %}
-                {% set _ = _edad_ns.items.append(_e_clean) %}
-              {% endif %}
-            {% endfor %}
-          {% endif %}
-        {% endif %}
-        {% set _edad_filtrada = [] %}
-        {% for _e in _edad_ns.items %}
-          {% set _e_low = _e|lower %}
-          {% if _e_low not in ['otro', 'otro…', 'otro...'] %}
-            {% set _ = _edad_filtrada.append(_e) %}
-          {% endif %}
-        {% endfor %}
-        {% set _edad_otro = (solicitud.edad_otro|string if solicitud.edad_otro is defined and solicitud.edad_otro else '')|trim %}
-        {% if _edad_otro and _edad_otro not in _edad_filtrada %}
-          {% set _ = _edad_filtrada.append(_edad_otro) %}
-        {% endif %}
-        {% set _edad_txt = _edad_filtrada | join(', ') %}
-      {% endif %}
-
-      {# Experiencia #}
-      {% set _exp = (solicitud.experiencia or '') %}
-      {% if _exp %}
-        {% set _exp = '*' ~ _exp ~ '*' %}
-      {% endif %}
-
-      {# Horario #}
-      {% set _horario = (solicitud.horario or '') %}
-
-      {% set _funcs = (solicitud.funciones if solicitud.funciones is defined else None) | funciones_fmt(
-        solicitud.funciones_otro if solicitud.funciones_otro is defined else None
-      ) %}
-
-      {# Tipo de lugar + detalles básicos #}
-      {% set _tipo = (solicitud.tipo_lugar or '') %}
-      {% if _tipo|lower == 'otro' and solicitud.tipo_lugar_otro is defined and solicitud.tipo_lugar_otro %}
-        {% set _tipo = solicitud.tipo_lugar_otro %}
-      {% endif %}
-
-      {% set _hab = (solicitud.habitaciones if solicitud.habitaciones is defined else None) %}
-      {% set _ban = (solicitud.banos if solicitud.banos is defined else None) %}
-
-      {# Areas comunes (puede venir como lista o string). Normalizamos a string. #}
-      {% set _areas_ns = namespace(items=[]) %}
-      {% if solicitud.areas_comunes is defined and solicitud.areas_comunes %}
-        {% if solicitud.areas_comunes is string %}
-          {% for _a in solicitud.areas_comunes.split(',') %}
-            {% set _a_clean = (_a|string)|trim %}
-            {% if _a_clean %}
-              {% set _ = _areas_ns.items.append(_a_clean) %}
-            {% endif %}
-          {% endfor %}
-        {% else %}
-          {% for _a in solicitud.areas_comunes %}
-            {% set _a_clean = (_a|string)|trim %}
-            {% if _a_clean %}
-              {% set _ = _areas_ns.items.append(_a_clean) %}
-            {% endif %}
-          {% endfor %}
-        {% endif %}
-      {% endif %}
-      {% set _areas_list = [] %}
-      {% for _a in _areas_ns.items %}
-        {% set _a_low = _a|lower %}
-        {% if _a_low not in ['otro', 'otro…', 'otro...'] %}
-          {% set _ = _areas_list.append(_a) %}
-        {% endif %}
-      {% endfor %}
-      {% set _area_otro = (solicitud.area_otro|string if solicitud.area_otro is defined and solicitud.area_otro else '')|trim %}
-      {% if _area_otro and _area_otro not in _areas_list %}
-        {% set _ = _areas_list.append(_area_otro) %}
-      {% endif %}
-      {% set _areas_human = [] %}
-      {% for _a in _areas_list %}
-        {% set _a_low = (_a|string)|trim|lower %}
-        {% if _a_low == 'sala' %}
-          {% set _ = _areas_human.append('Sala') %}
-        {% elif _a_low == 'comedor' %}
-          {% set _ = _areas_human.append('Comedor') %}
-        {% elif _a_low == 'cocina' %}
-          {% set _ = _areas_human.append('Cocina') %}
-        {% elif _a_low == 'salon_juegos' %}
-          {% set _ = _areas_human.append('Salón de juegos') %}
-        {% elif _a_low == 'terraza' %}
-          {% set _ = _areas_human.append('Terraza') %}
-        {% elif _a_low == 'jardin' %}
-          {% set _ = _areas_human.append('Jardín') %}
-        {% elif _a_low == 'estudio' %}
-          {% set _ = _areas_human.append('Estudio') %}
-        {% elif _a_low == 'patio' %}
-          {% set _ = _areas_human.append('Patio') %}
-        {% elif _a_low == 'piscina' %}
-          {% set _ = _areas_human.append('Piscina') %}
-        {% elif _a_low == 'marquesina' %}
-          {% set _ = _areas_human.append('Marquesina') %}
-        {% elif _a_low == 'todas_anteriores' %}
-          {% set _ = _areas_human.append('Áreas comunes generales') %}
-        {% else %}
-          {% set _ = _areas_human.append(_a|string) %}
-        {% endif %}
-      {% endfor %}
-      {% set _areas = _areas_human | join(', ') %}
-
-      {# Construcción de la línea de casa/apto para copiado interno #}
-      {% set _tipo_low = (_tipo|string)|trim|lower %}
-      {% if _tipo_low in ['casa'] %}
-        {% set _tipo_natural = 'Casa' %}
-      {% elif _tipo_low in ['apto', 'apartamento'] %}
-        {% set _tipo_natural = 'Apartamento' %}
-      {% elif _tipo_low in ['oficina'] %}
-        {% set _tipo_natural = 'Oficina' %}
-      {% elif _tipo_low %}
-        {% set _tipo_natural = (_tipo|string)|trim %}
-      {% else %}
-        {% set _tipo_natural = '' %}
-      {% endif %}
-      {% set _hab_txt = (_hab|string)|trim if (_hab is not none and (_hab|string)|trim != '') else '' %}
-      {% set _ban_txt = ((_ban|string)|trim)|replace('.0', '') if (_ban is not none and (_ban|string)|trim != '') else '' %}
-      {% set _niveles = '' %}
-      {% if solicitud.dos_pisos is defined and solicitud.dos_pisos %}
-        {% set _niveles = '2 niveles' %}
-      {% endif %}
-      {% if not _niveles and solicitud.nota_cliente %}
-        {% set _nota_low = (solicitud.nota_cliente|string)|lower %}
-        {% if 'pisos reportados: 3+' in _nota_low %}
-          {% set _niveles = 'tres o más niveles' %}
-        {% endif %}
-      {% endif %}
-      {% set _tipo_con_niveles = _tipo_natural %}
-      {% if _niveles and _tipo_natural %}
-        {% set _tipo_con_niveles = _tipo_natural ~ ' (' ~ _niveles ~ ')' %}
-      {% elif _niveles %}
-        {% set _tipo_con_niveles = _niveles %}
-      {% endif %}
-      {% set _det = [] %}
-      {% if _hab_txt %}
-        {% set _ = _det.append(_hab_txt ~ ' habitaciones') %}
-      {% endif %}
-      {% if _ban_txt %}
-        {% set _ = _det.append(_ban_txt ~ ' baños') %}
-      {% endif %}
-      {% set _det_txt = _det | join(', ') %}
-      {% set _casa_line = '' %}
-      {% if _composition.show_house and _tipo_con_niveles and _det_txt %}
-        {% set _casa_line = _tipo_con_niveles ~ ' - ' ~ _det_txt %}
-      {% elif _composition.show_house and _tipo_con_niveles %}
-        {% set _casa_line = _tipo_con_niveles %}
-      {% elif _composition.show_house and _det_txt %}
-        {% set _casa_line = _det_txt %}
-      {% endif %}
-      {% if _composition.show_house and _areas %}
-        {% if _det_txt %}
-          {% set _casa_line = _casa_line ~ ', ' ~ _areas %}
-        {% else %}
-          {% if _tipo_natural %}
-            {% set _casa_line = _casa_line ~ ' - ' ~ _areas %}
-          {% else %}
-            {% set _casa_line = _areas %}
-          {% endif %}
-        {% endif %}
-      {% endif %}
-
-      {# Ocupantes #}
-      {% set _adultos = (solicitud.adultos if solicitud.adultos is defined else '') %}
-      {% set _ninos = (solicitud.ninos if solicitud.ninos is defined else '') %}
-      {% set _edades_ninos = (solicitud.edades_ninos if solicitud.edades_ninos is defined else '') %}
-      {% set _child_help_suffix = child_help_copy_suffix if child_help_copy_suffix is defined else '' %}
-
-      {# Mascota (si existe el campo) #}
-      {% set _mascota = (solicitud.mascota if solicitud.mascota is defined else '') %}
-      {% set _envejeciente_lines = envejeciente_copy_lines if envejeciente_copy_lines is defined else [] %}
-
-      {# Sueldo + pasaje #}
-      {% set _sueldo = sueldo_copy if sueldo_copy is defined else (solicitud.sueldo or '') %}
-      {% set _pasaje = (solicitud.pasaje_aporte if solicitud.pasaje_aporte is defined else False) %}
-      {% set _pasaje_mode = (pasaje_copy_mode if pasaje_copy_mode is defined else ('aparte' if _pasaje else 'incluido')) %}
-      {% set _pasaje_otro_txt = (pasaje_copy_other_text if pasaje_copy_other_text is defined else '')|trim %}
-      {% if _pasaje_mode == 'otro' and _pasaje_otro_txt %}
-        {% set _pasaje_texto = _pasaje_otro_txt %}
-      {% elif _pasaje_mode == 'aparte' %}
-        {% set _pasaje_texto = 'Más ayuda del pasaje' %}
-      {% else %}
-        {% set _pasaje_texto = 'Pasaje incluido' %}
-      {% endif %}
-      {% set _nota = (solicitud.nota_cliente if solicitud.nota_cliente is defined else '') %}
-      {% if (not _nota) and solicitud.notas is defined and solicitud.notas %}
-        {% set _nota = solicitud.notas %}
-      {% endif %}
-
-      {# Texto final interno construido por bloques no vacíos. #}
-      {% set _copy_blocks = [] %}
-      {% set _ = _copy_blocks.append(
-        'Disponible ( ' ~ (solicitud.codigo_solicitud or '—') ~ ' )\n'
-        ~ '📍 ' ~ (solicitud.ciudad_sector or '—') ~ '\n'
-        ~ 'Ruta más cercana: ' ~ _rutas
-      ) %}
-      {% set _ = _copy_blocks.append(
-        _modalidad ~ '\n'
-        ~ '\nEdad: ' ~ (_edad_txt or '') ~ '\n'
-        ~ 'Dominicana\n'
-        ~ 'Que sepa leer y escribir\n'
-        ~ 'Experiencia en: ' ~ (_exp or '') ~ '\n'
-        ~ 'Horario: ' ~ _horario
-      ) %}
-      {% set _function_block = 'Funciones: ' ~ _funcs %}
-      {% if _composition.show_envejeciente and _envejeciente_lines %}
-        {% set _function_block = _function_block ~ '\n' ~ (_envejeciente_lines | join('\n')) %}
-      {% endif %}
-      {% if specific_service_copy_lines is defined and specific_service_copy_lines %}
-        {% set _function_block = _function_block ~ '\n' ~ (specific_service_copy_lines | join('\n')) %}
-      {% endif %}
-      {% set _ = _copy_blocks.append(_function_block) %}
-      {% if _casa_line %}
-        {% set _ = _copy_blocks.append(_casa_line) %}
-      {% endif %}
-      {% set _occupant_lines = [] %}
-      {% if _composition.show_adultos and _adultos is not none and (_adultos|string)|trim != '' %}
-        {% set _ = _occupant_lines.append('Adultos: ' ~ (_adultos|string)) %}
-      {% endif %}
-      {% if _composition.show_ninos and _ninos is not none and (_ninos|string)|trim != '' and (_ninos|string)|int > 0 %}
-        {% set _ = _occupant_lines.append('Niños: ' ~ (_ninos|string)) %}
-      {% endif %}
-      {% if _composition.show_ninos and (_edades_ninos|string)|trim != '' %}
-        {% set _age_line = 'Edades niños: ' ~ _edades_ninos %}
-        {% if _child_help_suffix %}
-          {% set _age_line = _age_line ~ ' ' ~ _child_help_suffix %}
-        {% endif %}
-        {% set _ = _occupant_lines.append(_age_line) %}
-      {% endif %}
-      {% if _mascota and (_composition.show_adultos or _composition.show_ninos) %}
-        {% set _ = _occupant_lines.append('Mascota: ' ~ _mascota) %}
-      {% endif %}
-      {% if _occupant_lines %}
-        {% set _ = _copy_blocks.append(_occupant_lines | join('\n')) %}
-      {% endif %}
-      {% set _ = _copy_blocks.append('Sueldo: ' ~ (_sueldo|string) ~ ' mensual, ' ~ _pasaje_texto) %}
-      {% if (_nota|string)|trim != '' %}
-        {% set _ = _copy_blocks.append('Notas: ' ~ _nota) %}
-      {% endif %}
-      {% set _interno = _copy_blocks | join('\n\n') %}
-
-      {# Si el backend trae resumen_interno explícito, úsalo como prioridad (pero mantén el formato arriba como fallback) #}
-      {% if resumen_interno is defined and resumen_interno %}
-        {% set _interno = resumen_interno %}
-      {% endif %}
-
-      {% set _interno_clean = (_interno or '')|trim %}
+      {# El backend entrega el texto compartido con /admin/solicitudes/copiar. #}
+      {% set _interno = (resumen_interno or '')|trim %}
+      {% set _interno_clean = _interno %}
       <div class="glass-card detail-focus-card p-3 p-md-4">
         <ul class="list-group list-unstyled mb-0">
           <li class="list-group-item detail-focus-row p-3 bg-body text-body border-bottom">
@@ -344,13 +66,39 @@
     </div>
   </div>
 
+  <section class="glass-card mb-4" id="admin-complete-answers" aria-labelledby="admin-complete-answers-title">
+    <div class="glass-header" id="admin-complete-answers-title">
+      <i class="bi bi-card-list"></i> Respuestas completas de la solicitud
+    </div>
+    <div class="p-3 p-md-4">
+      <p class="small solicitud-detail-secondary mb-3">Vista administrativa: incluye respuestas privadas, condicionales e históricas. Este contenido es independiente del texto de publicación.</p>
+      {% for group in admin_answer_groups %}
+        <section class="mb-4" data-answer-group="{{ loop.index }}">
+          <h3 class="h6 fw-semibold">{{ group.title }}</h3>
+          {% if group.rows %}
+            <dl class="row mb-0">
+              {% for row in group.rows %}
+                <dt class="col-sm-4 col-lg-3 mb-1">{{ row.label }}</dt>
+                <dd class="col-sm-8 col-lg-9 mb-2 text-break" style="white-space: pre-line" data-answer-key="{{ row.key }}">{{ row.value }}</dd>
+              {% endfor %}
+            </dl>
+          {% else %}
+            <p class="small text-body-secondary mb-0">No hay respuestas generales guardadas.</p>
+          {% endif %}
+        </section>
+      {% else %}
+        <p class="small text-body-secondary mb-0">No se encontraron respuestas almacenadas.</p>
+      {% endfor %}
+    </div>
+  </section>
+
   <!-- Historial de Envíos -->
   <div class="glass-card mb-4">
     <div class="glass-header">
       <i class="bi bi-send-fill"></i> Historial de Envíos
     </div>
     {% if envios %}
-      <div class="table-responsive">
+      <div class="table-responsive solicitud-detail-table-scroll" role="region" aria-label="Historial de envíos" tabindex="0">
         <table class="table table-hover mb-0 align-middle solicitud-dark-table">
           <thead>
             <tr>

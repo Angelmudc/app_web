@@ -249,7 +249,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn('data-async-debounce-ms="300"', html)
         self.assertIn('data-async-history="true"', html)
 
-    def test_copiar_solicitudes_respeta_pasaje_texto_libre(self):
+    def test_copiar_solicitudes_conserva_el_significado_del_pasaje_personalizado(self):
         self._login("Owner", "admin123")
         solicitud = _SolicitudStub(estado="activa")
         solicitud.pasaje_aporte = False
@@ -267,7 +267,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 text_resp = self.client.get("/admin/solicitudes/10/texto", follow_redirects=False)
         self.assertEqual(text_resp.status_code, 200)
         payload = text_resp.get_json() or {}
-        self.assertIn("pasaje aparte por ruta", payload.get("order_text") or "")
+        self.assertIn("Sueldo: $25,000 mensual, pasaje aparte por ruta", payload.get("order_text") or "")
 
     def test_copiar_solicitudes_formatea_funciones_y_areas_humano(self):
         self._login("Owner", "admin123")
@@ -284,10 +284,14 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("order_text", "")
-        self.assertIn("Funciones: Limpieza general, Cocinar, Lavar, Cuidar ni", html)
+        self.assertIn(
+            "Funciones:\nLimpieza general, Cocinar, Lavar, Cuidar niños, Mandados",
+            html,
+        )
         self.assertTrue(("Salón de juegos" in html) or ("Sal\\u00f3n de juegos" in html))
         self.assertTrue(("Jardín" in html) or ("Jard\\u00edn" in html))
-        self.assertTrue(("Área de lavado" in html) or ("\\u00c1rea de lavado" in html))
+        self.assertNotIn("area_lavado", html)
+        self.assertIn("Mandados", html)
         self.assertNotIn("salon_juegos", html)
         self.assertNotIn("jardin", html)
 
@@ -304,8 +308,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         html = (resp.get_json() or {}).get("order_text", "")
-        self.assertIn("Horario:", html)
-        self.assertIn("Lunes a viernes: 7:30 AM - 6:00 PM", html)
+        self.assertIn("Horario: Lunes a viernes: 7:30 AM - 6:00 PM", html)
         self.assertIn("Sábado: 7:30 AM - 1:00 PM", html)
         self.assertNotIn("Horario: Lunes a viernes / sábado hasta 1:00 PM, de 7:30 AM a 6:00 PM", html)
 
@@ -375,7 +378,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
             "Cliente cubre taxi nocturno",
         )
 
-    def test_public_copy_removes_duplicated_operational_markers_preserving_client_note(self):
+    def test_public_copy_preserves_free_text_notes_and_omits_only_operational_lines(self):
         s = _SolicitudStub(estado="activa")
         marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
         s.nota_cliente = "El envejeciente es independiente, solo es acompañarlo\n" + marker + "\n" + marker
@@ -388,9 +391,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("El envejeciente es independiente, solo es acompañarlo", texto)
         self.assertNotIn("[Operativo]", texto)
         self.assertNotIn("no cobrar nuevamente", texto.lower())
-        self.assertEqual(texto.count("El envejeciente es independiente, solo es acompañarlo"), 1)
+        self.assertTrue(texto.startswith("Disponible ( SOL-010 )\n📍 Santiago\nRuta más cercana: 27 de Febrero\n\n*DOMÉSTICA*"))
 
-    def test_public_copy_removes_interleaved_operational_lines_without_destroying_note_breaks(self):
+    def test_public_copy_preserves_notes_around_operational_lines(self):
         s = _SolicitudStub(estado="activa")
         marker = "[Operativo] Reemplazo cancelado / servicio pendiente (no cobrar nuevamente)."
         s.nota_cliente = f"Primera indicación\n{marker}\nSegunda indicación\n\n{marker}\nTercera indicación"
@@ -400,10 +403,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        self.assertIn("Primera indicación\nSegunda indicación\n\nTercera indicación", texto)
+        self.assertIn("Primera indicación", texto)
+        self.assertIn("Segunda indicación", texto)
+        self.assertIn("Tercera indicación", texto)
         self.assertNotIn(marker, texto)
 
-    def test_public_copy_filters_operativo_marker_with_leading_whitespace_only(self):
+    def test_public_copy_filters_only_explicit_operational_lines(self):
         s = _SolicitudStub(estado="activa")
         s.nota_cliente = (
             "Nota pública\n"
@@ -417,10 +422,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        self.assertIn(
-            "Nota pública\nEl cliente indicó que el proceso operativo continúa normalmente.",
-            texto,
-        )
+        self.assertIn("Nota pública", texto)
+        self.assertIn("El cliente indicó que el proceso operativo continúa normalmente.", texto)
         self.assertNotIn("[Operativo]", texto)
         self.assertNotIn("\n\n\n", texto)
 
@@ -435,9 +438,10 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        for texto in (resumen, copiar):
-            self.assertIn("Nota pública", texto)
-            self.assertNotIn("[Operativo] dato interno", texto)
+        self.assertIn("Nota pública", resumen)
+        self.assertNotIn("[Operativo] dato interno", resumen)
+        self.assertIn("Nota pública", copiar)
+        self.assertNotIn("[Operativo] dato interno", copiar)
 
     def test_build_resumen_cliente_solicitud_incluye_texto_exacto_envejeciente_independiente(self):
         s = _SolicitudStub(estado="activa")
@@ -461,23 +465,68 @@ class AdminCopiarActionsTest(unittest.TestCase):
             "tareas": ["jugar"],
             "ayuda_cuidado_ninos": "con_ayuda",
         }
+        s.tipo_servicio = "NINERA"
         with flask_app.app_context():
             cliente = admin_routes.build_resumen_cliente_solicitud(s)
             publicar = admin_routes._admin_build_order_text_for_copiar(
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
+        self.assertTrue(publicar.startswith("Disponible ( SOL-010 )\n📍 Santiago\nRuta más cercana: 27 de Febrero\n\n*NIÑERA*"))
+        self.assertNotIn("Funciones: Limpieza General", publicar)
+        self.assertNotIn("Adultos:", publicar)
+        self.assertNotIn("Casa -", publicar)
         expected = "Limpieza General, Cocinar, Lavar, Planchar, Cuidar Niños, Cuidar envejecientes"
-        self.assertIn(expected, publicar)
-        self.assertIn(expected, cliente)
+        self.assertNotIn(expected, cliente)
         for wrong in ("Lavado", "Cuidar niños"):
             self.assertNotIn(wrong, cliente)
             self.assertNotIn(wrong, publicar)
         self.assertIn("Niños a cuidar: 2 (2 y 6 años)", cliente)
-        self.assertIn("Niños a cuidar: 2 (2 y 6 años) (Le darán ayuda con los niños)", cliente)
-        self.assertIn("2 y 6 años) (Le darán ayuda con los niños)", publicar)
+        self.assertIn(
+            "Niños a cuidar: 2 (2 y 6 años)\nRecibirá ayuda con los niños.",
+            cliente,
+        )
+        self.assertIn(
+            "Funciones:\nRealizar actividades recreativas con los niños.",
+            cliente,
+        )
+        self.assertIn("2 (2 y 6 años)", publicar)
+        self.assertIn("Recibirá ayuda con los niños.", publicar)
+        self.assertIn(
+            "Funciones:\nRealizar actividades recreativas con los niños.",
+            publicar,
+        )
+        self.assertIn("2 y 6 años", publicar)
+        self.assertIn("Recibirá ayuda con los niños.", publicar)
         self.assertNotIn("Ayuda con el cuidado de los niños:", cliente)
         self.assertNotIn("Ayuda con el cuidado de los niños:", publicar)
+
+    def test_oficina_public_copy_uses_explicit_service_fields_and_excludes_private_household_data(self):
+        s = _SolicitudStub(estado="activa")
+        s.tipo_servicio = "LIMPIEZA_ESTABLECIMIENTOS"
+        s.detalles_servicio = {
+            "tipo": "LIMPIEZA_ESTABLECIMIENTOS", "tipo_establecimiento": "Oficina",
+            "tamano": "mediano", "niveles": 2, "banos": 3,
+            "areas": ["Recepción", "Baños"], "funciones": ["limpieza diaria"],
+            "frecuencia": "Lunes a viernes", "nombre_establecimiento": "NEGOCIO PRIVADO",
+        }
+        s.adultos = 12
+        s.ninos = 4
+        s.rutas_cercanas = "Calle exacta 123"
+        s.nota_cliente = "Observación interna confidencial"
+        with flask_app.app_context():
+            with flask_app.test_request_context("/"):
+                texto = admin_routes._admin_build_public_copy_text(
+                    s, label_maps=admin_routes._admin_copiar_form_label_maps()
+                )
+        self.assertTrue(texto.startswith("Disponible ( SOL-010 )\n📍 Santiago\nRuta más cercana: Calle exacta 123\n\n*LIMPIEZA DE OFICINA*"))
+        self.assertIn("Tipo de establecimiento: Oficina", texto)
+        self.assertIn("Áreas que necesita limpiar: Recepción, Baños", texto)
+        self.assertIn("Calle exacta 123", texto)
+        self.assertIn("Observación interna confidencial", texto)
+        for private in ("NEGOCIO PRIVADO", "Adultos:", "Niños:"):
+            self.assertNotIn(private, texto)
+        self.assertIn("Baños: 3", texto)
 
     def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
         self._login("Owner", "admin123")
@@ -502,8 +551,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
             "Envejeciente: encamado. Requiere: cambiar pampers, higiene personal, darle medicamentos.",
         )
         self.assertEqual(expected[1], "Nota sobre el envejeciente: Usa cama clínica")
-        self.assertIn("Envejeciente: encamado.", html)
-        self.assertIn("Nota sobre el envejeciente:", html)
+        self.assertIn(expected[0], html)
+        self.assertIn(expected[1], html)
 
     def test_copiar_solicitudes_incluye_envejeciente_solo_acompanamiento(self):
         self._login("Owner", "admin123")
@@ -526,7 +575,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
             expected,
             "Envejeciente: encamado. La doméstica no realizará higiene, pañales, alimentación ni medicamentos; solo acompañamiento o supervisión.",
         )
-        self.assertIn("Envejeciente: encamado.", html)
+        self.assertIn(expected, html)
 
     def test_build_resumen_cliente_solicitud_legacy_sin_campos_envejeciente_no_falla(self):
         s = _SolicitudStub(estado="activa")
@@ -537,7 +586,23 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch("admin.routes.AdminSolicitudForm", _DummyForm):
                 resumen = admin_routes.build_resumen_cliente_solicitud(s)
-        self.assertIn("🧾 Resumen de su solicitud", resumen)
+        self.assertIn("DOMÉSTICA · SOLICITUD SOL-010", resumen)
+
+    def test_build_resumen_encabeza_los_seis_servicios_en_mayusculas(self):
+        cases = {
+            "DOMESTICA_LIMPIEZA": "DOMÉSTICA",
+            "NINERA": "NIÑERA",
+            "ENFERMERA": "ENFERMERA / CUIDADORA",
+            "CHOFER": "CHOFER",
+            "LIMPIEZA_ESTABLECIMIENTOS": "LIMPIEZA DE ESTABLECIMIENTOS",
+            "CONSERJERIA_RESIDENCIAL": "CONSERJERÍA RESIDENCIAL",
+        }
+        with flask_app.app_context(), patch("admin.routes.AdminSolicitudForm", _DummyForm):
+            for service, title in cases.items():
+                solicitud = _SolicitudStub(estado="activa")
+                solicitud.tipo_servicio = service
+                resumen = admin_routes.build_resumen_cliente_solicitud(solicitud)
+                self.assertTrue(resumen.startswith(f"{title} · SOLICITUD SOL-010"), service)
 
     def test_copiar_solicitudes_admin_usa_modal_pagado_compartido(self):
         self._login("Cruz", "8998")
@@ -763,6 +828,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
                  patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: candidata)), \
+                 patch("admin.routes.get_payment_summary", side_effect=[
+                     {"saldo_pendiente": "12000.00", "total_pagado": "0.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                     {"saldo_pendiente": "0.00", "total_pagado": "12000.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                 ]), \
+                 patch("admin.routes.get_current_payment_cycle", return_value={"numero_ciclo": 1}), \
+                 patch("admin.routes.crear_pago_solicitud") as create_payment_mock, \
                  patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
                  patch("admin.routes._mark_candidata_estado") as mark_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -770,6 +841,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
                     "/admin/solicitudes/10/marcar_pagada_desde_copiar",
                     data={
                         "candidata_id": "33",
+                        "payment_mode": "manual",
+                        "manual_reason": "Pago informado para la prueba",
                         "monto_pagado": "12000",
                         "next": "/admin/solicitudes/copiar?per_page=50#sol-10",
                     },
@@ -783,6 +856,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(solicitud.monto_pagado, "12000.00")
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
+        create_payment_mock.assert_called_once()
         commit_mock.assert_called_once()
 
     def test_cancelar_desde_copiar_ajax_devuelve_json(self):
@@ -878,6 +952,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
                  patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: candidata)), \
+                 patch("admin.routes.get_payment_summary", side_effect=[
+                     {"saldo_pendiente": "12000.00", "total_pagado": "0.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                     {"saldo_pendiente": "0.00", "total_pagado": "12000.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                 ]), \
+                 patch("admin.routes.get_current_payment_cycle", return_value={"numero_ciclo": 1}), \
+                 patch("admin.routes.crear_pago_solicitud") as create_payment_mock, \
                  patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
                  patch("admin.routes._mark_candidata_estado") as mark_mock, \
                  patch("admin.routes.db.session.commit") as commit_mock:
@@ -910,6 +990,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertEqual(solicitud.candidata_id, 33)
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
+        create_payment_mock.assert_called_once()
         commit_mock.assert_called_once()
 
     def test_pagado_desde_copiar_notify_falla_no_rompe_operacion(self):
@@ -920,6 +1001,12 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
                  patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: candidata)), \
+                 patch("admin.routes.get_payment_summary", side_effect=[
+                     {"saldo_pendiente": "12000.00", "total_pagado": "0.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                     {"saldo_pendiente": "0.00", "total_pagado": "12000.00", "precio_plan": "12000.00", "abono_requerido": "0.00"},
+                 ]), \
+                 patch("admin.routes.get_current_payment_cycle", return_value={"numero_ciclo": 1}), \
+                 patch("admin.routes.crear_pago_solicitud") as create_payment_mock, \
                  patch("admin.routes._sync_solicitud_candidatas_after_assignment") as sync_mock, \
                  patch("admin.routes._mark_candidata_estado") as mark_mock, \
                  patch("admin.routes._notify_cliente_candidata_asignada", side_effect=RuntimeError("notif down")), \
@@ -947,6 +1034,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertFalse(bool(resp.location))
         sync_mock.assert_called_once()
         mark_mock.assert_called_once()
+        create_payment_mock.assert_called_once()
         commit_mock.assert_called_once()
 
     def test_pagado_desde_copiar_error_funcional_async_es_json_controlado(self):
@@ -954,11 +1042,19 @@ class AdminCopiarActionsTest(unittest.TestCase):
         solicitud = _SolicitudStub(estado="activa")
 
         with flask_app.app_context():
-            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)):
+            with patch.object(admin_routes.Solicitud, "query", SimpleNamespace(get_or_404=lambda _id: solicitud)), \
+                 patch.object(admin_routes.Candidata, "query", SimpleNamespace(get=lambda _id: _CandidataStub(fila=33))), \
+                 patch("admin.routes._claim_idempotency", return_value=(None, False)), \
+                 patch("admin.routes.get_payment_summary", return_value={"saldo_pendiente": "12000.00", "total_pagado": "0.00"}), \
+                 patch("admin.routes._matching_candidate_flags", return_value=(set(), set())), \
+                 patch("admin.routes._sync_solicitud_candidatas_after_assignment"), \
+                 patch("admin.routes._mark_candidata_estado"):
                 resp = self.client.post(
                     "/admin/solicitudes/10/marcar_pagada_desde_copiar",
                     data={
                         "candidata_id": "33",
+                        "payment_mode": "manual",
+                        "manual_reason": "Pago informado para la prueba",
                         "monto_pagado": "",
                         "next": "/admin/solicitudes/copiar?per_page=50",
                     },
@@ -973,7 +1069,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         data = resp.get_json() or {}
         self.assertFalse(data.get("ok"))
         self.assertEqual(data.get("action"), "paid")
-        self.assertIn("monto pagado", data.get("message", "").lower())
+        self.assertIn("pago manual requiere monto", data.get("message", "").lower())
         self.assertIn("application/json", (resp.headers.get("Content-Type") or "").lower())
         self.assertFalse(bool(resp.location))
 

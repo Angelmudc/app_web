@@ -10,6 +10,7 @@ import traceback
 import hashlib
 import secrets
 import ipaddress
+import unicodedata
 from types import SimpleNamespace
 from contextlib import contextmanager
 from urllib.parse import parse_qs, urlparse, quote_plus
@@ -3794,9 +3795,12 @@ def _pasaje_operativo_phrase_from_solicitud(s: Solicitud) -> str:
 def _admin_child_help_copy_suffix(s: Solicitud) -> str:
     """Texto válido de ayuda infantil para anexar a la línea de edades."""
     flags = solicitud_composition_flags(getattr(s, "funciones", None))
-    if not flags["show_child_help"]:
+    detalles = getattr(s, "detalles_servicio", None) or {}
+    from services.service_catalog import canonical_service_code
+    service = canonical_service_code(getattr(s, "tipo_servicio", None) or detalles.get("tipo"))
+    if not flags["show_child_help"] and service != "NINERA":
         return ""
-    ayuda = (getattr(s, "detalles_servicio", None) or {}).get("ayuda_cuidado_ninos")
+    ayuda = detalles.get("ayuda_cuidado_ninos")
     return {
         "sin_ayuda": "(No tendrá ayuda con los niños)",
         "con_ayuda": "(Le darán ayuda con los niños)",
@@ -3815,13 +3819,20 @@ def _admin_specific_service_copy_lines(s: Solicitud, label_maps: dict | None = N
     """Devuelve solo los detalles específicos ya guardados en la solicitud."""
     labels = label_maps or _admin_copiar_form_label_maps()
     detalles = getattr(s, "detalles_servicio", None) or {}
-    tipo = detalles.get("tipo") or _s(getattr(s, "tipo_servicio", None))
+    if not isinstance(detalles, dict):
+        detalles = {}
+    # The persisted service column is authoritative. JSON ``tipo`` is only a
+    # compatibility marker and must not route another service's answers.
+    from services.service_catalog import SERVICE_BY_CODE, SERVICE_CODE_ALIASES, canonical_service_code
+    stored_tipo = _s(getattr(s, "tipo_servicio", None))
+    tipo = stored_tipo or _s(detalles.get("tipo"))
+    if tipo and tipo not in SERVICE_BY_CODE and tipo not in SERVICE_CODE_ALIASES:
+        return []
     ayuda_suffix = _admin_child_help_copy_suffix(s)
     if tipo == "NINERA":
         cantidad = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
         edades = detalles.get("edades_ninos") or detalles.get("edades")
         tareas = detalles.get("tareas") or []
-        condicion = detalles.get("condicion_especial") or detalles.get("condicion")
         lines = []
         if cantidad or edades:
             base = "Niños a cuidar: "
@@ -3833,45 +3844,315 @@ def _admin_specific_service_copy_lines(s: Solicitud, label_maps: dict | None = N
                 base += f" {ayuda_suffix}"
             lines.append(base)
         if tareas:
-            tarea_labels = [dict(labels.get("ninera_tareas") or {}).get(code) or str(code) for code in _as_list(tareas)]
-            lines.append("Tareas con los niños: " + ", ".join(tarea_labels))
-        if condicion:
-            lines.append(f"Condición especial: {condicion}")
+            task_labels = dict(labels.get("ninera_tareas") or {})
+            task_codes = _unique_keep_order([str(code) for code in _as_list(tareas) if code != "otro"])
+            compact_tasks = _admin_compact_nanny_responsibilities(task_codes, task_labels)
+            if compact_tasks:
+                lines.append("Funciones con los niños: " + compact_tasks)
+            if "otro" in _as_list(tareas) and detalles.get("ninera_tareas_otro"):
+                lines.append("Otras responsabilidades: " + str(detalles["ninera_tareas_otro"]))
+        if detalles.get("responsabilidad_integral"):
+            lines.append("Responsabilidad integral del cuidado de los niños (sin limpieza general ni cocina para adultos)")
+        if detalles.get("ninera_responsable_principal") in {"si", "no"}:
+            lines.append("Responsable principal del cuidado: " + ("Sí" if detalles["ninera_responsable_principal"] == "si" else "No, compartirá el cuidado"))
+        care_text = _admin_nanny_public_care_text(detalles)
+        if care_text:
+            safe_care_text = _admin_public_copy_text(care_text, limit=200)
+            if safe_care_text:
+                lines.append("Detalle de cuidados revisado: " + safe_care_text)
         return lines
     if tipo == "ENFERMERA":
-        a_quien = detalles.get("a_quien_cuida") or detalles.get("a_quien")
-        condicion = detalles.get("condicion_principal") or detalles.get("condicion")
+        # Render catalog values and customer-provided descriptions. Identity is
+        # removed from the assembled summary using the structured client row.
+        from services.service_catalog import (
+            ENFERMERA_ASSISTANCE_CHOICES, ENFERMERA_CONDITION_CHOICES,
+            ENFERMERA_EXPERIENCE_CHOICES, ENFERMERA_PERSON_CARE_NEEDS, enfermera_responsibility_lines,
+            parse_enfermera_necesidades_historicas, parse_enfermera_personas, parse_enfermera_perfiles_historicos,
+            parse_enfermera_responsabilidad_por_persona,
+        )
+
+        nurse_people = parse_enfermera_personas(detalles.get("personas_cuidado"))
+        if not nurse_people:
+            historical_profiles = parse_enfermera_perfiles_historicos(detalles.get("personas_cuidado_historicas"))
+            nurse_people = [entry["perfil"] for entry in historical_profiles]
+        needs = dict(ENFERMERA_PERSON_CARE_NEEDS)
+        historical_needs = parse_enfermera_necesidades_historicas(detalles.get("personas_cuidado_necesidades_historicas"))
+        for entry in historical_needs:
+            index = entry["indice"]
+            if index < len(nurse_people):
+                selected = [value for value in entry["necesidades"] if value in needs]
+                if selected:
+                    nurse_people[index]["necesidades"] = list(dict.fromkeys([*nurse_people[index].get("necesidades", []), *selected]))
         movilidad = detalles.get("movilidad") or ""
         tareas = detalles.get("tareas") or []
         lines = []
-        if a_quien:
-            lines.append(f"A quién cuida: {a_quien}")
-        if movilidad:
-            lines.append(f"Movilidad: {dict(labels.get('enf_movilidad') or {}).get(movilidad, movilidad)}")
-        if condicion:
-            lines.append(f"Condición principal: {condicion}")
+        count = detalles.get("cantidad_personas")
+        if isinstance(count, int) and 1 <= count <= 20:
+            lines.append(f"Personas que necesitan cuidados: {count}")
+        if movilidad and not nurse_people:
+            mobility_label = dict(labels.get('enf_movilidad') or {}).get(movilidad)
+            if mobility_label:
+                lines.append(f"Movilidad: {mobility_label}")
+        if nurse_people:
+            mobility_labels = dict(labels.get("enf_movilidad") or {})
+            condition_labels = dict(ENFERMERA_CONDITION_CHOICES)
+            for index, person in enumerate(nurse_people, start=1):
+                parts = []
+                if person.get("edad") is not None:
+                    parts.append(f"{person['edad']} años")
+                person_mobility = mobility_labels.get(person.get("movilidad"))
+                if person_mobility:
+                    parts.append("movilidad: " + person_mobility)
+                person_conditions = [condition_labels[value] for value in person.get("condiciones", []) if value in condition_labels]
+                if person_conditions:
+                    parts.append("condiciones: " + ", ".join(person_conditions))
+                person_needs = [needs[value] for value in person.get("necesidades", []) if value in needs]
+                if person_needs:
+                    parts.append("necesidades: " + ", ".join(person_needs))
+                if parts:
+                    lines.append(f"Persona {index}: " + "; ".join(parts))
+                person_responsibilities = enfermera_responsibility_lines(person)
+                if person_responsibilities:
+                    lines.append("  Responsabilidades: " + ", ".join(person_responsibilities))
+        assistance = dict(ENFERMERA_ASSISTANCE_CHOICES).get(detalles.get("tipo_asistencia"))
+        if assistance:
+            lines.append("Tipo de asistencia: " + assistance)
+        for key, label in (("ayuda_higiene", "Ayuda con higiene personal"), ("ayuda_alimentacion", "Ayuda para alimentarse")):
+            if detalles.get(key) in {"si", "no"}:
+                lines.append(f"{label}: {'Sí' if detalles[key] == 'si' else 'No'}")
+        if not nurse_people and historical_needs:
+            for entry in historical_needs:
+                selected_needs = [needs[value] for value in entry["necesidades"] if value in needs]
+                if selected_needs:
+                    lines.append(f"Necesidades de la Persona {entry['indice'] + 1}: " + ", ".join(selected_needs))
+        # The current experience is already in the shared requirements block;
+        # repeating it as "Personal solicitado" made nurse publications list
+        # the same answer twice.
+        if detalles.get("responsabilidad_integral"):
+            lines.append("Responsabilidad integral del cuidado de la persona")
+        if detalles.get("responsabilidad_principal") in {"si", "no"}:
+            lines.append("Responsable principal del cuidado: " + ("Sí" if detalles["responsabilidad_principal"] == "si" else "No, compartirá el cuidado"))
+        elif detalles.get("ninera_responsable_principal") in {"si", "no"}:
+            # Backward compatibility for requests where this answer was saved
+            # under the former shared field name.
+            lines.append("Responsable principal del cuidado: " + ("Sí" if detalles["ninera_responsable_principal"] == "si" else "No, compartirá el cuidado"))
+        condition_principal = _admin_public_copy_text(detalles.get("condicion_principal"), limit=160)
+        if condition_principal:
+            lines.append("Condición principal reportada: " + condition_principal)
+        a_quien_values = _unique_keep_order([str(detalles.get(key) or "").strip() for key in ("a_quien_cuida", "a_quien")])
+        for a_quien in (value for value in a_quien_values if value):
+            lines.append("Persona que necesita cuidados: " + a_quien)
+        if "otra" in _as_list(detalles.get("condiciones")) and detalles.get("condicion_otro"):
+            lines.append("Otra condición descrita: " + str(detalles["condicion_otro"]))
+        training = _admin_public_copy_text(detalles.get("formacion_requerida"), limit=160)
+        if training:
+            lines.append("Formación requerida: " + training)
         if tareas:
-            tarea_labels = [dict(labels.get("enf_tareas") or {}).get(code) or str(code) for code in _as_list(tareas)]
-            lines.append("Tareas de cuidado: " + ", ".join(tarea_labels))
+            task_labels = dict(labels.get("enf_tareas") or {})
+            from services.service_catalog import parse_enfermera_responsabilidad_por_persona
+            attributed = parse_enfermera_responsabilidad_por_persona(
+                detalles.get("responsabilidad_por_persona"), detalles.get("cantidad_personas"), tareas
+            )
+            tarea_labels = [
+                task_labels.get(code, str(code)) + (f" (Persona {attributed[code]})" if code in attributed else "")
+                for code in _as_list(tareas) if code != "otro"
+            ]
+            if "otro" in _as_list(tareas) and str(detalles.get("enf_tareas_otro") or "").strip():
+                tarea_labels.append(str(detalles["enf_tareas_otro"]).strip())
+            if tarea_labels:
+                suffix = "con asignación histórica explícita" if attributed else "sin atribución individual"
+                lines.append("Responsabilidades históricas (" + suffix + "): " + ", ".join(tarea_labels))
+        conditions = dict(ENFERMERA_CONDITION_CHOICES)
+        selected_conditions = [conditions[value] for value in _as_list(detalles.get("condiciones")) if value in conditions]
+        if selected_conditions and not nurse_people:
+            lines.append("Condiciones de salud: " + ", ".join(selected_conditions))
+        injection = detalles.get("tipo_inyeccion")
+        if "administrar_inyecciones" in _as_list(tareas) and injection:
+            from services.service_catalog import ENFERMERA_INJECTION_CHOICES
+            injection_label = dict(ENFERMERA_INJECTION_CHOICES).get(injection)
+            lines.append("Tipo de inyección: " + str(injection_label or injection))
         return lines
     if tipo == "CHOFER":
+        from services.service_catalog import CHOFER_LICENSE_CHOICES, CHOFER_ROUTE_CHOICES, CHOFER_VEHICLE_CHOICES, CHOFER_PURPOSE_CHOICES
         vehiculo = detalles.get("vehiculo")
+        tipo_servicio = detalles.get("tipo_servicio")
+        finalidad = detalles.get("finalidad")
         tipo_vehiculo = detalles.get("tipo_vehiculo")
         tipo_otro = detalles.get("tipo_vehiculo_otro")
         rutas = detalles.get("rutas")
         viajes_largos = detalles.get("viajes_largos")
         licencia = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
         lines = []
+        if finalidad:
+            purpose_label = dict(CHOFER_PURPOSE_CHOICES).get(finalidad, str(finalidad))
+            known_purposes = dict(CHOFER_PURPOSE_CHOICES)
+            legacy_purpose_labels = {
+                "Traslados diarios": "Traslado de empleados",
+                "Chofer personal": "Chofer personal o familiar",
+                "Viajes y diligencias": "Transporte para diligencias",
+                "Otro": "Otra finalidad (histórica)",
+            }
+            purpose_other = _admin_public_copy_text(detalles.get("finalidad_otro"), limit=120)
+            if finalidad == "otro" and purpose_other:
+                purpose_label += ": " + purpose_other
+            if finalidad in known_purposes:
+                lines.append("Finalidad del empleo: " + purpose_label)
+            elif finalidad in legacy_purpose_labels:
+                lines.append("Finalidad del empleo: " + legacy_purpose_labels[finalidad])
+        elif tipo_servicio:
+            legacy_purpose_labels = {
+                "Traslados diarios": "Traslado de empleados",
+                "Chofer personal": "Chofer personal o familiar",
+                "Viajes y diligencias": "Transporte para diligencias",
+                "Otro": "Otra finalidad (histórica)",
+            }
+            legacy_purpose = str(tipo_servicio).strip()
+            if legacy_purpose:
+                lines.append("Finalidad del empleo: " + legacy_purpose_labels.get(legacy_purpose, legacy_purpose))
         if vehiculo:
             lines.append(f"Vehículo: {'del cliente' if vehiculo == 'cliente' else 'propio del chofer' if vehiculo == 'empleado' else vehiculo}")
+        tipo_otro = _admin_public_copy_text(tipo_otro, limit=100)
         if tipo_vehiculo or tipo_otro:
-            lines.append(f"Tipo de vehículo: {tipo_otro or tipo_vehiculo}")
-        if rutas:
-            lines.append(f"Rutas habituales: {rutas}")
-        if viajes_largos is not None:
+            vehicle_labels = dict(CHOFER_VEHICLE_CHOICES) | {"camion_ligero": "Camión ligero", "Carro": "Carro", "Yipeta": "Yipeta", "Pickup": "Pickup", "Minibús": "Minibús"}
+            lines.append("Tipo de vehículo: " + str(tipo_otro or vehicle_labels.get(tipo_vehiculo, tipo_vehiculo)))
+        if isinstance(rutas, list):
+            labels = dict(CHOFER_ROUTE_CHOICES)
+            route_labels = [labels.get(value, str(value)) for value in rutas]
+            if route_labels:
+                lines.append("Rutas o desplazamientos: " + ", ".join(route_labels))
+            elif viajes_largos is not None:
+                lines.append("Viajes largos / fuera de la ciudad: Sí" if viajes_largos else "Viajes largos / fuera de la ciudad: No")
+            route_other = _admin_public_copy_text(detalles.get("rutas_otro"), limit=200)
+            if "otro" in rutas and route_other:
+                lines.append("Otros desplazamientos: " + route_other)
+        elif isinstance(rutas, str):
+            legacy_route_labels = {label.casefold(): label for _code, label in CHOFER_ROUTE_CHOICES}
+            legacy_route = legacy_route_labels.get(rutas.strip().casefold()) or rutas.strip()
+            if legacy_route:
+                lines.append("Rutas habituales: " + legacy_route)
+        elif viajes_largos is not None:
             lines.append("Viajes largos / fuera de la ciudad: Sí" if viajes_largos else "Viajes largos / fuera de la ciudad: No")
-        if licencia:
-            lines.append(f"Licencia / experiencia: {licencia}")
+        category = detalles.get("categoria_licencia_requerida")
+        if category in dict(CHOFER_LICENSE_CHOICES):
+            lines.append("Categoría de licencia requerida: " + dict(CHOFER_LICENSE_CHOICES)[category])
+        responsibilities = _admin_public_copy_text(detalles.get("responsabilidades"), limit=300)
+        if responsibilities:
+            lines.append("Responsabilidades adicionales: " + responsibilities)
+        for key, label in (("licencia_requisitos", "Requisitos adicionales de licencia"),
+                           ("licencia_detalle", "Detalle de licencia (histórico)"),
+                           ("disponibilidad", "Disponibilidad (histórica)")):
+            value = _admin_public_copy_text(detalles.get(key), limit=255)
+            if value:
+                lines.append(f"{label}: {value}")
+        return lines
+    canonical_tipo = canonical_service_code(tipo)
+    if canonical_tipo == "LIMPIEZA_ESTABLECIMIENTOS":
+        from services.service_catalog import OFFICE_ESTABLISHMENT_CHOICES, OFFICE_AREA_CHOICES, OFFICE_TASK_CHOICES
+        kind = detalles.get("tipo_establecimiento")
+        kind_label = dict(OFFICE_ESTABLISHMENT_CHOICES).get(kind)
+        lines = []
+        if kind_label:
+            other_kind = _admin_public_copy_text(detalles.get("tipo_establecimiento_otro"), limit=120) if kind == "otro" else ""
+            lines.append("Tipo de establecimiento: " + kind_label + (f" ({other_kind})" if other_kind else ""))
+        size = str(detalles.get("tamano") or "").strip().lower()
+        if size:
+            lines.append("Tamaño aproximado: " + size.capitalize())
+        areas_map = dict(OFFICE_AREA_CHOICES.get(kind, ()))
+        areas = [areas_map.get(value, str(value)) for value in _as_list(detalles.get("areas")) if str(value).strip()]
+        if areas:
+            lines.append("Áreas que necesita limpiar: " + ", ".join(areas))
+        if detalles.get("areas_legacy"):
+            legacy_areas = _admin_public_copy_text(detalles.get("areas_legacy"), limit=200)
+            if legacy_areas:
+                lines.append("Áreas (dato histórico): " + legacy_areas)
+        other_areas = _admin_public_copy_text(detalles.get("areas_otro"), limit=200)
+        if "otras" in _as_list(detalles.get("areas")) and other_areas:
+            lines.append("Otras áreas: " + other_areas)
+        task_map = dict(OFFICE_TASK_CHOICES)
+        tasks = [task_map.get(value, str(value)) for value in _as_list(detalles.get("funciones")) if str(value).strip()]
+        if tasks:
+            lines.append("Funciones: " + ", ".join(tasks))
+        other_tasks = _admin_public_copy_text(detalles.get("funciones_otro"), limit=200)
+        if "otras" in _as_list(detalles.get("funciones")) and other_tasks:
+            lines.append("Otras funciones: " + other_tasks)
+        spaces = _admin_public_copy_text(detalles.get("espacios_otro"), limit=200)
+        if spaces:
+            lines.append("Otros espacios: " + spaces)
+        features = detalles.get("caracteristicas") if isinstance(detalles.get("caracteristicas"), dict) else {}
+        feature_labels = {"despachos":"Despachos u oficinas", "reuniones":"Salas de reuniones", "ventas":"Áreas de venta", "probadores":"Probadores", "aulas":"Aulas", "administracion":"Oficinas administrativas", "consultorios":"Consultorios", "espera":"Salas de espera", "comedores":"Salones o áreas de comedor", "cocinas":"Cocinas", "niveles":"Niveles", "areas_comunes":"Áreas comunes", "banos":"Baños"}
+        for key, label in feature_labels.items():
+            value = features.get(key)
+            if type(value) is int and 0 <= value <= 500:
+                lines.append(f"{label}: {value}")
+        if not features:
+            for key, label in (("niveles", "Niveles"), ("banos", "Baños")):
+                value = detalles.get(key)
+                if type(value) is int and 0 <= value <= 500:
+                    lines.append(f"{label} (dato histórico): {value}")
+        for key, label in (("frecuencia", "Frecuencia de limpieza"), ("horario_limpieza", "Horario de limpieza")):
+            value = _admin_public_copy_text(detalles.get(key), limit=120)
+            if value:
+                lines.append(f"{label}: {value}")
+        support = detalles.get("trabaja_con_companeros")
+        if support in {"si", "no"}:
+            count = detalles.get("cantidad_companeros_limpieza")
+            suffix = f", {count} compañeros (sin incluir a la persona contratada)" if support == "si" and type(count) is int and count > 0 else ""
+            lines.append(f"Trabajará con otros empleados de limpieza: {'Sí' if support == 'si' else 'No'}{suffix}.")
+        return lines
+    if canonical_tipo == "CONSERJERIA_RESIDENCIAL":
+        from services.service_catalog import CONSERJE_CHARACTERISTIC_FIELDS, CONSERJE_INSTALLATION_CHOICES, CONSERJE_RESIDENTIAL_PROFILES, CONSERJE_RESIDENTIAL_TYPES, CONSERJE_RESPONSIBILITY_CHOICES
+        lines = []
+        if tipo == "CONSERJE":
+            for key, label in (("tipo_instalacion", "Tipo de instalación"), ("areas_comunes", "Áreas comunes"), ("areas_exteriores", "Áreas exteriores"), ("manejo_basura", "Manejo de basura"), ("mantenimiento_basico", "Mantenimiento básico")):
+                value = _admin_public_copy_text(detalles.get(key), limit=180)
+                if value:
+                    lines.append(f"{label}: {value}")
+            for key, label in (("niveles", "Niveles"), ("apartamentos", "Apartamentos"), ("ascensores", "Ascensores"), ("banos", "Baños"), ("escaleras", "Escaleras"), ("parqueos", "Parqueos")):
+                value = detalles.get(key)
+                if type(value) is int and value >= 0:
+                    lines.append(f"{label} (dato histórico): {value}")
+            return lines
+        kind = detalles.get("tipo_residencial")
+        label = dict(CONSERJE_RESIDENTIAL_TYPES).get(kind)
+        if label:
+            other_kind = _admin_public_copy_text(detalles.get("tipo_residencial_otro"), limit=120) if kind == "otro" else ""
+            lines.append("Tipo de residencial: " + (other_kind or label))
+        profile = CONSERJE_RESIDENTIAL_PROFILES.get(kind, {})
+        profile_keys = set()
+        for field_name in profile.get("fields", ()):
+            field = CONSERJE_CHARACTERISTIC_FIELDS[field_name]
+            key, value = field["key"], detalles.get(field["key"])
+            profile_keys.add(key)
+            if field["type"] == "number" and type(value) is int and value >= 0:
+                lines.append(f"{field['label']}: {value}")
+            elif field["type"] == "yes_no" and value in {"si", "no"}:
+                lines.append(f"{field['label']} {'Sí' if value == 'si' else 'No'}")
+        installation_labels = dict(CONSERJE_INSTALLATION_CHOICES)
+        installations = [installation_labels.get(value, str(value)) for value in _as_list(detalles.get("instalaciones"))]
+        if installations:
+            lines.append("Instalaciones a cargo: " + ", ".join(installations))
+        other_installations = _admin_public_copy_text(detalles.get("otras_instalaciones"), limit=200)
+        if other_installations:
+            lines.append("Otras instalaciones: " + other_installations)
+        responsibilities_map = dict(CONSERJE_RESPONSIBILITY_CHOICES)
+        responsibilities = [responsibilities_map.get(value, str(value)) for value in _as_list(detalles.get("responsabilidades"))]
+        if responsibilities:
+            lines.append("Responsabilidades: " + ", ".join(responsibilities))
+        other_text = _admin_public_copy_text(detalles.get("responsabilidades_otro"), limit=200)
+        if "otras" in _as_list(detalles.get("responsabilidades")) and other_text:
+            lines.append("Otras responsabilidades: " + other_text)
+        for key, label in (("estacionamiento", "Estacionamiento"), ("cantidad_edificios", "Cantidad de edificios"),
+                           ("parqueos_comunes", "Parqueos comunes"), ("areas_recreativas", "Áreas recreativas"),
+                           ("jardines_comunes", "Jardines comunes"), ("calles_internas", "Calles internas"),
+                           ("tiene_ascensor", "Tiene ascensor")):
+            value = detalles.get(key)
+            if key not in profile_keys and value not in (None, "", []):
+                lines.append(f"{label}: {value}")
+        support = detalles.get("trabaja_con_conserjes")
+        if support in {"si", "no"}:
+            count = detalles.get("cantidad_conserjes")
+            suffix = f", {count} compañeros (sin incluir a la persona contratada)" if support == "si" and type(count) is int and count > 0 else ""
+            lines.append(f"Trabajará con otros conserjes: {'Sí' if support == 'si' else 'No'}{suffix}.")
         return lines
     return []
 
@@ -3880,15 +4161,446 @@ _PUBLIC_OPERATIONAL_NOTE_LINE_RE = re.compile(r"^\s*\[operativo\](?:\s|$)", re.I
 
 
 def _admin_sanitize_public_note_text(value) -> str:
-    """Keep client-facing note lines while removing the internal marker convention."""
+    """Keep customer notes while omitting explicit staff-only operational markers."""
     raw = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
-    kept_lines = [
-        line.rstrip()
-        for line in raw.split("\n")
+    return "\n".join(
+        line.rstrip() for line in raw.split("\n")
         if not _PUBLIC_OPERATIONAL_NOTE_LINE_RE.match(line)
-    ]
-    return "\n".join(kept_lines).strip()
+    ).strip()
 
+
+def _admin_copy_experience_for_service(value, service_code: str, details: dict | None = None) -> str:
+    """Publish only experience labels that belong to the active profession.
+
+    ``Solicitud.experiencia`` is a legacy shared column. On an Admin service
+    change it can still contain the previous profession's value, so do not
+    treat arbitrary text as applicable to every service.
+    """
+    from services.service_catalog import canonical_service_code, ENFERMERA_EXPERIENCE_CHOICES
+
+    code = canonical_service_code(service_code)
+    raw = str(value or "").strip()
+    detail_values = details if isinstance(details, dict) else {}
+    explicit = str(detail_values.get("experiencia_requerida") or "").strip()
+    if code == "ENFERMERA":
+        # ``Cuidadora`` was a persisted legacy choice before the catalog used
+        # its more explicit experience labels.
+        allowed = {item for item, _label in ENFERMERA_EXPERIENCE_CHOICES} | {"Cuidadora"}
+        if explicit in allowed:
+            return explicit
+        return raw if raw in allowed else ""
+    allowed_by_service = {
+        "DOMESTICA_LIMPIEZA": {"Doméstica completa", "Cocina", "Niñera", "Enfermera", "Cuidado de envejeciente", "Limpieza"},
+        "NINERA": {"Niñera", "Enfermera"},
+        "CHOFER": {"Chofer"},
+        "LIMPIEZA_ESTABLECIMIENTOS": {"Limpieza"},
+        "CONSERJERIA_RESIDENCIAL": {"Conserjería"},
+    }
+    allowed = allowed_by_service.get(code)
+    return raw if allowed is None or raw in allowed else ""
+def _admin_copy_shared_requirements(details: dict, service_code: str = "") -> tuple[str, str]:
+    """Read only explicit, top-level shared candidate requirements.
+
+    For the six current services, candidate nationality and literacy are fixed
+    publication requirements. Historic JSON fields remain untouched; only
+    compatibility service codes use their stored values below.
+    """
+    from services.service_catalog import canonical_service_code
+    canonical_code = canonical_service_code(service_code)
+    fixed_requirement_services = {
+        "DOMESTICA_LIMPIEZA", "NINERA", "ENFERMERA", "CHOFER",
+        "LIMPIEZA_ESTABLECIMIENTOS", "CONSERJERIA_RESIDENCIAL",
+    }
+    if canonical_code in fixed_requirement_services:
+        nationality = "Dominicano" if canonical_code == "CHOFER" else "Dominicana"
+        return nationality, "Que sepa leer y escribir"
+
+    def value_for(keys):
+        for key in keys:
+            value = details.get(key)
+            if value not in (None, "", [], False):
+                return value, key
+        return None, ""
+
+    def text_value(value, *, limit=120):
+        if isinstance(value, (list, tuple, set)):
+            value = ", ".join(str(item).strip() for item in value if str(item).strip())
+        elif value is True:
+            value = "Que sepa leer y escribir"
+        elif value is False or value is None:
+            return ""
+        text = _admin_public_copy_text(value, limit=limit)
+        folded = text.casefold().replace("_", " ").strip()
+        if folded in {"leer escribir", "sabe leer y escribir", "lectoescritura", "lectura y escritura"}:
+            return "Que sepa leer y escribir"
+        return text
+
+    nationality_raw, _ = value_for(("nacionalidad_requerida", "nacionalidad"))
+    education_raw, education_key = value_for(("educacion_requerida", "requisito_educativo", "educacion", "nivel_educativo_requerido", "nivel_educativo", "sabe_leer_y_escribir", "leer_y_escribir"))
+    nationality = text_value(nationality_raw)
+    if nationality:
+        from services.service_catalog import canonical_service_code
+        normalized_nationality = unicodedata.normalize("NFKD", nationality.casefold())
+        normalized_nationality = "".join(
+            char for char in normalized_nationality if not unicodedata.combining(char)
+        )
+        normalized_nationality = re.sub(r"\s+", " ", normalized_nationality).strip()
+        # The stored answer may use either grammatical form (or a lowercase
+        # catalog value). Present the Dominican nationality in agreement with
+        # the active profession while preserving every alternative verbatim.
+        if normalized_nationality in {"dominicana", "dominicano", "dominican"}:
+            nationality = (
+                "Dominicano"
+                if canonical_service_code(service_code) == "CHOFER"
+                else "Dominicana"
+            )
+    education = text_value(education_raw)
+    if education_key in {"sabe_leer_y_escribir", "leer_y_escribir"}:
+        education_choice = str(education_raw or "").strip().casefold()
+        if education_choice in {"si", "sí", "true", "1", "yes"}:
+            education = "Que sepa leer y escribir"
+        elif education_choice in {"no", "false", "0"}:
+            education = ""
+    if education and education_key in {"nivel_educativo", "nivel_educativo_requerido"} and "leer y escribir" not in education.casefold():
+        education = "Nivel educativo: " + education
+    return nationality, education
+def _admin_schedule_comparison_key(value: str) -> str:
+    """Normalize formatting only; retain every semantic schedule distinction."""
+    folded = unicodedata.normalize("NFKD", str(value or "").casefold())
+    folded = "".join(char for char in folded if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", "", folded)
+def _admin_public_copy_text(value, *, limit: int = 160) -> str:
+    """Normalize provided copy text; privacy is handled by exact client identity redaction."""
+    del limit  # Historical call sites pass field limits; do not discard answers by length.
+    return " ".join(str(value or "").split())
+def _admin_nanny_public_care_text(details: dict) -> str:
+    """Return care text only when its stored review fingerprint matches."""
+    care_text = str((details or {}).get("necesidad_especial_publicable") or "").strip()
+    fingerprint = str((details or {}).get("necesidad_especial_revision_sha256") or "").strip().lower()
+    if not care_text or not fingerprint:
+        return ""
+    expected = hashlib.sha256(care_text.encode("utf-8")).hexdigest()
+    return care_text if secrets.compare_digest(fingerprint, expected) else ""
+def _admin_compact_nanny_responsibilities(codes, labels: dict | None = None) -> str:
+    """Compact known nanny tasks without omitting any selected responsibility.
+
+    Unknown and historical catalog values retain their explicit label. This is
+    deliberately deterministic: no free-form summarization can change a task.
+    """
+    labels = labels or {}
+    ordered = _unique_keep_order([str(code or "").strip() for code in (codes or ())])
+    selected = set(ordered)
+    parts = []
+    care_verbs = []
+    if "supervision" in selected:
+        care_verbs.extend(("cuidar", "supervisar"))
+    if "banar_vestir" in selected:
+        care_verbs.extend(("bañar", "vestir"))
+    if "alimentar" in selected:
+        care_verbs.append("alimentar")
+    if care_verbs:
+        verbs = ", ".join(care_verbs[:-1]) + (f" y {care_verbs[-1]}" if len(care_verbs) > 1 else care_verbs[0])
+        parts.append(f"{verbs} a los niños")
+    if "preparar_comida_ninos" in selected:
+        parts.append("preparar sus comidas exclusivamente para ellos")
+    if selected.intersection({"lavar_ropa_ninos", "planchar_ropa_ninos"}):
+        clothes = []
+        if "lavar_ropa_ninos" in selected:
+            clothes.append("lavar")
+        if "planchar_ropa_ninos" in selected:
+            clothes.append("planchar")
+        parts.append(" y ".join(clothes) + " su ropa")
+    if selected.intersection({"ordenar_dormitorios_ninos", "ordenar_juegos_ninos"}):
+        spaces = []
+        if "ordenar_dormitorios_ninos" in selected:
+            spaces.append("sus dormitorios")
+        if "ordenar_juegos_ninos" in selected:
+            spaces.append("sus áreas de juego")
+        parts.append("limpiar y organizar " + " y ".join(spaces))
+    explicit_phrases = {
+        "llevar_colegio": "llevarlos al colegio",
+        "recoger_colegio": "recogerlos del colegio",
+        "tareas_escolares": "ayudarlos con las tareas escolares",
+        "acompanar_actividades": "acompañarlos a actividades extracurriculares",
+        "jugar": "realizar actividades recreativas con los niños",
+        "tareas": "apoyarlos con sus tareas escolares",
+        "dormir": "apoyarlos con su rutina de sueño",
+    }
+    covered = {
+        "supervision", "banar_vestir", "alimentar", "preparar_comida_ninos",
+        "lavar_ropa_ninos", "planchar_ropa_ninos", "ordenar_dormitorios_ninos", "ordenar_juegos_ninos",
+    }
+    for code in ordered:
+        if code in covered:
+            continue
+        parts.append(explicit_phrases.get(code, str(labels.get(code) or code).strip()))
+    if not parts:
+        return ""
+    # Group clauses into natural sentences while keeping each selected task
+    # explicit; punctuation only combines presentation, not task semantics.
+    joined = "; ".join(part for part in parts if part)
+    return joined[:1].upper() + joined[1:] + "."
+def _admin_group_service_copy_lines(service_code: str, raw_lines) -> list[str]:
+    """Group already-rendered service answers without dropping their content."""
+    from services.service_catalog import canonical_service_code
+
+    code = canonical_service_code(service_code)
+    lines = [str(line).rstrip() for line in (raw_lines or ()) if str(line or "").strip()]
+    if not lines:
+        return []
+
+    sections: dict[str, list[str]] = {}
+
+    def put(section: str, line: str) -> None:
+        if line.strip():
+            sections.setdefault(section, []).append(line)
+
+    if code == "NINERA":
+        for line in lines:
+            if line.startswith("Niños a cuidar:"):
+                child_line = line
+                if "(Le darán ayuda con los niños)" in child_line:
+                    child_line = child_line.replace(" (Le darán ayuda con los niños)", "")
+                    put("Niños a cuidar", child_line)
+                    put("Niños a cuidar", "Recibirá ayuda con los niños.")
+                elif "(No tendrá ayuda con los niños)" in child_line:
+                    child_line = child_line.replace(" (No tendrá ayuda con los niños)", "")
+                    put("Niños a cuidar", child_line)
+                    put("Niños a cuidar", "No recibirá ayuda con los niños.")
+                else:
+                    put("Niños a cuidar", child_line)
+            elif line.startswith("Funciones con los niños:"):
+                put("Funciones", line.split(":", 1)[1].strip())
+            elif line.startswith("Otras responsabilidades:"):
+                put("Funciones", line)
+            elif line.startswith("Responsabilidad integral del cuidado de los niños"):
+                put("Condiciones del cuidado", "Responsabilidad integral del cuidado infantil, sin limpieza general ni cocina para adultos.")
+            elif line.startswith("Responsable principal del cuidado:"):
+                status = line.split(":", 1)[1].strip()
+                put("Condiciones del cuidado", "Será la principal responsable del cuidado." if status == "Sí" else "No será la principal responsable del cuidado; compartirá el cuidado.")
+            elif line.startswith("Necesidad especial reportada:"):
+                status = line.split(":", 1)[1].strip()
+                special = {
+                    "Sí": "Requiere cuidados especiales.",
+                    "No": "No requiere cuidados especiales.",
+                    "Prefiere conversar sobre este tema": "Prefiere conversar sobre este tema.",
+                }.get(status, status)
+                put("Atención especial", special)
+            elif line.startswith("Detalle de necesidad especial (dato histórico):"):
+                value = line.split(":", 1)[1].strip()
+                put("Atención especial", "Detalles históricos: " + value)
+            elif line.startswith(("Cuidados especiales requeridos:", "Detalle de necesidad especial:")):
+                value = line.split(":", 1)[1].strip()
+                put("Atención especial", "Detalles: " + value)
+            else:
+                put("Detalles del cuidado", line)
+        order = ("Niños a cuidar", "Funciones", "Condiciones del cuidado", "Atención especial", "Detalles del cuidado")
+        headings = {
+            "Niños a cuidar": None,
+            "Funciones": "Funciones:",
+            "Condiciones del cuidado": "Condiciones del cuidado:",
+            "Atención especial": "Atención especial:",
+            "Detalles del cuidado": "Detalles del cuidado:",
+        }
+    elif code == "ENFERMERA":
+        for line in lines:
+            if line.startswith(("Personas que necesitan cuidados:", "Persona que necesita cuidados:", "Persona ")) or line.startswith("  "):
+                put("Personas que necesitan cuidados", line)
+            elif line.startswith("Responsabilidades:"):
+                put("Responsabilidades", line.split(":", 1)[1].strip())
+            elif line.startswith(("Tareas de cuidado:", "Tipo de inyección:", "Otras responsabilidades:")):
+                put("Responsabilidades", line)
+            else:
+                put("Necesidades y condiciones", line)
+        order = ("Personas que necesitan cuidados", "Necesidades y condiciones", "Responsabilidades")
+        headings = {
+            "Personas que necesitan cuidados": None,
+            "Necesidades y condiciones": "Necesidades y condiciones del cuidado:",
+            "Responsabilidades": "Responsabilidades:",
+        }
+    elif code == "CHOFER":
+        for line in lines:
+            if line.startswith("Finalidad del empleo:"):
+                put("Finalidad", line)
+            elif line.startswith(("Rutas o desplazamientos:", "Rutas habituales:", "Otros desplazamientos:", "Viajes largos / fuera de la ciudad:")):
+                put("Recorridos", line)
+            elif line.startswith(("Vehículo:", "Tipo de vehículo:")):
+                put("Vehículo", line)
+            elif line.startswith(("Categoría de licencia requerida:", "Requisitos adicionales de licencia:", "Detalle de licencia (histórico):")):
+                put("Licencia", line)
+            elif line.startswith("Responsabilidades adicionales:"):
+                put("Responsabilidades", line.split(":", 1)[1].strip())
+            elif line.startswith("Disponibilidad (histórica):"):
+                put("Responsabilidades", line)
+            else:
+                put("Detalles del servicio", line)
+        order = ("Finalidad", "Recorridos", "Vehículo", "Licencia", "Responsabilidades", "Detalles del servicio")
+        headings = {key: (None if key == "Finalidad" else f"{key}:") for key in order}
+    elif code == "LIMPIEZA_ESTABLECIMIENTOS":
+        for line in lines:
+            if line.startswith("Funciones:"):
+                put("Funciones", line.split(":", 1)[1].strip())
+            elif line.startswith("Otras funciones:"):
+                put("Funciones", line)
+            elif line.startswith(("Trabajará con otros empleados de limpieza:", "Frecuencia de limpieza:", "Horario de limpieza:")):
+                put("Condiciones de trabajo", line)
+            else:
+                put("Características del establecimiento", line)
+        order = ("Características del establecimiento", "Funciones", "Condiciones de trabajo")
+        headings = {key: f"{key}:" for key in order}
+    elif code == "CONSERJERIA_RESIDENCIAL":
+        for line in lines:
+            if line.startswith("Responsabilidades:"):
+                put("Responsabilidades", line.split(":", 1)[1].strip())
+            elif line.startswith("Otras responsabilidades:"):
+                put("Responsabilidades", line)
+            elif line.startswith("Trabajará con otros conserjes:"):
+                put("Condiciones del servicio", line)
+            else:
+                put("Características de la propiedad", line)
+        order = ("Características de la propiedad", "Responsabilidades", "Condiciones del servicio")
+        headings = {key: f"{key}:" for key in order}
+    else:
+        return lines
+
+    grouped = []
+    for section in order:
+        content = sections.get(section) or []
+        if not content:
+            continue
+        heading = headings.get(section)
+        grouped.append("\n".join(([heading] if heading else []) + content))
+    return grouped
+def _admin_labeled_copy_section(title: str, value: str) -> str:
+    """Keep a section heading adjacent to its data, with no empty blocks."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return f"{title}:\n{text}"
+def _admin_public_location_line(raw_value) -> str:
+    """Render a stored city/sector pair naturally when its separator is clear."""
+    value = _admin_public_copy_text(raw_value)
+    if not value:
+        return ""
+    parts = re.split(r"\s*(?:/|·|\|)\s*", value)
+    if len(parts) == 2:
+        city, sector = parts[0].strip(), parts[1].strip()
+        if city and sector:
+            return f"📍 {city} ({sector})"
+    return f"📍 {value}"
+def _admin_dedupe_copy_lines(lines) -> list[str]:
+    """Remove only byte-equivalent repeated lines, preserving order."""
+    result = []
+    seen = set()
+    for line in lines:
+        raw = str(line or "")
+        value = raw.strip()
+        if not value:
+            if result and result[-1] != "":
+                result.append("")
+            continue
+        # Indented lines belong to the immediately preceding individual
+        # profile. Identical answers for two people are not duplicate data.
+        if raw[:1].isspace():
+            result.append(raw.rstrip())
+            continue
+        key = re.sub(r"\s+", " ", value).casefold()
+        if key not in seen:
+            seen.add(key)
+            result.append(value)
+    return result[:-1] if result and result[-1] == "" else result
+def _admin_client_identity_values(solicitud) -> tuple[str, str, str]:
+    """Return only structured client identity/contact values for exact redaction."""
+    client = getattr(solicitud, "cliente", None)
+    name = getattr(client, "nombre_completo", None) or getattr(solicitud, "nombre_completo", None)
+    phone = (getattr(client, "telefono", None) or getattr(client, "telefono_norm", None)
+             or getattr(solicitud, "telefono", None))
+    email = (getattr(client, "email", None) or getattr(client, "email_norm", None)
+             or getattr(solicitud, "email", None))
+    return tuple(str(value).strip() if value not in (None, "") else "" for value in (name, phone, email))
+def _admin_redact_client_identity(text: str, solicitud) -> str:
+    """Remove exact structured client identity/contact repetitions, preserving surrounding answer text."""
+    value = str(text or "")
+    name, phone, email = _admin_client_identity_values(solicitud)
+    if email:
+        value = re.sub(re.escape(email), "[correo del cliente omitido]", value, flags=re.IGNORECASE)
+    if phone:
+        digits = re.sub(r"\D", "", phone)
+        if len(digits) >= 7:
+            pattern = r"(?<!\d)" + r"[\s().+\-]*".join(map(re.escape, digits)) + r"(?!\d)"
+            value = re.sub(pattern, "[teléfono del cliente omitido]", value)
+    if name and re.sub(r"[^a-záéíóúüñ]", "", name.casefold()) not in {"cliente", "usuario", "clienteficticio"}:
+        parts = [part for part in re.split(r"\s+", name) if part]
+        if parts:
+            pattern = r"(?<!\w)" + r"\s+".join(map(re.escape, parts)) + r"(?!\w)"
+            value = re.sub(pattern, "[nombre del cliente omitido]", value, flags=re.IGNORECASE)
+    value = re.sub(r"[ \t]{2,}", " ", value)
+    value = re.sub(r"\s+([,.;:])", r"\1", value)
+    value = re.sub(r"([,;])\s*([,;])", r"\1", value)
+    value = re.sub(r"[ \t]+\n", "\n", value)
+    return "\n".join(_admin_dedupe_copy_lines(value.rstrip().splitlines()))
+def _admin_public_schedule_allowlist(raw_modality: str, raw_details: dict) -> tuple[str, str, dict]:
+    """Return catalog modality and structured schedule only when safe to publish.
+
+    Free-form legacy modality/schedule text stays private. The public form's
+    catalog choice and day/time controls are rendered only after strict shape
+    checks, so contact details or arbitrary notes cannot enter copy text.
+    """
+    from utils.modalidad import resolve_modalidad_specific, split_modalidad_for_ui
+
+    parts = split_modalidad_for_ui(raw_modality)
+    group = parts.get("group", "")
+    specific = parts.get("specific", "")
+    resolved = resolve_modalidad_specific(specific, preferred_group=group) if group and specific else None
+    modality_label = resolved["label"] if resolved else ""
+
+    schedule_details: dict = {}
+    horario = ""
+    expected_type = {"con_salida_diaria": "salida_diaria", "con_dormida": "con_dormida"}.get(group)
+    if not modality_label or not expected_type or raw_details.get("horario_tipo") != expected_type:
+        return modality_label, horario, schedule_details
+
+    days_raw = str(raw_details.get("dias_trabajo") or "").strip()
+    day = r"(?:lunes|martes|mi[eé]rcoles|jueves|viernes|s[aá]bado|domingo)"
+    safe_days = re.fullmatch(rf"{day}(?:\s*(?:,|y|a|/)\s*{day})*", days_raw, flags=re.IGNORECASE)
+    time_pattern = r"(?:0?[1-9]|1[0-2])(?::[0-5][0-9])?\s*(?:AM|PM)"
+
+    def safe_time(value) -> str:
+        text = str(value or "").strip()
+        return text.upper().replace("  ", " ") if re.fullmatch(time_pattern, text, flags=re.IGNORECASE) else ""
+
+    if expected_type == "salida_diaria":
+        start = safe_time(raw_details.get("hora_entrada"))
+        end = safe_time(raw_details.get("hora_salida"))
+        if safe_days and start and end:
+            days = " ".join(days_raw.split())
+            horario = f"{days}, de {start} a {end}"
+            schedule_details = {
+                "horario_tipo": expected_type,
+                "dias_trabajo": days,
+                "hora_entrada": start,
+                "hora_salida": end,
+            }
+    else:
+        def safe_sleep_slot(value) -> str:
+            text = " ".join(str(value or "").split())
+            match = re.fullmatch(rf"({day})(?:\s+(quincenal))?\s+({time_pattern})", text, flags=re.IGNORECASE)
+            if not match:
+                return ""
+            day_name, cadence, time = match.groups()
+            normalized_day = day_name[0].upper() + day_name[1:]
+            return " ".join(part for part in (normalized_day, cadence, safe_time(time)) if part)
+
+        start = safe_sleep_slot(raw_details.get("dormida_entrada"))
+        end = safe_sleep_slot(raw_details.get("dormida_salida"))
+        if start and end:
+            horario = f"Entrada: {start} / Salida: {end}"
+            schedule_details = {
+                "horario_tipo": expected_type,
+                "dormida_entrada": start,
+                "dormida_salida": end,
+            }
+    return modality_label, horario, schedule_details
 
 def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     """
@@ -3903,6 +4615,9 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         FUNCIONES_LABELS = {}
 
     composition = solicitud_composition_flags(getattr(s, "funciones", None))
+    from services.service_catalog import canonical_service_code, get_service
+    service_code = _s(getattr(s, "tipo_servicio", None)) or _s((getattr(s, "detalles_servicio", None) or {}).get("tipo"))
+    is_domestic = canonical_service_code(service_code) == "DOMESTICA_LIMPIEZA"
 
     # Campos base
     codigo        = _s(getattr(s, 'codigo_solicitud', None))
@@ -3911,7 +4626,12 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     modalidad_raw = _s(getattr(s, 'modalidad_trabajo', None))
     modalidad     = canonicalize_modalidad_trabajo(modalidad_raw) if modalidad_raw else ""
     edad_req_raw  = getattr(s, 'edad_requerida', None)
-    experiencia   = _s(getattr(s, 'experiencia', None))
+    raw_details_for_copy = getattr(s, 'detalles_servicio', None) or {}
+    if not isinstance(raw_details_for_copy, dict):
+        raw_details_for_copy = {}
+    experiencia   = _admin_copy_experience_for_service(
+        getattr(s, 'experiencia', None), service_code, raw_details_for_copy
+    )
     horario       = _s(getattr(s, 'horario', None))
     nota_cli      = _admin_sanitize_public_note_text(getattr(s, 'nota_cliente', None))
 
@@ -3925,7 +4645,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     for code in raw_fun_codes:
         if code == 'otro':
             continue
-        label = FUNCIONES_LABELS.get(code, code)
+        label = FUNCIONES_LABELS.get(code)
         if label:
             fun_labels.append(label)
 
@@ -3933,7 +4653,7 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     if otros_fun:
         fun_labels.append(otros_fun)
 
-    funciones_txt = format_funciones(fun_labels, otros_fun)
+    funciones_txt = format_funciones(fun_labels, otros_fun) if is_domestic else ""
     envejeciente_lines = format_envejeciente_resumen(
         tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
         responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
@@ -3972,10 +4692,14 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
     blocks = []
 
     # Encabezado
+    from services.service_catalog import service_label
+    servicio_label = (service_label(service_code, legacy_default="Sin clasificar") if get_service(service_code) else "Servicio sin clasificar").upper()
+    if canonical_service_code(service_code) == "ENFERMERA":
+        servicio_label = "ENFERMERA / CUIDADORA"
     if codigo:
-        header_lines = [f"🧾 Resumen de su solicitud ({codigo})"]
+        header_lines = [f"{servicio_label} · SOLICITUD {codigo}"]
     else:
-        header_lines = ["🧾 Resumen de su solicitud"]
+        header_lines = [f"{servicio_label} · SOLICITUD"]
     blocks.append("\n".join(header_lines))
 
     # Ubicación / modalidad
@@ -3988,6 +4712,11 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
         location_lines.append(f"💼 Modalidad: {modalidad}")
     if edad_txt:
         location_lines.append(f"👤 Edad requerida: {edad_txt}")
+    nationality, education = _admin_copy_shared_requirements(raw_details_for_copy, service_code)
+    if nationality:
+        location_lines.append(f"🌎 Nacionalidad requerida: {nationality}")
+    if education:
+        location_lines.append(f"🎓 {education}")
     if horario:
         location_lines.append(f"⏰ Horario: {horario}")
     if experiencia:
@@ -3997,13 +4726,13 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 
     # Hogar
     hogar_sub = []
-    if composition["show_house"] and tipo_lugar_copy:
+    if is_domestic and tipo_lugar_copy:
         hogar_sub.append(f"• Tipo de lugar: {tipo_lugar_copy}")
-    if composition["show_house"] and habitaciones:
+    if is_domestic and habitaciones:
         hogar_sub.append(f"• Habitaciones: {habitaciones}")
-    if composition["show_house"] and banos_txt:
+    if is_domestic and banos_txt:
         hogar_sub.append(f"• Baños: {banos_txt}")
-    if composition["show_house"] and areas_txt:
+    if is_domestic and areas_txt:
         hogar_sub.append(f"• Áreas comunes: {areas_txt}")
 
     if hogar_sub:
@@ -4011,9 +4740,9 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
 
     # Familia
     fam_sub = []
-    if composition["show_adultos"] and adultos:
+    if is_domestic and adultos and adultos != "0":
         fam_sub.append(f"• Adultos en casa: {adultos}")
-    if composition["show_ninos"] and ninos_val:
+    if is_domestic and ninos_val and ninos_val != "0":
         if edades_n:
             age_line = f"• Niños: {ninos_val} (edades: {edades_n})"
             ayuda_suffix = _admin_child_help_copy_suffix(s)
@@ -4022,37 +4751,41 @@ def build_resumen_cliente_solicitud(s: Solicitud) -> str:
             fam_sub.append(age_line)
         else:
             fam_sub.append(f"• Niños: {ninos_val}")
-    if mascota and (composition["show_adultos"] or composition["show_ninos"]):
+    if is_domestic and mascota:
         fam_sub.append(f"• Mascotas: {mascota}")
 
     if fam_sub:
         blocks.append("\n".join(["👨‍👩‍👧‍👦 Composición del hogar:"] + fam_sub))
 
-    # Funciones
-    function_lines = ["🧹 Funciones principales:"]
+    # Keep the client-summary format distinct, while grouping each service's
+    # already-rendered answers under only the headings that have content.
     if funciones_txt:
-        function_lines.append(f"• {funciones_txt}")
-    else:
-        function_lines.append("• (No se especificaron funciones en detalle)")
+        blocks.append(_admin_labeled_copy_section("🧹 Funciones principales", funciones_txt))
     if envejeciente_lines:
-        function_lines.extend([f"• {ln}" for ln in envejeciente_lines])
+        blocks.append(_admin_labeled_copy_section("Cuidados de la persona envejeciente", "\n".join(envejeciente_lines)))
     if specific_lines:
-        function_lines.extend([f"• {ln}" for ln in specific_lines])
-    blocks.append("\n".join(function_lines))
+        blocks.extend(_admin_group_service_copy_lines(service_code, specific_lines))
 
     # Dinero
-    money_lines = ["💰 Oferta económica:"]
+    money_lines = []
     if sueldo_txt:
-        money_lines.append(f"• Sueldo: {sueldo_txt} mensual, {pasaje_texto}")
-    else:
-        money_lines.append("• (No se especificó sueldo)")
-    blocks.append("\n".join(money_lines))
+        pasaje_clean = re.sub(r"^[\s,+]+", "", str(pasaje_texto or "")).strip()
+        salary_line = f"Sueldo: {sueldo_txt} mensual"
+        if pasaje_clean:
+            salary_line += ", " + pasaje_clean
+        money_lines.append(salary_line)
+    elif pasaje_texto != "Pasaje incluido":
+        money_lines.append(pasaje_texto)
+    if money_lines:
+        blocks.append("💰 " + "\n".join(money_lines))
 
     # Nota del cliente
     if nota_cli:
-        blocks.append("\n".join(["📝 Nota adicional del cliente:", nota_cli]))
+        blocks.append("📝 Nota: " + nota_cli)
 
-    return "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
+    rendered = "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
+    rendered = "\n".join(_admin_dedupe_copy_lines(rendered.splitlines()))
+    return _admin_redact_client_identity(rendered, s)
 
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
@@ -16904,33 +17637,21 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
                     "candidata": row.candidata_new,
                     "fecha": row.fecha_inicio_reemplazo or row.created_at,
                 })
-        pasaje_mode, pasaje_other_text = read_pasaje_mode_text(
-            pasaje_aporte=getattr(solicitud, "pasaje_aporte", False),
-            detalles_servicio=getattr(solicitud, "detalles_servicio", None),
-            nota_cliente=getattr(solicitud, "nota_cliente", ""),
-        )
+        from services.admin_solicitud_answers import build_admin_solicitud_answer_groups
 
         html = render_template(
             "admin/_solicitud_detail_heavy_region.html",
             solicitud=solicitud,
+            admin_answer_groups=build_admin_solicitud_answer_groups(solicitud),
+            resumen_interno=_admin_build_public_copy_text(
+                solicitud, label_maps=_admin_copiar_form_label_maps()
+            ),
             envios=envios,
             reemplazos=reemplazos,
             reemplazos_count=reemplazos_count,
             reemplazos_activos=reemplazos_activos,
             ultimo_reemplazo_at=ultimo_reemplazo_at,
             reemplazo_cancelado_no_resuelta=_solicitud_reemplazo_cancelado_no_resuelta(solicitud, reemplazos=reemplazos),
-            pasaje_copy_mode=pasaje_mode,
-            pasaje_copy_other_text=pasaje_other_text,
-            envejeciente_copy_lines=format_envejeciente_resumen(
-                tipo_cuidado=getattr(solicitud, "envejeciente_tipo_cuidado", None),
-                responsabilidades=getattr(solicitud, "envejeciente_responsabilidades", None),
-                solo_acompanamiento=getattr(solicitud, "envejeciente_solo_acompanamiento", False),
-                nota=getattr(solicitud, "envejeciente_nota", None),
-            ),
-            specific_service_copy_lines=_admin_specific_service_copy_lines(solicitud),
-            composition_flags=solicitud_composition_flags(getattr(solicitud, "funciones", None)),
-            child_help_copy_suffix=_admin_child_help_copy_suffix(solicitud),
-            sueldo_copy=_format_money_usd(getattr(solicitud, "sueldo", None)),
         )
         response = make_response(html, 200)
         response.headers["Content-Type"] = "text/html; charset=utf-8"
@@ -26913,9 +27634,11 @@ def _fmt_codigo_solicitud(codigo: str) -> str:
 
 def _admin_copiar_form_label_maps():
     form = AdminSolicitudForm()
+    from services.service_catalog import NINERA_RESPONSIBILITY_CHOICES
+    ninera_public_codes = {code for code, _label in NINERA_RESPONSIBILITY_CHOICES}
     return {
         "funciones": {k: v for k, v in list(getattr(form, "funciones", None).choices or [])},
-        "ninera_tareas": {k: v for k, v in list(getattr(form, "ninera_tareas", None).choices or [])},
+        "ninera_tareas": {k: v for k, v in list(getattr(form, "ninera_tareas", None).choices or []) if k in ninera_public_codes},
         "enf_tareas": {k: v for k, v in list(getattr(form, "enf_tareas", None).choices or [])},
         "enf_movilidad": {k: v for k, v in list(getattr(form, "enf_movilidad", None).choices or [])},
     }
@@ -26927,7 +27650,360 @@ def _admin_build_order_text_for_copiar(
     *,
     include_nota_cliente: bool = True,
 ) -> str:
+    source_solicitud = s
     labels = label_maps or _admin_copiar_form_label_maps()
+    # Keep the service-specific field allowlist, then redact only identity and
+    # contact values found on the structured Client record.
+    raw_details = getattr(s, "detalles_servicio", None) or {}
+    if not isinstance(raw_details, dict):
+        raw_details = {}
+    from services.service_catalog import canonical_service_code
+    stored_code = _s(getattr(s, "tipo_servicio", None))
+    from services.service_catalog import SERVICE_BY_CODE, SERVICE_CODE_ALIASES
+    # Stored code wins over denormalized JSON. JSON is a fallback only for
+    # historic records whose service column is blank.
+    raw_code = stored_code or _s(raw_details.get("tipo"))
+    code = canonical_service_code(raw_code)
+    allowed_details: dict = {"tipo": raw_code}
+    public_modality, public_schedule, public_schedule_details = _admin_public_schedule_allowlist(
+        _s(getattr(s, "modalidad_trabajo", None)), raw_details
+    )
+    allowed_details.update(public_schedule_details)
+    # Passage mode is shared compensation data, not a service-specific answer.
+    # Keep its validated representation in the safe copy namespace so custom
+    # choices are not silently rendered as the legacy default.
+    pasaje_mode, pasaje_other = read_pasaje_mode_text(
+        pasaje_aporte=getattr(source_solicitud, "pasaje_aporte", False),
+        detalles_servicio=raw_details,
+        nota_cliente=getattr(source_solicitud, "nota_cliente", ""),
+    )
+    allowed_details["pasaje"] = {"mode": pasaje_mode}
+    if pasaje_mode == "otro" and pasaje_other:
+        allowed_details["pasaje"]["text"] = _admin_public_copy_text(pasaje_other, limit=120)
+
+    def _public_integer(value):
+        try:
+            parsed = Decimal(str(value).strip())
+            if parsed.is_finite() and parsed == parsed.to_integral_value() and parsed >= 0:
+                return int(parsed)
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+        return None
+
+    def _public_codes(values, allowed):
+        # Keep historical and newly added catalog answers for known fields;
+        # each service renderer presents known values with labels and falls
+        # back to the stored answer when its label is not yet available.
+        return [str(value) for value in _as_list(values) if str(value).strip()]
+
+    if code == "NINERA":
+        amount = _public_integer(raw_details.get("cantidad_ninos") or raw_details.get("cant_ninos"))
+        if amount is not None:
+            allowed_details["cantidad_ninos"] = amount
+        ages = _admin_public_copy_text(raw_details.get("edades_ninos") or raw_details.get("edades"), limit=200)
+        if ages:
+            allowed_details["edades_ninos"] = ages
+        if raw_details.get("ayuda_cuidado_ninos") not in (None, ""):
+            allowed_details["ayuda_cuidado_ninos"] = raw_details["ayuda_cuidado_ninos"]
+        known = set((labels.get("ninera_tareas") or {}).keys())
+        allowed_details["tareas"] = _public_codes(raw_details.get("tareas"), known)
+        extra_text = str(raw_details.get("ninera_tareas_otro") or "").strip()
+        if extra_text:
+            allowed_details["ninera_tareas_otro"] = extra_text
+        special_need = raw_details.get("necesidad_especial_respuesta")
+        if special_need in {"si", "no"}:
+            allowed_details["necesidad_especial_respuesta"] = special_need
+        care_text = _admin_nanny_public_care_text(raw_details)
+        if care_text:
+            allowed_details["necesidad_especial_publicable"] = care_text
+            # Keep the fingerprint only in this in-memory allowlist so the
+            # downstream formatter can enforce the same approval check.
+            allowed_details["necesidad_especial_revision_sha256"] = raw_details.get(
+                "necesidad_especial_revision_sha256"
+            )
+        allowed_details["responsabilidad_integral"] = bool(raw_details.get("responsabilidad_integral"))
+        if raw_details.get("ninera_responsable_principal") in {"si", "no"}:
+            allowed_details["ninera_responsable_principal"] = raw_details["ninera_responsable_principal"]
+    elif code == "ENFERMERA":
+        known_mobility = set((labels.get("enf_movilidad") or {}).keys())
+        mobility = raw_details.get("movilidad")
+        if mobility in known_mobility:
+            allowed_details["movilidad"] = mobility
+        known = set((labels.get("enf_tareas") or {}).keys())
+        allowed_details["tareas"] = _public_codes(raw_details.get("tareas"), known)
+        from services.service_catalog import ENFERMERA_INJECTION_CHOICES
+        if "administrar_inyecciones" in allowed_details["tareas"] and raw_details.get("tipo_inyeccion") not in (None, ""):
+            allowed_details["tipo_inyeccion"] = raw_details["tipo_inyeccion"]
+        allowed_details["requiere_preparacion_profesional"] = bool(raw_details.get("requiere_preparacion_profesional"))
+        from services.service_catalog import (
+            ENFERMERA_ASSISTANCE_CHOICES, ENFERMERA_CONDITION_CHOICES,
+            ENFERMERA_EXPERIENCE_CHOICES, ENFERMERA_PERSON_CARE_NEEDS,
+            parse_enfermera_necesidades_historicas, parse_enfermera_personas,
+            parse_enfermera_perfiles_historicos, parse_enfermera_responsabilidad_por_persona,
+        )
+        experience = raw_details.get("experiencia_requerida") or getattr(s, "experiencia", None)
+        if experience in {value for value, _label in ENFERMERA_EXPERIENCE_CHOICES}:
+            allowed_details["experiencia_requerida"] = experience
+        if raw_details.get("tipo_asistencia") in {value for value, _label in ENFERMERA_ASSISTANCE_CHOICES}:
+            allowed_details["tipo_asistencia"] = raw_details["tipo_asistencia"]
+        training = _admin_public_copy_text(raw_details.get("formacion_requerida"), limit=160)
+        if training:
+            allowed_details["formacion_requerida"] = training
+        condition_codes = {value for value, _label in ENFERMERA_CONDITION_CHOICES}
+        conditions = _public_codes(raw_details.get("condiciones"), condition_codes)
+        if "ninguna" in conditions:
+            conditions = ["ninguna"]
+        if conditions:
+            allowed_details["condiciones"] = conditions
+        count = _public_integer(raw_details.get("cantidad_personas"))
+        if count is not None and 1 <= count <= 20:
+            allowed_details["cantidad_personas"] = count
+        attribution = parse_enfermera_responsabilidad_por_persona(raw_details.get("responsabilidad_por_persona"), count, allowed_details["tareas"])
+        if attribution:
+            allowed_details["responsabilidad_por_persona"] = attribution
+        people = parse_enfermera_personas(raw_details.get("personas_cuidado"))
+        if not people:
+            historic_profiles = parse_enfermera_perfiles_historicos(raw_details.get("personas_cuidado_historicas"))
+            people = [entry["perfil"] for entry in historic_profiles]
+        historic_needs = parse_enfermera_necesidades_historicas(raw_details.get("personas_cuidado_necesidades_historicas"))
+        needs_labels = dict(ENFERMERA_PERSON_CARE_NEEDS)
+        for entry in historic_needs:
+            index = entry["indice"]
+            if index < len(people):
+                selected = [value for value in entry["necesidades"] if value in needs_labels]
+                if selected:
+                    people[index]["necesidades"] = list(dict.fromkeys([*people[index].get("necesidades", []), *selected]))
+        if people and (count is None or len(people) == count):
+            allowed_details["personas_cuidado"] = people
+        age = _public_integer(raw_details.get("edad_persona"))
+        if age is not None and 0 <= age <= 120:
+            allowed_details["edad_persona"] = age
+        ages_text = str(raw_details.get("edades_personas") or "").strip()
+        if ages_text:
+            allowed_details["edades_personas"] = ages_text
+        for key in ("ayuda_higiene", "ayuda_alimentacion", "responsabilidad_principal"):
+            if raw_details.get(key) in {"si", "no"}:
+                allowed_details[key] = raw_details[key]
+        allowed_details["responsabilidad_integral"] = bool(raw_details.get("responsabilidad_integral"))
+        condition_text = str(raw_details.get("condicion_otro") or "").strip()
+        condition_hash = raw_details.get("condicion_otro_revision_sha256")
+        if condition_text:
+            allowed_details["condicion_otro"] = condition_text
+        task_text = str(raw_details.get("enf_tareas_otro") or raw_details.get("tareas_otro") or "").strip()
+        task_hash = raw_details.get("enf_tareas_otro_revision_sha256")
+        if task_text:
+            allowed_details["enf_tareas_otro"] = task_text
+        for key in ("a_quien_cuida", "a_quien", "condicion_principal"):
+            if raw_details.get(key) not in (None, ""):
+                allowed_details[key] = raw_details[key]
+    elif code == "CHOFER":
+        from services.service_catalog import CHOFER_LICENSE_CHOICES, CHOFER_ROUTE_CHOICES, CHOFER_PURPOSE_CHOICES
+        purpose = raw_details.get("finalidad")
+        if purpose not in (None, ""):
+            allowed_details["finalidad"] = purpose
+            if purpose == "otro":
+                purpose_other = _admin_public_copy_text(raw_details.get("finalidad_otro"), limit=120)
+                if purpose_other:
+                    allowed_details["finalidad_otro"] = purpose_other
+        if raw_details.get("vehiculo") in {"cliente", "empleado"}:
+            allowed_details["vehiculo"] = raw_details["vehiculo"]
+        vehicle_codes = {"carro", "yipeta", "pickup", "minibus", "camion_ligero", "otro"}
+        if raw_details.get("tipo_vehiculo") in vehicle_codes:
+            allowed_details["tipo_vehiculo"] = raw_details["tipo_vehiculo"]
+        other_vehicle = _admin_public_copy_text(raw_details.get("tipo_vehiculo_otro"), limit=100)
+        if raw_details.get("tipo_vehiculo") == "otro" and other_vehicle:
+            allowed_details["tipo_vehiculo_otro"] = other_vehicle
+        legacy_purpose = str(raw_details.get("tipo_servicio") or "").strip()
+        if legacy_purpose:
+            allowed_details["tipo_servicio"] = legacy_purpose[:120]
+        responsibilities = _admin_public_copy_text(raw_details.get("responsabilidades"), limit=300)
+        if responsibilities:
+            allowed_details["responsabilidades"] = responsibilities
+        routes = _public_codes(raw_details.get("rutas"), {value for value, _ in CHOFER_ROUTE_CHOICES})
+        if routes:
+            allowed_details["rutas"] = routes
+        route_other = _admin_public_copy_text(raw_details.get("rutas_otro"), limit=200)
+        if "otro" in routes and route_other:
+            allowed_details["rutas_otro"] = route_other
+        category = raw_details.get("categoria_licencia_requerida")
+        if category in {value for value, _ in CHOFER_LICENSE_CHOICES}:
+            allowed_details["categoria_licencia_requerida"] = category
+        # Historical publication details remain readable without promoting them into new fields.
+        legacy_routes = raw_details.get("rutas_legacy") or (raw_details.get("rutas") if isinstance(raw_details.get("rutas"), str) else None)
+        if isinstance(legacy_routes, str) and legacy_routes.strip():
+            allowed_details["rutas_legacy"] = legacy_routes.strip()[:255]
+        for key in ("viajes_largos", "licencia_requisitos", "licencia_detalle", "disponibilidad"):
+            value = raw_details.get(key)
+            if key == "viajes_largos" and isinstance(value, bool):
+                allowed_details[key] = value
+            elif key != "viajes_largos":
+                safe_value = _admin_public_copy_text(value, limit=255)
+                if safe_value:
+                    allowed_details[key] = safe_value
+        legacy_purpose = str(raw_details.get("tipo_servicio") or "").strip()
+        if legacy_purpose in {"Traslados diarios", "Chofer personal", "Viajes y diligencias", "Otro"}:
+            allowed_details["tipo_servicio"] = legacy_purpose
+    elif code == "LIMPIEZA_ESTABLECIMIENTOS":
+        from services.service_catalog import OFFICE_ESTABLISHMENT_CHOICES, OFFICE_AREA_CHOICES, OFFICE_TASK_CHOICES
+        kind = raw_details.get("tipo_establecimiento")
+        if kind not in (None, ""): allowed_details["tipo_establecimiento"] = kind
+        elif kind in {"Oficina", "Local comercial", "Otro establecimiento", "Office", "Commercial premises"}: allowed_details["tipo_establecimiento"] = kind
+        if kind == "otro":
+            other_kind = _admin_public_copy_text(raw_details.get("tipo_establecimiento_otro"), limit=120)
+            if other_kind: allowed_details["tipo_establecimiento_otro"] = other_kind
+        if raw_details.get("tamano") not in (None, ""): allowed_details["tamano"] = raw_details["tamano"]
+        features = raw_details.get("caracteristicas") if isinstance(raw_details.get("caracteristicas"), dict) else {}
+        counts_allowed = {"oficina": {"despachos", "reuniones", "banos"}, "tienda": {"ventas", "probadores", "banos"}, "educativo": {"aulas", "administracion", "banos"}, "salud": {"consultorios", "espera", "banos"}, "restaurante": {"comedores", "cocinas", "banos"}, "edificio": {"niveles", "areas_comunes", "banos"}}
+        safe_features = {key: _public_integer(value) for key, value in features.items() if key in counts_allowed.get(kind, set())}
+        safe_features = {key: value for key, value in safe_features.items() if value is not None}
+        for legacy_key in ("niveles", "banos"):
+            legacy_number = _public_integer(raw_details.get(legacy_key))
+            if legacy_number is not None: allowed_details[legacy_key] = legacy_number
+        if safe_features: allowed_details["caracteristicas"] = safe_features
+        area_labels = dict(OFFICE_AREA_CHOICES.get(kind, ()))
+        areas = [value for value in _public_codes(raw_details.get("areas"), set(area_labels))]
+        if areas: allowed_details["areas"] = areas
+        legacy_areas = _admin_public_copy_text(raw_details.get("areas_legacy"), limit=200)
+        if legacy_areas:
+            allowed_details["areas_legacy"] = legacy_areas
+        if "otras" in areas:
+            other_areas = _admin_public_copy_text(raw_details.get("areas_otro"), limit=200)
+            if other_areas: allowed_details["areas_otro"] = other_areas
+        task_labels = dict(OFFICE_TASK_CHOICES)
+        tasks = [value for value in _public_codes(raw_details.get("funciones"), set(task_labels))]
+        if tasks: allowed_details["funciones"] = tasks
+        if "otras" in tasks:
+            other_tasks = _admin_public_copy_text(raw_details.get("funciones_otro"), limit=200)
+            if other_tasks: allowed_details["funciones_otro"] = other_tasks
+        other_spaces = _admin_public_copy_text(raw_details.get("espacios_otro"), limit=200)
+        if other_spaces: allowed_details["espacios_otro"] = other_spaces
+        for key in ("frecuencia", "horario_limpieza"):
+            safe_value = _admin_public_copy_text(raw_details.get(key), limit=120)
+            if safe_value: allowed_details[key] = safe_value
+        support = raw_details.get("trabaja_con_companeros")
+        coworker_count = raw_details.get("cantidad_companeros_limpieza")
+        if support in {"si", "no"}: allowed_details["trabaja_con_companeros"] = support
+        if support == "si" and type(coworker_count) is int and coworker_count > 0: allowed_details["cantidad_companeros_limpieza"] = coworker_count
+        # Historical free-text areas, frequency and hours remain stored for Admin review.
+    elif code == "CONSERJERIA_RESIDENCIAL" and raw_code == "CONSERJE":
+        # Preserve historical answers and label them as historical downstream.
+        for key in ("niveles", "apartamentos", "ascensores", "banos", "escaleras", "parqueos"):
+            number = _public_integer(raw_details.get(key))
+            if number is not None:
+                allowed_details[key] = number
+        for key in ("tipo_instalacion", "areas_comunes", "areas_exteriores", "manejo_basura", "mantenimiento_basico"):
+            value = raw_details.get(key)
+            if value not in (None, "", []):
+                allowed_details[key] = value
+        # An older Conserje form stored commercial facility areas under this
+        # key. Keep those employment details available to the publication
+        # renderer while treating them as historical data.
+        commercial_installations = raw_details.get("instalaciones_comerciales")
+        if isinstance(commercial_installations, (list, tuple)):
+            safe_installations = []
+            for item in commercial_installations:
+                safe_item = _admin_public_copy_text(item, limit=100)
+                if safe_item:
+                    safe_installations.append(safe_item)
+        else:
+            safe_text = _admin_public_copy_text(commercial_installations, limit=200)
+            safe_installations = [safe_text] if safe_text else []
+        if safe_installations:
+            allowed_details["instalaciones_comerciales"] = safe_installations
+    elif code == "CONSERJERIA_RESIDENCIAL" and raw_code != "CONSERJE":
+        from services.service_catalog import CONSERJE_INSTALLATION_CHOICES, CONSERJE_RESIDENTIAL_TYPES, CONSERJE_RESPONSIBILITY_CHOICES
+        residential_types = {value for value, _label in CONSERJE_RESIDENTIAL_TYPES}
+        kind = raw_details.get("tipo_residencial")
+        if kind not in (None, ""):
+            allowed_details["tipo_residencial"] = kind
+            other_kind = _admin_public_copy_text(raw_details.get("tipo_residencial_otro"), limit=120)
+            if kind == "otro" and other_kind:
+                allowed_details["tipo_residencial_otro"] = other_kind
+        from services.service_catalog import CONSERJE_CHARACTERISTIC_FIELDS, CONSERJE_RESIDENTIAL_PROFILES
+        profile = CONSERJE_RESIDENTIAL_PROFILES.get(kind, {})
+        for field_name in profile.get("fields", ()):
+            field = CONSERJE_CHARACTERISTIC_FIELDS[field_name]
+            key = field["key"]
+            value = raw_details.get(key)
+            if field["type"] == "number":
+                number = _public_integer(value)
+                if number is not None:
+                    allowed_details[key] = number
+            elif value in {"si", "no"}:
+                allowed_details[key] = value
+        # Legacy measurements remain available to Admin and are labeled as
+        # historical in the publication builder when they do not belong to
+        # the selected residential profile.
+        for key in ("niveles", "apartamentos", "ascensores", "banos", "escaleras", "parqueos"):
+            number = _public_integer(raw_details.get(key))
+            if number is not None:
+                allowed_details[key] = number
+        parking = raw_details.get("estacionamiento")
+        if parking in {"si", "no"}: allowed_details["estacionamiento"] = parking
+        installation_codes = {value for value, _label in CONSERJE_INSTALLATION_CHOICES}
+        installations = _public_codes(raw_details.get("instalaciones"), installation_codes)
+        if installations:
+            allowed_details["instalaciones"] = installations
+            other_text = _admin_public_copy_text(raw_details.get("otras_instalaciones"), limit=200)
+            if "otras" in installations and other_text: allowed_details["otras_instalaciones"] = other_text
+        responsibility_codes = {value for value, _label in CONSERJE_RESPONSIBILITY_CHOICES}
+        responsibilities = _public_codes(raw_details.get("responsabilidades"), responsibility_codes)
+        if responsibilities:
+            allowed_details["responsabilidades"] = responsibilities
+            other_text = _admin_public_copy_text(raw_details.get("responsabilidades_otro"), limit=250)
+            if "otras" in responsibilities and other_text: allowed_details["responsabilidades_otro"] = other_text
+        support = raw_details.get("trabaja_con_conserjes")
+        if support in {"si", "no"}:
+            allowed_details["trabaja_con_conserjes"] = support
+            count = raw_details.get("cantidad_conserjes")
+            if support == "si" and type(count) is int and count > 0: allowed_details["cantidad_conserjes"] = count
+    elif code == "DOMESTICA_LIMPIEZA":
+        known_functions = set((labels.get("funciones") or {}).keys())
+        known_areas = {str(value) for value, _label in AREAS_COMUNES_CHOICES}
+        details_values = dict(allowed_details)
+        details_values["tipo"] = code
+        # The legacy household fields below are copied from an explicit set of
+        # categorical codes and numeric counts only.
+
+    attrs = (
+        "codigo_solicitud", "modalidad_trabajo", "edad_requerida", "experiencia", "horario",
+        "funciones", "funciones_otro", "adultos", "ninos", "edades_ninos", "ayuda_cuidado_ninos",
+        "habitaciones", "banos", "areas_comunes", "area_otro", "tipo_lugar", "dos_pisos", "mascota",
+        "ciudad_sector", "rutas_cercanas", "sueldo", "pasaje_aporte", "nota_cliente",
+        "envejeciente_tipo_cuidado", "envejeciente_responsabilidades", "envejeciente_solo_acompanamiento",
+        "envejeciente_nota",
+    )
+    safe = {name: getattr(s, name, None) for name in attrs}
+    safe.update({"tipo_servicio": raw_code, "detalles_servicio": allowed_details})
+    # Keep submitted base answers. Use canonical schedule formatting when
+    # available and fall back to the exact stored response for older variants.
+    safe["modalidad_trabajo"] = _admin_public_copy_text(getattr(source_solicitud, "modalidad_trabajo", None), limit=160) or public_modality
+    safe["horario"] = _admin_public_copy_text(getattr(source_solicitud, "horario", None), limit=255) or public_schedule
+    safe["horario_estructurado"] = public_schedule
+    safe["edad_requerida"] = _as_list(safe["edad_requerida"])
+    safe["experiencia"] = _admin_copy_experience_for_service(
+        getattr(source_solicitud, "experiencia", None), code, allowed_details
+    )
+    safe["nacionalidad_requerida"], safe["educacion_requerida"] = _admin_copy_shared_requirements(raw_details, code)
+    safe["ciudad_sector"] = _admin_public_copy_text(getattr(s, "ciudad_sector", None), limit=100)
+    safe["rutas_cercanas"] = _admin_public_copy_text(getattr(s, "rutas_cercanas", None), limit=120)
+    safe["funciones"] = []
+    safe["areas_comunes"] = []
+    for name in ("adultos", "ninos", "habitaciones", "banos"):
+        safe[name] = _public_integer(safe[name])
+    safe["sueldo"] = getattr(source_solicitud, "sueldo", None)
+    safe["edades_ninos"] = str(getattr(source_solicitud, "edades_ninos", None) or "").strip()
+    safe["mascota"] = _admin_public_copy_text(getattr(s, "mascota", None), limit=80)
+    safe["tipo_lugar"] = safe["tipo_lugar"] or ""
+    if code == "DOMESTICA_LIMPIEZA":
+        known_functions = set((labels.get("funciones") or {}).keys())
+        safe["funciones"] = _public_codes(getattr(s, "funciones", None), known_functions)
+        safe["funciones_otro"] = _admin_public_copy_text(getattr(s, "funciones_otro", None), limit=200)
+        known_areas = {str(value) for value, _label in AREAS_COMUNES_CHOICES}
+        safe["areas_comunes"] = _public_codes(getattr(s, "areas_comunes", None), known_areas)
+        safe["area_otro"] = _admin_public_copy_text(getattr(s, "area_otro", None), limit=120)
+    safe["nota_cliente"] = getattr(source_solicitud, "nota_cliente", None) or "" if include_nota_cliente else ""
+    s = SimpleNamespace(**safe)
     FUNCIONES_LABELS = dict(labels.get("funciones") or {})
     NINERA_TAREAS_LABELS = dict(labels.get("ninera_tareas") or {})
     ENF_TAREAS_LABELS = dict(labels.get("enf_tareas") or {})
@@ -26942,8 +28018,9 @@ def _admin_build_order_text_for_copiar(
         if code not in raw_codes:
             continue
         label = FUNCIONES_LABELS.get(code)
-        if label:
-            funcs.append(label)
+        if label or code:
+            funcs.append(label or code)
+    funcs.extend(FUNCIONES_LABELS.get(code, code) for code in raw_codes if code not in orden_codigos and code != "otro")
     custom_f = _s(getattr(s, "funciones_otro", None))
     if custom_f:
         funcs.append(custom_f)
@@ -26961,18 +28038,22 @@ def _admin_build_order_text_for_copiar(
             ninos_line += f" {ayuda_suffix}"
 
     modalidad = _first_nonempty_attr(s, ["modalidad_trabajo", "modalidad", "tipo_modalidad"], "")
-    modalidad_line = canonicalize_modalidad_trabajo(modalidad) if modalidad else ""
+    # _admin_public_schedule_allowlist already resolves this to an official
+    # catalog label; preserving the literal "otro" label is important because
+    # its free-text specification is intentionally omitted from publication.
+    modalidad_line = modalidad
 
     hogar_partes_detalle = []
     habitaciones = getattr(s, "habitaciones", None)
     if habitaciones not in (None, "", 0, "0"):
         hogar_partes_detalle.append(f"{_s(habitaciones)} habitaciones")
-    banos_txt = _fmt_banos(getattr(s, "banos", None))
+    banos_raw = getattr(s, "banos", None)
+    banos_txt = _fmt_banos(banos_raw) if banos_raw not in (None, "", 0, "0", 0.0, "0.0") else ""
     if banos_txt:
         hogar_partes_detalle.append(f"{banos_txt} baños")
     areas = []
     for a in _as_list(getattr(s, "areas_comunes", None)):
-        area_norm = _norm_area(a)
+        area_norm = _norm_area(a) or str(a)
         if area_norm:
             areas.append(area_norm)
     area_otro = _s(getattr(s, "area_otro", None))
@@ -26987,7 +28068,7 @@ def _admin_build_order_text_for_copiar(
     tipo_lugar_copy = _admin_copy_house_type(
         tipo_lugar,
         dos_pisos=bool(getattr(s, "dos_pisos", False)),
-    )
+    ) or tipo_lugar
     if hogar_partes_detalle:
         hogar_descr = f"{tipo_lugar_copy} - {', '.join(hogar_partes_detalle)}" if tipo_lugar_copy else ", ".join(hogar_partes_detalle)
     elif tipo_lugar_copy:
@@ -27022,7 +28103,25 @@ def _admin_build_order_text_for_copiar(
     nota_cli = _admin_sanitize_public_note_text(getattr(s, "nota_cliente", None))
 
     detalles = getattr(s, "detalles_servicio", None) or {}
-    ts_det = detalles.get("tipo") or _s(getattr(s, "tipo_servicio", None))
+    stored_ts_det = _s(getattr(s, "tipo_servicio", None))
+    raw_ts_det = stored_ts_det or _s(detalles.get("tipo"))
+    from services.service_catalog import canonical_service_code, get_service, service_label
+    ts_det = canonical_service_code(raw_ts_det)
+    service_def = get_service(ts_det)
+    service_title = "LIMPIEZA DE OFICINA" if raw_ts_det == "LIMPIEZA_OFICINA" else (service_label(raw_ts_det).upper() if raw_ts_det == "CONSERJE" else (str(service_def.get("title") or "") if service_def else "SERVICIO SIN CLASIFICAR"))
+    if ts_det == "ENFERMERA":
+        service_title = "ENFERMERA / CUIDADORA"
+    if ts_det == "LIMPIEZA_ESTABLECIMIENTOS" and raw_ts_det != "LIMPIEZA_OFICINA":
+        kind = str(detalles.get("tipo_establecimiento") or "").strip().lower()
+        service_title = {
+            "oficina": "LIMPIEZA DE OFICINA",
+            "tienda": "LIMPIEZA DE TIENDA",
+            "educativo": "LIMPIEZA DE CENTRO EDUCATIVO",
+            "salud": "LIMPIEZA DE CONSULTORIO O CENTRO DE SALUD",
+            "restaurante": "LIMPIEZA DE RESTAURANTE",
+            "edificio": "LIMPIEZA DE EDIFICIO COMERCIAL",
+            "otro": "LIMPIEZA DE OTRO ESTABLECIMIENTO",
+        }.get(kind, "LIMPIEZA DE ESTABLECIMIENTOS")
     ninera_block = ""
     enf_block = ""
     chofer_block = ""
@@ -27031,7 +28130,6 @@ def _admin_build_order_text_for_copiar(
         cant_ninos = detalles.get("cantidad_ninos") or detalles.get("cant_ninos")
         edades_n = detalles.get("edades_ninos") or detalles.get("edades")
         tareas_cd = detalles.get("tareas") or []
-        cond_esp = detalles.get("condicion_especial") or detalles.get("condicion")
         lineas_nin = []
         if cant_ninos or edades_n:
             base = "Niños a cuidar: "
@@ -27044,57 +28142,293 @@ def _admin_build_order_text_for_copiar(
                 base += f" {ayuda_suffix}"
             lineas_nin.append(base)
         if tareas_cd:
-            etiquetas = []
-            for code in _as_list(tareas_cd):
-                etiquetas.append(NINERA_TAREAS_LABELS.get(code) or str(code))
-            lineas_nin.append("Tareas con los niños: " + ", ".join(etiquetas))
-        if cond_esp:
-            lineas_nin.append(f"Condición especial: {cond_esp}")
+            task_codes = _unique_keep_order([str(code) for code in _as_list(tareas_cd) if code != "otro"])
+            compact_tasks = _admin_compact_nanny_responsibilities(task_codes, NINERA_TAREAS_LABELS)
+            if compact_tasks:
+                lineas_nin.append("Funciones con los niños: " + compact_tasks)
+        other_task_text = str(detalles.get("ninera_tareas_otro") or "").strip()
+        if other_task_text:
+            lineas_nin.append("Otras responsabilidades: " + other_task_text)
+        if detalles.get("responsabilidad_integral"):
+            lineas_nin.append("Responsabilidad integral del cuidado de los niños (sin limpieza general ni cocina para adultos)")
+        if detalles.get("ninera_responsable_principal") in {"si", "no"}:
+            lineas_nin.append("Responsable principal del cuidado: " + ("Sí" if detalles["ninera_responsable_principal"] == "si" else "No, compartirá el cuidado"))
+        care_text = _admin_nanny_public_care_text(detalles)
+        if care_text:
+            lineas_nin.append("Cuidados especiales revisados: " + care_text)
         ninera_block = "\n".join(lineas_nin) if lineas_nin else ""
     elif ts_det == "ENFERMERA":
         a_quien = detalles.get("a_quien_cuida") or detalles.get("a_quien")
-        cond_prin = detalles.get("condicion_principal") or detalles.get("condicion")
         movilidad = detalles.get("movilidad") or ""
         tareas_cd = detalles.get("tareas") or []
         lineas_enf = []
-        if a_quien:
-            lineas_enf.append(f"A quién cuida: {a_quien}")
-        if movilidad:
+        from services.service_catalog import enfermera_responsibility_lines, parse_enfermera_personas
+        nurse_people = parse_enfermera_personas(detalles.get("personas_cuidado"))
+        if nurse_people:
+            mobility_names = dict(labels.get('enf_movilidad') or {})
+            condition_names = {"alzheimer_demencia": "Alzheimer o demencia", "parkinson": "Parkinson", "diabetes": "Diabetes", "hipertension": "Hipertensión arterial", "cardiaca": "Enfermedades cardíacas", "acv": "Secuelas de accidente cerebrovascular (ACV)", "artritis_artrosis": "Artritis o artrosis", "respiratorias": "Enfermedades respiratorias", "movilidad": "Problemas de movilidad", "otra": "Otra condición", "ninguna": "Ninguna de las anteriores"}
+            from services.service_catalog import ENFERMERA_PERSON_CARE_NEEDS
+            care_need_labels = dict(ENFERMERA_PERSON_CARE_NEEDS)
+            lineas_enf.append(f"Personas que necesitan cuidados: {len(nurse_people)}")
+            for index, person in enumerate(nurse_people, start=1):
+                lineas_enf.append(f"Persona {index}: {person['edad']} años" if person.get("edad") is not None else f"Persona {index}")
+                if person.get("movilidad") in mobility_names:
+                    lineas_enf.append("  Movilidad: " + mobility_names[person["movilidad"]])
+                person_conditions = [condition_names[code] for code in person.get("condiciones", []) if code in condition_names]
+                if person_conditions:
+                    lineas_enf.append("  Condiciones: " + ", ".join(person_conditions))
+                person_needs = [care_need_labels[code] for code in person.get("necesidades", []) if code in care_need_labels]
+                if person_needs:
+                    lineas_enf.append("  Necesidades: " + ", ".join(person_needs))
+                person_responsibilities = enfermera_responsibility_lines(person)
+                if person_responsibilities:
+                    lineas_enf.append("  Responsabilidades: " + ", ".join(person_responsibilities))
+        if nurse_people:
+            pass
+        elif detalles.get("cantidad_personas"):
+            count = _public_integer(detalles.get("cantidad_personas"))
+            if count is not None:
+                age_text = str(detalles.get("edades_personas") or "").strip()
+                if count == 1:
+                    age = _public_integer(detalles.get("edad_persona"))
+                    lineas_enf.append("Personas que necesitan cuidados: 1" + (f" (edad: {age} años)" if age is not None else ""))
+                else:
+                    lineas_enf.append(f"Personas que necesitan cuidados: {count}" + (f" (edades: {age_text})" if age_text else ""))
+        elif a_quien:
+            lineas_enf.append("Persona que necesita cuidados: " + str(a_quien))
+        # Nurse experience is already rendered once in the shared requirements
+        # section; don't repeat it among care details.
+        if detalles.get("condicion_principal") not in (None, ""):
+            lineas_enf.append("Condición principal: " + str(detalles["condicion_principal"]))
+        training = _admin_public_copy_text(detalles.get("formacion_requerida"), limit=160)
+        if training:
+            lineas_enf.append("Formación requerida: " + training)
+        if movilidad and not nurse_people:
             mov_lbl = ENF_MOV_LABELS.get(movilidad, movilidad)
             if mov_lbl:
                 lineas_enf.append(f"Movilidad: {mov_lbl}")
-        if cond_prin:
-            lineas_enf.append(f"Condición principal: {cond_prin}")
+        if detalles.get("tipo_asistencia"):
+            lineas_enf.append("Tipo de asistencia: " + dict({"acompanamiento": "Acompañamiento y supervisión", "cotidiana": "Asistencia con actividades cotidianas", "enfermeria": "Cuidados que requieren personal de enfermería"}).get(detalles["tipo_asistencia"], str(detalles["tipo_asistencia"])))
+        if not nurse_people:
+            for key, label in (("ayuda_higiene", "Ayuda con higiene personal"), ("ayuda_alimentacion", "Ayuda para alimentarse")):
+                if detalles.get(key) in {"si", "no"}:
+                    lineas_enf.append(f"{label}: {'Sí' if detalles[key] == 'si' else 'No'}")
+        condition_labels = {"alzheimer_demencia": "Alzheimer o demencia", "parkinson": "Parkinson", "diabetes": "Diabetes", "hipertension": "Hipertensión arterial", "cardiaca": "Enfermedades cardíacas", "acv": "Secuelas de accidente cerebrovascular (ACV)", "artritis_artrosis": "Artritis o artrosis", "respiratorias": "Enfermedades respiratorias", "movilidad": "Problemas de movilidad", "otra": "Otra condición", "ninguna": "Ninguna de las anteriores"}
+        condition_codes = [] if nurse_people else [str(code) for code in _as_list(detalles.get("condiciones"))]
+        if "ninguna" in condition_codes:
+            condition_codes = ["ninguna"]
+        if condition_codes:
+            lineas_enf.append("Condiciones de salud: " + ", ".join(condition_labels.get(code, code) for code in condition_codes))
+        if "otra" in condition_codes and detalles.get("condicion_otro"):
+            lineas_enf.append("Otra condición descrita: " + str(detalles["condicion_otro"]))
         if tareas_cd:
             etiquetas = []
+            from services.service_catalog import parse_enfermera_responsabilidad_por_persona
+            attributed_people = parse_enfermera_responsabilidad_por_persona(
+                detalles.get("responsabilidad_por_persona"), detalles.get("cantidad_personas"), tareas_cd
+            )
             for code in _as_list(tareas_cd):
-                etiquetas.append(ENF_TAREAS_LABELS.get(code) or str(code))
-            lineas_enf.append("Tareas de cuidado: " + ", ".join(etiquetas))
+                if code != "otro":
+                    label = ENF_TAREAS_LABELS.get(code) or str(code)
+                    if code in attributed_people:
+                        label += f" (Persona {attributed_people[code]})"
+                    etiquetas.append(label)
+            if "otro" in _as_list(tareas_cd) and str(detalles.get("enf_tareas_otro") or "").strip():
+                etiquetas.append(str(detalles["enf_tareas_otro"]).strip())
+            if etiquetas:
+                suffix = "con asignación histórica explícita" if attributed_people else "sin atribución individual"
+                lineas_enf.append("Responsabilidades históricas (" + suffix + "): " + ", ".join(etiquetas))
+        if "administrar_inyecciones" in _as_list(tareas_cd):
+            from services.service_catalog import ENFERMERA_INJECTION_CHOICES
+            injection_labels = dict(ENFERMERA_INJECTION_CHOICES)
+            injection = detalles.get("tipo_inyeccion")
+            if injection:
+                lineas_enf.append("Tipo de inyección: " + injection_labels.get(injection, str(injection)))
+        extra_task_text = str(detalles.get("enf_tareas_otro") or detalles.get("tareas_otro") or "").strip()
+        if "otro" in _as_list(tareas_cd):
+            if extra_task_text:
+                lineas_enf.append("Otras responsabilidades: " + extra_task_text)
+        if detalles.get("responsabilidad_integral"):
+            lineas_enf.append("Responsabilidad integral del cuidado de la persona")
+        if detalles.get("responsabilidad_principal") in {"si", "no"}:
+            lineas_enf.append("Responsable principal del cuidado: " + ("Sí" if detalles["responsabilidad_principal"] == "si" else "No, compartirá el cuidado"))
         enf_block = "\n".join(lineas_enf) if lineas_enf else ""
     elif ts_det == "CHOFER":
-        vehiculo = detalles.get("vehiculo")
-        tipo_veh = detalles.get("tipo_vehiculo")
-        tipo_otro = detalles.get("tipo_vehiculo_otro")
-        rutas = detalles.get("rutas")
-        viajes_larg = detalles.get("viajes_largos")
-        lic_det = detalles.get("licencia_requisitos") or detalles.get("licencia_detalle")
         lineas_ch = []
-        if vehiculo:
-            if vehiculo == "cliente":
-                lineas_ch.append("Vehículo: del cliente")
-            elif vehiculo == "empleado":
-                lineas_ch.append("Vehículo: propio del chofer")
-            else:
-                lineas_ch.append(f"Vehículo: {vehiculo}")
-        if tipo_veh or tipo_otro:
-            lineas_ch.append(f"Tipo de vehículo: {tipo_otro or tipo_veh}")
-        if rutas:
-            lineas_ch.append(f"Rutas habituales: {rutas}")
-        if viajes_larg is not None:
-            lineas_ch.append("Viajes largos / fuera de la ciudad: Sí" if viajes_larg else "Viajes largos / fuera de la ciudad: No")
-        if lic_det:
-            lineas_ch.append(f"Licencia / experiencia: {lic_det}")
+        if detalles.get("vehiculo") in {"cliente", "empleado"}:
+            lineas_ch.append("Vehículo: " + ("del cliente" if detalles["vehiculo"] == "cliente" else "propio del chofer"))
+        tipo_veh = detalles.get("tipo_vehiculo")
+        if tipo_veh or detalles.get("tipo_vehiculo_otro"):
+            from services.service_catalog import CHOFER_VEHICLE_CHOICES
+            vehicle_labels = dict(CHOFER_VEHICLE_CHOICES) | {"camion_ligero": "Camión ligero", "Carro": "Carro", "Yipeta": "Yipeta", "Pickup": "Pickup", "Minibús": "Minibús"}
+            lineas_ch.append("Tipo de vehículo: " + str(detalles.get("tipo_vehiculo_otro") or vehicle_labels.get(tipo_veh, tipo_veh)))
+        if detalles.get("finalidad"):
+            from services.service_catalog import CHOFER_PURPOSE_CHOICES
+            purpose = detalles["finalidad"]
+            purpose_labels = dict(CHOFER_PURPOSE_CHOICES)
+            purpose_label = purpose_labels.get(purpose)
+            if purpose == "otro" and str(detalles.get("finalidad_otro") or "").strip():
+                other_purpose = _admin_public_copy_text(detalles.get("finalidad_otro"), limit=120)
+                if other_purpose:
+                    purpose_label += ": " + other_purpose
+            if purpose_label:
+                lineas_ch.append("Finalidad del empleo: " + purpose_label)
+            elif purpose in {"Traslados diarios", "Chofer personal", "Viajes y diligencias", "Otro"}:
+                legacy_purpose_labels = {
+                    "Traslados diarios": "Traslado de empleados",
+                    "Chofer personal": "Chofer personal o familiar",
+                    "Viajes y diligencias": "Transporte para diligencias",
+                    "Otro": "Otra finalidad (histórica)",
+                }
+                lineas_ch.append("Finalidad del empleo: " + legacy_purpose_labels[purpose])
+        elif detalles.get("tipo_servicio"):
+            legacy_purpose_labels = {
+                "Traslados diarios": "Traslado de empleados",
+                "Chofer personal": "Chofer personal o familiar",
+                "Viajes y diligencias": "Transporte para diligencias",
+                "Otro": "Otra finalidad (histórica)",
+            }
+            old_purpose = str(detalles["tipo_servicio"]).strip()
+            if old_purpose in legacy_purpose_labels:
+                lineas_ch.append("Finalidad del empleo: " + legacy_purpose_labels[old_purpose])
+        from services.service_catalog import CHOFER_ROUTE_CHOICES, CHOFER_LICENSE_CHOICES
+        routes = detalles.get("rutas")
+        if isinstance(routes, list):
+            route_labels = dict(CHOFER_ROUTE_CHOICES)
+            other_route = _admin_public_copy_text(detalles.get("rutas_otro"), limit=200)
+            selected_labels = [
+                other_route if value == "otro" and other_route else route_labels[value]
+                for value in routes
+                if value in route_labels
+            ]
+            if selected_labels:
+                lineas_ch.append("Rutas o desplazamientos: " + ", ".join(selected_labels))
+        elif detalles.get("rutas_legacy") or isinstance(routes, str):
+            legacy_routes = detalles.get("rutas_legacy") or routes
+            legacy_route_labels = {label.casefold(): label for _code, label in CHOFER_ROUTE_CHOICES}
+            safe_legacy_route = legacy_route_labels.get(str(legacy_routes).strip().casefold())
+            if safe_legacy_route:
+                lineas_ch.append("Rutas habituales: " + safe_legacy_route)
+        elif detalles.get("viajes_largos") is not None:
+            lineas_ch.append("Viajes largos / fuera de la ciudad: " + ("Sí" if detalles["viajes_largos"] else "No"))
+        category = detalles.get("categoria_licencia_requerida")
+        if category in dict(CHOFER_LICENSE_CHOICES):
+            lineas_ch.append("Categoría de licencia requerida: " + dict(CHOFER_LICENSE_CHOICES)[category])
+        for key, label in (("licencia_requisitos", "Requisitos adicionales de licencia"),
+                           ("licencia_detalle", "Detalle de licencia (histórico)"),
+                           ("responsabilidades", "Responsabilidades adicionales"),
+                           ("disponibilidad", "Disponibilidad (histórica)")):
+            value = _admin_public_copy_text(detalles.get(key), limit=255)
+            if value:
+                lineas_ch.append(f"{label}: {value}")
         chofer_block = "\n".join(lineas_ch) if lineas_ch else ""
+    elif ts_det == "LIMPIEZA_ESTABLECIMIENTOS":
+        from services.service_catalog import OFFICE_ESTABLISHMENT_CHOICES, OFFICE_AREA_CHOICES, OFFICE_TASK_CHOICES
+        office_lines = []
+        kind = detalles.get("tipo_establecimiento")
+        type_label = dict(OFFICE_ESTABLISHMENT_CHOICES).get(kind, kind if isinstance(kind, str) else "")
+        if type_label:
+            other_kind = _admin_public_copy_text(detalles.get("tipo_establecimiento_otro"), limit=120) if kind == "otro" else ""
+            office_lines.append("Tipo de establecimiento: " + type_label + (f" ({other_kind})" if other_kind else ""))
+        if detalles.get("tamano"): office_lines.append("Tamaño aproximado: " + str(detalles["tamano"]))
+        feature_labels = {"despachos":"Despachos u oficinas", "reuniones":"Salas de reuniones", "ventas":"Áreas de venta", "probadores":"Probadores", "aulas":"Aulas", "administracion":"Oficinas administrativas", "consultorios":"Consultorios", "espera":"Salas de espera", "comedores":"Salones o áreas de comedor", "cocinas":"Cocinas", "niveles":"Niveles", "areas_comunes":"Áreas comunes", "banos":"Baños"}
+        features = detalles.get("caracteristicas") if isinstance(detalles.get("caracteristicas"), dict) else {}
+        for key, label in feature_labels.items():
+            if key in features and str(features[key]).strip().isdigit() and 0 <= int(features[key]) <= 500: office_lines.append(f"{label}: {features[key]}")
+        if not features:
+            for key, label in (("niveles", "Niveles"), ("banos", "Baños")):
+                if detalles.get(key) is not None: office_lines.append(f"{label}: {detalles[key]}")
+        area_labels = dict(OFFICE_AREA_CHOICES.get(kind, ()))
+        selected_areas = [area_labels.get(code, str(code)) for code in detalles.get("areas", [])] if isinstance(detalles.get("areas"), list) else []
+        if selected_areas: office_lines.append("Áreas que necesita limpiar: " + ", ".join(selected_areas))
+        elif detalles.get("areas_legacy"):
+            legacy_areas = _admin_public_copy_text(detalles.get("areas_legacy"), limit=200)
+            if legacy_areas:
+                office_lines.append("Áreas (dato histórico): " + legacy_areas)
+        if "otras" in (detalles.get("areas") or []) and detalles.get("areas_otro"): office_lines.append("Otras áreas: " + str(detalles["areas_otro"]))
+        task_labels = dict(OFFICE_TASK_CHOICES)
+        selected_tasks = [task_labels.get(code, str(code)) for code in detalles.get("funciones", [])] if isinstance(detalles.get("funciones"), list) else []
+        if selected_tasks: office_lines.append("Funciones: " + ", ".join(selected_tasks))
+        if "otras" in (detalles.get("funciones") or []) and detalles.get("funciones_otro"): office_lines.append("Otras funciones: " + str(detalles["funciones_otro"]))
+        support = detalles.get("trabaja_con_companeros")
+        if support == "si":
+            count = detalles.get("cantidad_companeros_limpieza")
+            if type(count) is int and count > 0:
+                office_lines.append(f"Trabajará con otros empleados de limpieza: Sí, {count} compañeros (sin incluir a la persona contratada).")
+        elif support == "no":
+            office_lines.append("Trabajará con otros empleados de limpieza: No.")
+        for key, label in (("frecuencia", "Frecuencia de limpieza"), ("horario_limpieza", "Horario de limpieza")):
+            if detalles.get(key): office_lines.append(f"{label}: {detalles[key]}")
+        for field_key, label in (("espacios_otro", "Otros espacios"),):
+            field_value = _admin_public_copy_text(detalles.get(field_key), limit=200)
+            if field_value:
+                office_lines.append(f"{label}: {field_value}")
+        chofer_block = "\n".join(office_lines)
+    elif ts_det == "CONSERJERIA_RESIDENCIAL":
+        from services.service_catalog import CONSERJE_CHARACTERISTIC_FIELDS, CONSERJE_INSTALLATION_CHOICES, CONSERJE_RESIDENTIAL_PROFILES, CONSERJE_RESIDENTIAL_TYPES, CONSERJE_RESPONSIBILITY_CHOICES
+        facility_lines = []
+        residential_kind = None if raw_ts_det == "CONSERJE" else detalles.get("tipo_residencial")
+        residential_label = dict(CONSERJE_RESIDENTIAL_TYPES).get(residential_kind)
+        if residential_label:
+            facility_lines.append("Tipo de residencial: " + (str(detalles.get("tipo_residencial_otro") or "").strip() if residential_kind == "otro" and detalles.get("tipo_residencial_otro") else residential_label))
+        profile_keys = set()
+        if residential_kind in CONSERJE_RESIDENTIAL_PROFILES:
+            for field_name in CONSERJE_RESIDENTIAL_PROFILES[residential_kind]["fields"]:
+                field = CONSERJE_CHARACTERISTIC_FIELDS[field_name]
+                key, value = field["key"], detalles.get(field["key"])
+                profile_keys.add(key)
+                if field["type"] == "number" and type(value) is int and value >= 0:
+                    facility_lines.append(f"{field['label']}: {value}")
+                elif field["type"] == "yes_no" and value in {"si", "no"}:
+                    facility_lines.append(f"{field['label']} {'Sí' if value == 'si' else 'No'}")
+        # Old requests keep their original measurements visible, clearly identified as historical.
+        legacy_characteristics = (("niveles", "Cantidad de niveles"), ("apartamentos", "Cantidad de apartamentos"),
+                                  ("ascensores", "Cantidad de ascensores"), ("escaleras", "Cantidad de escaleras"),
+                                  ("banos", "Cantidad de baños comunes"), ("parqueos", "Cantidad de parqueos"))
+        for key, label in legacy_characteristics:
+            value = detalles.get(key)
+            if key not in profile_keys and type(value) is int and value >= 0:
+                facility_lines.append(f"{label} (dato histórico): {value}")
+        # Profile fields are emitted above using the catalog's current labels;
+        # don't emit the same yes/no answers a second time here.
+        installation_labels = dict(CONSERJE_INSTALLATION_CHOICES)
+        installations = [installation_labels.get(code, str(code)) for code in detalles.get("instalaciones", [])] if isinstance(detalles.get("instalaciones"), list) else []
+        if installations: facility_lines.append("Instalaciones a cargo: " + ", ".join(installations))
+        other_installations = _admin_public_copy_text(detalles.get("otras_instalaciones"), limit=200)
+        if "otras" in (detalles.get("instalaciones") or []) and other_installations: facility_lines.append("Otras instalaciones: " + other_installations)
+        responsibility_labels = dict(CONSERJE_RESPONSIBILITY_CHOICES)
+        responsibilities = [responsibility_labels.get(code, str(code)) for code in detalles.get("responsabilidades", [])] if isinstance(detalles.get("responsabilidades"), list) else []
+        if responsibilities: facility_lines.append("Responsabilidades: " + ", ".join(responsibilities))
+        other_responsibilities = _admin_public_copy_text(detalles.get("responsabilidades_otro"), limit=250)
+        if "otras" in (detalles.get("responsabilidades") or []) and other_responsibilities: facility_lines.append("Otras responsabilidades: " + other_responsibilities)
+        support = detalles.get("trabaja_con_conserjes")
+        if support == "si":
+            count = detalles.get("cantidad_conserjes")
+            facility_lines.append(f"Trabajará con otros conserjes: Sí{f', {count} compañeros (sin incluir a la persona contratada)' if type(count) is int and count > 0 else ''}.")
+        elif support == "no":
+            facility_lines.append("Trabajará con otros conserjes: No.")
+        # Legacy values remain visible in old requests without being translated
+        # into the new residential fields.
+        legacy_keys = (("tipo_instalacion", "Tipo de instalación"), ("areas_comunes", "Áreas comunes"),
+                       ("areas_exteriores", "Áreas exteriores"), ("manejo_basura", "Manejo de basura"),
+                       ("mantenimiento_basico", "Mantenimiento básico"),
+                       ("instalaciones_comerciales", "Instalaciones a cargo (dato histórico)"))
+        for key, label in legacy_keys:
+            value = detalles.get(key)
+            if value not in (None, "", []):
+                if isinstance(value, (list, tuple)):
+                    value = ", ".join(str(part) for part in value if part)
+                facility_lines.append(f"{label}: {value}")
+        chofer_block = "\n".join(facility_lines)
+
+    # Group the already-rendered service answers without changing their values.
+    # The shared header, requirements, schedule and compensation remain intact.
+    if ts_det == "NINERA" and ninera_block:
+        ninera_block = "\n\n".join(_admin_group_service_copy_lines(ts_det, ninera_block.splitlines()))
+    elif ts_det == "ENFERMERA" and enf_block:
+        enf_block = "\n\n".join(_admin_group_service_copy_lines(ts_det, enf_block.splitlines()))
+    elif ts_det in {"CHOFER", "LIMPIEZA_ESTABLECIMIENTOS", "CONSERJERIA_RESIDENCIAL"} and chofer_block:
+        chofer_block = "\n\n".join(_admin_group_service_copy_lines(ts_det, chofer_block.splitlines()))
 
     composition = solicitud_composition_flags(getattr(s, "funciones", None))
 
@@ -27106,26 +28440,59 @@ def _admin_build_order_text_for_copiar(
     ) if composition["show_envejeciente"] else []
     envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
     cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
-    header_block = "\n".join([
-        f"Disponible ( {cod_fmt} )" if cod_fmt else "Disponible",
-        f"📍 {ciudad_sector}" if ciudad_sector else "📍",
-        f"Ruta más cercana: {rutas_cercanas}" if rutas_cercanas else "Ruta más cercana: ",
-    ])
+    # Keep the real request code first, followed by its location, then the
+    # service heading. This is the shared WhatsApp header contract.
+    header_lines = [f"Disponible ( {cod_fmt} )"] if cod_fmt else []
+    location_line = _admin_public_location_line(ciudad_sector)
+    if location_line:
+        header_lines.append(location_line)
+    # The company format retains the route label even when no route answer was
+    # supplied; an empty value is preferable to inventing a route.
+    header_lines.append("Ruta más cercana:" + (" " + _admin_public_copy_text(rutas_cercanas) if rutas_cercanas else ""))
+    header_block = "\n".join(header_lines)
+    service_block = f"*{service_title}*"
 
     info_lines = []
     if modalidad_line:
         info_lines.append(modalidad_line)
+    requirement_lines = []
     if edad_req:
-        if modalidad_line:
-            info_lines.append("")
-        info_lines.append(f"Edad: {edad_req}")
-    info_lines.extend(["Dominicana", "Que sepa leer y escribir"])
+        requirement_lines.append(f"Edad: {edad_req}")
+    nationality = _s(getattr(s, "nacionalidad_requerida", None))
+    education = _s(getattr(s, "educacion_requerida", None))
+    if nationality:
+        requirement_lines.append(nationality)
+    if education:
+        requirement_lines.append(education)
     if experiencia_it:
-        info_lines.append(f"Experiencia en: {experiencia_it}")
-    if horario:
-        info_lines.extend(_format_horario_block_for_copy(horario))
+        requirement_lines.append(f"Experiencia en: {experiencia_it}")
+    if requirement_lines:
+        if info_lines:
+            info_lines.append("")
+        info_lines.extend(requirement_lines)
+    structured_schedule = _s(getattr(s, "horario_estructurado", None))
+    if horario and structured_schedule:
+        if _admin_schedule_comparison_key(horario) == _admin_schedule_comparison_key(structured_schedule):
+            schedule_lines = _format_horario_block_for_copy(structured_schedule)
+        else:
+            schedule_lines = _format_horario_block_for_copy(horario)
+            structured_lines = _format_horario_block_for_copy(structured_schedule)
+            schedule_lines.extend(
+                line.replace("Horario:", "Horario según días y horas seleccionados:", 1)
+                for line in structured_lines
+            )
+    elif horario:
+        schedule_lines = _format_horario_block_for_copy(horario)
+    elif structured_schedule:
+        schedule_lines = _format_horario_block_for_copy(structured_schedule)
+    else:
+        schedule_lines = []
+    if schedule_lines:
+        # The company reference keeps schedule directly after the requirements
+        # as part of the same work-conditions block.
+        info_lines.extend(schedule_lines)
     info_block = "\n".join([x for x in info_lines])
-    funciones_block = f"Funciones: {', '.join(funcs)}" if funcs else ""
+    funciones_block = _admin_labeled_copy_section("Funciones", ", ".join(funcs)) if funcs and ts_det in {"DOMESTICA_LIMPIEZA", ""} else ""
     familia_parts = []
     if adultos_val:
         familia_parts.append(f"Adultos: {adultos_val}")
@@ -27134,32 +28501,45 @@ def _admin_build_order_text_for_copiar(
     if mascota_line:
         familia_parts.append(mascota_line)
     familia_block = "\n".join(familia_parts) if familia_parts else ""
-    sueldo_block = f"Sueldo: {sueldo_final} mensual, {pasaje_texto}" if sueldo_final else ""
+    pasaje_texto = re.sub(r"^[\s,+]+", "", str(pasaje_texto or "")).strip()
+    sueldo_block = f"Sueldo: {sueldo_final} mensual, {pasaje_texto}" if sueldo_final and pasaje_texto else (f"Sueldo: {sueldo_final} mensual" if sueldo_final else "")
 
-    adults_line = f"Adultos: {adultos_val}" if composition["show_adultos"] and adultos_val else ""
-    # Public household composition is collected independently from duties:
-    # a domestic request may include children without selecting childcare.
-    is_domestic_service = ts_det in {"", "DOMESTICA_LIMPIEZA"}
-    child_family_line = ninos_line if (composition["show_ninos"] or is_domestic_service) else ""
-    mascota_copy_line = mascota_line if (composition["show_adultos"] or composition["show_ninos"]) else ""
-    blocks = [header_block]
+    # Household composition is independent from the employee's selected job
+    # duties; children must remain visible even without childcare duties.
+    adults_line = f"Adultos: {adultos_val}" if adultos_val and adultos_val != "0" else ""
+    child_family_line = ninos_line
+    mascota_copy_line = mascota_line
+    blocks = []
+    if header_block:
+        blocks.append(header_block)
+    blocks.append(service_block)
     if info_block.strip():
         blocks.append(info_block.strip())
-    if funciones_block:
-        blocks.append(funciones_block)
-    if composition["show_house"] and hogar_descr:
-        blocks.append(hogar_descr)
+    if ts_det == "DOMESTICA_LIMPIEZA":
+        if envejeciente_block:
+            envejeciente_block = _admin_labeled_copy_section("Cuidados de la persona envejeciente", envejeciente_block)
+        if hogar_descr:
+            hogar_descr = _admin_labeled_copy_section("Características de la vivienda", hogar_descr)
     for conditional_block in (envejeciente_block, ninera_block, enf_block, chofer_block):
         if conditional_block:
             blocks.append(conditional_block)
-    family_block = "\n".join([x for x in (adults_line, child_family_line, mascota_copy_line) if x])
+    if funciones_block:
+        blocks.append(funciones_block)
+    if ts_det == "DOMESTICA_LIMPIEZA" and hogar_descr:
+        blocks.append(hogar_descr)
+    family_block = _admin_labeled_copy_section(
+        "Composición del hogar",
+        "\n".join([x for x in (adults_line, child_family_line, mascota_copy_line) if x]),
+    ) if ts_det == "DOMESTICA_LIMPIEZA" else ""
     if family_block:
         blocks.append(family_block)
     if sueldo_block:
         blocks.append(sueldo_block)
-    if include_nota_cliente and nota_cli:
-        blocks.append(nota_cli)
-    return "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
+    if nota_cli:
+        blocks.append("Nota: " + nota_cli)
+    rendered = "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
+    rendered = "\n".join(_admin_dedupe_copy_lines(rendered.splitlines()))
+    return _admin_redact_client_identity(rendered, source_solicitud)
 
 
 def _admin_build_public_copy_text(solicitud: Solicitud, *, label_maps: dict | None = None) -> str:
@@ -27363,6 +28743,7 @@ def copiar_solicitudes():
         solicitudes.append({
             'id': s.id,
             'codigo_solicitud': codigo,
+            'tipo_servicio_label': getattr(s, 'tipo_servicio_label', 'Sin clasificar'),
             'ciudad_sector': ciudad_sector,
             'estado': s.estado,
             'candidata_id': getattr(s, 'candidata_id', None),

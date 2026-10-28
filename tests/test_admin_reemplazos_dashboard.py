@@ -59,6 +59,7 @@ def _login_staff(client):
 def _feature_reemplazos_panel_enabled():
     previous_flags = dict(flask_app.config.get("FEATURE_FLAGS") or {})
     flask_app.config.setdefault("FEATURE_FLAGS", {})["reemplazos_panel"] = True
+    flask_app.config["FEATURE_FLAGS"]["candidatas_web"] = True
     try:
         yield
     finally:
@@ -445,8 +446,8 @@ def test_reemplazo_publicacion_texto_formato_info_y_horario_sin_espacios_raros()
 
     assert re.search(r"(Con dormida|Salida diaria).*\n\nEdad:", texto_repl) is not None
     assert re.search(r"(Con dormida|Salida diaria).*\nEdad:", texto_repl) is None
-    assert "Edad: 25 en adelante\n\nDominicana" not in texto_repl
-    assert "Edad: 25 en adelante\nDominicana" in texto_repl
+    assert "Edad: 25 en adelante" in texto_repl
+    assert "Dominicana" not in texto_repl
     assert "Horario:\nLunes a viernes:" not in texto_repl
     assert "Horario: Lunes a viernes: 8:00 AM - 4:00 PM\nSábado: 8:00 AM - 12:00 PM" in texto_repl
 
