@@ -558,9 +558,7 @@ def test_public_new_client_persists_all_six_service_types():
                     if service == "DOMESTICA_LIMPIEZA":
                         assert row.ninos == 2 and row.edades_ninos == "4 y 8"
                         with flask_app.test_request_context("/"):
-                            internal_copy = admin_routes._admin_build_public_copy_text(row)
-                            publication_copy = admin_routes._admin_build_order_text_for_copiar(row)
-                        assert internal_copy == publication_copy
+                            publication_copy = admin_routes._admin_build_public_copy_text(row)
                         assert "Niños: 2 (4 y 8)" in publication_copy
                         assert publication_copy.count("Niños:") == 1
                         assert "Cuidar Niños" not in publication_copy
@@ -688,9 +686,7 @@ def test_public_existing_client_persists_all_six_service_types_for_the_resolved_
                     if service == "DOMESTICA_LIMPIEZA":
                         assert row.ninos == 2 and row.edades_ninos == "4 y 8"
                         with flask_app.test_request_context("/"):
-                            internal_copy = admin_routes._admin_build_public_copy_text(row)
-                            publication_copy = admin_routes._admin_build_order_text_for_copiar(row)
-                        assert internal_copy == publication_copy
+                            publication_copy = admin_routes._admin_build_public_copy_text(row)
                         assert "Niños: 2 (4 y 8)" in publication_copy
                         assert publication_copy.count("Niños:") == 1
                         assert "Cuidar Niños" not in publication_copy
@@ -770,9 +766,7 @@ def test_domestic_children_are_persisted_and_published_for_new_and_existing_clie
             new_request_id = int(new_row.id)
             assert new_row.ninos == 2 and new_row.edades_ninos == "4 y 8"
             with flask_app.test_request_context("/"):
-                internal_copy = admin_routes._admin_build_public_copy_text(new_row)
-                publication_copy = admin_routes._admin_build_order_text_for_copiar(new_row)
-            assert internal_copy == publication_copy
+                publication_copy = admin_routes._admin_build_public_copy_text(new_row)
             assert publication_copy.count("Niños:") == 1 and "Niños: 2 (4 y 8)" in publication_copy
             assert "Cuidar Niños" not in publication_copy
         _cleanup_created_rows([new_request_id], run_id, count=1)
@@ -832,9 +826,7 @@ def test_domestic_children_are_persisted_and_published_for_new_and_existing_clie
             existing_request_id = int(existing_row.id)
             assert existing_row.ninos == 2 and existing_row.edades_ninos == "4 y 8"
             with flask_app.test_request_context("/"):
-                internal_copy = admin_routes._admin_build_public_copy_text(existing_row)
-                publication_copy = admin_routes._admin_build_order_text_for_copiar(existing_row)
-            assert internal_copy == publication_copy
+                publication_copy = admin_routes._admin_build_public_copy_text(existing_row)
             assert publication_copy.count("Niños:") == 1 and "Niños: 2 (4 y 8)" in publication_copy
             assert "Cuidar Niños" not in publication_copy
     finally:

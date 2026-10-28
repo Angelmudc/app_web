@@ -352,6 +352,25 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("Pasaje incluido", resumen_false)
         self.assertIn("Más ayuda del pasaje", resumen_true)
 
+    def test_customer_summary_redacts_structured_identity_and_operational_notes(self):
+        s = _SolicitudStub(estado="activa")
+        s.cliente = SimpleNamespace(
+            nombre_completo="Cliente Ficticio de Prueba",
+            telefono="8095550101",
+            email="cliente.ficticio@example.test",
+        )
+        s.nota_cliente = (
+            "Cliente Ficticio de Prueba, 8095550101, cliente.ficticio@example.test. "
+            "[Operativo] Reemplazo cancelado (no cobrar nuevamente)."
+        )
+
+        with flask_app.app_context():
+            with patch("admin.routes.AdminSolicitudForm", _DummyForm):
+                resumen = admin_routes.build_resumen_cliente_solicitud(s)
+
+        for private in ("Cliente Ficticio de Prueba", "8095550101", "cliente.ficticio@example.test", "[Operativo]", "no cobrar nuevamente"):
+            self.assertNotIn(private, resumen)
+
     def test_pasaje_operativo_phrase_unifica_formato_con_copiado_interno(self):
         solicitud_incluido = _SolicitudStub(estado="activa")
         solicitud_incluido.pasaje_aporte = False
@@ -388,7 +407,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        self.assertIn("El envejeciente es independiente, solo es acompañarlo", texto)
+        self.assertNotIn("El envejeciente es independiente, solo es acompañarlo", texto)
         self.assertNotIn("[Operativo]", texto)
         self.assertNotIn("no cobrar nuevamente", texto.lower())
         self.assertTrue(texto.startswith("Disponible ( SOL-010 )\n📍 Santiago\nRuta más cercana: 27 de Febrero\n\n*DOMÉSTICA*"))
@@ -403,9 +422,9 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        self.assertIn("Primera indicación", texto)
-        self.assertIn("Segunda indicación", texto)
-        self.assertIn("Tercera indicación", texto)
+        self.assertNotIn("Primera indicación", texto)
+        self.assertNotIn("Segunda indicación", texto)
+        self.assertNotIn("Tercera indicación", texto)
         self.assertNotIn(marker, texto)
 
     def test_public_copy_filters_only_explicit_operational_lines(self):
@@ -422,8 +441,8 @@ class AdminCopiarActionsTest(unittest.TestCase):
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
-        self.assertIn("Nota pública", texto)
-        self.assertIn("El cliente indicó que el proceso operativo continúa normalmente.", texto)
+        self.assertNotIn("Nota pública", texto)
+        self.assertNotIn("El cliente indicó que el proceso operativo continúa normalmente.", texto)
         self.assertNotIn("[Operativo]", texto)
         self.assertNotIn("\n\n\n", texto)
 
@@ -434,14 +453,20 @@ class AdminCopiarActionsTest(unittest.TestCase):
         with flask_app.app_context():
             with patch("admin.routes.AdminSolicitudForm", _DummyForm):
                 resumen = admin_routes.build_resumen_cliente_solicitud(s)
-            copiar = admin_routes._admin_build_order_text_for_copiar(
+            publicacion = admin_routes._admin_build_public_copy_text(
                 s, label_maps=admin_routes._admin_copiar_form_label_maps()
             )
 
         self.assertIn("Nota pública", resumen)
         self.assertNotIn("[Operativo] dato interno", resumen)
-        self.assertIn("Nota pública", copiar)
-        self.assertNotIn("[Operativo] dato interno", copiar)
+        self.assertNotIn("Nota pública", publicacion)
+        self.assertNotIn("[Operativo] dato interno", publicacion)
+        with flask_app.app_context():
+            interno = admin_routes._admin_build_order_text_for_copiar(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+        self.assertIn("Nota pública", interno)
+        self.assertIn("[Operativo] dato interno", interno)
 
     def test_build_resumen_cliente_solicitud_incluye_texto_exacto_envejeciente_independiente(self):
         s = _SolicitudStub(estado="activa")
@@ -523,10 +548,34 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertIn("Tipo de establecimiento: Oficina", texto)
         self.assertIn("Áreas que necesita limpiar: Recepción, Baños", texto)
         self.assertIn("Calle exacta 123", texto)
-        self.assertIn("Observación interna confidencial", texto)
+        self.assertNotIn("Observación interna confidencial", texto)
+        with flask_app.test_request_context("/"):
+            texto_interno = admin_routes._admin_build_order_text_for_copiar(
+                s, label_maps=admin_routes._admin_copiar_form_label_maps()
+            )
+        self.assertIn("Observación interna confidencial", texto_interno)
         for private in ("NEGOCIO PRIVADO", "Adultos:", "Niños:"):
             self.assertNotIn(private, texto)
         self.assertIn("Baños: 3", texto)
+
+    def test_nurse_publication_omits_unapproved_health_and_exact_address_details(self):
+        s = _SolicitudStub(estado="activa")
+        s.tipo_servicio = "ENFERMERA"
+        s.detalles_servicio = {
+            "tipo": "ENFERMERA",
+            "cantidad_personas": 1,
+            "condicion_principal": "Diagnóstico sintético no publicable",
+            "condiciones": ["diabetes"],
+            "direccion_precisa": "Calle Ficticia 987, casa 2",
+            "tareas": ["acompanamiento"],
+        }
+        with flask_app.test_request_context("/"):
+            texto = admin_routes._admin_build_public_copy_text(s)
+
+        self.assertIn("ENFERMERA", texto)
+        self.assertNotIn("Diagnóstico sintético no publicable", texto)
+        self.assertNotIn("Diabetes", texto)
+        self.assertNotIn("Calle Ficticia 987", texto)
 
     def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
         self._login("Owner", "admin123")

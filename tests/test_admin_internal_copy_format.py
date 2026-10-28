@@ -41,7 +41,7 @@ def _internal_copy_text(modalidad: str) -> str:
         envejeciente_nota="",
     )
     with flask_app.test_request_context("/admin/clientes/7/solicitudes/10/_heavy"):
-        return admin_routes._admin_build_public_copy_text(solicitud)
+        return admin_routes._admin_build_order_text_for_copiar(solicitud)
 
 
 @pytest.mark.parametrize(
@@ -115,9 +115,8 @@ def test_chofer_publication_replaces_other_route_label_without_losing_other_answ
         envejeciente_solo_acompanamiento=False, envejeciente_nota="",
     )
     with flask_app.test_request_context("/admin/solicitudes/copiar"):
-        # Both the internal-copy field and publication action use this builder.
-        internal_copy = admin_routes._admin_build_public_copy_text(solicitud)
-        publication_copy = admin_routes._admin_build_order_text_for_copiar(solicitud)
+        internal_copy = admin_routes._admin_build_order_text_for_copiar(solicitud)
+        publication_copy = admin_routes._admin_build_public_copy_text(solicitud)
 
     assert internal_copy == publication_copy
     route_line = f"Rutas o desplazamientos: {expected_routes}"

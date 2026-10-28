@@ -4157,16 +4157,20 @@ def _admin_specific_service_copy_lines(s: Solicitud, label_maps: dict | None = N
     return []
 
 
-_PUBLIC_OPERATIONAL_NOTE_LINE_RE = re.compile(r"^\s*\[operativo\](?:\s|$)", re.IGNORECASE)
+_PUBLIC_OPERATIONAL_NOTE_MARKER_RE = re.compile(r"\[\s*operativo\s*\](?:\s|$)", re.IGNORECASE)
 
 
 def _admin_sanitize_public_note_text(value) -> str:
-    """Keep customer notes while omitting explicit staff-only operational markers."""
+    """Keep customer-authored note text only up to an explicit staff-only marker."""
     raw = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
-    return "\n".join(
-        line.rstrip() for line in raw.split("\n")
-        if not _PUBLIC_OPERATIONAL_NOTE_LINE_RE.match(line)
-    ).strip()
+    safe_lines = []
+    for line in raw.split("\n"):
+        marker = _PUBLIC_OPERATIONAL_NOTE_MARKER_RE.search(line)
+        if marker:
+            line = line[:marker.start()].rstrip(" \t,;:-")
+        if line.strip():
+            safe_lines.append(line.rstrip())
+    return "\n".join(safe_lines).strip()
 
 
 def _admin_copy_experience_for_service(value, service_code: str, details: dict | None = None) -> str:
@@ -17643,8 +17647,8 @@ def solicitud_detail_heavy_fragment(cliente_id, id):
             "admin/_solicitud_detail_heavy_region.html",
             solicitud=solicitud,
             admin_answer_groups=build_admin_solicitud_answer_groups(solicitud),
-            resumen_interno=_admin_build_public_copy_text(
-                solicitud, label_maps=_admin_copiar_form_label_maps()
+            resumen_interno=_admin_build_order_text_for_copiar(
+                solicitud, label_maps=_admin_copiar_form_label_maps(), include_nota_cliente=True
             ),
             envios=envios,
             reemplazos=reemplazos,
@@ -27621,6 +27625,10 @@ def _fmt_codigo_solicitud(codigo: str) -> str:
         return c
 
     n_str = m.group(1)
+    # Request codes with a leading zero are identifiers, not numeric amounts.
+    # Preserve their exact spelling (e.g. SOL-010) instead of collapsing it.
+    if len(n_str) > 1 and n_str.startswith("0"):
+        return c
     try:
         n = int(n_str)
     except ValueError:
@@ -28100,7 +28108,9 @@ def _admin_build_order_text_for_copiar(
     horario = _s(getattr(s, "horario", None))
     sueldo_final = _format_money_usd(getattr(s, "sueldo", None))
     pasaje_texto = _pasaje_operativo_phrase_from_solicitud(s)
-    nota_cli = _admin_sanitize_public_note_text(getattr(s, "nota_cliente", None))
+    # This builder is used by staff for the internal copy. Preserve the note
+    # verbatim here; the public-copy wrapper opts out of it explicitly.
+    nota_cli = str(getattr(s, "nota_cliente", None) or "").replace("\r\n", "\n").replace("\r", "\n").strip() if include_nota_cliente else ""
 
     detalles = getattr(s, "detalles_servicio", None) or {}
     stored_ts_det = _s(getattr(s, "tipo_servicio", None))
@@ -28165,21 +28175,8 @@ def _admin_build_order_text_for_copiar(
         from services.service_catalog import enfermera_responsibility_lines, parse_enfermera_personas
         nurse_people = parse_enfermera_personas(detalles.get("personas_cuidado"))
         if nurse_people:
-            mobility_names = dict(labels.get('enf_movilidad') or {})
-            condition_names = {"alzheimer_demencia": "Alzheimer o demencia", "parkinson": "Parkinson", "diabetes": "Diabetes", "hipertension": "Hipertensión arterial", "cardiaca": "Enfermedades cardíacas", "acv": "Secuelas de accidente cerebrovascular (ACV)", "artritis_artrosis": "Artritis o artrosis", "respiratorias": "Enfermedades respiratorias", "movilidad": "Problemas de movilidad", "otra": "Otra condición", "ninguna": "Ninguna de las anteriores"}
-            from services.service_catalog import ENFERMERA_PERSON_CARE_NEEDS
-            care_need_labels = dict(ENFERMERA_PERSON_CARE_NEEDS)
             lineas_enf.append(f"Personas que necesitan cuidados: {len(nurse_people)}")
-            for index, person in enumerate(nurse_people, start=1):
-                lineas_enf.append(f"Persona {index}: {person['edad']} años" if person.get("edad") is not None else f"Persona {index}")
-                if person.get("movilidad") in mobility_names:
-                    lineas_enf.append("  Movilidad: " + mobility_names[person["movilidad"]])
-                person_conditions = [condition_names[code] for code in person.get("condiciones", []) if code in condition_names]
-                if person_conditions:
-                    lineas_enf.append("  Condiciones: " + ", ".join(person_conditions))
-                person_needs = [care_need_labels[code] for code in person.get("necesidades", []) if code in care_need_labels]
-                if person_needs:
-                    lineas_enf.append("  Necesidades: " + ", ".join(person_needs))
+            for person in nurse_people:
                 person_responsibilities = enfermera_responsibility_lines(person)
                 if person_responsibilities:
                     lineas_enf.append("  Responsabilidades: " + ", ".join(person_responsibilities))
@@ -28188,39 +28185,23 @@ def _admin_build_order_text_for_copiar(
         elif detalles.get("cantidad_personas"):
             count = _public_integer(detalles.get("cantidad_personas"))
             if count is not None:
-                age_text = str(detalles.get("edades_personas") or "").strip()
                 if count == 1:
-                    age = _public_integer(detalles.get("edad_persona"))
-                    lineas_enf.append("Personas que necesitan cuidados: 1" + (f" (edad: {age} años)" if age is not None else ""))
+                    lineas_enf.append("Personas que necesitan cuidados: 1")
                 else:
-                    lineas_enf.append(f"Personas que necesitan cuidados: {count}" + (f" (edades: {age_text})" if age_text else ""))
-        elif a_quien:
-            lineas_enf.append("Persona que necesita cuidados: " + str(a_quien))
+                    lineas_enf.append(f"Personas que necesitan cuidados: {count}")
         # Nurse experience is already rendered once in the shared requirements
         # section; don't repeat it among care details.
-        if detalles.get("condicion_principal") not in (None, ""):
-            lineas_enf.append("Condición principal: " + str(detalles["condicion_principal"]))
         training = _admin_public_copy_text(detalles.get("formacion_requerida"), limit=160)
         if training:
             lineas_enf.append("Formación requerida: " + training)
-        if movilidad and not nurse_people:
-            mov_lbl = ENF_MOV_LABELS.get(movilidad, movilidad)
-            if mov_lbl:
-                lineas_enf.append(f"Movilidad: {mov_lbl}")
         if detalles.get("tipo_asistencia"):
             lineas_enf.append("Tipo de asistencia: " + dict({"acompanamiento": "Acompañamiento y supervisión", "cotidiana": "Asistencia con actividades cotidianas", "enfermeria": "Cuidados que requieren personal de enfermería"}).get(detalles["tipo_asistencia"], str(detalles["tipo_asistencia"])))
         if not nurse_people:
             for key, label in (("ayuda_higiene", "Ayuda con higiene personal"), ("ayuda_alimentacion", "Ayuda para alimentarse")):
                 if detalles.get(key) in {"si", "no"}:
                     lineas_enf.append(f"{label}: {'Sí' if detalles[key] == 'si' else 'No'}")
-        condition_labels = {"alzheimer_demencia": "Alzheimer o demencia", "parkinson": "Parkinson", "diabetes": "Diabetes", "hipertension": "Hipertensión arterial", "cardiaca": "Enfermedades cardíacas", "acv": "Secuelas de accidente cerebrovascular (ACV)", "artritis_artrosis": "Artritis o artrosis", "respiratorias": "Enfermedades respiratorias", "movilidad": "Problemas de movilidad", "otra": "Otra condición", "ninguna": "Ninguna de las anteriores"}
-        condition_codes = [] if nurse_people else [str(code) for code in _as_list(detalles.get("condiciones"))]
-        if "ninguna" in condition_codes:
-            condition_codes = ["ninguna"]
-        if condition_codes:
-            lineas_enf.append("Condiciones de salud: " + ", ".join(condition_labels.get(code, code) for code in condition_codes))
-        if "otra" in condition_codes and detalles.get("condicion_otro"):
-            lineas_enf.append("Otra condición descrita: " + str(detalles["condicion_otro"]))
+        # Keep diagnoses, mobility, age and free-form health details in the
+        # authenticated admin view; they are not included in candidate copy.
         if tareas_cd:
             etiquetas = []
             from services.service_catalog import parse_enfermera_responsabilidad_por_persona
@@ -28535,7 +28516,7 @@ def _admin_build_order_text_for_copiar(
         blocks.append(family_block)
     if sueldo_block:
         blocks.append(sueldo_block)
-    if nota_cli:
+    if include_nota_cliente and nota_cli:
         blocks.append("Nota: " + nota_cli)
     rendered = "\n\n".join(block for block in blocks if block and block.strip()).rstrip()
     rendered = "\n".join(_admin_dedupe_copy_lines(rendered.splitlines()))
@@ -28553,7 +28534,7 @@ def _admin_build_public_copy_text(solicitud: Solicitud, *, label_maps: dict | No
     return _admin_build_order_text_for_copiar(
         solicitud,
         label_maps=label_maps,
-        include_nota_cliente=True,
+        include_nota_cliente=False,
     )
 
 
