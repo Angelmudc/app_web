@@ -68,7 +68,6 @@ def test_copiar_interno_separa_modalidad_de_edad_sin_cambiar_el_resto(modalidad)
         "Horario: Entrada: lunes 8:00 AM / Salida: sábado 12:00 PM\n\n"
         "Funciones: Limpieza General\n\n"
         "Casa - 3 habitaciones, 2 baños\n\n"
-        "Composición del hogar:\n"
         "Adultos: 2\n\n"
         "Sueldo: $25,000 mensual, Pasaje incluido"
     )

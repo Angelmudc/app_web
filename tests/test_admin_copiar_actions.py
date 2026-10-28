@@ -629,7 +629,7 @@ class AdminCopiarActionsTest(unittest.TestCase):
         self.assertNotIn("Diabetes", texto)
         self.assertNotIn("Calle Ficticia 987", texto)
 
-    def test_copiar_solicitudes_incluye_envejeciente_encamado_responsabilidades_y_nota(self):
+    def test_publicacion_envejeciente_incluye_necesidades_estructuradas_sin_nota_privada(self):
         self._login("Owner", "admin123")
         s = _SolicitudStub(estado="activa")
         s.funciones = ["limpieza", "envejeciente"]
@@ -653,7 +653,10 @@ class AdminCopiarActionsTest(unittest.TestCase):
         )
         self.assertEqual(expected[1], "Nota sobre el envejeciente: Usa cama clínica")
         self.assertIn(expected[0], html)
-        self.assertIn(expected[1], html)
+        self.assertNotIn(expected[1], html)
+        with flask_app.test_request_context("/admin/clientes/7/solicitudes/10/_heavy"):
+            internal_text = admin_routes._admin_build_order_text_for_copiar(s)
+        self.assertIn(expected[1], internal_text)
 
     def test_copiar_solicitudes_incluye_envejeciente_solo_acompanamiento(self):
         self._login("Owner", "admin123")

@@ -27657,6 +27657,7 @@ def _admin_build_order_text_for_copiar(
     label_maps: dict | None = None,
     *,
     include_nota_cliente: bool = True,
+    public_copy: bool = False,
 ) -> str:
     source_solicitud = s
     labels = label_maps or _admin_copiar_form_label_maps()
@@ -28417,7 +28418,9 @@ def _admin_build_order_text_for_copiar(
         tipo_cuidado=getattr(s, "envejeciente_tipo_cuidado", None),
         responsabilidades=getattr(s, "envejeciente_responsabilidades", None),
         solo_acompanamiento=getattr(s, "envejeciente_solo_acompanamiento", False),
-        nota=getattr(s, "envejeciente_nota", None),
+        # Free-form care notes stay in the authenticated internal copy; the
+        # public posting uses only the structured care needs above.
+        nota=None if public_copy else getattr(s, "envejeciente_nota", None),
     ) if composition["show_envejeciente"] else []
     envejeciente_block = "\n".join(envejeciente_lines) if envejeciente_lines else ""
     cod_fmt = _fmt_codigo_solicitud(codigo) if codigo else ""
@@ -28500,20 +28503,22 @@ def _admin_build_order_text_for_copiar(
     blocks.append(service_block)
     if info_block.strip():
         blocks.append(info_block.strip())
-    if ts_det == "DOMESTICA_LIMPIEZA":
-        if envejeciente_block:
-            envejeciente_block = _admin_labeled_copy_section("Cuidados de la persona envejeciente", envejeciente_block)
-    for conditional_block in (envejeciente_block, ninera_block, enf_block, chofer_block):
+    move_public_elder_care = public_copy and ts_det == "DOMESTICA_LIMPIEZA"
+    conditional_blocks = (
+        (ninera_block, enf_block, chofer_block)
+        if move_public_elder_care
+        else (envejeciente_block, ninera_block, enf_block, chofer_block)
+    )
+    for conditional_block in conditional_blocks:
         if conditional_block:
             blocks.append(conditional_block)
     if funciones_block:
         blocks.append(funciones_block)
+    if move_public_elder_care and envejeciente_block:
+        blocks.append(envejeciente_block)
     if ts_det == "DOMESTICA_LIMPIEZA" and hogar_descr:
         blocks.append(hogar_descr)
-    family_block = _admin_labeled_copy_section(
-        "Composición del hogar",
-        "\n".join([x for x in (adults_line, child_family_line, mascota_copy_line) if x]),
-    ) if ts_det == "DOMESTICA_LIMPIEZA" else ""
+    family_block = "\n".join([x for x in (adults_line, child_family_line, mascota_copy_line) if x]) if ts_det == "DOMESTICA_LIMPIEZA" else ""
     if family_block:
         blocks.append(family_block)
     if sueldo_block:
@@ -28537,6 +28542,7 @@ def _admin_build_public_copy_text(solicitud: Solicitud, *, label_maps: dict | No
         solicitud,
         label_maps=label_maps,
         include_nota_cliente=False,
+        public_copy=True,
     )
 
 
