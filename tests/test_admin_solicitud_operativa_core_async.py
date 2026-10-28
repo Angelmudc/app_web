@@ -680,6 +680,75 @@ class SolicitudOperativaCoreAsyncTest(unittest.TestCase):
         self.assertIn("X-P1C1-Perf-DB-Queries", resp.headers)
         self.assertIn("X-P1C1-Perf-HTML-Bytes", resp.headers)
 
+    def test_solicitud_detail_heavy_fragment_carga_resumen_y_respuestas_completas(self):
+        solicitud = _solicitud_stub(2363, "activa")
+        solicitud.reemplazos = []
+        solicitud.tipo_servicio = "DOMESTICA_LIMPIEZA"
+        solicitud.detalles_servicio = {"tipo": "DOMESTICA_LIMPIEZA"}
+        solicitud.funciones = ["limpieza"]
+        solicitud.modalidad_trabajo = "Con dormida"
+        solicitud.ciudad_sector = "Puerto Plata (La Isabela)"
+        solicitud.detalles_servicio["campo_prueba_completo"] = "Respuesta sintética completa"
+
+        with flask_app.app_context():
+            with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])):
+                resp = self.client.get(
+                    "/admin/clientes/7/solicitudes/2363/_heavy",
+                    follow_redirects=False,
+                )
+
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn("Resumen interno", html)
+        self.assertIn("SOL-2,363", html)
+        self.assertIn("Puerto Plata (La Isabela)", html)
+        self.assertIn("Respuestas completas de la solicitud", html)
+        self.assertIn("Respuesta sintética completa", html)
+        self.assertEqual(resp.headers.get("X-Async-Fragment-Region"), "solicitudDetailHeavyAsyncRegion")
+
+    def test_solicitud_detail_heavy_muestra_respuestas_de_los_seis_servicios(self):
+        casos = {
+            "DOMESTICA_LIMPIEZA": {"funciones": ["limpieza"], "respuesta_prueba": "respuesta doméstica"},
+            "NINERA": {"cantidad_ninos": 2, "condicion_especial": "nota privada de niñera", "respuesta_prueba": "respuesta niñera"},
+            "ENFERMERA": {"condiciones": ["diabetes"], "condicion_principal": "nota privada de cuidado", "respuesta_prueba": "respuesta enfermera"},
+            "CHOFER": {"finalidad": "personal_familiar", "rutas": ["dentro_ciudad"], "respuesta_prueba": "respuesta chofer"},
+            "LIMPIEZA_ESTABLECIMIENTOS": {"tipo_establecimiento": "oficina", "respuesta_prueba": "respuesta establecimientos"},
+            "CONSERJERIA_RESIDENCIAL": {"tipo_residencial": "torre_apartamentos", "respuesta_prueba": "respuesta conserjería"},
+        }
+        for service, answers in casos.items():
+            with self.subTest(service=service):
+                solicitud = _solicitud_stub(2363, "activa")
+                solicitud.reemplazos = []
+                solicitud.tipo_servicio = service
+                solicitud.detalles_servicio = {"tipo": service, **answers}
+                with flask_app.app_context():
+                    with patch.object(admin_routes.Solicitud, "query", _SolicitudQueryStub([solicitud])):
+                        resp = self.client.get(
+                            "/admin/clientes/7/solicitudes/2363/_heavy",
+                            follow_redirects=False,
+                        )
+                self.assertEqual(resp.status_code, 200)
+                html = resp.get_data(as_text=True)
+                self.assertIn("Resumen interno", html)
+                self.assertIn("Respuestas completas de la solicitud", html)
+                self.assertIn(answers["respuesta_prueba"], html)
+                for value in answers.values():
+                    if isinstance(value, str) and value.startswith("nota privada"):
+                        self.assertIn(value, html)
+                    elif isinstance(value, str) and value.startswith("respuesta "):
+                        self.assertIn(value, html)
+
+    def test_respuestas_completas_manejan_respuestas_vacias_e_incompletas(self):
+        from services.admin_solicitud_answers import build_admin_solicitud_answer_groups
+
+        for details in ({}, {"tipo": "NINERA"}):
+            with self.subTest(details=details):
+                solicitud = SimpleNamespace(tipo_servicio="NINERA", detalles_servicio=details)
+                groups = build_admin_solicitud_answer_groups(solicitud)
+                self.assertTrue(groups)
+                self.assertTrue(all(isinstance(group.get("rows"), list) for group in groups))
+                self.assertFalse(any(row["key"].endswith("sha256") for group in groups for row in group["rows"]))
+
     def test_solicitud_detail_full_expone_headers_baseline_minima(self):
         solicitud = _solicitud_stub(10, "activa")
         with flask_app.app_context():
